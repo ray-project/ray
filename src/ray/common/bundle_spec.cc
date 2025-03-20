@@ -14,6 +14,12 @@
 
 #include "ray/common/bundle_spec.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 
 void BundleSpecification::ComputeResources() {

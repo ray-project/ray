@@ -13,6 +13,9 @@
 // limitations under the License.
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
 #include "ray/common/placement_group.h"

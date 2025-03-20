@@ -14,10 +14,13 @@
 
 #include "ray/common/memory_monitor.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <filesystem>
 #include <fstream>  // std::ifstream
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "ray/common/ray_config.h"
@@ -44,7 +47,8 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
     auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
     computed_threshold_bytes_ =
         GetMemoryThreshold(total_memory_bytes, usage_threshold_, min_memory_free_bytes_);
-    computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
+    computed_threshold_fraction_ =
+        static_cast<float>(computed_threshold_bytes_) / total_memory_bytes;
     RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
                   << computed_threshold_bytes_ << " bytes ("
                   << absl::StrFormat("%.2f", computed_threshold_fraction_)
@@ -350,7 +354,7 @@ int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes,
   RAY_CHECK_GE(usage_threshold, 0);
   RAY_CHECK_LE(usage_threshold, 1);
 
-  int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
+  int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
 
   if (min_memory_free_bytes > kNull) {
     int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;

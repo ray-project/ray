@@ -14,6 +14,9 @@
 
 #include "ray/common/placement_group.h"
 
+#include <string>
+#include <vector>
+
 namespace ray {
 void PlacementGroupSpecification::ConstructBundles() {
   for (int i = 0; i < message_->bundles_size(); i++) {

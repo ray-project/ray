@@ -14,6 +14,8 @@
 
 #include "ray/common/common_protocol.h"
 
+#include <string>
+
 #include "ray/util/logging.h"
 
 std::string string_from_flatbuf(const flatbuffers::String &string) {

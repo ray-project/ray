@@ -14,6 +14,10 @@
 
 #include "ray/common/file_system_monitor.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 
@@ -109,7 +113,7 @@ bool FileSystemMonitor::OverCapacityImpl(
 
   std::ostringstream ostr;
   ostr << path << " is over " << capacity_threshold_ * 100
-       << "\% full, available space: " << available_gb << " GB"
+       << "% full, available space: " << available_gb << " GB"
        << "; capacity: " << capacity_gb << " GB"
        << ". Object creation will fail if spilling is required.";
   RAY_EVENT_EVERY_MS(ERROR, "Out of Disk", 10 * 1000) << ostr.str();

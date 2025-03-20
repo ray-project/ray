@@ -14,6 +14,10 @@
 
 #include "ray/common/function_descriptor.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray {
 FunctionDescriptor FunctionDescriptorBuilder::Empty() {
   static ray::FunctionDescriptor empty =
@@ -78,18 +82,16 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
   if (language == rpc::Language::JAVA) {
     RAY_CHECK(function_descriptor_list.size() == 3);
     return FunctionDescriptorBuilder::BuildJava(
-        function_descriptor_list[0],  // class name
-        function_descriptor_list[1],  // function name
-        function_descriptor_list[2]   // signature
-    );
+        function_descriptor_list[0],   // class name
+        function_descriptor_list[1],   // function name
+        function_descriptor_list[2]);  // signature
   } else if (language == rpc::Language::PYTHON) {
     RAY_CHECK(function_descriptor_list.size() == 4);
     return FunctionDescriptorBuilder::BuildPython(
-        function_descriptor_list[0],  // module name
-        function_descriptor_list[1],  // class name
-        function_descriptor_list[2],  // function name
-        function_descriptor_list[3]   // function hash
-    );
+        function_descriptor_list[0],   // module name
+        function_descriptor_list[1],   // class name
+        function_descriptor_list[2],   // function name
+        function_descriptor_list[3]);  // function hash
   } else if (language == rpc::Language::CPP) {
     RAY_CHECK(function_descriptor_list.size() == 3);
     return FunctionDescriptorBuilder::BuildCpp(

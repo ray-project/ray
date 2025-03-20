@@ -14,7 +14,9 @@
 #pragma once
 
 #include <functional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"

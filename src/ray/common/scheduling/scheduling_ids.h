@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -37,11 +38,11 @@ enum PredefinedResourcesEnum {
   PredefinedResourcesEnum_MAX
 };
 
-const std::string kCPU_ResourceLabel = "CPU";
-const std::string kGPU_ResourceLabel = "GPU";
-const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
-const std::string kMemory_ResourceLabel = "memory";
-const std::string kBundle_ResourceLabel = "bundle";
+constexpr const char kCPU_ResourceLabel[] = "CPU";
+constexpr const char kGPU_ResourceLabel[] = "GPU";
+constexpr const char kObjectStoreMemory_ResourceLabel[] = "object_store_memory";
+constexpr const char kMemory_ResourceLabel[] = "memory";
+constexpr const char kBundle_ResourceLabel[] = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {

@@ -14,6 +14,8 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
+#include <string>
+
 #ifndef __linux__
 namespace ray {
 bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return false; }
@@ -48,8 +50,8 @@ namespace {
 //
 // Root folder for cgroup v2 for the current raylet instance.
 // See README under the current folder for details.
-std::string cgroup_v2_app_folder;
-std::string cgroup_v2_system_folder;
+std::string cgroup_v2_app_folder;     // NOLINT
+std::string cgroup_v2_system_folder;  // NOLINT
 
 // Parent cgroup path.
 constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";

@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "ray/common/runtime_env_common.h"
+
+#include <string>
+
 namespace ray {
 
 bool IsRuntimeEnvEmpty(const std::string &serialized_runtime_env) {

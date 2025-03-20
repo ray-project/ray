@@ -15,7 +15,11 @@
 #include "ray/common/asio/asio_chaos.h"
 
 #include <cstdlib>
+#include <iostream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"

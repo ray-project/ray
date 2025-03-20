@@ -14,6 +14,8 @@
 
 #include "ray/common/grpc_util.h"
 
+#include <string>
+
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/common.pb.h"
 

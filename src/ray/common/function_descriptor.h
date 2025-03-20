@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "ray/common/grpc_util.h"

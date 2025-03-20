@@ -16,6 +16,9 @@
 
 #include <boost/functional/hash.hpp>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"

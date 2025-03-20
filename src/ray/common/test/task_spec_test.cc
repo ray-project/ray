@@ -14,6 +14,10 @@
 
 #include "ray/common/task/task_spec.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 

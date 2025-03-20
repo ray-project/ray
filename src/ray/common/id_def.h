@@ -17,6 +17,7 @@
 // could use a different definition of the DEFINE_UNIQUE_ID macro.
 // Macro definition format: DEFINE_UNIQUE_ID(id_type).
 // NOTE: This file should NOT be included in any file other than id.h.
+#pragma once
 
 DEFINE_UNIQUE_ID(FunctionID)
 DEFINE_UNIQUE_ID(ActorClassID)

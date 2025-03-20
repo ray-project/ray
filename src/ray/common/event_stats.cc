@@ -18,7 +18,10 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"

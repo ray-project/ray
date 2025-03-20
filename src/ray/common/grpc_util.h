@@ -19,7 +19,11 @@
 #include <google/protobuf/util/message_differencer.h>
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_config.h"

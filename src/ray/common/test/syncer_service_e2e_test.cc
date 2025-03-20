@@ -22,12 +22,15 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-using namespace std;
-using namespace ray::syncer;
+using namespace std;          // NOLINT
+using namespace ray::syncer;  // NOLINT
 using ray::PeriodicalRunner;
 
 class LocalNode : public ReporterInterface {

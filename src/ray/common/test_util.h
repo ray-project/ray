@@ -16,7 +16,9 @@
 
 #include <functional>
 #include <future>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"

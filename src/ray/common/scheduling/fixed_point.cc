@@ -15,6 +15,8 @@
 #include "ray/common/scheduling/fixed_point.h"
 
 #include <sstream>
+#include <string>
+#include <vector>
 
 std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector) {
   std::vector<FixedPoint> vector_fp(vector.size());
