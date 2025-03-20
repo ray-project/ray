@@ -21,18 +21,18 @@
 
 namespace ray::internal {
 
-class RedirectionHandleWrapper {
+class StreamRedirectionHandle {
  public:
-  RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                           const StreamRedirectionOption &opt);
+  StreamRedirectionHandle(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                          const StreamRedirectionOption &opt);
 
-  RedirectionHandleWrapper(const RedirectionHandleWrapper &) = delete;
-  RedirectionHandleWrapper &operator=(const RedirectionHandleWrapper &) = delete;
-  RedirectionHandleWrapper(RedirectionHandleWrapper &&) = default;
-  RedirectionHandleWrapper &operator=(RedirectionHandleWrapper &&) = default;
+  StreamRedirectionHandle(const StreamRedirectionHandle &) = delete;
+  StreamRedirectionHandle &operator=(const StreamRedirectionHandle &) = delete;
+  StreamRedirectionHandle(StreamRedirectionHandle &&) = default;
+  StreamRedirectionHandle &operator=(StreamRedirectionHandle &&) = default;
 
   // Flush buffered output and restore stream redirection.
-  ~RedirectionHandleWrapper();
+  ~StreamRedirectionHandle();
 
   // Flush on redirected stream synchronously.
   //

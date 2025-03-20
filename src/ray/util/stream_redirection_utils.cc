@@ -33,12 +33,12 @@ namespace {
 // absl::InlinedVector.
 //
 // Maps from original stream file handle (i.e. stdout/stderr) to its stream redirector.
-absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::RedirectionHandleWrapper>
+absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::StreamRedirectionHandle>
     redirection_file_handles;
 
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOption &opt) {
-  internal::RedirectionHandleWrapper handle_wrapper(stream_fd, opt);
+  internal::StreamRedirectionHandle handle_wrapper(stream_fd, opt);
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;

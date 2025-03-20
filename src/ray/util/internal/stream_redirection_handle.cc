@@ -21,19 +21,19 @@
 
 namespace ray::internal {
 
-RedirectionHandleWrapper::RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                                                   const StreamRedirectionOption &opt) {
+StreamRedirectionHandle::StreamRedirectionHandle(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                                                 const StreamRedirectionOption &opt) {
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
   scoped_dup2_wrapper_ = ScopedDup2Wrapper::New(handle.GetWriteHandle(), stream_fd);
   redirection_file_handle_ = std::move(handle);
 }
 
-RedirectionHandleWrapper::~RedirectionHandleWrapper() {
+StreamRedirectionHandle::~StreamRedirectionHandle() {
   scoped_dup2_wrapper_ = nullptr;
   redirection_file_handle_.Close();
 }
 
-void RedirectionHandleWrapper::FlushOnRedirectedStream() {
+void StreamRedirectionHandle::FlushOnRedirectedStream() {
   redirection_file_handle_.Flush();
 }
 
