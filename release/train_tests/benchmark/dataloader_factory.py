@@ -106,7 +106,7 @@ class S3Reader:
             raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
 
     def _get_file_urls(self, url: str) -> List[str]:
-        """Get file URLs from S3 and distribute them among Ray workers.
+        """Get file URLs from S3 and distribute them among Ray workers based on row counts.
 
         Args:
             url: The S3 URL to list files from
@@ -117,36 +117,76 @@ class S3Reader:
         try:
             # Get Ray worker info
             worker_rank = ray.train.get_context().get_world_rank()
+            num_workers = ray.train.get_context().get_world_size()
             logger.info(
-                f"[DataLoader] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
+                f"[DataLoader] Ray worker {worker_rank}/{num_workers} listing files"
             )
 
             # List files from S3
             bucket, prefix = self._parse_s3_url(url)
             file_urls = []
+            file_rows = []  # Track row count for each file
             response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
 
             if "Contents" in response:
+                import pyarrow.parquet as pq
+                import io
+
+                # First pass: collect files and their row counts
                 for file in response["Contents"]:
-                    file_urls.append(f"s3://{bucket}/{file['Key']}")
+                    file_url = f"s3://{bucket}/{file['Key']}"
+                    file_urls.append(file_url)
 
-            # Sort URLs for consistent distribution
-            file_urls.sort()
+                    # Get row count for this file
+                    response = self.s3_client.get_object(Bucket=bucket, Key=file["Key"])
+                    parquet_file = pq.ParquetFile(io.BytesIO(response["Body"].read()))
+                    total_rows = parquet_file.metadata.num_rows
+                    file_rows.append(total_rows)
+                    logger.info(f"[DataLoader] File {file_url} has {total_rows} rows")
 
-            # If no workers, return all files
-            if self.num_torch_workers == 0:
+            # Sort files by row count (descending) for better distribution
+            files_with_rows = sorted(
+                zip(file_urls, file_rows), key=lambda x: x[1], reverse=True
+            )
+            file_urls = [f[0] for f in files_with_rows]
+            file_rows = [f[1] for f in files_with_rows]
+
+            # If no workers or files, return all files
+            if num_workers <= 1 or not file_urls:
                 logger.info(
-                    f"[DataLoader] No torch workers, returning all {len(file_urls)} files"
+                    f"[DataLoader] Single worker or no files, returning all {len(file_urls)} files "
+                    f"with total {sum(file_rows)} rows"
                 )
                 return file_urls
 
-            # Round-robin allocation: each worker gets every Nth file
-            worker_urls = file_urls[worker_rank :: self.num_ray_workers]
+            # Calculate target rows per worker for balanced distribution
+            total_rows = sum(file_rows)
+            target_rows_per_worker = total_rows / num_workers
+            logger.info(
+                f"[DataLoader] Total rows: {total_rows}, Target rows per worker: {target_rows_per_worker:.0f}"
+            )
+
+            # Distribute files to minimize row count differences between workers
+            worker_files = [[] for _ in range(num_workers)]
+            worker_rows = [0] * num_workers
+
+            # Assign files to workers, trying to keep row counts balanced
+            for file_url, row_count in zip(file_urls, file_rows):
+                # Find worker with minimum current row count
+                min_rows_worker = min(range(num_workers), key=lambda w: worker_rows[w])
+                worker_files[min_rows_worker].append(file_url)
+                worker_rows[min_rows_worker] += row_count
+
+            # Get this worker's files
+            my_files = worker_files[worker_rank]
+            my_row_count = worker_rows[worker_rank]
 
             logger.info(
-                f"[DataLoader] Ray worker {worker_rank} assigned {len(worker_urls)}/{len(file_urls)} files"
+                f"[DataLoader] Ray worker {worker_rank} assigned {len(my_files)}/{len(file_urls)} files "
+                f"with {my_row_count}/{total_rows} rows "
+                f"({my_row_count/total_rows*100:.1f}% of total)"
             )
-            return worker_urls
+            return my_files
 
         except NoCredentialsError:
             raise self.S3CredentialsError(
