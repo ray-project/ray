@@ -116,7 +116,7 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_lance(data_path)
+    ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
