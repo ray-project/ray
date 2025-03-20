@@ -122,8 +122,8 @@ initialization_commands: []
 # List of shell commands to run to set up nodes.
 setup_commands:
     - >-
-        (stat $HOME/anaconda3/envs/tensorflow2_p39/ &> /dev/null &&
-        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p39/bin:$PATH"' >> ~/.bashrc) || true
+        (stat $HOME/anaconda3/envs/tensorflow2_p310/ &> /dev/null &&
+        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p310/bin:$PATH"' >> ~/.bashrc) || true
     - ls -la $HOME/anaconda3/envs/ || true
     - python3 --version || true
     - which python3 || true
