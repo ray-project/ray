@@ -33,7 +33,7 @@ class ChunkObjectReader {
   uint64_t GetNumChunks() const;
 
   /// Return the value in a given chunk, identified by chunk_index.
-  /// It migh return an empty optional if we can't read the correct amount from the file
+  /// It might return an empty optional if we can't read the correct amount from the file
   /// or shm.
   ///
   /// \param chunk_index the index of chunk to return. index greater or

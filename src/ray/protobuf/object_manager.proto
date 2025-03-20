@@ -35,8 +35,8 @@ message PushRequest {
   // The metadata size.
   uint64 metadata_size = 7;
   // The chunk data
-  // CORD allows us to create pass a view of the data to the protobuf message instead of
-  // a string we have to copy into.
+  // absl::Cord allows us to pass a view of the data to the protobuf message instead
+  // of copying into a string
   bytes data = 8 [ctype = CORD];
 }
 

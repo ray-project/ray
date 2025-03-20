@@ -355,6 +355,7 @@ TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
       for (size_t offset = 0; offset <= data.size(); offset++) {
         for (size_t size = offset; size <= data.size() - offset; size++) {
           auto cord = reader->ReadFromDataSection(offset, size);
+          ASSERT_TRUE(cord.has_value());
           std::string result(cord->char_begin(), cord->char_end());
           ASSERT_EQ(data.substr(offset, size), result);
         }
@@ -363,6 +364,7 @@ TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
       for (size_t offset = 0; offset <= metadata.size(); offset++) {
         for (size_t size = offset; size <= metadata.size() - offset; size++) {
           auto cord = reader->ReadFromMetadataSection(offset, size);
+          ASSERT_TRUE(cord.has_value());
           std::string result(cord->char_begin(), cord->char_end());
           ASSERT_EQ(metadata.substr(offset, size), result);
         }
@@ -394,12 +396,13 @@ TYPED_TEST(ObjectReaderTest, GetChunk) {
         std::string actual_output_by_chunks;
         for (uint64_t i = 0; i < reader.GetNumChunks(); i++) {
           auto chunk = reader.GetChunk(i);
-          ASSERT_GE(chunk_size, chunk.size());
+          ASSERT_TRUE(chunk.has_value());
+          ASSERT_GE(chunk_size, chunk->size());
           if (i + 1 != reader.GetNumChunks()) {
-            ASSERT_EQ(chunk_size, chunk.size());
+            ASSERT_EQ(chunk_size, chunk->size());
           }
           actual_output_by_chunks.append(
-              std::string(chunk.char_begin(), chunk.char_end()));
+              std::string(chunk->char_begin(), chunk->char_end()));
         }
         ASSERT_EQ(expected_output, actual_output_by_chunks);
       }
