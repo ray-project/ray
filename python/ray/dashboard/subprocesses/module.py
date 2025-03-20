@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
+from packaging.version import Version
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -29,6 +30,7 @@ class SubprocessModuleConfig:
 
     cluster_id_hex: str
     gcs_address: str
+    session_name: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -62,6 +64,7 @@ class SubprocessModule(abc.ABC):
         # Lazy init
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
+        self._http_session = None
 
     async def _detect_parent_process_death(self):
         """
@@ -136,6 +139,33 @@ class SubprocessModule(abc.ABC):
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_aio_client
+
+    @property
+    def session_name(self):
+        """
+        Return the Ray session name. It's not related to the aiohttp session.
+        """
+        return self._config.session_name
+
+    @property
+    def http_session(self):
+        # Assumes non minimal Ray.
+        from ray.dashboard.optional_deps import aiohttp
+        from ray.dashboard.utils import get_or_create_event_loop
+
+        if self._http_session is not None:
+            return self._http_session
+        # Create a http session for this module.
+        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
+        if Version(aiohttp.__version__) < Version("4.0.0"):
+            self._http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
+        else:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
 
     async def _internal_module_health_check(self, request):
         return aiohttp.web.Response(
