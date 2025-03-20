@@ -12,12 +12,11 @@ import queue
 import threading
 
 # Global queue and thread for processing async coroutines
-_async_queue = queue.Queue()
-_async_thread = None
-_async_thread_lock = threading.Lock()
+_async_queue_map = defaultdict(lambda: queue.Queue())
+_async_thread_map = defaultdict(lambda: None)
 
 
-def _process_async_queue():
+def _process_async_queue(_async_queue):
     """Worker function that processes coroutines from the queue."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -27,32 +26,26 @@ def _process_async_queue():
             coro = _async_queue.get()
             if coro is None:  # Sentinel to stop the thread
                 break
-
-            # Add timeout of 20 seconds for each coroutine
-            try:
-                future = asyncio.wait_for(coro, timeout=20.0)
-                loop.run_until_complete(future)
-            except asyncio.TimeoutError:
-                print(f"Coroutine execution timed out after 20 seconds")
+            loop.run_until_complete(coro)
         except Exception as e:
             print(f"Error processing coroutine: {e}")
         finally:
             _async_queue.task_done()
 
 
-def run_async(coro):
+def run_async(job_id, coro):
     """
     Run a coroutine asynchronously using a shared worker thread and queue.
     This avoids creating a new thread for each coroutine.
     """
-    global _async_thread
+    global _async_thread_map
+    if _async_thread_map[job_id] is None or not _async_thread_map[job_id].is_alive():
+        _async_thread_map[job_id] = threading.Thread(
+            target=_process_async_queue, daemon=True, args=(_async_queue_map[job_id],)
+        )
+        _async_thread_map[job_id].start()
 
-    with _async_thread_lock:
-        if _async_thread is None or not _async_thread.is_alive():
-            _async_thread = threading.Thread(target=_process_async_queue, daemon=True)
-            _async_thread.start()
-
-    _async_queue.put(coro)
+    _async_queue_map[job_id].put(coro)
 
 
 @ray.remote
@@ -535,19 +528,20 @@ def record_control_flow(callee_class, callee_func):
     caller_func = _get_current_task_name()
 
     # Create a record for this call
+    job_id = ray.get_runtime_context().get_job_id()
     call_record = {
         "caller_class": caller_class,
         "caller_func": caller_func,
         "callee_class": callee_class,
         "callee_func": callee_func,
         "call_times": 1,
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     async def _emit():
         await get_monitor_actor().async_emit_call_record.remote(call_record)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def record_object_arg_get(object_id):
@@ -572,12 +566,13 @@ def record_object_arg_get(object_id):
 
     recv_func = _get_current_task_name()
 
+    job_id = ray.get_runtime_context().get_job_id()
     object_recv_record = {
         "object_id": object_id,
         "recv_class": caller_class,
         "recv_func": recv_func,
         "timestamp": time.time(),
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     async def _emit():
@@ -585,7 +580,7 @@ def record_object_arg_get(object_id):
             object_recv_record
         )
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def record_object_put(object_id, size):
@@ -606,6 +601,7 @@ def record_object_put(object_id, size):
     caller_class = _get_caller_class()
     caller_func = _get_current_task_name()
     # Create a record for this call
+    job_id = ray.get_runtime_context().get_job_id()
     object_record = {
         "object_id": object_id,
         "size": size,
@@ -613,13 +609,13 @@ def record_object_put(object_id, size):
         "timestamp": time.time(),
         "caller_class": caller_class,
         "caller_func": caller_func,
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     async def _emit():
         await get_monitor_actor().async_emit_object_record_put.remote(object_record)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def record_object_arg_put(object_id, argpos, size, callee):
@@ -651,6 +647,7 @@ def record_object_arg_put(object_id, argpos, size, callee):
     caller_class = _get_caller_class()
     caller_func = _get_current_task_name()
     # Create a record for this call
+    job_id = ray.get_runtime_context().get_job_id()
     object_record = {
         "object_id": object_id,
         "argpos": argpos,
@@ -658,13 +655,13 @@ def record_object_arg_put(object_id, argpos, size, callee):
         "timestamp": time.time(),
         "caller_class": caller_class,
         "caller_func": caller_func,
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     async def _emit():
         await get_monitor_actor().async_emit_object_record_put.remote(object_record)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def record_object_return_put(object_id, size):
@@ -694,6 +691,7 @@ def record_object_return_put(object_id, size):
     # if there is no task name, it should be the driver
     caller_func = _get_current_task_name()
     # Create a record for this call
+    job_id = ray.get_runtime_context().get_job_id()
     object_record = {
         "object_id": object_id,
         "size": size,
@@ -701,13 +699,13 @@ def record_object_return_put(object_id, size):
         "timestamp": time.time(),
         "caller_class": caller_class,
         "caller_func": caller_func,
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     async def _emit():
         await get_monitor_actor().async_emit_object_record_put.remote(object_record)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def record_object_get(object_id, task_id):
@@ -732,12 +730,13 @@ def record_object_get(object_id, task_id):
     recv_func = _get_current_task_name()
     caller_class = _get_caller_class()
 
+    job_id = ray.get_runtime_context().get_job_id()
     object_recv_record = {
         "object_id": object_id,
         "recv_class": caller_class,
         "recv_func": recv_func,
         "timestamp": time.time(),
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
     }
 
     if task_id.actor_id() == get_monitor_actor()._ray_actor_id:
@@ -751,7 +750,7 @@ def record_object_get(object_id, task_id):
             object_recv_record
         )
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def report_resource_usage(usage: dict):
@@ -767,17 +766,18 @@ def report_resource_usage(usage: dict):
     if current_class is None:
         return
     actor_info = current_class.split(":")
+    job_id = ray.get_runtime_context().get_job_id()
 
     async def _emit():
         await get_monitor_actor().emit_resource_usage.remote(
             {
                 "actor_id": actor_info[1],
-                "job_id": ray.get_runtime_context().get_job_id(),
+                "job_id": job_id,
                 "usage": usage,
             }
         )
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 async def async_register_current_context(context: dict):
@@ -791,10 +791,11 @@ async def async_register_current_context(context: dict):
     if current_class is None:
         return
     actor_info = current_class.split(":")
+    job_id = ray.get_runtime_context().get_job_id()
     await get_monitor_actor().emit_context.remote(
         {
             "actor_id": actor_info[1],
-            "job_id": ray.get_runtime_context().get_job_id(),
+            "job_id": job_id,
             "context": context,
         }
     )
@@ -812,16 +813,18 @@ def register_current_context(context: dict):
         return
     actor_info = current_class.split(":")
 
+    job_id = ray.get_runtime_context().get_job_id()
+
     async def _emit():
         await get_monitor_actor().emit_context.remote(
             {
                 "actor_id": actor_info[1],
-                "job_id": ray.get_runtime_context().get_job_id(),
+                "job_id": job_id,
                 "context": context,
             }
         )
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def report_torch_gram():
@@ -863,10 +866,11 @@ async def async_report_resource_usage(usage: dict):
     if current_class is None:
         return
     actor_info = current_class.split(":")
+    job_id = ray.get_runtime_context().get_job_id()
     await get_monitor_actor().emit_resource_usage.remote(
         {
             "actor_id": actor_info[1],
-            "job_id": ray.get_runtime_context().get_job_id(),
+            "job_id": job_id,
             "usage": usage,
         }
     )
@@ -929,19 +933,20 @@ def record_task_duration(duration):
         current_task_id = "_main"
 
     # Create a record for this task end
+    job_id = ray.get_runtime_context().get_job_id()
     task_record = {
         "caller_class": caller_class,
         "caller_func": caller_func,
         "actor_name": actor_name,
         "duration": duration,
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
         "current_task_id": current_task_id,
     }
 
     async def _emit():
         await get_monitor_actor().async_emit_task_end.remote(task_record)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 @contextmanager
@@ -994,8 +999,9 @@ def report_trace_info(caller_info):
     if current_class is not None and current_class.startswith(_inner_class_name):
         return
 
+    job_id = ray.get_runtime_context().get_job_id()
     trace_info = {
-        "job_id": ray.get_runtime_context().get_job_id(),
+        "job_id": job_id,
         "caller_class": caller_info.get("caller_class"),
         "caller_func": caller_info.get("caller_func"),
         "caller_task_id": current_task_id,
@@ -1004,7 +1010,7 @@ def report_trace_info(caller_info):
     async def _emit():
         await get_monitor_actor().emit_caller_info.remote(trace_info)
 
-    run_async(_emit())
+    run_async(job_id, _emit())
 
 
 def get_caller_info():

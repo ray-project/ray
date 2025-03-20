@@ -1890,6 +1890,23 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       updateChildren(node);
     });
 
+    const childrens = new Set<string>();
+    if (mainNode.children) {
+      for (const child of mainNode.children) {
+        childrens.add(child.name);
+      }
+    }
+
+    mainNode.children = [
+      ...(mainNode.children || []),
+      ...Array.from(nodeMap.values()).filter(
+        (node) =>
+          node.totalInParent &&
+          node.totalInParent.length === 0 &&
+          node.name !== "_main" &&
+          !childrens.has(node.name),
+      ),
+    ];
     // Calculate total value of all children
     let totalChildrenValue = 0;
     if (mainNode.children) {
