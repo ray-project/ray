@@ -133,6 +133,13 @@ class S3Reader:
             # Sort URLs for consistent distribution
             file_urls.sort()
 
+            # If no workers, return all files
+            if self.num_torch_workers == 0:
+                logger.info(
+                    f"[DataLoader] No torch workers, returning all {len(file_urls)} files"
+                )
+                return file_urls
+
             # Round-robin allocation: each worker gets every Nth file
             worker_urls = file_urls[worker_rank :: self.num_ray_workers]
 
@@ -260,7 +267,7 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             total_start_time = time.time()
 
             for file_url in files_to_read:
-                # Check row limit before processing each file
+                # Skip file if we've reached the limit
                 if (
                     self.limit_rows_per_worker is not None
                     and rows_processed >= self.limit_rows_per_worker
@@ -268,23 +275,23 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                     logger.info(
                         f"[Dataset] Worker {worker_id} reached row limit: {rows_processed}"
                     )
-                    return
+                    break
 
                 for df in self._read_parquet_file(file_url):
-                    # Check row limit before processing each DataFrame
+                    # Skip DataFrame if we've reached the limit
                     if (
                         self.limit_rows_per_worker is not None
                         and rows_processed >= self.limit_rows_per_worker
                     ):
-                        return
+                        break
 
                     for _, row in df.iterrows():
-                        # Check row limit before processing each row
+                        # Skip row if we've reached the limit
                         if (
                             self.limit_rows_per_worker is not None
                             and rows_processed >= self.limit_rows_per_worker
                         ):
-                            return
+                            break
 
                         try:
                             # Process row and convert to tensors
@@ -372,6 +379,24 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
     4. Supports row limits per worker for controlled data processing
     """
 
+    @staticmethod
+    def worker_init_fn(worker_id: int):
+        """Initialize each worker with proper CUDA settings and seed.
+
+        Args:
+            worker_id: The ID of the worker being initialized
+        """
+        # Set worker-specific seed for reproducibility
+        worker_seed = torch.initial_seed() % 2**32
+        torch.manual_seed(worker_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(worker_seed)
+            torch.cuda.manual_seed_all(worker_seed)
+
+        logger.info(
+            f"[DataLoader] Initialized worker {worker_id} with seed {worker_seed}"
+        )
+
     def __init__(
         self,
         benchmark_config: BenchmarkConfig,
@@ -399,11 +424,14 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
 
         # Calculate total workers and row limits
         total_workers = self.num_ray_workers * self.num_torch_workers
-        self.limit_rows_per_worker = (
-            max(1, limit_total_rows // total_workers)
-            if limit_total_rows is not None
-            else None
-        )
+        if limit_total_rows is not None:
+            if total_workers > 0:
+                self.limit_rows_per_worker = max(1, limit_total_rows // total_workers)
+            else:
+                # When no workers, apply limit directly to the dataset
+                self.limit_rows_per_worker = limit_total_rows
+        else:
+            self.limit_rows_per_worker = None
 
         # Log configuration
         logger.info(
@@ -412,7 +440,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             f"across {num_gpus} GPUs"
         )
         if limit_total_rows is not None:
-            if limit_total_rows < total_workers:
+            if total_workers > 0 and limit_total_rows < total_workers:
                 logger.warning(
                     f"[DataLoader] Warning: limit_total_rows ({limit_total_rows}) is less than "
                     f"total_workers ({total_workers}). Each worker will process at least 1 row."
@@ -511,16 +539,23 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             random_transforms=True,
         )
 
+        # Adjust worker settings for 0 workers case
+        num_workers = max(0, self.num_torch_workers)
+        persistent_workers = num_workers > 0
+        pin_memory = torch.cuda.is_available()  # Always pin memory if CUDA is available
+
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
             batch_size=dataloader_config.train_batch_size,
-            num_workers=self.num_torch_workers,
-            pin_memory=True,
-            persistent_workers=True,
-            multiprocessing_context="spawn",
-            prefetch_factor=dataloader_config.prefetch_batches,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent_workers,
+            prefetch_factor=dataloader_config.prefetch_batches
+            if num_workers > 0
+            else 2,
             timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
             drop_last=True,
+            worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
 
         return self._create_batch_iterator(dataloader, device)
@@ -544,16 +579,23 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             limit_rows_per_worker=self.limit_rows_per_worker,
         )
 
+        # Adjust worker settings for 0 workers case
+        num_workers = max(0, self.num_torch_workers)
+        persistent_workers = num_workers > 0
+        pin_memory = torch.cuda.is_available()  # Always pin memory if CUDA is available
+
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=dataloader_config.validation_batch_size,
-            num_workers=self.num_torch_workers,
-            pin_memory=True,
-            persistent_workers=True,
-            multiprocessing_context="spawn",
-            prefetch_factor=dataloader_config.prefetch_batches,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent_workers,
+            prefetch_factor=dataloader_config.prefetch_batches
+            if num_workers > 0
+            else 2,
             timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
             drop_last=False,
+            worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
 
         return self._create_batch_iterator(dataloader, device)
