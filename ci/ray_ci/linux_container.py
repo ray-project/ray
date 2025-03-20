@@ -80,9 +80,9 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        if self.privileged:
-            extra_args += ["--privileged"]
-        else:
+        # if self.privileged:
+        #     extra_args += ["--privileged"]
+        if not self.privileged:
             for cap in _DOCKER_CAP_ADD:
                 extra_args += ["--cap-add", cap]
         if gpu_ids:
