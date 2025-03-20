@@ -139,6 +139,8 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
 
   ASSERT_EQ(n_ok, 2);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestInOrder) {
@@ -179,6 +181,8 @@ TEST(SchedulingQueueTest, TestInOrder) {
 
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjects) {
@@ -235,6 +239,8 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   default_executor->Join();
 
   ASSERT_EQ(n_ok, 4);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
@@ -284,6 +290,8 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   default_executor->Join();
 
   ASSERT_EQ(n_ok, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestOutOfOrder) {
@@ -324,6 +332,8 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
@@ -369,6 +379,8 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 
   ASSERT_EQ(n_ok, 3);
   ASSERT_EQ(n_rej, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
@@ -408,6 +420,8 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
 
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestCancelQueuedTask) {
@@ -512,6 +526,8 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
 
   ASSERT_EQ(n_ok, 2);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
