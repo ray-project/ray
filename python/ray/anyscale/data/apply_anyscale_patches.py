@@ -2,30 +2,28 @@ from dataclasses import fields
 
 import ray
 from ray._private.ray_constants import env_bool
+from ray.anyscale.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 from ray.anyscale.data._internal.execution.rules.insert_checkpointing import (
     InsertCheckpointingLayerRule,
 )
 from ray.anyscale.data._internal.logging import configure_anyscale_logging
 from ray.anyscale.data._internal.logical.rules import (
     ApplyLocalLimitRule,
+    FuseRepartitionOutputBlocks,
     PredicatePushdown,
     ProjectionPushdown,
     PushdownCountFiles,
     RedundantMapTransformPruning,
-    FuseRepartitionOutputBlocks,
 )
 from ray.anyscale.data.api.context_mixin import DataContextMixin
 from ray.anyscale.data.api.dataset_mixin import DatasetMixin
 from ray.anyscale.data.planner import _register_anyscale_plan_logical_op_fns
-from ray.data._internal.logical.optimizers import (
-    _PHYSICAL_RULES,
-    register_logical_rule,
-    register_physical_rule,
-)
-from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
 from ray.data._internal.execution.execution_callback import add_execution_callback
-from ray.anyscale.data._internal.execution.callbacks.insert_issue_detectors import (
-    IssueDetectionExecutionCallback,
+from ray.data._internal.logical.optimizers import (
+    get_logical_ruleset,
+    get_physical_ruleset,
 )
 
 ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED = env_bool(
@@ -61,17 +59,16 @@ def apply_anyscale_patches():
 
     _register_anyscale_plan_logical_op_fns()
 
-    register_logical_rule(PredicatePushdown)
-    register_logical_rule(PushdownCountFiles)
-    register_logical_rule(ProjectionPushdown)
+    logical_ruleset = get_logical_ruleset()
+    logical_ruleset.add(PredicatePushdown)
+    logical_ruleset.add(PushdownCountFiles)
+    logical_ruleset.add(ProjectionPushdown)
 
+    physical_ruleset = get_physical_ruleset()
     if ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED:
-        register_physical_rule(ApplyLocalLimitRule)
-
-    # Insert checkpointing rule before operator fusion.
-    op_fusion_idx = _PHYSICAL_RULES.index(OperatorFusionRule)
-    register_physical_rule(InsertCheckpointingLayerRule, op_fusion_idx - 1)
-    register_physical_rule(RedundantMapTransformPruning)
-    register_physical_rule(FuseRepartitionOutputBlocks)
+        physical_ruleset.add(ApplyLocalLimitRule)
+    physical_ruleset.add(InsertCheckpointingLayerRule)
+    physical_ruleset.add(RedundantMapTransformPruning)
+    physical_ruleset.add(FuseRepartitionOutputBlocks)
 
     configure_anyscale_logging()

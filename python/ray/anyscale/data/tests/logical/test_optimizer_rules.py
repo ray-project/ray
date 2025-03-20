@@ -7,16 +7,16 @@ import pytest
 
 import ray
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.data import Dataset
 from ray.data._internal.execution.operators.map_transformer import (
-    MapTransformFn,
     BatchMapTransformFn,
     BlockMapTransformFn,
     BlocksToBatchesMapTransformFn,
     BlocksToRowsMapTransformFn,
     BuildOutputBlocksMapTransformFn,
+    MapTransformFn,
     RowMapTransformFn,
 )
-from ray.data import Dataset
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer, get_execution_plan
 from ray.data.tests.conftest import *  # noqa

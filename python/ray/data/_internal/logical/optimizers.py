@@ -1,5 +1,6 @@
-from typing import List, Optional, Type
+from typing import List
 
+from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
@@ -18,49 +19,32 @@ from ray.data._internal.logical.rules.zero_copy_map_fusion import (
 )
 from ray.util.annotations import DeveloperAPI
 
-_LOGICAL_RULES = [
-    ReorderRandomizeBlocksRule,
-    InheritBatchFormatRule,
-]
-
-_PHYSICAL_RULES = [
-    InheritTargetMaxBlockSizeRule,
-    SetReadParallelismRule,
-    OperatorFusionRule,
-    EliminateBuildOutputBlocks,
-]
+_LOGICAL_RULESET = Ruleset(
+    [
+        ReorderRandomizeBlocksRule,
+        InheritBatchFormatRule,
+    ]
+)
 
 
-@DeveloperAPI
-def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
-    if cls in _LOGICAL_RULES:
-        return
-
-    if insert_index is None:
-        _LOGICAL_RULES.append(cls)
-    else:
-        _LOGICAL_RULES.insert(insert_index, cls)
+_PHYSICAL_RULESET = Ruleset(
+    [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+    ]
+)
 
 
 @DeveloperAPI
-def get_logical_rules() -> List[Type[Rule]]:
-    return list(_LOGICAL_RULES)
+def get_logical_ruleset() -> Ruleset:
+    return _LOGICAL_RULESET
 
 
 @DeveloperAPI
-def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
-    if cls in _PHYSICAL_RULES:
-        return
-
-    if insert_index is None:
-        _PHYSICAL_RULES.append(cls)
-    else:
-        _PHYSICAL_RULES.insert(insert_index, cls)
-
-
-@DeveloperAPI
-def get_physical_rules() -> List[Type[Rule]]:
-    return list(_PHYSICAL_RULES)
+def get_physical_ruleset() -> Ruleset:
+    return _PHYSICAL_RULESET
 
 
 class LogicalOptimizer(Optimizer):
@@ -68,7 +52,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [rule_cls() for rule_cls in _LOGICAL_RULES]
+        return [rule_cls() for rule_cls in get_logical_ruleset()]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -76,7 +60,7 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [rule_cls() for rule_cls in _PHYSICAL_RULES]
+        return [rule_cls() for rule_cls in get_physical_ruleset()]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:

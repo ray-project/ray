@@ -893,6 +893,20 @@ py_test(
 )
 
 py_test(
+    name = "test_ruleset",
+    size = "small",
+    srcs = ["tests/test_ruleset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
