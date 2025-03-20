@@ -55,7 +55,8 @@ steps:
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     trigger: "ray-ecosystem-ci-kuberay-ci"
     key: trigger-kuberay
-    depends_on: trigger-postmerge-nightly
+    depends_on: check-commit-hash
+    # depends_on: trigger-postmerge-nightly
     build:
       commit: "HEAD"
       branch: "release-1.3"
