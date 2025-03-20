@@ -260,6 +260,13 @@ def test_uv_run_runtime_env_hook(with_uv):
         [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
     ).strip().decode() == "{}"
 
+    # Make sure the runtime environment hook gives the appropriate error message
+    # when combined with the 'pip' or 'uv' environment.
+    with pytest.raises(RuntimeError):
+        ray._private.runtime_env.uv_runtime_env_hook.hook({"uv": ["emoji"]})
+    with pytest.raises(RuntimeError):
+        ray._private.runtime_env.uv_runtime_env_hook.hook({"pip": ["emoji"]})
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
