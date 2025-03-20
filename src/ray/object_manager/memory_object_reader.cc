@@ -46,7 +46,7 @@ std::optional<absl::Cord> MemoryObjectReader::ReadFromDataSection(uint64_t offse
 
 std::optional<absl::Cord> MemoryObjectReader::ReadFromMetadataSection(
     uint64_t offset, uint64_t size) const {
-  if (offset + size > GetDataSize()) {
+  if (offset + size > GetMetadataSize()) {
     RAY_LOG(WARNING) << "Failed to read from metadata section in shared memory.";
     return std::nullopt;
   }
