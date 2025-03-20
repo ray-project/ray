@@ -31,6 +31,146 @@ from ray.runtime_context import get_runtime_context
 logger = logging.getLogger(__name__)
 
 
+def _create_span(name, kind, attributes):
+    span_data = {
+        "name": name,
+        "kind": kind,
+        "attributes": attributes,
+    }
+
+    def set_attribute(self, key, value):
+        span_data["attributes"][key] = value
+
+    def get_attribute(self, key):
+        return span_data["attributes"].get(key)
+
+    return type(
+        "Span",
+        (),
+        {
+            "name": name,
+            "kind": kind,
+            "attributes": span_data["attributes"],
+            "set_attribute": set_attribute,
+            "get_attribute": get_attribute,
+        },
+    )()
+
+
+def _create_tracer():
+    def start_as_current_span(self, name, kind=None, attributes=None):
+        @contextmanager
+        def span_context():
+            if kind == "PRODUCER":
+                span = _create_span(name, kind, attributes)
+                yield span
+            else:
+                yield None
+
+        return span_context()
+
+    Tracer = type(
+        "Tracer",
+        (),
+        {
+            "start_as_current_span": start_as_current_span,
+            "SpanKind": type(
+                "SpanKind", (), {"PRODUCER": "PRODUCER", "CONSUMER": "CONSUMER"}
+            ),
+        },
+    )
+
+    def get_tracer(self, name):
+        return Tracer()
+
+    return type(
+        "TraceModule",
+        (),
+        {
+            "get_tracer": get_tracer,
+            "SpanKind": type(
+                "SpanKind", (), {"PRODUCER": "PRODUCER", "CONSUMER": "CONSUMER"}
+            ),
+        },
+    )()
+
+
+def _create_context():
+    def attach(self, context):
+        return None
+
+    def detach(self, token):
+        return None
+
+    return type(
+        "Context",
+        (),
+        {
+            "attach": attach,
+            "detach": detach,
+        },
+    )()
+
+
+def _create_propagator():
+    def inject(self, carrier):
+        return None
+
+    def extract(self, carrier):
+        return carrier
+
+    return type("Propagator", (), {"inject": inject, "extract": extract})()
+
+
+def _create_mock_context():
+    values = {}
+
+    def get(self, key):
+        return values.get(key)
+
+    def set(self, key, value):
+        values[key] = value
+
+    return type("MockContext", (), {"get": get, "set": set})
+
+
+class _InsightTelemetryProxy:
+    def __init__(self):
+        self.allowed_functions = {"trace", "context", "propagate", "Context"}
+        self._trace = None
+        self._context = None
+        self._propagate = None
+        self._Context = None
+
+    @property
+    def trace(self):
+        """Mock opentelemetry.trace module"""
+        if self._trace is None:
+            self._trace = _create_tracer()
+        return self._trace
+
+    @property
+    def context(self):
+        """Mock opentelemetry.context module"""
+        if self._context is None:
+            self._context = _create_context()
+        return self._context
+
+    @property
+    def propagate(self):
+        """Mock opentelemetry.propagate module"""
+        if self._propagate is None:
+            self._propagate = _create_propagator()
+        return self._propagate
+
+    @property
+    def Context(self):
+        """Mock opentelemetry.context.Context class"""
+        if self._Context is None:
+            self._Context = _create_mock_context()
+        return self._Context
+
+
 class _OpenTelemetryProxy:
     """
     This proxy makes it possible for tracing to be disabled when opentelemetry
@@ -92,6 +232,10 @@ _opentelemetry = None
 def _is_tracing_enabled() -> bool:
     """Checks environment variable feature flag to see if tracing is turned on.
     Tracing is off by default."""
+    from ray.util.insight import is_flow_insight_enabled
+
+    if is_flow_insight_enabled():
+        return True
     return _global_is_tracing_enabled
 
 
@@ -100,6 +244,11 @@ def _enable_tracing():
     _global_is_tracing_enabled = True
     _opentelemetry = _OpenTelemetryProxy()
     _opentelemetry.try_all()
+
+
+if os.getenv("RAY_FLOW_INSIGHT", "0") == "1":
+    if _opentelemetry is None:
+        _opentelemetry = _InsightTelemetryProxy()
 
 
 def _sort_params_list(params_list: List[Parameter]):
@@ -185,6 +334,11 @@ def _use_context(
         new_context = parent_context
     else:
         new_context = _opentelemetry.Context()
+
+    from ray.util.insight import report_trace_info
+
+    report_trace_info(new_context)
+
     token = _opentelemetry.context.attach(new_context)
     try:
         yield
@@ -318,6 +472,10 @@ def _tracing_task_invocation(method):
         ):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
+            from ray.util.insight import is_flow_insight_enabled, get_caller_info
+
+            if is_flow_insight_enabled():
+                kwargs["_ray_trace_ctx"] = get_caller_info()
             return method(self, args, kwargs, *_args, **_kwargs)
 
     return _invocation_remote_span
@@ -378,6 +536,9 @@ def _tracing_actor_creation(method):
         if kwargs is None:
             kwargs = {}
 
+        if self.__ray_metadata__.class_name == "_ray_internal_insight_monitor":
+            return method(self, args, kwargs, *_args, **_kwargs)
+
         # If tracing feature flag is not on, perform a no-op
         if not _is_tracing_enabled():
             assert "_ray_trace_ctx" not in kwargs
@@ -394,6 +555,11 @@ def _tracing_actor_creation(method):
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
+
+            from ray.util.insight import is_flow_insight_enabled, get_caller_info
+
+            if is_flow_insight_enabled():
+                kwargs["_ray_trace_ctx"] = get_caller_info()
 
             result = method(self, args, kwargs, *_args, **_kwargs)
 
@@ -421,6 +587,12 @@ def _tracing_actor_method_invocation(method):
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
+        if (
+            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
+            == "_ray_internal_insight_monitor"
+        ):
+            return method(self, args, kwargs, *_args, **_kwargs)
+
         class_name = (
             self._actor_ref()._ray_actor_creation_function_descriptor.class_name
         )
@@ -437,6 +609,11 @@ def _tracing_actor_method_invocation(method):
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
             span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
+
+            from ray.util.insight import is_flow_insight_enabled, get_caller_info
+
+            if is_flow_insight_enabled():
+                kwargs["_ray_trace_ctx"] = get_caller_info()
 
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -460,6 +637,9 @@ def _inject_tracing_into_class(_cls):
             """
             # If tracing feature flag is not on, perform a no-op
             if not _is_tracing_enabled() or _ray_trace_ctx is None:
+                return method(self, *_args, **_kwargs)
+
+            if self.__class__.__name__ == "_ray_internal_insight_monitor":
                 return method(self, *_args, **_kwargs)
 
             tracer: _opentelemetry.trace.Tracer = _opentelemetry.trace.get_tracer(
@@ -494,6 +674,9 @@ def _inject_tracing_into_class(_cls):
             if not _is_tracing_enabled() or _ray_trace_ctx is None:
                 return await method(self, *_args, **_kwargs)
 
+            if self.__class__.__name__ == "_ray_internal_insight_monitor":
+                return await method(self, *_args, **_kwargs)
+
             tracer = _opentelemetry.trace.get_tracer(__name__)
 
             # Retrieves the context from the _ray_trace_ctx dictionary we
@@ -510,6 +693,9 @@ def _inject_tracing_into_class(_cls):
                 return await method(self, *_args, **_kwargs)
 
         return _resume_span
+
+    if _cls.__name__ == "_ray_internal_insight_monitor":
+        return _cls
 
     methods = inspect.getmembers(_cls, is_function_or_method)
     for name, method in methods:

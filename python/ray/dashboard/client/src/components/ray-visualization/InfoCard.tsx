@@ -90,6 +90,8 @@ type InfoCardProps = {
   data: Node | null;
   visible: boolean;
   graphData: GraphData;
+  currentView?: "logical" | "physical" | "flame";
+  onNavigateToLogicalView?: (nodeId: string) => void;
 };
 
 type Node = Actor | Method | FunctionNode;
@@ -234,7 +236,13 @@ const getActorConnections = (actorId: string, graphData: GraphData) => {
   };
 };
 
-const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
+const InfoCard = ({
+  data,
+  visible,
+  graphData,
+  currentView = "logical",
+  onNavigateToLogicalView,
+}: InfoCardProps) => {
   // Add debugging
   useEffect(() => {
     console.log("InfoCard rendering with data:", data);
@@ -598,6 +606,34 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
     );
   };
 
+  const renderNavigateButton = (nodeId: string) => {
+    if (currentView !== "logical" && onNavigateToLogicalView) {
+      return (
+        <button
+          onClick={() => onNavigateToLogicalView(nodeId)}
+          style={{
+            marginTop: "10px",
+            marginBottom: "15px",
+            padding: "8px 16px",
+            backgroundColor: "#1a73e8",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: "14px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+          }}
+        >
+          View in Logical Graph
+        </button>
+      );
+    }
+    return null;
+  };
+
   const renderContent = () => {
     if (!data) {
       return (
@@ -613,6 +649,7 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
         return (
           <React.Fragment>
             <h3>{data.name}</h3>
+            {renderNavigateButton(data.id)}
             <div className="info-row">
               <span className="info-label">Type:</span>
               <span className="info-value">Actor</span>
@@ -660,7 +697,8 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
 
         return (
           <React.Fragment>
-            <h3>{data.name}</h3>
+            <h3>{data.name === "_main" ? "main" : data.name}</h3>
+            {renderNavigateButton(data.id)}
             <div className="info-row">
               <span className="info-label">Type:</span>
               <span className="info-value">Method</span>
@@ -692,6 +730,7 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
         return (
           <React.Fragment>
             <h3>{data.name}</h3>
+            {renderNavigateButton(data.id)}
             <div className="info-row">
               <span className="info-label">Type:</span>
               <span className="info-value">Function</span>

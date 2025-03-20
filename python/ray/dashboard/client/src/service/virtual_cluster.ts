@@ -1,19 +1,22 @@
 import { VirtualCluster } from "../type/virtual_cluster";
+import { get } from "./requestHandlers";
+
+export type VirtualClusterRsp = {
+  result: boolean;
+  msg: string;
+  data: {
+    result: {
+      result: VirtualCluster[];
+    };
+  };
+};
 
 export const getVirtualClusters = async (
   detail?: boolean,
 ): Promise<VirtualCluster[]> => {
   const url = `/api/v0/vclusters?detail=true`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("Failed to fetch virtual clusters");
-  }
-  const result = await response.json();
-  if (!result.result) {
-    throw new Error(result.message || "Failed to fetch virtual clusters");
-  }
-
-  return result.data.result.result.map((vc: any) => ({
+  const response = await get<VirtualClusterRsp>(url);
+  return response.data.data.result.result.map((vc: any) => ({
     name: vc.virtual_cluster_id,
     divisible: vc.divisible,
     dividedClusters: vc.divided_clusters || {},

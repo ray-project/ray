@@ -1486,6 +1486,31 @@ const PhysicalVisualization = forwardRef<
                 value={selectedResource}
                 onChange={(e) => setSelectedResource(e.target.value)}
                 label="Resource Type"
+                sx={{
+                  "& .MuiSelect-select": {
+                    paddingRight: "32px !important",
+                  },
+                }}
+                IconComponent={() => (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: "7px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                  </div>
+                )}
               >
                 {getAvailableResources(
                   physicalViewData.physicalView?.[
@@ -1508,6 +1533,31 @@ const PhysicalVisualization = forwardRef<
                   setContextValueFilter(""); // Reset filter when context changes
                 }}
                 label="Context"
+                sx={{
+                  "& .MuiSelect-select": {
+                    paddingRight: "32px !important",
+                  },
+                }}
+                IconComponent={() => (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: "7px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                  </div>
+                )}
               >
                 {getAvailableContextKeys(physicalViewData).map(
                   ({ key, label }) => (

@@ -1836,7 +1836,7 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    from ray.util.insight import record_object_arg_get
+    from ray.util.insight import record_object_arg_get, timeit
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -1899,8 +1899,10 @@ cdef void execute_task(
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
-                    outputs = function_executor(*args, **kwargs)
 
+                    with timeit():
+                        outputs = function_executor(*args, **kwargs)
+                    
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
                         # which is the generator task return.
@@ -4959,6 +4961,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         ids_to_deserialize = [ObjectRef(object_ref.Binary())]
         result = ray._private.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)[0]
+
+        from ray.util.insight import record_object_get
+        ref = ObjectRef(object_ref.Binary())
+        record_object_get(ref.hex(), ref.task_id())
 
         user_callback = <object>user_callback_ptr
         user_callback(result)

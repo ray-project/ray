@@ -1,9 +1,11 @@
 import { Box } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import ElementsPanel from "../../components/ray-visualization/ElementsPanel";
 import InfoCard from "../../components/ray-visualization/InfoCard";
-import RayVisualization from "../../components/ray-visualization/RayVisualization";
+import RayVisualization, {
+  RayVisualizationHandle,
+} from "../../components/ray-visualization/RayVisualization";
 import { get } from "../../service/requestHandlers";
 
 type BaseNode = {
@@ -63,6 +65,9 @@ const ActorGraph = () => {
   const [updating, setUpdating] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | undefined>(jobId);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentViewType, setCurrentViewType] =
+    useState<"logical" | "physical" | "flame">("logical");
+  const visualizationRef = useRef<RayVisualizationHandle>(null);
 
   // State management similar to App.tsx
   const [infoCardData, setInfoCardData] = useState<ElementData>({
@@ -140,6 +145,13 @@ const ActorGraph = () => {
     setSearchTerm(term);
   }, []);
 
+  const handleViewTypeChange = useCallback(
+    (viewType: "logical" | "physical" | "flame") => {
+      setCurrentViewType(viewType);
+    },
+    [],
+  );
+
   if (loading) {
     return <Box>Loading...</Box>;
   }
@@ -182,6 +194,7 @@ const ActorGraph = () => {
       >
         {graphData && (
           <RayVisualization
+            ref={visualizationRef}
             graphData={graphData}
             onElementClick={handleElementClick}
             showInfoCard={true}
@@ -191,6 +204,7 @@ const ActorGraph = () => {
             onUpdate={handleUpdate}
             updating={updating}
             searchTerm={searchTerm}
+            onViewTypeChange={handleViewTypeChange}
           />
         )}
 
@@ -206,6 +220,11 @@ const ActorGraph = () => {
               dataFlows: [],
             }
           }
+          currentView={currentViewType}
+          onNavigateToLogicalView={(nodeId) => {
+            visualizationRef.current?.navigateToView("logical");
+            setSelectedElementId(nodeId);
+          }}
         />
       </Box>
     </Box>
