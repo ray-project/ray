@@ -1,4 +1,5 @@
 import collections
+import enum
 import logging
 import threading
 import time
@@ -7,7 +8,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
-import enum
 
 import numpy as np
 
@@ -15,10 +15,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    NODE_UNKNOWN,
     MetricsGroup,
     NodeMetrics,
     OpRuntimeMetrics,
-    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -1301,7 +1301,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round((e.max_uss_bytes or 0) / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),

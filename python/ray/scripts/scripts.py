@@ -577,7 +577,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster. Experimental.",
+    help=(
+        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
+        "future version of Ray."
+    ),
 )
 @click.option(
     "--system-config",
@@ -747,6 +750,10 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
+    if storage is not None:
+        warnings.warn(
+            "--storage is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -2308,9 +2315,9 @@ def global_gc(address):
 )
 @click.option(
     "--node-id",
-    required=True,
+    required=False,
     type=str,
-    help="Hex ID of the worker node to be drained.",
+    help="Hex ID of the worker node to be drained. Will default to current node if not provided.",
 )
 @click.option(
     "--reason",
@@ -2353,6 +2360,12 @@ def drain_node(
 
     Manually drain a worker node.
     """
+    # This should be before get_runtime_context() so get_runtime_context()
+    # doesn't start a new worker here.
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    if node_id is None:
+        node_id = ray.get_runtime_context().get_node_id()
     deadline_timestamp_ms = 0
     if deadline_remaining_seconds is not None:
         if deadline_remaining_seconds < 0:
@@ -2366,8 +2379,6 @@ def drain_node(
 
     if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
         raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
-
-    address = services.canonicalize_bootstrap_address_or_die(address)
 
     gcs_client = ray._raylet.GcsClient(address=address)
     _check_ray_version(gcs_client)

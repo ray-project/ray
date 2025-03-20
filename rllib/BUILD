@@ -1071,6 +1071,19 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Callback tests
+# rllib/callbacks/
+#
+# Tag: callbacks
+# --------------------------------------------------------------------
+py_test(
+    name = "test_multicallback",
+    tags = ["team:rllib", "callbacks_dir"],
+    size = "medium",
+    srcs = ["callbacks/tests/test_multicallback.py"]
+)
+
+# --------------------------------------------------------------------
 # ConnectorV2 tests
 # rllib/connector/
 #
@@ -1591,6 +1604,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/postprocessing/tests/test_value_predictions.py"]
+)
+
+py_test(
+    name = "test_tf_utils",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_tf_utils.py"]
 )
 
 py_test(

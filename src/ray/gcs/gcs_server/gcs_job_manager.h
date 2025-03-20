@@ -37,9 +37,10 @@ namespace ray {
 namespace gcs {
 
 // Please keep this in sync with the definition in ray_constants.py.
-const std::string kRayInternalNamespacePrefix = "_ray_internal_";
+const std::string kRayInternalNamespacePrefix = "_ray_internal_";  // NOLINT
 
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
+// NOLINTNEXTLINE
 const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
 inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;

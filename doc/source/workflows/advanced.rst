@@ -1,6 +1,11 @@
 Advanced Topics
 ===============
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 Skipping Checkpoints
 --------------------
 

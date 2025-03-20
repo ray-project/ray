@@ -36,6 +36,7 @@
 #include <Windows.h>
 #else
 #include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -583,6 +584,35 @@ std::string ServerConnection::DebugString() const {
   }
   result << "\n- pending async bytes: " << num_bytes;
   return result.str();
+}
+
+std::vector<bool> CheckForClientDisconnects(
+    const std::vector<std::shared_ptr<ClientConnection>> &conns) {
+  std::vector<bool> result(conns.size(), false);
+#if defined(_WIN32)
+  return result;
+#else
+  // Poll for POLLHUP on all of the FDs in a single syscall.
+  std::vector<pollfd> poll_fds(conns.size());
+  for (size_t i = 0; i < conns.size(); ++i) {
+    // POLLHUP is populated in revents, no need to specify it.
+    poll_fds[i] = {conns[i]->GetNativeHandle(), /*events=*/0, /*revents=*/0};
+  }
+
+  int ret = poll(poll_fds.data(), poll_fds.size(), /*timeout=*/0);
+  if (ret > 0) {
+    for (size_t i = 0; i < conns.size(); ++i) {
+      // Check if a POLLHUP event occurred on the FD.
+      if (poll_fds[i].revents & POLLHUP) {
+        result[i] = true;
+      }
+    }
+  } else if (ret < 0) {
+    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << strerror(ret);
+  }
+
+  return result;
+#endif
 }
 
 }  // namespace ray

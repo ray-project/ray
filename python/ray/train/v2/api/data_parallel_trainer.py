@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
+from ray._private.usage import usage_lib
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
     BackendConfig,
@@ -89,6 +90,7 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
 
     def fit(self) -> Result:
@@ -98,9 +100,9 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures occur during training
-                and the number of retries configured in `FailureConfig`
-                is exhausted.
+            ray.train.v2.api.exceptions.TrainingFailedError: If any failures occur
+                during training and the number of retries configured in
+                `FailureConfig` is exhausted.
         """
         train_fn = construct_train_func(
             self.train_loop_per_worker,
@@ -195,7 +197,8 @@ class DataParallelTrainer:
     @classmethod
     @Deprecated
     def restore(cls, *args, **kwargs):
-        """Restores a Train experiment from a previously interrupted/failed run.
+        """[Deprecated] Restores a Train experiment from a previously
+        interrupted/failed run.
 
         This method is deprecated and will be removed in a future release.
         """
@@ -204,8 +207,8 @@ class DataParallelTrainer:
     @classmethod
     @Deprecated
     def can_restore(cls, *args, **kwargs):
-        """Checks if a Train experiment can be restored from a previously
-        interrupted/failed run.
+        """[Deprecated] Checks if a Train experiment can be restored from
+        a previously interrupted/failed run.
 
         This method is deprecated and will be removed in a future release.
         """

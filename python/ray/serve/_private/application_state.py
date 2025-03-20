@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (

@@ -33,7 +33,6 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
-BUILD_CPP = os.getenv("RAY_INSTALL_CPP") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
@@ -371,6 +370,7 @@ if setup_spec.type == SetupType.RAY:
                 "ninja",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
+                "typer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -701,7 +701,7 @@ def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
     else:
-        build(True, BUILD_JAVA, BUILD_CPP or BUILD_JAVA)
+        build(True, BUILD_JAVA, True)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -840,7 +840,11 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": [
+            "includes/*.pxd",
+            "*.pxd",
+            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+        ],
     },
     include_package_data=True,
     exclude_package_data={
