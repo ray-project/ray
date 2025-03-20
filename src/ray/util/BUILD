@@ -294,9 +294,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "stream_redirection_utils",
-    srcs = ["stream_redirection_utils.cc"],
-    hdrs = ["stream_redirection_utils.h"],
+    name = "stream_redirection",
+    srcs = ["stream_redirection.cc"],
+    hdrs = ["stream_redirection.h"],
     deps = [
         ":pipe_logger",
         ":scoped_dup2_wrapper",

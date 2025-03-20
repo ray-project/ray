@@ -23,7 +23,7 @@
 
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/stream_redirection_utils.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/util.h"
 
 namespace ray {

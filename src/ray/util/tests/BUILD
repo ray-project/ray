@@ -262,15 +262,15 @@ ray_cc_test(
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 ray_cc_test(
-    name = "stream_redirection_utils_test",
+    name = "stream_redirection_test",
     size = "small",
-    srcs = ["stream_redirection_utils_test.cc"],
+    srcs = ["stream_redirection_test.cc"],
     tags = [
         "team:core",
         # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
@@ -282,7 +282,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_google_googletest//:gtest_main",
     ],
 )

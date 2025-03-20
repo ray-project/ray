@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/stream_redirection_utils.h"
+#include "ray/util/stream_redirection.h"
 
 #include <cstring>
 #include <functional>
