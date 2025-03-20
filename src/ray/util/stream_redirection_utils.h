@@ -30,12 +30,4 @@ namespace ray {
 void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt);
 void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt);
 
-// Flush on redirected stream synchronously.
-//
-// TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
-// and could miss those in the pipe; it's acceptable because we only use it in the unit
-// test for now.
-void FlushOnRedirectedStdout();
-void FlushOnRedirectedStderr();
-
 }  // namespace ray

@@ -44,13 +44,6 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOpti
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
-void FlushOnRedirectedStdout(MEMFD_TYPE_NON_UNIQUE stream_handle) {
-  auto iter = redirection_file_handles.find(stream_handle);
-  RAY_CHECK(iter != redirection_file_handles.end())
-      << "Stream handle " << stream_handle << " hasn't been registered.";
-  iter->second.FlushOnRedirectedStream();
-}
-
 }  // namespace
 
 void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt) {
@@ -59,8 +52,5 @@ void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt) {
 void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
-
-void FlushOnRedirectedStdout() { FlushOnRedirectedStdout(GetStdoutHandle()); }
-void FlushOnRedirectedStderr() { FlushOnRedirectedStdout(GetStderrHandle()); }
 
 }  // namespace ray

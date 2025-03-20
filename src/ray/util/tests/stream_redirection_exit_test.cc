@@ -51,7 +51,6 @@ TEST(LoggingUtilTest, RedirectStderr) {
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  FlushOnRedirectedStderr();
 
   // Make sure flush hook works fine and process terminates with no problem.
 }
