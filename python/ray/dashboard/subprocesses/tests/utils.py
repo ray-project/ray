@@ -108,6 +108,18 @@ class TestModule(BaseTestModule):
         await ws.close()
         return ws
 
+    @routes.get("/websocket_raise_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise aiohttp.web.HTTPBadRequest(reason="Hello this is a bad request")
+
+    @routes.get("/websocket_raise_non_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_non_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise ValueError("Hello world")
+
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         while True:

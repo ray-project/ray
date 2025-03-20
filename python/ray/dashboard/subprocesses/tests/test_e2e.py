@@ -158,6 +158,23 @@ async def test_websocket_bytes_str(aiohttp_client, default_module_config):
     assert res == ["1\n", "2\n", "3\n", "4\n", "5\n"]
 
 
+async def test_websocket_raise_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_http_error")
+    assert response.status == 400
+    assert await response.text() == "400: Hello this is a bad request"
+
+
+async def test_websocket_raise_non_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_non_http_error")
+    assert response.status == 500
+
+
 async def test_kill_self(aiohttp_client, default_module_config):
     """
     If a module died, all pending requests should be failed, and the module should be
