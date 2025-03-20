@@ -14,9 +14,9 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
             if not isinstance(op, MapOperator):
                 continue
 
-            original_ray_remote_args_fn = op._ray_remote_args_fn
-
-            def ray_remote_args_fn(op: MapOperator = op) -> Dict[str, Any]:
+            def ray_remote_args_fn(
+                op: MapOperator = op, original_ray_remote_args_fn=op._ray_remote_args_fn
+            ) -> Dict[str, Any]:
                 assert isinstance(op, MapOperator), op
 
                 static_ray_remote_args = copy.deepcopy(op._ray_remote_args)
