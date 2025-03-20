@@ -2547,6 +2547,9 @@ cdef void delete_spilled_objects_handler(
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
+cdef void destroy_external_storage() nogil:
+    with gil:
+        external_storage.destroy_external_storage()
 
 cdef void cancel_async_task(
         const CTaskID &c_task_id,
@@ -3018,6 +3021,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.destroy_external_storage = destroy_external_storage
         options.unhandled_exception_handler = unhandled_exception_handler
         options.cancel_async_task = cancel_async_task
         options.get_lang_stack = get_py_stack
