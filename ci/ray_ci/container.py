@@ -67,7 +67,7 @@ class Container(abc.ABC):
         """
         # CUDA image comes with a license header that we need to remove
         logger.info(f"irabbani: starting container with script \n{script}")
-        logger.info(f"israbbani: the run command is: {self.get_run_command}")
+        logger.info(f"israbbani: the run command is: {self.get_run_command(script)}")
         return (
             subprocess.check_output(self.get_run_command(script))
             .decode("utf-8")
