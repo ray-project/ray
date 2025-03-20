@@ -1,6 +1,7 @@
 from itertools import chain
 from typing import (
     Any,
+    Callable,
     Dict,
     Literal,
     Optional,
@@ -72,6 +73,29 @@ def _write_fragment(
     return [(fragment, schema) for fragment in fragments]
 
 
+def _merge_columns(
+    stream: Iterable[Union["pa.Table", "pd.DataFrame"]],
+    ds,
+    transform: Optional[str] = None,
+    read_columns: Optional[List[str]] = None,
+    batch_size: int = 1024,
+):
+    commit_messages = []
+    for block in stream:
+        tbl = BlockAccessor.for_block(block).to_arrow()
+        if tbl.num_rows == 0:
+            continue
+        if tbl.num_columns > 1:
+            raise ValueError("merge column block only contain fragment_id col")
+        for fragment_id in tbl.to_pydict()["fragment_id"]:
+            fragment = ds.get_fragment(fragment_id)
+            new_fragment, new_schema = fragment.merge_columns(
+                transform, read_columns, batch_size=batch_size
+            )
+            commit_messages.append((new_fragment, new_schema))
+    return commit_messages
+
+
 class _BaseLanceDatasink(Datasink):
     """Base class for Lance Datasink."""
 
@@ -102,7 +126,7 @@ class _BaseLanceDatasink(Datasink):
 
         import lance
 
-        if self.mode == "append":
+        if self.mode in ["append", "merge_column"]:
             ds = lance.LanceDataset(self.uri, storage_options=self.storage_options)
             self.read_version = ds.version
             if self.schema is None:
@@ -146,6 +170,8 @@ class _BaseLanceDatasink(Datasink):
             op = lance.LanceOperation.Overwrite(schema, fragments)
         elif self.mode == "append":
             op = lance.LanceOperation.Append(fragments)
+        elif self.mode == "merge_column":
+            op = lance.LanceOperation.Merge(fragments, schema)
         lance.LanceDataset.commit(
             self.uri,
             op,
@@ -182,14 +208,20 @@ class LanceDatasink(_BaseLanceDatasink):
 
     NAME = "Lance"
 
+    global SUPPORT_OPERATIONS
+    SUPPORT_OPERATIONS = ["create", "append", "overwrite", "merge_column"]
+
     def __init__(
         self,
         uri: str,
         schema: Optional[pa.Schema] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: Literal["create", "append", "overwrite", "merge_column"] = "create",
         max_rows_per_file: int = 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        transform: Optional[
+            Dict[str, str] | Callable[[pa.RecordBatch], pa.RecordBatch]
+        ] = None,
         *args,
         **kwargs,
     ):
@@ -202,10 +234,21 @@ class LanceDatasink(_BaseLanceDatasink):
             **kwargs,
         )
 
+        import lance
+
         self.max_rows_per_file = max_rows_per_file
         self.data_storage_version = data_storage_version
         # if mode is append, read_version is read from existing dataset.
         self.read_version: Optional[int] = None
+        if mode not in SUPPORT_OPERATIONS:
+            raise ValueError(
+                f"Invalid mode: {mode}. Mode must be one of {SUPPORT_OPERATIONS}"
+            )
+        self.mode = mode
+        self.transform = transform
+        # if mode is merge_column, read_version is read from existing dataset.
+        if self.mode in ["merge_column", "append"]:
+            self.ds = lance.LanceDataset(self.uri, storage_options=self.storage_options)
 
     @property
     def num_rows_per_write(self) -> int:
@@ -219,14 +262,24 @@ class LanceDatasink(_BaseLanceDatasink):
         blocks: Iterable[Union[pa.Table, "pd.DataFrame"]],
         _ctx,
     ):
-        fragments_and_schema = _write_fragment(
-            blocks,
-            self.uri,
-            schema=self.schema,
-            max_rows_per_file=self.max_rows_per_file,
-            data_storage_version=self.data_storage_version,
-            storage_options=self.storage_options,
-        )
+        fragments_and_schema = []
+        if self.mode in ["append", "overwrite", "create"]:
+            fragments_and_schema = _write_fragment(
+                blocks,
+                self.uri,
+                schema=self.schema,
+                max_rows_per_file=self.max_rows_per_file,
+                data_storage_version=self.data_storage_version,
+                storage_options=self.storage_options,
+            )
+        elif self.mode == "merge_column":
+            fragments_and_schema = _merge_columns(
+                stream=blocks,
+                ds=self.ds,
+                transform=self.transform,
+            )
+        else:
+            raise ValueError(f"Unsupported mode: {self.mode}")
         return [
             (pickle.dumps(fragment), pickle.dumps(schema))
             for fragment, schema in fragments_and_schema
