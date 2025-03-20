@@ -269,10 +269,10 @@ const ActorTable = ({
           <br />
           1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
           and try again. <br />
-          2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
-          not currently supported.
+          2. Non Nvidia or AMD GPUs are being used. Non Nvidia or AMD GPUs'
+          utilizations are not currently supported.
           <br />
-          3. pynvml module raises an exception.
+          3. pynvml or pyamdsmi module raises an exception.
         </Typography>
       ),
     },
