@@ -80,7 +80,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         # This means the driver was not run with 'uv run' -- in this case
         # we leave the runtime environment unchanged
         return runtime_env
-    
+
     # First check that the "uv" and "pip" runtime environments are not used.
     if "uv" in runtime_env or "pip" in runtime_env:
         raise RuntimeError(
