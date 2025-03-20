@@ -274,20 +274,6 @@ py_test(
 )
 
 py_test(
-    name = "test_aggregate",
-    size = "small",
-    srcs = ["tests/test_aggregate.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],

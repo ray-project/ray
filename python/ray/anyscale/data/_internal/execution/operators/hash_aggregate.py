@@ -24,7 +24,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
     NOTE: That reductions are performed incrementally in a streaming fashion upon
           accumulation of pre-configured buffer of rows to run aggregation on."""
 
-    _AGGREGATED_BLOCKS_BUFFER_THRESHOLD = 100
+    _DEFAULT_BLOCKS_BUFFER_LIMIT = 1000
 
     def __init__(
         self,
@@ -57,7 +57,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
 
         # Aggregation is performed incrementally, rather
         # than being deferred to the finalization stage
-        if len(self._aggregated_blocks) > self._AGGREGATED_BLOCKS_BUFFER_THRESHOLD:
+        if len(self._aggregated_blocks) > self._DEFAULT_BLOCKS_BUFFER_LIMIT:
             # TODO make aggregation async
             aggregated_block = self._aggregate(should_finalize=False)
             # Reset partially aggregated blocks

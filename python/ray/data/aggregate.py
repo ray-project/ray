@@ -1,10 +1,9 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, Any
 
 import numpy as np
 
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
 from ray.data.block import (
     AggType,
@@ -13,8 +12,6 @@ from ray.data.block import (
     KeyType,
     T,
     U,
-    BlockColumn,
-    BlockColumnAccessor,
 )
 from ray.util.annotations import PublicAPI, Deprecated
 
@@ -123,21 +120,9 @@ class AggregateFn:
         """Raise an error if this cannot be applied to the given schema."""
         pass
 
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        if len(accumulator_col) == 0:
-            return None
-
-        accumulators = BlockColumnAccessor.for_column(accumulator_col).to_pylist()
-
-        cur_acc = accumulators[0]
-        for v in accumulators[1:]:
-            cur_acc = self.merge(cur_acc, v)
-
-        return cur_acc
-
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn):
+class AggregateFnV2(AggregateFn, abc.ABC):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -180,9 +165,7 @@ class AggregateFnV2(AggregateFn):
             name=name,
             init=_safe_zero_factory,
             merge=_safe_combine,
-            accumulate_block=(
-                lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
-            ),
+            accumulate_block=lambda _, block: _safe_aggregate(block),
             finalize=_safe_finalize,
         )
 
@@ -209,6 +192,8 @@ class AggregateFnV2(AggregateFn):
 
     def _validate(self, schema: Optional["Schema"]) -> None:
         if self._target_col_name:
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
             SortKey(self._target_col_name).validate_schema(schema)
 
 
@@ -243,11 +228,6 @@ class Count(AggregateFnV2):
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
 
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).sum(
-            ignore_nulls=self._ignore_nulls
-        )
-
 
 @PublicAPI
 class Sum(AggregateFnV2):
@@ -273,11 +253,6 @@ class Sum(AggregateFnV2):
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
-
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).sum(
-            ignore_nulls=self._ignore_nulls
-        )
 
 
 @PublicAPI
@@ -305,11 +280,6 @@ class Min(AggregateFnV2):
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return min(current_accumulator, new)
 
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).min(
-            ignore_nulls=self._ignore_nulls
-        )
-
 
 @PublicAPI
 class Max(AggregateFnV2):
@@ -336,11 +306,6 @@ class Max(AggregateFnV2):
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return max(current_accumulator, new)
-
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).max(
-            ignore_nulls=self._ignore_nulls
-        )
 
 
 @PublicAPI
@@ -485,9 +450,6 @@ class AbsMax(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
-        return max(current_accumulator, new)
-
     def aggregate_block(self, block: Block) -> AggType:
         block_accessor = BlockAccessor.for_block(block)
 
@@ -502,10 +464,8 @@ class AbsMax(AggregateFnV2):
             abs(min_),
         )
 
-    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).max(
-            ignore_nulls=self._ignore_nulls
-        )
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
 
 
 @PublicAPI
@@ -597,12 +557,13 @@ class Unique(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
-            ignore_nulls=False,
+            ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
 

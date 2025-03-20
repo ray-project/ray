@@ -1,6 +1,7 @@
 from dataclasses import fields
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_bool
 from ray.anyscale.data._internal.execution.callbacks.insert_issue_detectors import (
     IssueDetectionExecutionCallback,
@@ -50,11 +51,36 @@ def _patch_default_execution_callbacks():
     )
 
 
+def _patch_aggregations():
+    from ray.anyscale.data.aggregate_vectorized import (
+        MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS,
+    )
+
+    # NOTE: For Arrow versions >= 14.0 (supporting type promotions) we override
+    #       standard aggregations to use vectorized versions
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS:
+        from ray.data import aggregate
+        from ray.anyscale.data import aggregate_vectorized
+
+        aggregate.Count = aggregate_vectorized.CountVectorized
+        aggregate.Sum = aggregate_vectorized.SumVectorized
+        aggregate.Min = aggregate_vectorized.MinVectorized
+        aggregate.Max = aggregate_vectorized.MaxVectorized
+        aggregate.AbsMax = aggregate_vectorized.AbsMaxVectorized
+        aggregate.Quantile = aggregate_vectorized.QuantileVectorized
+        aggregate.Unique = aggregate_vectorized.UniqueVectorized
+
+
 def apply_anyscale_patches():
     """Apply Anyscale-specific patches for Ray Data."""
     # Patch ray.data.Dataset
     _patch_class_with_mixin(ray.data.Dataset, DatasetMixin)
     _patch_class_with_dataclass_mixin(ray.data.DataContext, DataContextMixin)
+
+    # Patch default aggregation implementations with more performant
+    # vectorized versions
+    _patch_aggregations()
+
     _patch_default_execution_callbacks()
 
     _register_anyscale_plan_logical_op_fns()

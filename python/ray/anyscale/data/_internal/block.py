@@ -3,12 +3,15 @@ import logging
 from typing import Tuple, List, Sequence, Dict, Iterator, TYPE_CHECKING
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.anyscale.data.aggregate_vectorized import (
+    MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS,
+)
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat_and_sort,
     concat,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     BlockAccessor,
     Block,
@@ -16,13 +19,14 @@ from ray.data.block import (
     BlockExecStats,
     BlockType,
     KeyType,
+    BlockColumn,
+    AggType,
+    BlockColumnAccessor,
 )
 
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
-    from ray.data.aggregate import AggregateFn
 
 
 logger = logging.getLogger(__file__)
@@ -57,7 +61,7 @@ class OptimizedTableBlockMixin(TableBlockAccessor):
 
         # NOTE: For Arrow versions < 14.0, that don't support type promotions
         #       we have to fallback to existing (OSS) implementation
-        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS:
             logger.warning(
                 f"Falling back to default (non-vectorized) aggregation "
                 f"implementation (Arrow version={get_pyarrow_version()})"
@@ -138,7 +142,7 @@ class OptimizedTableBlockMixin(TableBlockAccessor):
 
         # NOTE: For Arrow versions < 14.0, that don't support type promotions
         #       we have to fallback to existing (OSS) implementation
-        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS:
             logger.warning(
                 f"Falling back to default (non-vectorized) aggregation "
                 f"implementation (Arrow version={get_pyarrow_version()})"
@@ -197,7 +201,7 @@ class OptimizedTableBlockMixin(TableBlockAccessor):
                 # Combine partially aggregated values (current values of the
                 # corresponding aggregation column)
                 agg_col = grouped_acc_block[agg_col_name]
-                combined_agg_result = agg._combine_column(agg_col)
+                combined_agg_result = cls._combine_column(agg, agg_col)
 
                 if finalize:
                     final_agg_result = agg.finalize(combined_agg_result)
@@ -238,6 +242,28 @@ class OptimizedTableBlockMixin(TableBlockAccessor):
             row = self._get_row(start, copy=False)
 
             yield row[key_col_names], self.slice(start, end, copy=False)
+
+    @staticmethod
+    def _combine_column(agg: "AggregateFn", accumulator_col: BlockColumn) -> AggType:
+        from ray.anyscale.data.aggregate_vectorized import VectorizedAggregateFnV2
+
+        if isinstance(agg, VectorizedAggregateFnV2):
+            return agg._combine_column(accumulator_col)
+
+        return _combine_column_legacy(agg, accumulator_col)
+
+
+def _combine_column_legacy(agg: "AggregateFn", accumulator_col: BlockColumn) -> AggType:
+    if len(accumulator_col) == 0:
+        return None
+
+    accumulators = BlockColumnAccessor.for_column(accumulator_col).to_pylist()
+
+    cur_acc = accumulators[0]
+    for v in accumulators[1:]:
+        cur_acc = agg.merge(cur_acc, v)
+
+    return cur_acc
 
 
 def _resolve_aggregated_column_names(aggs: Sequence["AggregateFn"]) -> List[str]:
