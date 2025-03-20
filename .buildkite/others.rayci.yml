@@ -41,6 +41,18 @@ steps:
         --skip-ray-installation
     depends_on: doctestbuild
 
+  - label: failing doc tests
+    instance_type: large
+    soft_fail: true
+    commands:
+      # doc tests
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc:doctest none
+        --build-name doctestbuild
+        --only-tags doctest
+        --except-tags gpu
+        --parallelism-per-worker 3
+    depends_on: doctestbuild
+
   # java
   - label: ":java: java tests"
     tags: java
