@@ -625,20 +625,11 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
         paths = paths[0]
 
     try:
-        # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
-        if get_pyarrow_version() >= parse_version("15.0.0"):
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-            )
-        else:
-            dataset = pq.ParquetDataset(
-                paths,
-                **dataset_kwargs,
-                filesystem=filesystem,
-                use_legacy_dataset=False,
-            )
+        dataset = pq.ParquetDataset(
+            paths,
+            **dataset_kwargs,
+            filesystem=filesystem,
+        )
     except OSError as e:
         _handle_read_os_error(e, paths)
 
