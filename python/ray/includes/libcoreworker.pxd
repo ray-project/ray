@@ -365,6 +365,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CLineageReconstructionTask, uint64_t] \
             GetLocalOngoingLineageReconstructionTasks() const
 
+        void RegisterActorCollectiveGroup(
+            const unordered_map[CActorID, int] &actor_id_to_rank
+        )
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
