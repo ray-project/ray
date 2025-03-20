@@ -74,7 +74,7 @@ class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
         # We set it to 1 target block size out of assumption that *at least* 1 copy
         # of data (to process heap) will be made during processing.
         #
-        # Note that Ray's "memory" resource is exclusive of the Object Store
+        # Note that, unless object store memory is manually specified, by default Ray's "memory" resource is exclusive of the Object Store
         # memory allocated on the node (i.e., its total allocatable value is Total
         # memory - Object Store memory).
         return op.metrics.average_bytes_per_output
