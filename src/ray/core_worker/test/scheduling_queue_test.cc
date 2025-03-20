@@ -24,10 +24,12 @@ using namespace std::chrono_literals;
 namespace ray {
 namespace core {
 
-// Helper function that returns a condition checker for checking if a variable equals a
-// target value
-std::function<bool()> CreateEqualsConditionChecker(const int &var, int target) {
-  return [&var, target]() { return var == target; };
+// Helper function that returns a condition checker to verify if a variable equals a
+// target value. It uses an atomic variable to avoid race conditions between the main thread
+// and the underlying executor (i.e., thread), which may result in errors from ASAN.
+std::function<bool()> CreateEqualsConditionChecker(const std::atomic<int> *var,
+                                                   int target) {
+  return [var, target]() { return var->load() == target; };
 }
 
 class MockWaiter : public DependencyWaiter {
@@ -78,7 +80,7 @@ TEST(SchedulingQueueTest, TestTaskEvents) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
@@ -156,7 +158,7 @@ TEST(SchedulingQueueTest, TestInOrder) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
@@ -199,12 +201,12 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
 
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
@@ -224,13 +226,13 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
 
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 1), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
 
   waiter.Complete(0);
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 2), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 2), 1000));
 
   waiter.Complete(2);
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 2), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 2), 1000));
 
   waiter.Complete(1);
 
@@ -257,12 +259,12 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
 
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
@@ -280,7 +282,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec_without_dependency);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
 
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 1), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
   io_service.run();
   ASSERT_EQ(n_rej, 0);
   waiter.Complete(0);
@@ -307,7 +309,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
@@ -349,12 +351,13 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
+
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
@@ -365,11 +368,11 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr, task_spec);
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 1), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
   ASSERT_EQ(n_rej, 0);
   io_service.run();  // immediately triggers timeout
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_ok, 1), 1000));
-  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(n_rej, 2), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_ok, 1), 1000));
+  ASSERT_TRUE(WaitForCondition(CreateEqualsConditionChecker(&n_rej, 2), 1000));
   queue.Add(4, -1, fn_ok, fn_rej, nullptr, task_spec);
   queue.Add(5, -1, fn_ok, fn_rej, nullptr, task_spec);
 
@@ -396,12 +399,12 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
                              waiter,
                              task_event_buffer,
                              pool_manager,
-                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*fiber_state_manager=*/nullptr,
                              /*is_asyncio=*/false,
                              /*fiber_max_concurrency=*/1,
                              /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
+  std::atomic<int> n_ok(0);
+  std::atomic<int> n_rej(0);
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
                        rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
@@ -460,15 +463,14 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OutOfOrderActorSchedulingQueue queue(
-      io_service,
-      waiter,
-      task_event_buffer,
-      pool_manager,
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-      /*is_asyncio=*/false,
-      /*fiber_max_concurrency=*/1,
-      /*concurrency_groups=*/{});
+  OutOfOrderActorSchedulingQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       pool_manager,
+                                       /*fiber_state_manager=*/nullptr,
+                                       /*is_asyncio=*/false,
+                                       /*fiber_max_concurrency=*/1,
+                                       /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
@@ -543,7 +545,7 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});
@@ -612,7 +614,7 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
-      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
       /*concurrency_groups=*/{});
