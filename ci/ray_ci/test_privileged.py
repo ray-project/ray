@@ -1,3 +1,4 @@
+import time
 import pytest
 import sys
 
@@ -12,7 +13,6 @@ EXPECTED_CTRLS = ["memory", "cpu"]
 
 
 def test_only_cgroupv2_mounted_rw():
-    pass
     # found_cgroupv2 = False
     # found_cgroupv1 = False
     # with open(Path(MOUNT_FILE_PATH)) as f:
@@ -23,6 +23,7 @@ def test_only_cgroupv2_mounted_rw():
     #         )
     #         found_cgroupv1 = found_cgroupv1 or (c[0] == "cgroup")
     # assert found_cgroupv2 and not found_cgroupv1
+    time.sleep(3600)
 
 
 def test_cgroupv2_rw_for_test_user():
