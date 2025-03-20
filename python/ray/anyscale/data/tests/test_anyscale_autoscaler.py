@@ -1,4 +1,5 @@
 import math
+from typing import OrderedDict
 import unittest
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -9,6 +10,9 @@ from ray.anyscale.data.autoscaler.anyscale_autoscaler import (
     AnyscaleAutoscaler,
     _NodeResourceSpec,
     _TimeWindowAverageCalculator,
+    DefaultActorPoolResizingPolicy,
+    _normalize_scaling_up_factor,
+    _get_scaling_up_factor,
 )
 from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
@@ -86,6 +90,63 @@ def test_calcuate_time_window_average(current_time):
 
     # Now no values in the time window, `get_average` should return None.
     assert calculator.get_average() is None
+
+
+@pytest.mark.parametrize(
+    "input_factor, expected_normalized, capacity_ratios, expected_scaling_factors",
+    [
+        # Test with a single float value
+        (
+            2.0,
+            OrderedDict([(1, 2.0)]),
+            [0.5, 0.9],
+            [2.0, 2.0],
+        ),
+        # Test with a dictionary with multiple thresholds
+        (
+            {0.2: 5.0, 0.5: 3.0, 0.8: 1.5},
+            OrderedDict([(0.2, 5.0), (0.5, 3.0), (0.8, 1.5)]),
+            [0.1, 0.3, 0.5, 0.7, 0.9],
+            [5.0, 3.0, 3.0, 1.5, 1.0],
+        ),
+        # Test with a single threshold at 1.0
+        (
+            {1.0: 2.5},
+            OrderedDict([(1.0, 2.5)]),
+            [0.5, 1.0],
+            [2.5, 2.5],
+        ),
+    ],
+)
+def test_scaling_up_factor_functions(
+    input_factor, expected_normalized, capacity_ratios, expected_scaling_factors
+):
+    """Test _normalize_scaling_up_factor and _get_scaling_up_factor."""
+    # Test _normalize_scaling_up_factor
+    normalized = _normalize_scaling_up_factor(input_factor)
+    assert isinstance(normalized, OrderedDict)
+    assert list(normalized.items()) == list(expected_normalized.items())
+
+    # Test _get_scaling_up_factor with different capacity ratio values
+    for i, capacity_ratio in enumerate(capacity_ratios):
+        factor = _get_scaling_up_factor(capacity_ratio, normalized)
+        assert (
+            factor == expected_scaling_factors[i]
+        ), f"Failed for capacity_ratio={capacity_ratio}"
+
+
+@pytest.mark.parametrize(
+    "invalid_factor",
+    [
+        1.0,  # Scaling factor must be > 1
+        {1.2: 2.0},  # Keys must be between 0 and 1
+        {0.5: 1.0},  # Values must be > 1
+    ],
+)
+def test_invalid_scaling_up_factors(invalid_factor):
+    """Test that invalid inputs for _normalize_scaling_up_factor raise assertion errors."""
+    with pytest.raises(AssertionError):
+        _normalize_scaling_up_factor(invalid_factor)
 
 
 class TestClusterAutoscaling(unittest.TestCase):
@@ -332,9 +393,11 @@ class TestActorPoolAutoscaling:
             execution_id="test_execution_id",
             actor_pool_scaling_up_threshold=scaling_up_threadhold,
             actor_pool_scaling_down_threshold=scaling_down_threadhold,
-            actor_pool_scaling_up_factor=scaling_up_factor,
             actor_pool_util_check_interval_s=0,
             actor_pool_util_avg_window_s=0.1,
+            actor_pool_resizing_policy=DefaultActorPoolResizingPolicy(
+                scaling_up_factor
+            ),
         )
 
         # Manually scale up to min_size.
@@ -406,6 +469,99 @@ class TestActorPoolAutoscaling:
         assert actor_pool.current_size() == max_size - 1
         current_time.increment()
 
+    def test_actor_pool_scaling_at_different_capacity_ratios(self, current_time):
+        """Test actor pool scaling up with different capacity ratio thresholds."""
+        min_size = 2
+        max_size = 20
+        max_tasks_in_flight_per_actor = 4
+
+        # Define multiple capacity ratio thresholds with different scaling factors
+        capacity_based_scaling_config = {0.25: 4.0, 0.5: 2.0, 1.0: 1.5}
+
+        actor_pool = MockAutoscalingActorPool(
+            min_size=min_size,
+            max_size=max_size,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+
+        op = MagicMock(
+            spec=PhysicalOperator,
+            get_autoscaling_actor_pools=MagicMock(return_value=[actor_pool]),
+            completed=MagicMock(return_value=False),
+            _inputs_complete=False,
+            internal_queue_size=MagicMock(return_value=1),
+        )
+        op_state = MagicMock(spec=OpState, num_queued=MagicMock(return_value=100))
+        op_scheduling_status = MagicMock(under_resource_limits=True)
+        op_state._scheduling_status = op_scheduling_status
+
+        resource_manager = MagicMock()
+        resource_manager._op_resource_allocator.get_budget = MagicMock(
+            return_value=ExecutionResources.for_limits()
+        )
+
+        autoscaler = AnyscaleAutoscaler(
+            topology={op: op_state},
+            resource_manager=resource_manager,
+            execution_id="test_execution_id",
+            actor_pool_scaling_up_threshold=0.8,  # High utilization threshold to ensure scaling
+            actor_pool_util_check_interval_s=0,
+            actor_pool_util_avg_window_s=0.1,
+            actor_pool_resizing_policy=DefaultActorPoolResizingPolicy(
+                capacity_based_scaling_config
+            ),
+        )
+
+        # Start with min_size and mark all as running
+        actor_pool.scale_up(min_size)
+        for _ in range(min_size):
+            actor_pool.pending_to_running()
+
+        # Set high task utilization to trigger scaling
+        actor_pool._current_in_flight_tasks = min_size * max_tasks_in_flight_per_actor
+
+        # Test scaling at different capacity ratios
+        expected_sizes = []
+
+        # First scale (very low capacity ratio - should use 4.0 scaling factor)
+        # Current capacity ratio: 2/20 = 0.1 < 0.25, so factor = 4.0
+        autoscaler._try_scale_up_or_down_actor_pool()
+        expected_sizes.append(
+            min(max_size, math.ceil(min_size * 4.0))
+        )  # min_size * 4.0 = 8
+        assert actor_pool.current_size() == expected_sizes[-1]
+
+        # Mark all actors as running
+        for _ in range(actor_pool.num_pending_actors()):
+            actor_pool.pending_to_running()
+        current_time.increment()
+
+        # Second scale (low capacity ratio - should use 2.0 scaling factor)
+        # Current capacity ratio: 8/20 = 0.4 > 0.25 but < 0.5, so factor = 2.0
+        actor_pool._current_in_flight_tasks = (
+            actor_pool.current_size() * max_tasks_in_flight_per_actor
+        )
+        autoscaler._try_scale_up_or_down_actor_pool()
+        expected_sizes.append(
+            min(max_size, math.ceil(expected_sizes[-1] * 2.0))
+        )  # 8 * 2.0 = 16
+        assert actor_pool.current_size() == expected_sizes[-1]
+
+        # Mark all actors as running
+        for _ in range(actor_pool.num_pending_actors()):
+            actor_pool.pending_to_running()
+        current_time.increment()
+
+        # Third scale (high capacity ratio - should use 1.5 scaling factor)
+        # Current capacity ratio: 16/20 = 0.8 > 0.5 but < 1.0, so factor = 1.5
+        actor_pool._current_in_flight_tasks = (
+            actor_pool.current_size() * max_tasks_in_flight_per_actor
+        )
+        autoscaler._try_scale_up_or_down_actor_pool()
+        # Should hit max_size limit (16 * 1.5 = 24, but max is 20)
+        assert actor_pool.current_size() == max_size
+
     @pytest.mark.parametrize(
         "min_size, max_size, per_actor_resource_usage, budget, expected_scale_up",
         (
@@ -471,9 +627,11 @@ class TestActorPoolAutoscaling:
             execution_id="test_execution_id",
             actor_pool_scaling_up_threshold=scaling_up_threadhold,
             actor_pool_scaling_down_threshold=scaling_down_threadhold,
-            actor_pool_scaling_up_factor=scaling_up_factor,
             actor_pool_util_check_interval_s=0,
             actor_pool_util_avg_window_s=0.1,
+            actor_pool_resizing_policy=DefaultActorPoolResizingPolicy(
+                scaling_up_factor
+            ),
         )
 
         # Manually scale up to min_size and move pending actors to running.
