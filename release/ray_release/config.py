@@ -164,7 +164,7 @@ def _substitute_variable(
             _substitute_variable(value, variable, replacement)
         elif isinstance(value, list):
             test_definition[key] = [
-                item.replace(f"${variable}", value) for item in value
+                item.replace(f"${variable}", replacement) for item in value
             ]
         elif isinstance(value, str):
             test_definition[key] = test_definition[key].replace(

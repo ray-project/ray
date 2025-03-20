@@ -281,8 +281,8 @@
       compute: [tasks]
     adjustments:
       - with:
-          - format: numpy
-            compute: actors
+          format: numpy
+          compute: actors
 
   run:
     timeout: 5400
