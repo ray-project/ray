@@ -66,11 +66,10 @@ def _is_pydantic_model(field_type) -> bool:
 def _add_field_to_parser(parser: argparse.ArgumentParser, field: str, field_info):
     field_type = field_info.annotation
     if field_type is bool:
-        assert (
-            not field_info.default
-        ), "Only supports bool flags that are False by default."
         parser.add_argument(
-            f"--{field}", action="store_true", default=field_info.default
+            f"--{field}",
+            type=lambda x: x.lower() == "true",
+            default=field_info.default,
         )
     else:
         parser.add_argument(f"--{field}", type=field_type, default=field_info.default)
