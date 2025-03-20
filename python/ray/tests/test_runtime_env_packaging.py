@@ -56,6 +56,7 @@ ARCHIVE_NAME = "archive.zip"
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+HTTPS_PACKAGE_URI_LOG_SUFFIX = "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_suffix.log"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
@@ -746,6 +747,22 @@ class TestDownloadAndUnpackPackage:
             )
             package_name = Path(local_dir).name + ".zip"
             assert (Path(local_dir) / package_name).exists()
+
+    async def test_download_and_unpack_package_with_specific_suffix(self):
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            local_dir = await download_and_unpack_package(
+                pkg_uri=HTTPS_PACKAGE_URI_LOG_SUFFIX,
+                base_directory=temp_dest_dir,
+                unpack=True,
+            )
+            package_name = Path(local_dir).name + ".log"
+            assert (Path(local_dir) / package_name).exists()
+            absolute_package_path = str(Path(local_dir) / package_name)
+
+            with open(absolute_package_path, "r") as file:
+                content = file.read()
+
+            assert content == "test suffix log\n"
 
 
 def test_get_gitignore(tmp_path):

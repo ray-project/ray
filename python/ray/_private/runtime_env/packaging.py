@@ -19,6 +19,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
     GRPC_CPP_MAX_MESSAGE_SIZE,
+    RAY_UNPACKABLE_FILE_SUFFIXS,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
@@ -696,23 +697,42 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
+def is_file_unpackable(pkg_file: str) -> bool:
+    """Determines whether the given pkg_file should be unpacked based on its suffix.
+
+    This function checks the suffix of the pkg_file to see if it matches one of
+    the specified compression or packaging formats. If the suffix matches, the
+    function returns True, indicating that the file should be unpacked.
+    Otherwise, it returns False.
+
+    Args:
+        pkg_file: The file name or path to check.
+
+    Returns:
+        bool: True if the file should be unpacked, False otherwise.
+    """
+    unpack_suffixs = RAY_UNPACKABLE_FILE_SUFFIXS
+
+    # Loop through the list of unpack suffixes and check against the pkg_file
+    for suffix in unpack_suffixs:
+        if pkg_file.endswith(suffix):
+            return True
+
+    return False
+
+
 @DeveloperAPI
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
-    unpack: bool = True,
     overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
-    Target_dir refers to the directory to unpack to,
-    specified by {base_directory}/{uri}
-    If unpack is True, we do decompress the downloaded file into target_dir,
-    otherwise, we just move the file to target_dir and do not decompress.
 
     Args:
         pkg_uri: URI of the package to download.
@@ -740,6 +760,17 @@ async def download_and_unpack_package(
             f"Invalid package URI: {pkg_uri}."
             "URI must have a file extension and the URI must be valid."
         )
+
+    # NOTE(Jacky): If the suffix of pkg_file is not ".zip", ".whl", ".jar"
+    # or pkg_file is not a tar file, we set unpack to False.
+    # This is necessary because we only want to attempt to unpack files with
+    # recognized compression formats. Trying to unpack files with unrecognized
+    # or unsupported formats can lead to errors or undefined behavior.
+    # Therefore, setting unpack to False explicitly prevents such issues
+    # and ensures that only files with supported formats are processed
+    # for unpacking. This check helps in maintaining robustness and stability
+    # in handling various files.
+    unpack = is_file_unpackable(str(pkg_file))
 
     async with _AsyncFileLock(str(pkg_file) + ".lock"):
         if logger is None:
