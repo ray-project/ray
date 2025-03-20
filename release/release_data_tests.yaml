@@ -228,7 +228,7 @@
 
   matrix:
     setup:
-      - format: [numpy, pandas, pyarrow]
+      format: [numpy, pandas, pyarrow]
 
   run:
     timeout: 2400
@@ -277,8 +277,8 @@
 
   matrix:
     setup:
-      - format: [numpy, pandas, pyarrow]
-      - compute: [tasks]
+      format: [numpy, pandas, pyarrow]
+      compute: [tasks]
     adjustments:
       - with:
           - format: numpy
