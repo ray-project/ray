@@ -25,8 +25,9 @@ namespace ray {
 namespace core {
 
 // Helper function that returns a condition checker to verify if a variable equals a
-// target value. It uses an atomic variable to avoid race conditions between the main thread
-// and the underlying executor (i.e., thread), which may result in errors from ASAN.
+// target value. It uses an atomic variable to avoid race conditions between the main
+// thread and the underlying executor (i.e., thread), which may result in errors from
+// ASAN.
 std::function<bool()> CreateEqualsConditionChecker(const std::atomic<int> *var,
                                                    int target) {
   return [var, target]() { return var->load() == target; };
