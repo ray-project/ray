@@ -55,14 +55,14 @@ steps:
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     trigger: "ray-ecosystem-ci-kuberay-ci"
     key: trigger-kuberay
-    depends_on: check-commit-hash
-    # depends_on: trigger-postmerge-nightly
+    depends_on: trigger-postmerge-nightly
     build:
       commit: "HEAD"
       branch: "release-1.3"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         KUBERAY_TEST_RAY_IMAGE: "rayproject/ray:nightly"
+        IS_FROM_RAY_RELEASE_AUTOMATION: 1
 
   - label: "Trigger Postmerge MacOS test"
     key: trigger-postmerge-macos
