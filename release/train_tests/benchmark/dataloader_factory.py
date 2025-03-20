@@ -8,6 +8,7 @@ import io
 import torch
 import boto3
 import pandas as pd
+import pyarrow.parquet as pq
 from botocore.exceptions import NoCredentialsError
 from torch.utils.data import IterableDataset
 
@@ -31,6 +32,49 @@ if torch.cuda.is_available():
 
 # AWS configuration
 AWS_REGION = "us-west-2"
+
+
+@ray.remote
+def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, int]:
+    """Standalone Ray task to fetch Parquet metadata.
+
+    Args:
+        bucket: S3 bucket name
+        key: S3 object key
+        file_url: Full S3 URL for logging
+
+    Returns:
+        Tuple of (file_url, row_count)
+    """
+    import boto3
+    import pyarrow.parquet as pq
+    import io
+    import logging
+
+    logger = logging.getLogger(__name__)
+    s3_client = boto3.client("s3", region_name=AWS_REGION)
+
+    # Step 1: Read the last 8 bytes to get the footer size
+    response = s3_client.get_object(
+        Bucket=bucket, Key=key, Range="bytes=-8"  # Read only last 8 bytes
+    )
+    footer_bytes = response["Body"].read()
+
+    # Extract footer size (last 4 bytes contain the size)
+    footer_size = int.from_bytes(footer_bytes[-4:], byteorder="little")
+
+    # Step 2: Read the Parquet metadata footer
+    metadata_range = (
+        f"bytes=-{footer_size + 8}"  # Include footer + 8-byte metadata indicator
+    )
+    response = s3_client.get_object(Bucket=bucket, Key=key, Range=metadata_range)
+
+    # Step 3: Parse Parquet metadata
+    metadata = pq.read_metadata(io.BytesIO(response["Body"].read()))
+    total_rows = metadata.num_rows
+
+    logger.info(f"[DataLoader] File {file_url} has {total_rows} rows")
+    return file_url, total_rows
 
 
 class S3Reader:
@@ -105,6 +149,133 @@ class S3Reader:
         except Exception as e:
             raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
 
+    def _get_parquet_metadata(self, bucket: str, key: str) -> pq.FileMetaData:
+        """Fetch Parquet metadata efficiently by reading only necessary bytes.
+
+        Args:
+            bucket: S3 bucket name
+            key: S3 object key
+
+        Returns:
+            PyArrow FileMetaData object
+        """
+        # Step 1: Read the last 8 bytes to get the footer size
+        response = self.s3_client.get_object(
+            Bucket=bucket, Key=key, Range="bytes=-8"  # Read only last 8 bytes
+        )
+        footer_bytes = response["Body"].read()
+
+        # Extract footer size (last 4 bytes contain the size)
+        footer_size = int.from_bytes(footer_bytes[-4:], byteorder="little")
+
+        # Step 2: Read the Parquet metadata footer
+        metadata_range = (
+            f"bytes=-{footer_size + 8}"  # Include footer + 8-byte metadata indicator
+        )
+        response = self.s3_client.get_object(
+            Bucket=bucket, Key=key, Range=metadata_range
+        )
+
+        # Step 3: Parse Parquet metadata
+        metadata = pq.read_metadata(io.BytesIO(response["Body"].read()))
+        return metadata
+
+    def _collect_file_info(
+        self, bucket: str, prefix: str
+    ) -> Tuple[List[str], List[int]]:
+        """Collect file URLs and their row counts in parallel using Ray tasks.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: S3 prefix to list
+
+        Returns:
+            Tuple of (file_urls, row_counts)
+        """
+        response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+        if "Contents" not in response:
+            return [], []
+
+        # Launch parallel tasks for each file
+        tasks = []
+        for file in response["Contents"]:
+            file_url = f"s3://{bucket}/{file['Key']}"
+            task = _fetch_parquet_metadata.remote(bucket, file["Key"], file_url)
+            tasks.append(task)
+
+        # Wait for all tasks to complete
+        logger.info(f"[DataLoader] Waiting for metadata from {len(tasks)} files...")
+        results = ray.get(tasks)
+
+        # Unzip results
+        file_urls, file_rows = zip(*results) if results else ([], [])
+
+        logger.info(f"[DataLoader] Collected metadata for {len(file_urls)} files")
+        return list(file_urls), list(file_rows)
+
+    def _distribute_files(
+        self,
+        file_urls: List[str],
+        file_rows: List[int],
+        worker_rank: int,
+        num_workers: int,
+    ) -> List[str]:
+        """Distribute files among workers based on row counts.
+
+        Args:
+            file_urls: List of file URLs
+            file_rows: List of row counts per file
+            worker_rank: Current worker rank
+            num_workers: Total number of workers
+
+        Returns:
+            List of file URLs assigned to this worker
+        """
+        # Sort files by row count (descending) for better distribution
+        files_with_rows = sorted(
+            zip(file_urls, file_rows), key=lambda x: x[1], reverse=True
+        )
+        file_urls = [f[0] for f in files_with_rows]
+        file_rows = [f[1] for f in files_with_rows]
+
+        # If no workers or files, return all files
+        if num_workers <= 1 or not file_urls:
+            logger.info(
+                f"[DataLoader] Single worker or no files, returning all {len(file_urls)} files "
+                f"with total {sum(file_rows)} rows"
+            )
+            return file_urls
+
+        # Calculate target rows per worker for balanced distribution
+        total_rows = sum(file_rows)
+        target_rows_per_worker = total_rows / num_workers
+        logger.info(
+            f"[DataLoader] Total rows: {total_rows}, Target rows per worker: {target_rows_per_worker:.0f}"
+        )
+
+        # Distribute files to minimize row count differences between workers
+        worker_files = [[] for _ in range(num_workers)]
+        worker_rows = [0] * num_workers
+
+        # Assign files to workers, trying to keep row counts balanced
+        for file_url, row_count in zip(file_urls, file_rows):
+            # Find worker with minimum current row count
+            min_rows_worker = min(range(num_workers), key=lambda w: worker_rows[w])
+            worker_files[min_rows_worker].append(file_url)
+            worker_rows[min_rows_worker] += row_count
+
+        # Get this worker's files
+        my_files = worker_files[worker_rank]
+        my_row_count = worker_rows[worker_rank]
+
+        logger.info(
+            f"[DataLoader] Ray worker {worker_rank} assigned {len(my_files)}/{len(file_urls)} files "
+            f"with {my_row_count}/{total_rows} rows "
+            f"({my_row_count/total_rows*100:.1f}% of total)"
+        )
+        return my_files
+
     def _get_file_urls(self, url: str) -> List[str]:
         """Get file URLs from S3 and distribute them among Ray workers based on row counts.
 
@@ -122,71 +293,14 @@ class S3Reader:
                 f"[DataLoader] Ray worker {worker_rank}/{num_workers} listing files"
             )
 
-            # List files from S3
+            # List files and get row counts
             bucket, prefix = self._parse_s3_url(url)
-            file_urls = []
-            file_rows = []  # Track row count for each file
-            response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            file_urls, file_rows = self._collect_file_info(bucket, prefix)
 
-            if "Contents" in response:
-                import pyarrow.parquet as pq
-                import io
-
-                # First pass: collect files and their row counts
-                for file in response["Contents"]:
-                    file_url = f"s3://{bucket}/{file['Key']}"
-                    file_urls.append(file_url)
-
-                    # Get row count for this file
-                    response = self.s3_client.get_object(Bucket=bucket, Key=file["Key"])
-                    parquet_file = pq.ParquetFile(io.BytesIO(response["Body"].read()))
-                    total_rows = parquet_file.metadata.num_rows
-                    file_rows.append(total_rows)
-                    logger.info(f"[DataLoader] File {file_url} has {total_rows} rows")
-
-            # Sort files by row count (descending) for better distribution
-            files_with_rows = sorted(
-                zip(file_urls, file_rows), key=lambda x: x[1], reverse=True
+            # Distribute files among workers
+            return self._distribute_files(
+                file_urls, file_rows, worker_rank, num_workers
             )
-            file_urls = [f[0] for f in files_with_rows]
-            file_rows = [f[1] for f in files_with_rows]
-
-            # If no workers or files, return all files
-            if num_workers <= 1 or not file_urls:
-                logger.info(
-                    f"[DataLoader] Single worker or no files, returning all {len(file_urls)} files "
-                    f"with total {sum(file_rows)} rows"
-                )
-                return file_urls
-
-            # Calculate target rows per worker for balanced distribution
-            total_rows = sum(file_rows)
-            target_rows_per_worker = total_rows / num_workers
-            logger.info(
-                f"[DataLoader] Total rows: {total_rows}, Target rows per worker: {target_rows_per_worker:.0f}"
-            )
-
-            # Distribute files to minimize row count differences between workers
-            worker_files = [[] for _ in range(num_workers)]
-            worker_rows = [0] * num_workers
-
-            # Assign files to workers, trying to keep row counts balanced
-            for file_url, row_count in zip(file_urls, file_rows):
-                # Find worker with minimum current row count
-                min_rows_worker = min(range(num_workers), key=lambda w: worker_rows[w])
-                worker_files[min_rows_worker].append(file_url)
-                worker_rows[min_rows_worker] += row_count
-
-            # Get this worker's files
-            my_files = worker_files[worker_rank]
-            my_row_count = worker_rows[worker_rank]
-
-            logger.info(
-                f"[DataLoader] Ray worker {worker_rank} assigned {len(my_files)}/{len(file_urls)} files "
-                f"with {my_row_count}/{total_rows} rows "
-                f"({my_row_count/total_rows*100:.1f}% of total)"
-            )
-            return my_files
 
         except NoCredentialsError:
             raise self.S3CredentialsError(
@@ -240,8 +354,6 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             logger.info(f"[Dataset] Reading Parquet file: {file_url}")
 
             # Get parquet file metadata
-            import pyarrow.parquet as pq
-
             bucket, key = self._parse_s3_url(file_url)
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
             parquet_file = pq.ParquetFile(io.BytesIO(response["Body"].read()))
