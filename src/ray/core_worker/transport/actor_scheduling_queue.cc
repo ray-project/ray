@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 

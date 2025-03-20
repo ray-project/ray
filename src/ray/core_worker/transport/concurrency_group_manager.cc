@@ -14,7 +14,11 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"

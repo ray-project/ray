@@ -26,7 +26,12 @@ from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
-from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
+from ray._private.utils import (
+    open_log,
+    try_to_create_directory,
+    try_to_symlink,
+    validate_socket_filepath,
+)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -989,7 +994,6 @@ class Node:
             socket_path: the socket file to prepare.
         """
         result = socket_path
-        is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
                 result = f"tcp://{self._localhost}:{self._get_unused_port()}"
@@ -1001,12 +1005,7 @@ class Node:
             else:
                 try_to_create_directory(os.path.dirname(socket_path))
 
-            # Check socket path length to make sure it's short enough
-            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
-            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
-                raise OSError(
-                    f"AF_UNIX path length cannot exceed {maxlen} bytes: {result!r}"
-                )
+            validate_socket_filepath(result.split("://", 1)[-1])
         return result
 
     def _get_cached_port(
