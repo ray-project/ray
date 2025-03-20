@@ -1,4 +1,4 @@
-// Copyright 2024 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,27 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Precondition for the test suite:
+// - If run on local dev environment, don't mount cgroupv2 as rw mode.
+// - If run on remote CI, run in non-privileged container mode (where cgroup is mounted as
+// read-only mode).
+
 #include <gtest/gtest.h>
 
 #include "ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/test/testing.h"
 
 namespace ray::internal {
 
 namespace {
 
-// Precondition: cgroup V2 has already been mounted as rw.
-//
-// Setup command:
-// sudo umount /sys/fs/cgroup/unified
-// sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
-TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) { EXPECT_TRUE(IsCgroupV2MountedAsRw()); }
-
-TEST(CgroupV2UtilsTest, CgroupV2Permission) {
-  if (getuid() == 0) {
-    EXPECT_TRUE(CanCurrenUserWriteCgroupV2());
-    return;
-  }
-  EXPECT_FALSE(CanCurrenUserWriteCgroupV2());
+TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
+#ifndef __linux__
+  // Error case: cgroup feature is not supported on non-linux platforms.
+  EXPECT_EQ(CheckCgroupV2MountedRW("/sys/fs/cgroup").code(), StatusCode::Invalid);
+#else
+  // Error case: cgroup directory exists, but not writable.
+  EXPECT_EQ(CheckCgroupV2MountedRW("/sys/fs/cgroup").code(), StatusCode::InvalidArgument);
+#endif  // __linux__
 }
 
 }  // namespace

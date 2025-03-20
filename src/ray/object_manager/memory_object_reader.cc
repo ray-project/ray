@@ -14,7 +14,7 @@
 
 #include "ray/object_manager/memory_object_reader.h"
 
-#include <cstring>
+#include <string>
 #include <utility>
 
 namespace ray {
@@ -34,21 +34,21 @@ const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_a
 
 bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
                                              uint64_t size,
-                                             char *output) const {
+                                             std::string &output) const {
   if (offset + size > GetDataSize()) {
     return false;
   }
-  std::memcpy(output, object_buffer_.data->Data() + offset, size);
+  output.append(reinterpret_cast<char *>(object_buffer_.data->Data() + offset), size);
   return true;
 }
 
 bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
                                                  uint64_t size,
-                                                 char *output) const {
+                                                 std::string &output) const {
   if (offset + size > GetMetadataSize()) {
     return false;
   }
-  std::memcpy(output, object_buffer_.metadata->Data() + offset, size);
+  output.append(reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size);
   return true;
 }
 
