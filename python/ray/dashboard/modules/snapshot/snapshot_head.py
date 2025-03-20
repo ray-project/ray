@@ -86,7 +86,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         no_restart = req.query.get("no_restart", False) in ("true", "True")
         if not actor_id:
             return dashboard_optional_utils.rest_response(
-                success=False, message="actor_id is required."
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="actor_id is required.",
             )
 
         status_code = await self.gcs_aio_client.kill_actor(
@@ -96,12 +97,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
 
-        success = status_code == 200
-        if status_code == 404:
+        if status_code == dashboard_utils.HTTPStatusCode.NOT_FOUND:
             message = f"Actor with id {actor_id} not found."
-        elif status_code == 500:
+        elif status_code == dashboard_utils.HTTPStatusCode.INTERNAL_ERROR:
             message = f"Failed to kill actor with id {actor_id}."
-        elif status_code == 200:
+        elif status_code == dashboard_utils.HTTPStatusCode.OK:
             message = (
                 f"Force killed actor with id {actor_id}"
                 if force_kill
@@ -111,9 +111,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         else:
             message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
 
-        # TODO(kevin85421): The utility function needs to be refactored to handle
-        # different status codes. Currently, it only returns 200 and 500.
-        return dashboard_optional_utils.rest_response(success=success, message=message)
+        return dashboard_optional_utils.rest_response(
+            status_code=status_code, message=message
+        )
 
     @routes.get("/api/component_activities")
     async def get_component_activities(self, req) -> aiohttp.web.Response:

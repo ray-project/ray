@@ -14,6 +14,11 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -24,7 +29,7 @@
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace ray {
 
@@ -660,7 +665,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the job table can still work when GCS server restarts.
@@ -687,7 +692,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the actor table can still work when GCS server restarts.
@@ -744,7 +749,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the node table can still work when GCS server restarts.
@@ -774,7 +779,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Subscribe to all unexpected failure of workers from GCS.
@@ -876,7 +881,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
   // Get all actors.
   auto condition = [this, actor_count]() {
-    return (int)GetAllActors().size() == actor_count;
+    return static_cast<int>(GetAllActors().size()) == actor_count;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
