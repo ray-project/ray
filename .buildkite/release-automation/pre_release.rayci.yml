@@ -53,7 +53,7 @@ steps:
 
   - label: "Trigger :kubernetes: Kuberay CI Tests"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
-    trigger: "Ray ecosystem CI: Kuberay CI"
+    trigger: "ray-ecosystem-ci-kuberay-ci"
     key: trigger-kuberay
     depends_on: trigger-postmerge-nightly
     build:
