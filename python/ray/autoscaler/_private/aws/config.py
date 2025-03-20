@@ -43,7 +43,7 @@ DEFAULT_AMI = {
     "us-east-1": "ami-052c6353a5e5bc8a0",  # US East (N. Virginia)
     "us-east-2": "ami-06a6e5ba35fb10195",  # US East (Ohio)
     "us-west-1": "ami-01f4231bddbd3f02d",  # US West (N. California)
-    "us-west-2": "ami-0122024eb82690a10",  # US West (Oregon)
+    "us-west-2": "ami-01444f6591a50534f",  # US West (Oregon)
     "ca-central-1": "ami-04b133dbe6b6dd5fa",  # Canada (Central)
     "eu-central-1": "ami-07bb55c8e51ca0e1a",  # EU (Frankfurt)
     "eu-west-1": "ami-0ba30a95934d2d24b",  # EU (Ireland)
