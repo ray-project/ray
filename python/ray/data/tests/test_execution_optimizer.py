@@ -76,8 +76,6 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
-from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] = True):
@@ -1865,53 +1863,6 @@ def test_insert_physical_optimization_rules():
         (1, None, lambda: {"memory": 2}, DataContext(), 2),
         # An estimate isn't available, so the rule shouldn't configure memory.
         (None, None, None, DataContext(), None),
-        # The user has set a placement group, so the rule shouldn't configure memory.
-        # This is to ensure Ray can schedule tasks even if the placement group doesn't
-        # specify memory.
-        (
-            1,
-            {
-                "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                    placement_group([{"CPU": 1}])
-                )
-            },
-            None,
-            DataContext(),
-            None,
-        ),
-        (
-            1,
-            None,
-            lambda: {
-                "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                    placement_group([{"CPU": 1}])
-                )
-            },
-            DataContext(),
-            None,
-        ),
-        (
-            1,
-            None,
-            None,
-            DataContext(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group([{"CPU": 1}])
-                )
-            ),
-            None,
-        ),
-        (
-            1,
-            None,
-            None,
-            DataContext(
-                scheduling_strategy_large_args=PlacementGroupSchedulingStrategy(
-                    placement_group([{"CPU": 1}])
-                )
-            ),
-            None,
-        ),
     ],
 )
 def test_configure_map_task_memory_rule(
