@@ -140,7 +140,7 @@ def test_parse_test_definition_with_matrix_and_variations_raises():
           cluster:
             byod:
               type: gpu
-            cluster_compute: $os.yaml
+            cluster_compute: "{{os}}.yaml"
           matrix:
             setup:
               os: [windows, linux]
@@ -159,14 +159,14 @@ def test_parse_test_definition_with_matrix_and_variations_raises():
 def test_parse_test_definition_with_matrix_and_adjustments():
     test_definitions = yaml.safe_load(
         """
-        - name: test-$compute-$arg
+        - name: "test-{{compute}}-{{arg}}"
           frequency: nightly
           team: team
           working_dir: sample_dir
           cluster:
             byod:
               type: gpu
-            cluster_compute: $compute.yaml
+            cluster_compute: "{{compute}}.yaml"
           matrix:
             setup:
               compute: [fixed, autoscaling]
@@ -178,7 +178,7 @@ def test_parse_test_definition_with_matrix_and_adjustments():
                     arg: 2
           run:
             timeout: 100
-            script: python script.py --arg $arg
+            script: python script.py --arg "{{arg}}"
     """
     )
     tests = parse_test_definition(test_definitions)

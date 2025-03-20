@@ -84,7 +84,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     default_definition = {}
     tests = []
     for test_definition in test_definitions:
-        if "matrix" in test_definition and "variations" in test_definition["matrix"]:
+        if "matrix" in test_definition and "variations" in test_definition:
             raise ReleaseTestConfigError(
                 "You can't specify both 'matrix' and 'variations' in a test definition"
             )
@@ -158,18 +158,18 @@ def _parse_test_definition_with_matrix(test_definition: TestDefinition) -> List[
 def _substitute_variable(
     test_definition: Dict, variable: str, replacement: str
 ) -> None:
+    def sub(string: str, value: str) -> str:
+        pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
+        return re.sub(pattern, value, string)
+
     # NOTE: This function mutates the test definition in place.
     for key, value in test_definition.items():
         if isinstance(value, dict):
             _substitute_variable(value, variable, replacement)
         elif isinstance(value, list):
-            test_definition[key] = [
-                item.replace(f"${variable}", replacement) for item in value
-            ]
+            test_definition[key] = [sub(string, replacement) for string in value]
         elif isinstance(value, str):
-            test_definition[key] = test_definition[key].replace(
-                f"${variable}", replacement
-            )
+            test_definition[key] = sub(value, replacement)
 
 
 def load_schema_file(path: Optional[str] = None) -> Dict:
