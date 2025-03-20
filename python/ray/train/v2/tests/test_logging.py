@@ -147,7 +147,8 @@ def test_worker_app_print_redirect(worker_logging, context):
     print("ham")
 
     log_contents = get_file_contents(f"ray-train-app-worker-{worker_id}.log")
-    assert "ham" in log_contents
+    assert "ham" in log_contents, log_contents
+    assert "ham\\n" not in log_contents, log_contents
 
 
 if __name__ == "__main__":

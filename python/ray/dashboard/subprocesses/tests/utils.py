@@ -22,7 +22,8 @@ class TestModule(SubprocessModule):
         super().__init__(*args, **kwargs)
         self.run_finished = False
 
-    async def init(self):
+    async def run(self):
+        await super().run()
         logger.info("TestModule is initing")
         self.run_finished = True
         await asyncio.sleep(0.1)
@@ -129,9 +130,6 @@ class TestModule1(SubprocessModule):
     """
     For some reason you can't put this inline with the pytest that calls pytest.main.
     """
-
-    async def init(self):
-        pass
 
     @property
     def gcs_aio_client(self):
