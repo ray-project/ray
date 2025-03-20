@@ -124,9 +124,6 @@ setup_commands:
     - >-
         (stat $HOME/anaconda3/envs/tensorflow2_p310/ &> /dev/null &&
         echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p310/bin:$PATH"' >> ~/.bashrc) || true
-    - ls -la $HOME/anaconda3/envs/ || true
-    - python3 --version || true
-    - which python3 || true
     - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.

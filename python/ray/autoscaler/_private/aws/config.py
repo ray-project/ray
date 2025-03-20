@@ -33,10 +33,18 @@ DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
 DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
-# V61.0 has CUDA 11.2
-DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
+DEFAULT_AMI_NAME = "Deep Learning AMI GPU TensorFlow 2.13 (Ubuntu 20.04) 20230821"
 
-# Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 6/10/2022.
+# Obtained with:
+# for region in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text); do
+#   echo "Region: $region";
+#   aws ec2 describe-images \
+#     --region $region \
+#     --filters "Name=name,Values=Deep Learning AMI GPU TensorFlow 2.13 (Ubuntu 20.04) 20230821*" \
+#     --query "Images[].[ImageId, Name]" \
+#     --output text;
+#   echo "--------------------------";
+# done
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
