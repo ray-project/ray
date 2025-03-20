@@ -1,0 +1,15 @@
+name: Bazel Steward
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'
+
+jobs:
+  bazel-steward:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: VirtusLab/bazel-steward@latest
