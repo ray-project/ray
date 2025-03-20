@@ -170,43 +170,40 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
 
 std::optional<absl::Cord> SpilledObjectReader::ReadFromDataSection(uint64_t offset,
                                                                    uint64_t size) const {
-  std::ifstream is(file_path_, std::ios::binary);
-  absl::Cord cord;
-  is.seekg(data_offset_ + offset);
-  while (size > 0) {
-    auto buffer = cord.GetAppendBuffer(size);
-    absl::Span<char> span = buffer.available_up_to(size);
-    is.read(span.data(), span.size());
-    // We reached the end of the file before reading the expected number of bytes.
-    if (static_cast<size_t>(is.gcount()) != span.size()) {
-      RAY_LOG(WARNING) << "Failed to read from data section in spilled file";
-      return std::nullopt;
-    }
-    buffer.IncreaseLengthBy(span.size());
-    cord.Append(std::move(buffer));
-    size -= span.size();
+  std::ifstream file(file_path_, std::ios::binary);
+  file.seekg(data_offset_ + offset);
+  std::istreambuf_iterator<char> start(file), end;
+  uint64_t size_idx = 0;
+  std::string output;
+  output.reserve(size);
+  for (auto it = start; size_idx < size && it != end; ++it) {
+    output.push_back(*it);
+    ++size_idx;
   }
-  return cord;
+  if (size_idx != size) {
+    RAY_LOG(WARNING) << "Failed to read from data section in spilled file " << file_path_;
+    return std::nullopt;
+  }
+  return absl::Cord(std::move(output));
 }
 
 std::optional<absl::Cord> SpilledObjectReader::ReadFromMetadataSection(
     uint64_t offset, uint64_t size) const {
-  std::ifstream is(file_path_, std::ios::binary);
-  absl::Cord cord;
-  is.seekg(metadata_offset_ + offset);
-  while (size > 0) {
-    auto buffer = cord.GetAppendBuffer(size);
-    absl::Span<char> span = buffer.available_up_to(size);
-    is.read(span.data(), span.size());
-    // We reached the end of the file before reading the expected number of bytes.
-    if (static_cast<size_t>(is.gcount()) != span.size()) {
-      RAY_LOG(WARNING) << "Failed to read from metadata section in spilled file";
-      return std::nullopt;
-    }
-    buffer.IncreaseLengthBy(span.size());
-    cord.Append(std::move(buffer));
-    size -= span.size();
+  std::ifstream file(file_path_, std::ios::binary);
+  file.seekg(metadata_offset_ + offset);
+  std::istreambuf_iterator<char> start(file), end;
+  uint64_t size_idx = 0;
+  std::string output;
+  output.reserve(size);
+  for (auto it = start; size_idx < size && it != end; ++it) {
+    output.push_back(*it);
+    ++size_idx;
   }
-  return cord;
+  if (size_idx != size) {
+    RAY_LOG(WARNING) << "Failed to read from metadata section in spilled file "
+                     << file_path_;
+    return std::nullopt;
+  }
+  return absl::Cord(std::move(output));
 }
 }  // namespace ray
