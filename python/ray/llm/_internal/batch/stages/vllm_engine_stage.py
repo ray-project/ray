@@ -637,7 +637,7 @@ class vLLMEngineStage(StatefulStage):
             The updated values.
         """
         map_batches_kwargs = values["map_batches_kwargs"]
-        resources_per_bundle = map_batches_kwargs.get("resources_per_bundle")
+        resources_per_bundle = map_batches_kwargs.get("resources")
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
         fn_constructor_kwargs = values["fn_constructor_kwargs"]
         engine_kwargs = fn_constructor_kwargs.get("engine_kwargs", {})

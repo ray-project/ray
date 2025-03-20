@@ -190,7 +190,7 @@ def build_vllm_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
-                resources_per_bundle=config.resources_per_bundle,
+                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
