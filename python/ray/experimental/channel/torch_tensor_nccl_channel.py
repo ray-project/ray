@@ -12,7 +12,7 @@ from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.driver_communicator_holder import _DriverGroupHolder
+from ray.experimental.channel.driver_communicator_holder import CommunicatorInfoHolder
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
@@ -798,7 +798,7 @@ def _init_communicator(
     if custom_communicator is not None:
         ctx.communicators[group_id] = custom_communicator
     else:
-        ctx.communicators[group_id] = _DriverGroupHolder(
+        ctx.communicators[group_id] = CommunicatorInfoHolder(
             world_size,
             comm_id,
             actor_handles=actors,

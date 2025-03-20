@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     import torch
 
 
-class _DriverGroupHolder(Communicator):
+class CommunicatorInfoHolder(Communicator):
     """
     The driver maintains a communicator instance but does not participate
     in the group. However, it still needs to store certain information,

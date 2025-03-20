@@ -304,6 +304,6 @@ class CpuRuntime(AccleratorRuntime):
     """
 
     def get_unique_id(self) -> str:
-        from ray.experimental.channel.cpu_communicator import get_cpu_unique_id
+        from ray.experimental.channel.cpu_communicator import generate_uid_id
 
-        return get_cpu_unique_id()
+        return generate_uid_id()
