@@ -131,7 +131,6 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Make sure flush hook works fine and process terminates with no problem.
-  redirection_handle.SyncOnStreamRedirection();
 }
 
 }  // namespace ray::internal

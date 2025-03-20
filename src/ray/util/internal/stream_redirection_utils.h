@@ -33,10 +33,6 @@ struct RedirectionHandleWrapper {
   // Flush buffered output and restore stream redirection.
   ~RedirectionHandleWrapper();
 
-  // Synchronizes any buffered output indicated by the redirection handle wrapper in
-  // blocking style, and restore the stream redirection.
-  void SyncOnStreamRedirection();
-
   // Flush on redirected stream synchronously.
   //
   // TODO(hjiang): Current implementation is naive, which directly flushes on spdlog

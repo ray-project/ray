@@ -28,9 +28,7 @@ RedirectionHandleWrapper::RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_
   redirection_file_handle = std::move(handle);
 }
 
-RedirectionHandleWrapper::~RedirectionHandleWrapper() { SyncOnStreamRedirection(); }
-
-void RedirectionHandleWrapper::SyncOnStreamRedirection() {
+RedirectionHandleWrapper::~RedirectionHandleWrapper() {
   scoped_dup2_wrapper = nullptr;
   redirection_file_handle.Close();
 }
