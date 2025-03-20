@@ -21,25 +21,20 @@
 
 namespace ray::internal {
 
-RedirectionHandleWrapper RedirectStreamImpl(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                                            const StreamRedirectionOption &opt) {
+RedirectionHandleWrapper::RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                                                   const StreamRedirectionOption &opt) {
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
-  auto scoped_dup2_wrapper = ScopedDup2Wrapper::New(handle.GetWriteHandle(), stream_fd);
-
-  RedirectionHandleWrapper handle_wrapper;
-  handle_wrapper.redirection_file_handle = std::move(handle);
-  handle_wrapper.scoped_dup2_wrapper = std::move(scoped_dup2_wrapper);
-
-  return handle_wrapper;
+  scoped_dup2_wrapper = ScopedDup2Wrapper::New(handle.GetWriteHandle(), stream_fd);
+  redirection_file_handle = std::move(handle);
 }
 
-void SyncOnStreamRedirection(RedirectionHandleWrapper &redirection_handle_wrapper) {
-  redirection_handle_wrapper.scoped_dup2_wrapper = nullptr;
-  redirection_handle_wrapper.redirection_file_handle.Close();
+void RedirectionHandleWrapper::SyncOnStreamRedirection() {
+  scoped_dup2_wrapper = nullptr;
+  redirection_file_handle.Close();
 }
 
-void FlushOnRedirectedStream(RedirectionHandleWrapper &redirection_handle_wrapper) {
-  redirection_handle_wrapper.redirection_file_handle.Flush();
+void RedirectionHandleWrapper::FlushOnRedirectedStream() {
+  redirection_file_handle.Flush();
 }
 
 }  // namespace ray::internal

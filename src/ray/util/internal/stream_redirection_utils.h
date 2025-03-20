@@ -22,28 +22,23 @@
 namespace ray::internal {
 
 struct RedirectionHandleWrapper {
+  RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                           const StreamRedirectionOption &opt);
+
+  // Synchronizes any buffered output indicated by the redirection handle wrapper in
+  // blocking style, and restore the stream redirection.
+  void SyncOnStreamRedirection();
+
+  // Flush on redirected stream synchronously.
+  //
+  // TODO(hjiang): Current implementation is naive, which directly flushes on spdlog
+  // logger and could miss those in the pipe; it's acceptable because we only use it in
+  // the unit test for now.
+  void FlushOnRedirectedStream();
+
   RedirectionFileHandle redirection_file_handle;
   // Used for restoration.
   std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper;
 };
-
-// Util functions to redirect stdout / stderr stream based on the given redirection option
-// [opt]. This function is _NOT_ thread-safe.
-//
-// \param opt Option to redirection stream, including log file path and stdout/stderr
-// redirection requirement.
-RedirectionHandleWrapper RedirectStreamImpl(MEMFD_TYPE_NON_UNIQUE stream_fd,
-                                            const StreamRedirectionOption &opt);
-
-// Synchronizes any buffered output indicated by the redirection handle wrapper in
-// blocking style, and restore the stream redirection.
-void SyncOnStreamRedirection(RedirectionHandleWrapper &redirection_handle_wrapper);
-
-// Flush on redirected stream synchronously.
-//
-// TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
-// and could miss those in the pipe; it's acceptable because we only use it in the unit
-// test for now.
-void FlushOnRedirectedStream(RedirectionHandleWrapper &redirection_handle_wrapper);
 
 }  // namespace ray::internal

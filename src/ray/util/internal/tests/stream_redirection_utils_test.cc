@@ -69,7 +69,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  auto redirection_handle = RedirectStreamImpl(GetStderrHandle(), opts);
+  RedirectionHandleWrapper redirection_handle(GetStderrHandle(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -77,7 +77,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  FlushOnRedirectedStream(redirection_handle);
+  redirection_handle.FlushOnRedirectedStream();
 
   // Check log content after completion.
   const auto actual_content1 = ReadEntireFile(log_file_path1);
@@ -93,7 +93,7 @@ TEST(LoggingUtilTest, WriteContentWithNewliner) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Make sure flush hook works fine and process terminates with no problem.
-  SyncOnStreamRedirection(redirection_handle);
+  redirection_handle.FlushOnRedirectedStream();
 }
 
 TEST(LoggingUtilTest, WriteContentWithFlush) {
@@ -115,7 +115,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  auto redirection_handle = RedirectStreamImpl(GetStderrHandle(), opts);
+  RedirectionHandleWrapper redirection_handle(GetStderrHandle(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -123,7 +123,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  FlushOnRedirectedStream(redirection_handle);
+  redirection_handle.FlushOnRedirectedStream();
 
   // Check tee-ed to stdout content, it's worth notice at this point we haven't written
   // newliner into the stream, nor did we close the redirection handle.
@@ -131,7 +131,7 @@ TEST(LoggingUtilTest, WriteContentWithFlush) {
   EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Make sure flush hook works fine and process terminates with no problem.
-  SyncOnStreamRedirection(redirection_handle);
+  redirection_handle.SyncOnStreamRedirection();
 }
 
 }  // namespace ray::internal

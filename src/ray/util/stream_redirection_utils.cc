@@ -41,7 +41,7 @@ absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::RedirectionHandleWrapper>
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
   for (auto &[_, handle] : redirection_file_handles) {
-    internal::SyncOnStreamRedirection(handle);
+    handle.SyncOnStreamRedirection();
   }
 }
 
@@ -52,8 +52,7 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOpti
         << "Fails to register stream redirection termination hook.";
   });
 
-  internal::RedirectionHandleWrapper handle_wrapper =
-      internal::RedirectStreamImpl(stream_fd, opt);
+  internal::RedirectionHandleWrapper handle_wrapper(stream_fd, opt);
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
@@ -63,7 +62,7 @@ void FlushOnRedirectedStdout(MEMFD_TYPE_NON_UNIQUE stream_handle) {
   auto iter = redirection_file_handles.find(stream_handle);
   RAY_CHECK(iter != redirection_file_handles.end())
       << "Stream handle " << stream_handle << " hasn't been registered.";
-  internal::FlushOnRedirectedStream(iter->second);
+  iter->second.FlushOnRedirectedStream();
 }
 
 }  // namespace
