@@ -51,7 +51,7 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
-    resources_per_worker: Optional[Dict[str, float]] = Field(
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
         description="This overrides the vLLM engine worker's default resource configuration, "
         "the number of resources returned by `placement_bundles`.",
@@ -109,7 +109,7 @@ class VLLMEngineConfig(BaseModelExtended):
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
-            resources_per_worker=llm_config.resources_per_worker,
+            resources_per_bundle=llm_config.resources_per_bundle,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -128,7 +128,7 @@ class VLLMEngineConfig(BaseModelExtended):
         return self.engine_kwargs.get("pipeline_parallel_size", 1)
 
     @property
-    def num_gpu_workers(self) -> int:
+    def num_devices(self) -> int:
         return self.tensor_parallel_degree * self.pipeline_parallel_degree
 
     @property
@@ -140,13 +140,13 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        if not self.resources_per_worker:
-            bundle = {"GPU": 1}
+        if self.resources_per_bundle:
+            bundle = self.resources_per_bundle
         else:
-            bundle = self.resources_per_worker
+            bundle = {"GPU": 1, "CPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
-        bundles = [bundle for _ in range(self.num_gpu_workers)]
+        bundles = [bundle for _ in range(self.num_devices)]
 
         return bundles
 

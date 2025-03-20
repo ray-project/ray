@@ -19,6 +19,9 @@ class ProcessorConfig(_ProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
+        resources_per_bundle: The resource bundles for placement groups.
+            You can specify a custom device label e.g. {'NPU': 1}.
+            The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.

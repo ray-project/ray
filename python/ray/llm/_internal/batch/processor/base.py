@@ -26,10 +26,11 @@ class ProcessorConfig(BaseModelExtended):
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case. Defaults to 64.",
     )
-    resources_per_worker: Optional[Dict[str, float]] = Field(
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
-        description="This will override the default resources config for actors/workers, "
-        "the default resource config for LLM Stage may be something like {'GPU': 1}.",
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,

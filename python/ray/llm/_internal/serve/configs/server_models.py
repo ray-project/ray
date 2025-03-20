@@ -190,10 +190,11 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    resources_per_worker: Optional[Dict[str, float]] = Field(
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
-        description="This will pass to config like `VLLMEngineConfig` and override "
-        "the resources config for the workers in vLLM engine.",
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
     )
 
     accelerator_type: Optional[str] = Field(
