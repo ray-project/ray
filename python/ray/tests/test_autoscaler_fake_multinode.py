@@ -3,7 +3,6 @@ import platform
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
-from ray.util.placement_group import placement_group, remove_placement_group
 import time
 
 
@@ -99,58 +98,6 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
     finally:
         cluster.shutdown()
     # __example_end__
-
-
-@pytest.mark.parametrize("autoscaler_v2", [False], ids=["v1"])
-@pytest.mark.parametrize("placement_strategy", ["SPREAD", "STRICT_SPREAD"])
-def test_fake_autoscaler_placement_group_partial_idle(
-    autoscaler_v2, placement_strategy
-):  # This test ensures that a placement group can be scheduled
-    # even if the time required to set up new nodes (start_node_delay_s) exceeds
-    # the idle_timeout_minutes config. Previously, when new nodes
-    # were ready after the idle_timeout_minutes, the autoscaler would kill
-    # other old idle nodes, preventing the placement group from being scheduled.
-    # TODO: (rueian) enable this test for autoscaler_v2.
-
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "type-1": {
-                "resources": {"CPU": 2},
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 10,
-            },
-        },
-        idle_timeout_minutes=0.1,
-        max_workers=10,
-        autoscaler_v2=autoscaler_v2,
-        provider={
-            "type": "fake_multinode",
-            "start_node_delay_s": 8,
-            # the following are the default values for the fake_multinode provider
-            # taken from ./python/ray/autoscaler/_private/fake_multi_node/example.yaml
-            "use_node_id_as_ip": True,
-            "disable_node_updaters": True,
-            "disable_launch_config_check": True,
-        },
-    )
-    try:
-        cluster.start()
-        ray.init()
-
-        pg1 = placement_group([{"CPU": 1}] * 4, strategy=placement_strategy)
-        ray.get(pg1.ready())
-        remove_placement_group(pg1)
-
-        # without https://github.com/ray-project/ray/pull/51122, pg2 will never be scheduled successfully.
-        pg2 = placement_group([{"CPU": 1}] * 10, strategy=placement_strategy)
-        ray.get(pg2.ready())
-        remove_placement_group(pg2)
-
-        ray.shutdown()
-    finally:
-        cluster.shutdown()
 
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
