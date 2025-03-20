@@ -163,7 +163,6 @@ class TrainLoopRunner:
             loss.backward()  # 2. Compute gradients
 
         self.optimizer.step()  # 3. Update parameters
-        return loss
 
     def validate_and_checkpoint(self):
         with self._metrics["validation/epoch"].timer():
