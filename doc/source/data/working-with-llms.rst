@@ -77,7 +77,7 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
     {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 
-If you have no idea about the required input columns for the processor, you can use the following API:
+Each processor requires specific input columns. You can find get more info by using the following API:
 
 .. testcode::
 
