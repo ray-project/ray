@@ -1,6 +1,7 @@
 import math
-from typing import List, Optional
+from typing import Callable, List, Optional
 
+from ray.data import DataIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -189,32 +190,52 @@ class MiniBatchDummyIterator(MiniBatchIteratorBase):
 
 @DeveloperAPI
 class MiniBatchRayDataIterator:
-    def __init__(self, *, iterator, finalize_fn, num_iters, **kwargs):
+    def __init__(
+        self,
+        *,
+        iterator: DataIterator,
+        collate_fn: Callable,
+        finalize_fn: Callable,
+        minibatch_size: int,
+        num_iters: Optional[int],
+        **kwargs,
+    ):
+        # A `ray.data.DataIterator` that can iterate in different ways over the data.
         self._iterator = iterator
+        self._collate_fn = collate_fn
         self._finalize_fn = finalize_fn
+        # Note, in multi-learner settings the `return_state` is in `kwargs`.
+        self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
+
+        # Holds a batched_iterable over the dataset.
+        self._batched_iterable = self._iterator.iter_batches(
+            batch_size=minibatch_size,
+            _collate_fn=self._collate_fn,
+            _finalize_fn=self._finalize_fn,
+            **self._kwargs,
+        )
+        # Create an iterator that can be stopped and resumed during an epoch.
+        self._epoch_iterator = iter(self._batched_iterable)
         self._num_iters = num_iters
-        self._kwargs = kwargs
 
-    def __iter__(self):
-        iter = 0
-        while self._num_iters is None or iter < self._num_iters:
-            for batch in self._iterator.iter_batches(
-                # Note, this needs to be one b/c data is already mapped to
-                # `MultiAgentBatch`es of `minibatch_size`.
-                batch_size=1,
-                _finalize_fn=self._finalize_fn,
-                **self._kwargs,
-            ):
+    def __iter__(self) -> MultiAgentBatch:
+        iteration = 0
+        while self._num_iters is None or iteration < self._num_iters:
+            for batch in self._epoch_iterator:
                 # Update the iteration counter.
-                iter += 1
-
-                # Note, `_finalize_fn`  must return a dictionary.
-                batch = batch["batch"]
+                iteration += 1
 
                 yield (batch)
 
                 # If `num_iters` is reached break and return.
-                if self._num_iters and iter == self._num_iters:
+                if self._num_iters and iteration == self._num_iters:
+                    break
+            else:
+                # Reinstantiate a new epoch iterator.
+                self._epoch_iterator = iter(self._batched_iterable)
+                # If a full epoch on the data should be run, stop.
+                if not self._num_iters:
+                    # Exit the loop.
                     break
 
 

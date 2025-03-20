@@ -17,6 +17,10 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/client_connection.h"
 #include "ray/common/scheduling/resource_set.h"

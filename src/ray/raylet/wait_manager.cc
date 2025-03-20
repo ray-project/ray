@@ -14,6 +14,9 @@
 
 #include "ray/raylet/wait_manager.h"
 
+#include <string>
+#include <vector>
+
 #include "ray/util/container_util.h"
 
 namespace ray {

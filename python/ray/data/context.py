@@ -323,6 +323,8 @@ class DataContext:
             transient errors when reading from remote storage systems.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
+            map tasks won't record memory stats.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -395,6 +397,7 @@ class DataContext:
     )
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
+    memory_usage_poll_interval_s: Optional[float] = 1
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

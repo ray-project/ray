@@ -1025,7 +1025,6 @@ void CoreWorker::Shutdown() {
     if (worker_context_.CurrentActorIsAsync()) {
       options_.terminate_asyncio_thread();
     }
-    task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
@@ -1217,6 +1216,13 @@ void CoreWorker::Exit(
     // drain the object references.
     task_execution_service_.post(
         [this, shutdown]() {
+          RAY_LOG(INFO) << "Wait for currently executing tasks in the underlying thread "
+                           "pools to finish.";
+          // Wait for currently executing tasks in the underlying thread pools to
+          // finish. Note that if tasks have been posted to the thread pools but not
+          // started yet, they will not be executed.
+          task_receiver_->Stop();
+
           bool not_actor_task = false;
           {
             absl::MutexLock lock(&mutex_);

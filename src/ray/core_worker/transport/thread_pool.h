@@ -18,6 +18,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <memory>
 #include <queue>
 #include <set>
 #include <utility>

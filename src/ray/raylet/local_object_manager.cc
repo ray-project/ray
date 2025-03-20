@@ -14,6 +14,12 @@
 
 #include "ray/raylet/local_object_manager.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"

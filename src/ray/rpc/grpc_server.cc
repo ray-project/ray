@@ -43,6 +43,7 @@ void GrpcServer::Init() {
 
 void GrpcServer::Shutdown() {
   if (!is_closed_) {
+    shutdown_ = true;
     // Drain the executor threads.
     // Shutdown the server with an immediate deadline.
     // TODO(edoakes): do we want to do this in all cases?
@@ -189,7 +190,19 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   bool ok;
 
   // Keep reading events from the `CompletionQueue` until it's shutdown.
-  while (cqs_[index]->Next(&tag, &ok)) {
+  while (true) {
+    auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                                 gpr_time_from_millis(250, GPR_TIMESPAN));
+    auto status = cqs_[index]->AsyncNext(&tag, &ok, deadline);
+    if (status == grpc::CompletionQueue::SHUTDOWN ||
+        (status == grpc::CompletionQueue::TIMEOUT && shutdown_)) {
+      // If we timed out and shutdown, then exit immediately. This should not
+      // be needed, but gRPC seems to not return SHUTDOWN correctly in these
+      // cases (e.g., test_wait will hang on shutdown without this check).
+      break;
+    } else if (status == grpc::CompletionQueue::TIMEOUT) {
+      continue;
+    }
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
     // A new call is needed after the server sends a reply, no matter the reply is
@@ -241,6 +254,5 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     }
   }
 }
-
 }  // namespace rpc
 }  // namespace ray

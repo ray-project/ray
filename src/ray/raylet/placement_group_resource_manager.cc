@@ -17,6 +17,8 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
+#include <unordered_set>
+#include <vector>
 
 namespace ray {
 

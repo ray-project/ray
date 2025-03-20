@@ -16,6 +16,7 @@
 
 #include <boost/asio/deadline_timer.hpp>
 #include <csignal>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>

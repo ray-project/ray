@@ -62,16 +62,24 @@ def test_to_dask(ray_start_regular_shared, ds_format):
             {"one": pd.Series(dtype=np.int16), "two": pd.Series(dtype=pd.StringDtype())}
         ),
     )
+
     meta = ddf._meta
     # Check metadata.
     assert isinstance(meta, pd.DataFrame)
     assert meta.empty
     assert list(meta.columns) == ["one", "two"]
     assert list(meta.dtypes) == [np.int16, pd.StringDtype()]
+
     # Explicit Dask-on-Ray
-    assert df.equals(ddf.compute(scheduler=ray_dask_get))
+    result = ddf.compute(scheduler=ray_dask_get)
+
+    print("Expected: ", df)
+    print("Result: ", result)
+
+    pd.testing.assert_frame_equal(df, result)
+
     # Implicit Dask-on-Ray.
-    assert df.equals(ddf.compute())
+    pd.testing.assert_frame_equal(df, ddf.compute())
 
     # Test case with blocks which have different schema, where we must
     # skip the metadata check in order to avoid a Dask metadata mismatch error.
@@ -81,12 +89,23 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
+
     ddf = ds.to_dask(verify_meta=False)
 
     # Explicit Dask-on-Ray
-    assert df.equals(ddf.compute(scheduler=ray_dask_get))
+    result = ddf.compute(scheduler=ray_dask_get)
+
+    print("Expected: ", df)
+    print("Result (1): ", result)
+
+    pd.testing.assert_frame_equal(df, result)
+
     # Implicit Dask-on-Ray.
-    assert df.equals(ddf.compute())
+    result = ddf.compute()
+
+    print("Result (2): ", result)
+
+    pd.testing.assert_frame_equal(df, result)
 
 
 def test_to_dask_tensor_column_cast_pandas(ray_start_regular_shared):

@@ -14,6 +14,9 @@
 
 #include "ray/raylet/wait_manager.h"
 
+#include <unordered_set>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 namespace ray {

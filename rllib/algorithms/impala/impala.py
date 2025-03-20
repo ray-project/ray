@@ -151,6 +151,10 @@ class IMPALAConfig(AlgorithmConfig):
         # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
 
+        # `.debugging()`
+        self._env_runners_only = False
+        self._skip_learners = False
+
         self.lr_schedule = None  # @OldAPIStack
         self.entropy_coeff_schedule = None  # @OldAPIStack
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
@@ -345,6 +349,32 @@ class IMPALAConfig(AlgorithmConfig):
             self._separate_vf_optimizer = _separate_vf_optimizer
         if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
+
+        return self
+
+    def debugging(
+        self,
+        *,
+        _env_runners_only: Optional[bool] = NotProvided,
+        _skip_learners: Optional[bool] = NotProvided,
+        **kwargs,
+    ) -> "IMPALAConfig":
+        """Sets the debugging related configuration.
+
+        Args:
+            _env_runners_only: If True, only run (remote) EnvRunner requests, discard
+                their episode/training data, but log their metrics results. Aggregator-
+                and Learner actors won't be used.
+            _skip_learners: If True, no `update` requests are sent to the LearnerGroup
+                and Learner actors. Only EnvRunners and aggregator actors (if
+                applicable) are used.
+        """
+        super().debugging(**kwargs)
+
+        if _env_runners_only is not NotProvided:
+            self._env_runners_only = _env_runners_only
+        if _skip_learners is not NotProvided:
+            self._skip_learners = _skip_learners
 
         return self
 
@@ -595,6 +625,10 @@ class IMPALA(Algorithm):
                 len(episode_refs),
             )
 
+        # Only run EnvRunners, nothing else.
+        if self.config._env_runners_only:
+            return
+
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update()`.
@@ -659,6 +693,10 @@ class IMPALA(Algorithm):
             data_packages_for_learner_group = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.total_train_batch_size
             )
+
+        # Skip Learner update calls.
+        if self.config._skip_learners:
+            return
 
         # Call the LearnerGroup's `update()` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):

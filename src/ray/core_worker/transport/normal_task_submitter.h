@@ -16,6 +16,13 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"

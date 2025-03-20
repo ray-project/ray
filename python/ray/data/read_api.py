@@ -57,7 +57,7 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats

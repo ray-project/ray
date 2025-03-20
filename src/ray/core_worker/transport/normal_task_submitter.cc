@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 

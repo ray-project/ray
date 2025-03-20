@@ -1,6 +1,5 @@
 import collections
 import logging
-import os
 import time
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
@@ -27,7 +26,6 @@ from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -125,6 +123,8 @@ class BlockExecStats:
         wall_time_s: The wall-clock time it took to compute this block.
         cpu_time_s: The CPU time it took to compute this block.
         node_id: A unique id for the node that computed this block.
+        max_uss_bytes: An estimate of the maximum amount of physical memory that the
+            process was using while computing this block.
     """
 
     def __init__(self):
@@ -134,7 +134,7 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.rss_bytes: int = 0
+        self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -160,20 +160,20 @@ class _BlockExecStatsBuilder:
     """
 
     def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
 
     def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+        # Record end times.
+        end_time = time.perf_counter()
+        end_cpu = time.process_time()
 
+        # Build the stats.
         stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
-        process = psutil.Process(os.getpid())
-        stats.rss_bytes = int(process.memory_info().rss)
+        stats.start_time_s = self._start_time
+        stats.end_time_s = end_time
+        stats.wall_time_s = end_time - self._start_time
+        stats.cpu_time_s = end_cpu - self._start_cpu
 
         return stats
 
@@ -534,15 +534,15 @@ class BlockAccessor:
 
         if self.num_rows() == 0:
             return np.array([], dtype=np.int32)
-        elif keys:
-            # Convert key columns to Numpy (to perform vectorized
-            # ops on them)
-            projected_block = self.to_numpy(keys)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
 
-            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = self.to_numpy(keys)
 
-        # If no keys are specified, whole block is considered a single group
-        return np.array([0, self.num_rows()])
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
 
 @DeveloperAPI(stability="beta")
