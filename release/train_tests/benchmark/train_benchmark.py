@@ -5,7 +5,7 @@ import os
 import pprint
 import time
 import tempfile
-from typing import Dict, Iterator, Tuple, Optional
+from typing import Dict
 
 import ray.train
 from ray._private.test_utils import safe_write_to_results_json
@@ -85,7 +85,8 @@ class TrainLoopRunner:
             self._train_epoch()
 
     def _train_epoch(self):
-        logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -142,24 +143,11 @@ class TrainLoopRunner:
             == 0
         )
 
-    def get_next_batch(
-        self, dataloader: Iterator[Tuple[torch.Tensor, torch.Tensor]]
-    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-        """Get the next batch from the dataloader, handling any errors that occur.
-
-        Args:
-            dataloader: The dataloader to get the next batch from
-
-        Returns:
-            Optional[Tuple[torch.Tensor, torch.Tensor]]: The next batch, or None if there are no more batches
-        """
+    def get_next_batch(self, dataloader):
         try:
             return next(dataloader)
         except StopIteration:
             return None
-        except Exception as e:
-            logger.error(f"[DataLoader] Error getting next batch: {str(e)}")
-            raise
 
     def train_step(self, input_batch, labels):
         self.model.train()
@@ -191,6 +179,12 @@ class TrainLoopRunner:
                 )
 
     def validate(self) -> Dict[str, float]:
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
+                f"batch={self._train_batch_idx}"
+            )
+
         val_dataloader = self.factory.get_val_dataloader()
 
         self.model.eval()
@@ -234,11 +228,6 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
-        logger.info(
-            f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
-            f"{ray.train.get_context().get_world_rank()}"
-        )
-
         self.model.load_state_dict(
             torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
         )
@@ -256,11 +245,12 @@ class TrainLoopRunner:
         for k, v in metrics_json.items():
             self._metrics[k].__dict__.update(v)
 
-        logger.info(
-            f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-            f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-            f"{ray.train.get_checkpoint()}"
-        )
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"{ray.train.get_checkpoint()}"
+            )
 
     def save_checkpoint(self, local_dir: str):
         train_state = {
@@ -274,6 +264,12 @@ class TrainLoopRunner:
         metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
         with open(os.path.join(local_dir, "metrics.json"), "w") as f:
             json.dump(metrics_json, f)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx}"
+            )
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
