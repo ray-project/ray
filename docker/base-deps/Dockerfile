@@ -86,7 +86,8 @@ $HOME/anaconda3/bin/conda clean -y --all
 
 PIP_PKGS=(
     # Required a recent version of setuptools to be compatible with python 3.12+.
-    setuptools==71.1.0
+    setuptools==75.8.0
+    pip==25.0.1
 
     flatbuffers
     cython
