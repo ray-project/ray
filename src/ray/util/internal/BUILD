@@ -3,9 +3,9 @@ load("//bazel:ray.bzl", "ray_cc_library")
 package(default_visibility = ["//src/ray/util:__subpackages__"])
 
 ray_cc_library(
-    name = "stream_redirection_utils",
-    srcs = ["stream_redirection_utils.cc"],
-    hdrs = ["stream_redirection_utils.h"],
+    name = "stream_redirection_handle",
+    srcs = ["stream_redirection_handle.cc"],
+    hdrs = ["stream_redirection_handle.h"],
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:pipe_logger",

@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "ray/util/compat.h"
-#include "ray/util/internal/stream_redirection_utils.h"
+#include "ray/util/internal/stream_redirection_handle.h"
 #include "ray/util/util.h"
 
 namespace ray {

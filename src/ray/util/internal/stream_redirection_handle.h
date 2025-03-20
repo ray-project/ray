@@ -21,7 +21,8 @@
 
 namespace ray::internal {
 
-struct RedirectionHandleWrapper {
+class RedirectionHandleWrapper {
+ public:
   RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
                            const StreamRedirectionOption &opt);
 
@@ -40,9 +41,10 @@ struct RedirectionHandleWrapper {
   // the unit test for now.
   void FlushOnRedirectedStream();
 
-  RedirectionFileHandle redirection_file_handle;
+ private:
+  RedirectionFileHandle redirection_file_handle_;
   // Used for restoration.
-  std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper;
+  std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper_;
 };
 
 }  // namespace ray::internal

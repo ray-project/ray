@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "ray/util/internal/stream_redirection_utils.h"
 #include "ray/util/stream_redirection_options.h"
 
 namespace ray {

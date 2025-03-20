@@ -1,8 +1,8 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
-    name = "stream_redirection_utils_test",
-    srcs = ["stream_redirection_utils_test.cc"],
+    name = "stream_redirection_handle_test",
+    srcs = ["stream_redirection_handle_test.cc"],
     tags = [
         "team:core",
         # TSAN fails to understand synchronization logic, from the stacktrace, it shows we flush
@@ -14,7 +14,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
-        "//src/ray/util/internal:stream_redirection_utils",
+        "//src/ray/util/internal:stream_redirection_handle",
         "@com_google_googletest//:gtest_main",
     ],
 )
