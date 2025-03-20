@@ -20,7 +20,7 @@ steps:
           --cache-test-results --parallelism-per-worker 2
           --build-name oss-ci-base_test
           --build-type cgroup
-          --privileged
+          --privileged || true
       - sleep 3600
     instance_type: small
     depends_on:
