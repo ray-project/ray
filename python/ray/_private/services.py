@@ -2041,12 +2041,15 @@ def determine_plasma_store_config(
     small, in which case we will fall back to /tmp. If any of the object store
     memory or plasma directory parameters are specified by the user, then those
     values will be preserved.
-    2. which directory to use for the fallback files. It will default to the temp_dir if not specified.
+    2. which directory to use for the fallback files. It will default to the temp_dir
+    if it is not extracted from the object_spilling_config.
 
     Args:
         object_store_memory: The object store memory to use.
         plasma_directory: The user-specified plasma directory parameter.
-        fallback_directory: The user-specified fallback directory parameter.
+        fallback_directory: The path extracted from the object_spilling_config when the
+                            object spilling config is set and the spilling type is to
+                            filesystem.
         huge_pages: The user-specified huge pages parameter.
 
     Returns:

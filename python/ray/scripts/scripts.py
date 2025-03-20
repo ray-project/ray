@@ -541,10 +541,10 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
-    "--fallback-directory",
+    "--object-spilling-storage-path",
     required=False,
     type=str,
-    help="The directory for fallback allocation files.",
+    help="The path to spill objects to. The same path will be used as the object store fallback directory as well.",
 )
 @click.option(
     "--autoscaling-config",
@@ -677,7 +677,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
-    fallback_directory,
+    object_spilling_storage_path,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -767,7 +767,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
-        fallback_directory=fallback_directory,
+        object_spilling_storage_path=object_spilling_storage_path,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,

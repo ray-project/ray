@@ -71,7 +71,8 @@ class RayParams:
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        fallback_directory: A directory where the Object store fallback files will be created
+        object_spilling_storage_path: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
         worker_path: The path of the source code that will be run by the
             worker.
         setup_worker_path: The path of the Python file that will set up
@@ -165,7 +166,7 @@ class RayParams:
         redis_username: Optional[str] = ray_constants.REDIS_DEFAULT_USERNAME,
         redis_password: Optional[str] = ray_constants.REDIS_DEFAULT_PASSWORD,
         plasma_directory: Optional[str] = None,
-        fallback_directory: Optional[str] = None,
+        object_spilling_storage_path: Optional[str] = None,
         worker_path: Optional[str] = None,
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
@@ -225,7 +226,7 @@ class RayParams:
         self.redis_username = redis_username
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
-        self.fallback_directory = fallback_directory
+        self.object_spilling_storage_path = object_spilling_storage_path
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
         self.huge_pages = huge_pages

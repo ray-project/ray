@@ -1416,14 +1416,13 @@ def init(
             This storage path must be accessible by all nodes of the cluster, otherwise
             an error will be raised. This option can also be specified as the
             RAY_STORAGE env var.
+        object_spilling_storage_path:
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
-        _plasma_directory: Override the plasma mmap file directory.
-        _fallback_directory: Override the object store fallback directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
@@ -1482,7 +1481,9 @@ def init(
         "_enable_object_reconstruction", False
     )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
-    _fallback_directory: Optional[str] = kwargs.pop("_fallback_directory", None)
+    _object_spilling_storage_path: Optional[str] = kwargs.pop(
+        "object_spilling_storage_path", None
+    )
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
@@ -1720,7 +1721,7 @@ def init(
             redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
-            fallback_directory=_fallback_directory,
+            object_spilling_storage_path=_object_spilling_storage_path,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
