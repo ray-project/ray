@@ -16,13 +16,13 @@ You can specify a custom directory for spilling objects by setting the
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. doctest::
 
             ray.init(object_spilling_storage_path="/path/to/spill/dir")
 
     .. tab-item:: CLI
 
-        .. code-block:: bash
+        .. doctest::
 
             ray start --object-spilling-storage-path=/path/to/spill/dir
 
