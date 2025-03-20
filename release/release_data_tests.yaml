@@ -224,30 +224,19 @@
 # Iteration tests
 #################
 
-- name: iter_batches
+- name: iter_batches_$format
+
+  matrix:
+    setup:
+      - format: [numpy, pandas, pyarrow]
 
   run:
     timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches $format
 
-  variations:
-    - __suffix__: numpy
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches numpy
-    - __suffix__: pandas
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches pandas
-    - __suffix__: pyarrow
-      run:
-        script: >
-          python read_and_consume_benchmark.py
-          s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-          --iter-batches pyarrow
 
 - name: to_tf
 
@@ -284,27 +273,23 @@
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 10
 
-- name: map_batches
+- name: map_batches_$compute_$format
+
+  matrix:
+    setup:
+      - format: [numpy, pandas, pyarrow]
+      - compute: [tasks]
+    adjustments:
+      - with:
+          - format: numpy
+            compute: actors
+
   run:
     timeout: 5400
+    script: >
+      python map_benchmark.py --api map_batches --batch-format $format
+      --compute $compute --sf 1000
 
-  variations:
-    - __suffix__: numpy
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format numpy --sf 1000
-    - __suffix__: pandas
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
-    - __suffix__: pyarrow
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
-    - __suffix__: actors
-      run:
-        script: >
-          python map_benchmark.py --api map_batches --compute actors --sf 1000
 
 ########################
 # Sort and shuffle tests

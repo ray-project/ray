@@ -1,16 +1,16 @@
 import sys
-import yaml
-import pytest
 
-from ray_release.test import Test
+import pytest
+import yaml
 from ray_release.config import (
-    read_and_validate_release_test_collection,
-    validate_cluster_compute,
     load_schema_file,
     parse_test_definition,
+    read_and_validate_release_test_collection,
+    validate_cluster_compute,
     validate_test,
 )
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.test import Test
 
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
@@ -127,6 +127,79 @@ def test_parse_test_definition_with_defaults():
     assert not validate_test(test_with_override, schema)
     assert test_with_default["working_dir"] == "default_working_dir"
     assert test_with_override["working_dir"] == "overridden_working_dir"
+
+
+def test_parse_test_definition_with_matrix_and_variations_raises():
+    # Matrix and variations are mutually exclusive.
+    test_definitions = yaml.safe_load(
+        """
+        - name: test
+          frequency: nightly
+          team: team
+          working_dir: sample_dir
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: $os.yaml
+          matrix:
+            setup:
+              os: [windows, linux]
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: amd64
+            - __suffix__: arm64
+    """
+    )
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition(test_definitions)
+
+
+def test_parse_test_definition_with_matrix_and_adjustments():
+    test_definitions = yaml.safe_load(
+        """
+        - name: test-$compute-$arg
+          frequency: nightly
+          team: team
+          working_dir: sample_dir
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: $compute.yaml
+          matrix:
+            setup:
+              compute: [fixed, autoscaling]
+              arg: [0, 1]
+            adjustments:
+                - with:
+                    # Only run arg 2 with fixed compute
+                    compute: fixed
+                    arg: 2
+          run:
+            timeout: 100
+            script: python script.py --arg $arg
+    """
+    )
+    tests = parse_test_definition(test_definitions)
+    schema = load_schema_file()
+
+    assert len(tests) == 5  # 4 from matrix, 1 from adjustments
+    assert not validate_test(tests[0], schema)
+    assert not validate_test(tests[1], schema)
+    assert not validate_test(tests[2], schema)
+    assert not validate_test(tests[3], schema)
+    assert not validate_test(tests[4], schema)
+    assert tests[0]["name"] == "test-fixed-0"
+    assert tests[1]["name"] == "test-fixed-1"
+    assert tests[2]["name"] == "test-autoscaling-0"
+    assert tests[3]["name"] == "test-autoscaling-1"
+    assert tests[4]["name"] == "test-fixed-2"
+    assert tests[0]["cluster"]["cluster_compute"] == "fixed.yaml"
+    assert tests[1]["cluster"]["cluster_compute"] == "fixed.yaml"
+    assert tests[2]["cluster"]["cluster_compute"] == "autoscaling.yaml"
+    assert tests[3]["cluster"]["cluster_compute"] == "autoscaling.yaml"
+    assert tests[4]["cluster"]["cluster_compute"] == "fixed.yaml"
 
 
 def test_schema_validation():
