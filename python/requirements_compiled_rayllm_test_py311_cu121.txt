@@ -3906,9 +3906,9 @@ virtualenv==20.29.1 \
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   -r python/requirements.txt
     #   ray
-vllm==0.7.2 \
-    --hash=sha256:51fcb7d60149f75ec85d457fab6ccd88a2b1a6344c28aad46b0f8776b29e9d47 \
-    --hash=sha256:bdeeda5624182e6a93895cbb7e20b6e88b04d22b8272d8a255741b28b36ae941
+vllm==0.8.0 \
+    --hash=sha256:449e6651d30d6d5025d0d42499cf1a02d983915ef3b3670547db14a0431aa9bd \
+    --hash=sha256:d3660eda448560b0ce6a1524466d7d36ec0024e772c9dbf562dbead980e7d480
     # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
