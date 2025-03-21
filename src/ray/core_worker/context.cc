@@ -16,6 +16,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <memory>
 #include <string>
 
 #include "ray/common/runtime_env_common.h"

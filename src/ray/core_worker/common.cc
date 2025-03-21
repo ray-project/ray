@@ -15,6 +15,7 @@
 #include "ray/core_worker/common.h"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>

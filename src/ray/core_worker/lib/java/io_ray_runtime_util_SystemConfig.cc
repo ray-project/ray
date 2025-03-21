@@ -15,8 +15,8 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
 #include "nlohmann/json.hpp"
+#include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/util/logging.h"
 
 using json = nlohmann::json;

@@ -16,10 +16,12 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include <string>
+
 #include "ray/common/id.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/lib/java/jni_utils.h"
 
 #ifdef __cplusplus
 extern "C" {

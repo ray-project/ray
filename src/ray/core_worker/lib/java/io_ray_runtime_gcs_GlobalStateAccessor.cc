@@ -16,10 +16,12 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "boost/algorithm/string.hpp"
-#include "jni_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/lib/java/jni_utils.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #ifdef __cplusplus

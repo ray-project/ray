@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
