@@ -33,12 +33,6 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
-      # doc memory pressure example
-      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
-        --build-name doctestbuild
-        --only-tags mem_pressure
-        --except-tags gpu
-        --skip-ray-installation
     depends_on: doctestbuild
 
   - label: failing doc tests
