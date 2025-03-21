@@ -40,7 +40,8 @@ enum PredefinedResourcesEnum {
 
 inline constexpr std::string_view kCPU_ResourceLabel = "CPU";
 inline constexpr std::string_view kGPU_ResourceLabel = "GPU";
-inline constexpr std::string_view kObjectStoreMemory_ResourceLabel = "object_store_memory";
+inline constexpr std::string_view kObjectStoreMemory_ResourceLabel =
+    "object_store_memory";
 inline constexpr std::string_view kMemory_ResourceLabel = "memory";
 inline constexpr std::string_view kBundle_ResourceLabel = "bundle";
 
