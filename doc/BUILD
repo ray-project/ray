@@ -395,40 +395,71 @@ doctest(
     size = "large",
     files = glob(
         include = [
-            "source/**/*.rst",
             "source/**/*.md",
+            "source/**/*.rst",
         ],
         exclude = [
             "source/ray-contribute/getting-involved.rst",
             "source/ray-contribute/testing-tips.rst",
-            "source/ray-core/handling-dependencies.rst",
-            "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
-            "source/serve/production-guide/fault-tolerance.md",
-            "source/data/**/*.rst",
-            "source/data/**/*.md",
-            "source/train/**/*.rst",
-            "source/train/**/*.md",
-            "source/workflows/**/*.rst",
-            "source/workflows/**/*.md",
-            "source/rllib/**/*.rst",
-            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
+            "source/ray-core/**/*.md",
+            "source/ray-core/**/*.rst",
+            "source/data/**/*.md",
+            "source/data/**/*.rst",
+            "source/rllib/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/serve/**/*.md",
+            "source/serve/**/*.rst",
+            "source/train/**/*.md",
+            "source/train/**/*.rst",
+            "source/workflows/**/*.md",
+            "source/workflows/**/*.rst",
         ],
     ),
     tags = ["team:none"],
 )
 
 doctest(
+    name = "doctest[core]",
+    files = glob(
+        include = [
+            "source/ray-core/**/*.md",
+            "source/ray-core/**/*.rst",
+        ],
+        exclude = [
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+        ],
+    ),
+    tags = ["team:serve"],
+)
+
+doctest(
+    name = "doctest[serve]",
+    files = glob(
+        include = [
+            "source/serve/**/*.md",
+            "source/serve/**/*.rst",
+        ],
+        exclude = [
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+        ],
+    ),
+    tags = ["team:serve"],
+)
+
+
+doctest(
     name = "doctest[train]",
     files = glob(
         include = [
-            "source/train/**/*.rst",
             "source/train/**/*.md",
+            "source/train/**/*.rst",
         ],
         exclude = [
             # GPU
@@ -454,8 +485,8 @@ doctest(
     name = "doctest[workflow]",
     files = glob(
         include = [
-            "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
+            "source/workflows/**/*.rst",
         ],
     ),
     tags = ["team:core"],
@@ -467,8 +498,8 @@ doctest(
     data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
-            "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
+            "source/rllib/**/*.rst",
         ],
         exclude = [
             "source/rllib/getting-started.rst",
@@ -492,8 +523,8 @@ doctest(
     name = "doctest[data]",
     files = glob(
         include = [
-            "source/data/**/*.rst",
             "source/data/**/*.md",
+            "source/data/**/*.rst",
         ],
         exclude = [
             # These tests run on GPU (see below).
