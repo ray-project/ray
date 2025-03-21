@@ -2416,7 +2416,7 @@ def test_deploy_with_partial_constructor_failure(
 
     dsm.update()
     # Ensure our goal returned with replica_has_started flag set
-    assert ds._replica_has_started == True
+    assert ds._replica_has_started
     # Deployment should NOT be considered complete yet
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
@@ -2614,7 +2614,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
 
     assert ds._replica_constructor_retry_counter == 0
-    assert ds._replica_has_started == True
+    assert ds._replica_has_started
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
         ds.curr_status_info.status_trigger
