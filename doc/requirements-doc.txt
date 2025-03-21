@@ -41,3 +41,6 @@ urllib3 < 1.27
 click==8.1.7
 boto3==1.34.69
 requests==2.32.3
+
+# for apilist.txt
+pysymbol_llm==0.0.5

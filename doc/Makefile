@@ -26,7 +26,7 @@ ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS)
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show markdown singlemarkdown
+.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show markdown singlemarkdown apilist
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
@@ -57,6 +57,7 @@ help:
 	@echo "  coverage        to run coverage check of the documentation (if enabled)"
 	@echo "  markdown        to make Markdown files using sphinx-markdown-builder"
 	@echo "  singlemarkdown  to make a single Markdown file using sphinx-markdown-builder"
+	@echo "  apilist         to generate API documentation using pysymbol_llm"
 clean:
 	rm -rf $(BUILDDIR)/*
 	rm -rf ./source/__pycache__/
@@ -80,7 +81,7 @@ html:
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
 
-develop: html
+develop: html apilist singlemarkdown
 
 RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 
@@ -242,3 +243,9 @@ singlemarkdown:
 	$(SPHINXBUILD) -M markdown $(ALLSPHINXOPTS) $(BUILDDIR)/singlemarkdown
 	@echo
 	@echo "Build finished. The single Markdown file is in $(BUILDDIR)/singlemarkdown."
+
+apilist:
+	@echo "Generating API documentation using pysymbol_llm"
+	pip install "ray[all]" pysymbol_llm
+	pysym2md --output_file apilist.txt ray
+	@echo "API documentation generated in apilist.txt"
