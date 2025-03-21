@@ -135,7 +135,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
-        "team:serve",
+        "team:core",
     ],
 )
 
@@ -435,7 +435,7 @@ doctest(
             "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
-    tags = ["team:serve"],
+    tags = ["team:core"],
 )
 
 doctest(
