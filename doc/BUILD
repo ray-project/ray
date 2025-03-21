@@ -414,6 +414,8 @@ doctest(
             "source/serve/**/*.rst",
             "source/train/**/*.md",
             "source/train/**/*.rst",
+            "source/tune/**/*.md",
+            "source/tune/**/*.rst",
             "source/workflows/**/*.md",
             "source/workflows/**/*.rst",
         ],
@@ -434,89 +436,6 @@ doctest(
         ],
     ),
     tags = ["team:serve"],
-)
-
-doctest(
-    name = "doctest[serve]",
-    files = glob(
-        include = [
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-        ],
-        exclude = [
-            "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
-            "source/serve/production-guide/fault-tolerance.md",
-        ],
-    ),
-    tags = ["team:serve"],
-)
-
-
-doctest(
-    name = "doctest[train]",
-    files = glob(
-        include = [
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-        ],
-        exclude = [
-            # GPU
-            "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
-            "source/train/horovod.rst",  # CI do not have Horovod
-        ],
-    ),
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[train]",
-    files = [
-        "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
-    ],
-    gpu = True,
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[workflow]",
-    files = glob(
-        include = [
-            "source/workflows/**/*.md",
-            "source/workflows/**/*.rst",
-        ],
-    ),
-    tags = ["team:core"],
-)
-
-doctest(
-    name = "doctest[rllib]",
-    size = "large",
-    data = ["//rllib:cartpole-v1_large"],
-    files = glob(
-        include = [
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-        ],
-        exclude = [
-            "source/rllib/getting-started.rst",
-        ],
-    ),
-    tags = ["team:rllib"],
-)
-
-doctest(
-    name = "doctest[rllib2]",
-    size = "large",
-    files = glob(
-        include = [
-            "source/rllib/getting-started.rst",
-        ],
-    ),
-    tags = ["team:rllib"],
 )
 
 doctest(
@@ -555,4 +474,98 @@ doctest(
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
     gpu = True,
+)
+
+doctest(
+    name = "doctest[rllib]",
+    size = "large",
+    data = ["//rllib:cartpole-v1_large"],
+    files = glob(
+        include = [
+            "source/rllib/**/*.md",
+            "source/rllib/**/*.rst",
+        ],
+        exclude = [
+            "source/rllib/getting-started.rst",
+        ],
+    ),
+    tags = ["team:rllib"],
+)
+
+doctest(
+    name = "doctest[rllib2]",
+    size = "large",
+    files = glob(
+        include = [
+            "source/rllib/getting-started.rst",
+        ],
+    ),
+    tags = ["team:rllib"],
+)
+
+doctest(
+    name = "doctest[serve]",
+    files = glob(
+        include = [
+            "source/serve/**/*.md",
+            "source/serve/**/*.rst",
+        ],
+        exclude = [
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+        ],
+    ),
+    tags = ["team:serve"],
+)
+
+
+doctest(
+    name = "doctest[train]",
+    files = glob(
+        include = [
+            "source/train/**/*.md",
+            "source/train/**/*.rst",
+        ],
+        exclude = [
+            # CI does not have Horovod installed.
+            "source/train/horovod.rst",
+            # These tests run on GPU (see below).
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst",
+        ],
+    ),
+    tags = ["team:ml"],
+)
+
+doctest(
+    name = "doctest[train-gpu]",
+    files = [
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst",
+    ],
+    tags = ["team:ml"],
+    gpu = True,
+)
+
+
+doctest(
+    name = "doctest[tune]",
+    files = [
+        "source/tune/**/*.md",
+        "source/tune/**/*.rst",
+    ],
+    tags = ["team:ml"],
+)
+
+doctest(
+    name = "doctest[workflow]",
+    files = glob(
+        include = [
+            "source/workflows/**/*.md",
+            "source/workflows/**/*.rst",
+        ],
+    ),
+    tags = ["team:core"],
 )
