@@ -15,7 +15,7 @@ Ray Tune Examples
     Exercises <exercises>
 
 
-.. tip:: See :ref:<tune-guides> to learn more about Tune features.
+.. tip:: See :ref:`overview` to learn more about Tune features.
 
 
 Below are examples for using Ray Tune for a variety use cases.
@@ -25,27 +25,27 @@ ML frameworks
 
 .. list-table::
 
-  * - :doc:<tune-mnist-keras>
-  * - :doc:<tune-pytorch-cifar-ref>
-  * - :doc:<tune-pytorch-lightning-ref>
-  * - :doc:<tune-rllib-example>
-  * - :doc:<tune-xgboost-ref>
-  * - :doc:<tune-lightgbm-example>
-  * - :doc:<tune-horovod-example>
-  * - :doc:<tune-huggingface-example>
+  * - :doc:`tune_mnist_keras`
+  * - :doc:`tune-pytorch-cifar`
+  * - :doc:`tune-pytorch-lightning`
+  * - :doc:`pbt_ppo_example`
+  * - :doc:`tune-xgboost`
+  * - :doc:`lightgbm_example`
+  * - :doc:`horovod_simple`
+  * - :doc:`pbt_transformers`
+  * - :doc:`../../train/examples/tf/tune_tensorflow_mnist_example`
+  * - :doc:`../../train/examples/pytorch/tune_cifar_torch_pbt_example`  
 
-  
 
-
-Intermediate
-------------
+Experiment tracking
+-------------------
 
 .. list-table::
 
-  * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
-  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
-
-
+  * - :doc:`tune-wandb`
+  * - :doc:`tune-mlflow`
+  * - :doc:`tune-aim`
+  * - :doc:`tune-comet`
 Advanced
 --------
 
