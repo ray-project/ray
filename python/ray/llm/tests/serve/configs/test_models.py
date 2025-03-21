@@ -220,7 +220,7 @@ class TestModelConfig:
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{'CPU': 1, 'GPU': 0}] + [
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
             {"GPU": 1} for _ in range(6)
         ]
 
@@ -230,7 +230,7 @@ class TestModelConfig:
             engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
             resources_per_bundle={"XPU": 1},
         ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [{'CPU': 1, 'GPU': 0}] + [
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
             {"XPU": 1} for _ in range(6)
         ]
 
