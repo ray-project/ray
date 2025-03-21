@@ -150,6 +150,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         throughput: Union[bool, float] = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ):
         """Initializes a Stats instance.
 
@@ -196,6 +197,8 @@ class Stats:
                 `throughput_per_sec = Stats.peek(throughput=True)`.
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if throughput=True. Defaults to 0.05.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -237,15 +240,21 @@ class Stats:
         # previous `reduce()` result in hist[1].
         self._hist = deque([0, 0, 0], maxlen=3)
 
-        self._throughput = throughput if throughput is not True else 0.0
-        if self._throughput is not False:
+        self._throughput_ema_coeff = throughput_ema_coeff
+        self._throughput_stats = None
+        if throughput is not False:
             if self._reduce_method != "sum" or not self._inf_window:
                 raise ValueError(
                     "Can't track throughput for a Stats that a) doesn't have "
                     "reduce='sum' and/or b) has a finite window! Set `Stats("
                     "reduce='sum', window=None)`."
                 )
-            self._throughput_last_time = -1
+            self._throughput_stats = Stats(
+                # We have to check for bool here because in Python, bool is a subclass of int
+                init_value=throughput if (isinstance(throughput, (int, float))and not isinstance(throughput, bool))  else 0.0,
+                reduce="mean",
+                ema_coeff=throughput_ema_coeff
+            )
             self._last_push_time = -1  # Track last push time for throughput calculation
 
         # The actual, underlying data in this Stats object.
@@ -261,11 +270,12 @@ class Stats:
         current_time = time.time()
 
         # If throughput tracking is enabled, calculate it based on time between pushes
-        if self._throughput is not False:
+        if self._throughput_stats is not None:
             if self._last_push_time >= 0:
                 time_diff = current_time - self._last_push_time
                 if time_diff > 0:  # Avoid division by zero
-                    self._throughput = value / time_diff
+                    current_throughput = value / time_diff
+                    self._throughput_stats.push(current_throughput)
             self._last_push_time = current_time
 
         # Handle different reduction methods
@@ -309,7 +319,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: Optional[int] = None, throughput: bool = False) -> Any:
+    def peek(self, *, previous: Optional[int] = None) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -320,26 +330,26 @@ class Stats:
             previous: If provided (int), returns that previously (reduced) result of
                 this `Stats` object, which was generated `previous` number of `reduce()`
                 calls ago). If None (default), returns the current (reduced) value.
-            throughput: If True and throughput tracking is enabled, returns only the
-                throughput value per second.
 
         Returns:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
-        if previous is not None and throughput:
-            raise ValueError(
-                "Can't use `previous` and `throughput` args in same `Stats.peek()` "
-                "call!"
-            )
-
         # Return previously reduced value.
         if previous is not None:
             return self._hist[-abs(previous)]
-        # Return the last measured throughput.
-        elif throughput:
-            return self._throughput if self._throughput is not False else None
         return self._reduced_values()[0]
+
+    @property
+    def throughput(self) -> float:
+        """Returns the current throughput estimate per second.
+
+        Raises:
+            ValueError: If throughput tracking is not enabled for this Stats object.
+        """
+        if self._throughput_stats is None:
+            raise ValueError("Throughput tracking is not enabled for this Stats object")
+        return self._throughput_stats.peek()
 
     def reduce(self) -> "Stats":
         """Reduces the internal values list according to the constructor settings.
@@ -355,22 +365,6 @@ class Stats:
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
         reduced, values = self._reduced_values()
-
-        # Keep track and update underlying throughput metric.
-        if self._throughput is not False:
-            # Take the delta between the new (upcoming) reduced value and the most
-            # recently reduced value (one `reduce()` call ago).
-            delta_sum = reduced - self._hist[-1]
-            time_now = time.perf_counter()
-            # `delta_sum` may be < 0.0 if user overrides a metric through
-            # `.set_value()`.
-            if self._throughput_last_time == -1 or delta_sum < 0.0:
-                self._throughput = np.nan
-            else:
-                delta_time = time_now - self._throughput_last_time
-                assert delta_time >= 0.0
-                self._throughput = delta_sum / delta_time
-            self._throughput_last_time = time_now
 
         # Reduce everything to a single (init) value.
         self._set_values(values)
@@ -403,8 +397,8 @@ class Stats:
         self.values.extend(other.values)
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput is not False:
-            self._throughput = other._throughput
+        if self._throughput_stats is not None:
+            self._throughput_stats.merge_in_parallel(other._throughput_stats)
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
@@ -583,6 +577,12 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
+        # Adopt `other`'s current throughput estimate (it's the newer one).
+        if self._throughput_stats is not None:
+            for other in others:
+                if other._throughput_stats is not None:
+                    self._throughput_stats.merge_in_parallel(other._throughput_stats)
+
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
 
@@ -648,27 +648,42 @@ class Stats:
         return f"{float(self):{fmt}}"
 
     def get_state(self) -> Dict[str, Any]:
-        return {
+        state = {
             "values": convert_to_numpy(self.values),
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "throughput": self._throughput,
             "_hist": list(self._hist),
         }
+        if self._throughput_stats is not None:
+            state["throughput_stats"] = self._throughput_stats.get_state()
+        return state
 
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "Stats":
-        stats = Stats(
-            state["values"],
-            reduce=state["reduce"],
-            window=state["window"],
-            ema_coeff=state["ema_coeff"],
-            throughput=state["throughput"],
-            clear_on_reduce=state["clear_on_reduce"],
-        )
+        if "throughput_stats" in state:
+            throughput_stats = Stats.from_state(state["throughput_stats"])
+            stats = Stats(
+                state["values"],
+                reduce=state["reduce"],
+                window=state["window"],
+                ema_coeff=state["ema_coeff"],
+                clear_on_reduce=state["clear_on_reduce"],
+                throughput=throughput_stats.peek(),
+                throughput_ema_coeff=throughput_stats._ema_coeff,
+            )
+        else:
+            stats = Stats(
+                state["values"],
+                reduce=state["reduce"],
+                window=state["window"],
+                ema_coeff=state["ema_coeff"],
+                clear_on_reduce=state["clear_on_reduce"],   
+            )
         stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        if "throughput_stats" in state:
+            stats._throughput_stats = Stats.from_state(state["throughput_stats"])
         return stats
 
     @staticmethod
@@ -697,7 +712,8 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
-            throughput=other._throughput,
+            throughput=other._throughput_stats.peek() if other._throughput_stats is not None else False,
+            throughput_ema_coeff=other._throughput_ema_coeff,
         )
         stats._hist = other._hist
         return stats

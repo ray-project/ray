@@ -240,42 +240,36 @@ def test_similar_to():
 def test_throughput_without_reduce():
     """Test that throughput is tracked correctly without explicit reduce() calls."""
     # Create a Stats object that tracks throughput
-    stats = Stats(reduce="sum", window=None, throughput=True)
+    stats = Stats(reduce="sum", window=None, throughput=True, throughput_ema_coeff=1)
 
     # Push some values with time delays to simulate real usage
     import time
 
     # First push - throughput should be 0 initially
     stats.push(1)
-    throughput = stats.peek(throughput=True)
     assert stats.peek() == 1
-    assert throughput == 0.0  # No throughput yet as we only have one value
+    assert stats.throughput == 0.0  # No throughput yet as we only have one value
 
     # Push second value after a delay
     time.sleep(0.1)  # 100ms delay
     stats.push(2)
-    throughput = stats.peek(throughput=True)
     assert stats.peek() == 3  # sum of 1 + 2
-    assert 15 < throughput < 25  # 2/0.1 = 20 values per second
+    assert 15 < stats.throughput < 25  # 2/0.1 = 20 values per second
 
     # Push third value after another delay
     time.sleep(0.2)  # 200ms delay
     stats.push(3)
-    throughput = stats.peek(throughput=True)
     assert stats.peek() == 6  # sum of 1 + 2 + 3
-    assert 10 < throughput < 20  # 3/0.3 = 10 values per second
+    assert 10 < stats.throughput < 20  # 3/0.3 = 10 values per second
 
     # Test that throughput is only available when requested
     assert stats.peek() == 6  # Regular peek returns just the value
-    assert (
-        stats.peek(throughput=True) == throughput
-    )  # Throughput peek returns just throughput
+    assert stats.throughput == stats.throughput  # Throughput property returns throughput
 
     # Test that throughput is 0 when no values are pushed
     empty_stats = Stats(reduce="sum", window=None, throughput=True)
-    throughput = empty_stats.peek(throughput=True)
     assert empty_stats.peek() == 0
-    assert throughput == 0.0
+    assert empty_stats.throughput == 0.0
 
     # Test that throughput tracking requires sum reduction
     with pytest.raises(ValueError):
@@ -295,16 +289,19 @@ def test_throughput_without_reduce():
     loaded_stats = Stats.from_state(state)
     assert loaded_stats._last_push_time == -1  # Should be -1 after loading
     assert loaded_stats.peek() == 6  # Value should be preserved
-    assert loaded_stats.peek(throughput=True) == stats.peek(
-        throughput=True
-    )  # Throughput should be preserved
+    assert loaded_stats.throughput == stats.throughput  # Throughput should be preserved
 
     # Test that throughput tracking works after loading
-    throughput_before = stats.peek(throughput=True)
+    throughput_before = stats.throughput
+    loaded_stats.reduce()
     loaded_stats.push(2)
+    loaded_stats.reduce()
     time.sleep(0.1)  # 100ms delay
     loaded_stats.push(4)
-    throughput = loaded_stats.peek(throughput=True)
-
     assert loaded_stats.peek() == 12  # sum of 6 + 4
-    assert 30 < throughput < 50  # 4/0.1 = 40 values per second
+    assert 30 < loaded_stats.throughput < 50  # 4/0.1 = 40 values per second
+
+    # Test that accessing throughput on non-throughput stats raises error
+    non_throughput_stats = Stats(reduce="sum")
+    with pytest.raises(ValueError):
+        non_throughput_stats.throughput
