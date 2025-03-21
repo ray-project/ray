@@ -19,6 +19,9 @@ import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
  * @param {String} url The URL to be hit
  * @return {String}    The reverse proxy compatible URL
  */
+
+const axiosInstance = axios.create();
+
 export const formatUrl = (url: string): string => {
   if (url.startsWith("/")) {
     return url.slice(1);
@@ -30,5 +33,27 @@ export const get = <T = any, R = AxiosResponse<T>>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<R> => {
-  return axios.get<T, R>(formatUrl(url), config);
+  return axiosInstance.get<T, R>(formatUrl(url), config);
+};
+
+export const post = <T = any, R = AxiosResponse<T>>(
+  url: string,
+  data?: any,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  console.log(
+    `URL posted: ${formatUrl(url)} - data  ${data} - config  ${config}`,
+  );
+  return axiosInstance.post<T, R>(formatUrl(url), data, config);
+};
+
+export const deleteRequest = <T = any, R = AxiosResponse<T>>(
+  url: string,
+  data?: any,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  console.log(
+    `URL posted: ${formatUrl(url)} - data  ${data} - config  ${config}`,
+  );
+  return axiosInstance.delete<T, R>(formatUrl(url), data);
 };
