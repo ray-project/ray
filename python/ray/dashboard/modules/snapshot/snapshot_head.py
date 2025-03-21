@@ -1,4 +1,3 @@
-import concurrent.futures
 import enum
 import json
 import logging
@@ -14,11 +13,11 @@ from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.utils import load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 SNAPSHOT_API_TIMEOUT_SECONDS = 30
 
@@ -71,42 +70,50 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
         return v
 
 
-class APIHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
-        # For offloading CPU intensive work.
-        self._thread_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="api_head"
-        )
+class APIHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     @routes.get("/api/actors/kill")
-    async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
+    async def kill_actor_gcs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         actor_id = req.query.get("actor_id")
         force_kill = req.query.get("force_kill", False) in ("true", "True")
         no_restart = req.query.get("no_restart", False) in ("true", "True")
         if not actor_id:
             return dashboard_optional_utils.rest_response(
-                success=False, message="actor_id is required."
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="actor_id is required.",
             )
 
-        await self.gcs_aio_client.kill_actor(
+        status_code = await self.gcs_aio_client.kill_actor(
             ActorID.from_hex(actor_id),
             force_kill,
             no_restart,
             timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
 
-        message = (
-            f"Force killed actor with id {actor_id}"
-            if force_kill
-            else f"Requested actor with id {actor_id} to terminate. "
-            + "It will exit once running tasks complete"
+        if status_code == dashboard_utils.HTTPStatusCode.NOT_FOUND:
+            message = f"Actor with id {actor_id} not found."
+        elif status_code == dashboard_utils.HTTPStatusCode.INTERNAL_ERROR:
+            message = f"Failed to kill actor with id {actor_id}."
+        elif status_code == dashboard_utils.HTTPStatusCode.OK:
+            message = (
+                f"Force killed actor with id {actor_id}"
+                if force_kill
+                else f"Requested actor with id {actor_id} to terminate. "
+                + "It will exit once running tasks complete"
+            )
+        else:
+            message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
+
+        return dashboard_optional_utils.rest_response(
+            status_code=status_code, message=message
         )
 
-        return dashboard_optional_utils.rest_response(success=True, message=message)
-
     @routes.get("/api/component_activities")
-    async def get_component_activities(self, req) -> aiohttp.web.Response:
+    async def get_component_activities(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
         timeout = req.query.get("timeout", None)
         if timeout and timeout.isdigit():
             timeout = int(timeout)
@@ -226,10 +233,3 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 reason=repr(e),
                 timestamp=datetime.now().timestamp(),
             )
-
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False

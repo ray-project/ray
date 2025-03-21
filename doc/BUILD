@@ -1,8 +1,6 @@
-load("//bazel:python.bzl", "py_test_run_all_subdirectory")
-load("//bazel:python.bzl", "py_test_run_all_notebooks")
-load("//bazel:python.bzl", "doctest")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
 
@@ -153,6 +151,42 @@ py_test(
     ],
 )
 
+py_test(
+    name = "doc_code_cgraph_profiling",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
+    main = "source/ray-core/doc_code/cgraph_profiling.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_nccl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_nccl.py"],
+    main = "source/ray-core/doc_code/cgraph_nccl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_overlap",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_overlap.py"],
+    main = "source/ray-core/doc_code/cgraph_overlap.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -160,6 +194,11 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/runtime_env_example.py",
         "source/ray-core/doc_code/cross_language.py",
         "source/ray-core/doc_code/ray_oom_prevention.py",
+        "source/ray-core/doc_code/cgraph_profiling.py",
+        "source/ray-core/doc_code/cgraph_nccl.py",
+        "source/ray-core/doc_code/cgraph_overlap.py",
+        # not testing this as it purposefully segfaults
+        "source/ray-core/doc_code/cgraph_troubleshooting.py",
     ],
     extra_srcs = [],
     tags = [
@@ -183,27 +222,9 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/intel_gaudi_inference_client.py",
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-        "source/serve/doc_code/vllm_openai_example.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/http_guide/streaming_example.py",
-        "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
     ],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-)
-
-py_test_run_all_subdirectory(
-    size = "medium",
-    include = [
-        "source/serve/doc_code/http_guide/streaming_example.py",
-        "source/serve/doc_code/http_guide/websockets_example.py",
-    ],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
-    exclude = [],
     extra_srcs = [],
     tags = [
         "exclusive",
@@ -388,8 +409,8 @@ doctest(
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
-            "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst",
+            "source/data/**/*.rst",
+            "source/data/**/*.md",
             "source/train/**/*.rst",
             "source/train/**/*.md",
             "source/workflows/**/*.rst",
@@ -414,7 +435,7 @@ doctest(
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
             "source/train/horovod.rst",  # CI do not have Horovod
-        ]
+        ],
     ),
     tags = ["team:ml"],
 )
@@ -443,6 +464,7 @@ doctest(
 doctest(
     name = "doctest[rllib]",
     size = "large",
+    data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.rst",
@@ -450,9 +472,8 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-        ]
+        ],
     ),
-    data = ["//rllib:cartpole-v1_large"],
     tags = ["team:rllib"],
 )
 
@@ -468,10 +489,39 @@ doctest(
 )
 
 doctest(
+    name = "doctest[data]",
+    files = glob(
+        include = [
+            "source/data/**/*.rst",
+            "source/data/**/*.md",
+        ],
+        exclude = [
+            # These tests run on GPU (see below).
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            # These tests are currently failing.
+            "source/data/loading-data.rst",
+            "source/data/data-internals.rst",
+            "source/data/inspecting-data.rst",
+            "source/data/loading-data.rst",
+            "source/data/performance-tips.rst",
+            "source/data/saving-data.rst",
+            "source/data/working-with-images.rst",
+            "source/data/working-with-llms.rst",
+            "source/data/working-with-pytorch.rst",
+        ],
+    ),
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
+    tags = ["team:data"],
+)
+
+doctest(
+    name = "doctest[data-gpu]",
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
-    gpu = True,
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    gpu = True,
 )

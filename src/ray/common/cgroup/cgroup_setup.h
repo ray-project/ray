@@ -17,16 +17,20 @@
 #include <string>
 
 #include "ray/common/cgroup/base_cgroup_setup.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
 namespace internal {
 
-// Return whether current user could write to cgroupv2.
-bool CanCurrenUserWriteCgroupV2();
-
-// Return whether cgroup V2 is mounted in read and write mode.
-bool IsCgroupV2MountedAsRw();
+// Checks whether cgroupv2 is properly mounted for read-write operations in the given
+// [directory]. Also checks that cgroupv1 is not mounted.
+// If not, InvalidArgument status is returned.
+//
+// This function is exposed in header file for unit test purpose.
+//
+// \param directory: user provided mounted cgroupv2 directory.
+Status CheckCgroupV2MountedRW(const std::string &directory);
 
 }  // namespace internal
 
@@ -58,7 +62,7 @@ class CgroupSetup : public BaseCgroupSetup {
 
  private:
   // Setup cgroup folders for the given [node_id].
-  void SetupCgroups(const std::string &node_id);
+  Status InitializeCgroupv2Directory(const std::string &node_id);
 
   // Util function to cleanup cgroup after raylet exits.
   // NOTICE: This function is expected to be called once for each raylet instance at its

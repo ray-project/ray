@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -29,8 +34,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/subreaper.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -74,14 +79,8 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
-DEFINE_string(
-    ray_log_filepath,
-    "",
-    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
-DEFINE_string(
-    ray_err_log_filepath,
-    "",
-    "The filename to dump raylet error log on stderr, which is written via `RAY_LOG`.");
+DEFINE_string(stdout_filepath, "", "The filepath to dump raylet stdout.");
+DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -136,24 +135,24 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  if (!FLAGS_ray_log_filepath.empty()) {
+  if (!FLAGS_stdout_filepath.empty()) {
     ray::StreamRedirectionOption stdout_redirection_options;
-    stdout_redirection_options.file_path = FLAGS_ray_log_filepath;
+    stdout_redirection_options.file_path = FLAGS_stdout_filepath;
     stdout_redirection_options.rotation_max_size =
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stdout_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
   }
 
-  if (!FLAGS_ray_err_log_filepath.empty()) {
+  if (!FLAGS_stderr_filepath.empty()) {
     ray::StreamRedirectionOption stderr_redirection_options;
-    stderr_redirection_options.file_path = FLAGS_ray_err_log_filepath;
+    stderr_redirection_options.file_path = FLAGS_stderr_filepath;
     stderr_redirection_options.rotation_max_size =
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stderr_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStderr(stderr_redirection_options);
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
   }
 
   // Backward compatibility notes:
@@ -167,8 +166,8 @@ int main(int argc, char *argv[]) {
                                          ray::RayLog::ShutDownRayLog,
                                          /*app_name=*/argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*ray_log_filepath=*/"",
-                                         /*ray_err_log_filepath=*/"",
+                                         /*log_filepath=*/"",
+                                         /*err_log_filepath=*/"",
                                          /*log_rotation_max_size=*/0,
                                          /*log_rotation_file_num=*/1);
 
