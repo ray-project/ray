@@ -1,5 +1,3 @@
-import sys
-import io
 import os
 import enum
 from typing import TypeVar
@@ -35,23 +33,6 @@ def module_logging_filename(
     if is_stderr:
         extension = ".err"
     return f"{stem}_{module_name}{extension}"
-
-
-def setup_err_logging(module_name: str, log_dir: str, logging_filename: str):
-    """
-    Redirect stdout and stderr to a file in log_dir with the name
-    """
-    stderr_filename = module_logging_filename(
-        module_name, logging_filename, is_stderr=True
-    )
-    err_file = open(os.path.join(log_dir, stderr_filename), "wb", buffering=0)
-    err_file_io_wrapper = io.TextIOWrapper(err_file, write_through=True)
-    orig_stdout_fileno = sys.stdout.fileno()
-    orig_stderr_fileno = sys.stderr.fileno()
-    sys.stdout = err_file_io_wrapper
-    os.dup2(err_file.fileno(), orig_stdout_fileno)
-    sys.stderr = err_file_io_wrapper
-    os.dup2(err_file.fileno(), orig_stderr_fileno)
 
 
 def get_socket_path(socket_dir: str, module_name: str) -> str:

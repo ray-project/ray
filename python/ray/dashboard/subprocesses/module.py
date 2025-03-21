@@ -4,15 +4,17 @@ import aiohttp
 import inspect
 import logging
 import sys
+import os
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_logging import configure_log_file
+from ray._private.utils import open_log
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
-    setup_err_logging,
     get_socket_path,
     get_named_pipe_path,
 )
@@ -198,7 +200,11 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
-    setup_err_logging(module_name, config.log_dir, config.logging_filename)
+    stderr_filename = module_logging_filename(
+        module_name, config.logging_filename, is_stderr=True
+    )
+    err_file = open_log(os.path.join(config.log_dir, stderr_filename), unbuffered=True)
+    configure_log_file(err_file, err_file)
 
     loop = asyncio.new_event_loop()
     task = loop.create_task(
