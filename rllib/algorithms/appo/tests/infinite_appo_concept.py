@@ -119,7 +119,6 @@ class Algo:
                 metrics_actor=self.metrics_actor,
             ) for _ in range(self.num_learners)
         ]
-        print(f"Created {num_learners} Learners.")
         # self._num_learners_w_dealer = min(num_learners_w_dealer, num_learners)
         # _learner_dealer_channels = {
         #    f"LEARN{aid}": self.router_channel.create_dealer(
@@ -135,6 +134,7 @@ class Algo:
         #    )
         # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
         self.learners[0].set_push_weights.remote(True)
+        print(f"Created {num_learners} Learners.")
 
         # Assign a Learner actor to each aggregator actor.
         for aid, agg in enumerate(self.aggregator_actors):
@@ -475,6 +475,8 @@ class Learner:
 
         self._push_weights = False
 
+        self._num_updates = 0
+
     # Synchronization helper method.
     def sync(self):
         return None
@@ -503,7 +505,9 @@ class Learner:
             random.choice(self.weights_server_actors).put.remote(weights_ref, broadcast=True)
 
         # Send metrics to metrics actor.
-        self.metrics_actor.add.remote(self.metrics.reduce())
+        self._num_updates += 1
+        if self._num_updates % 10 == 0:
+            self.metrics_actor.add.remote(self.metrics.reduce())
 
 
 class _LearnerThread(threading.Thread):
@@ -588,8 +592,8 @@ if __name__ == "__main__":
         rollout_fragment_length=50,
         num_aggregator_actors=512,
         train_batch_size_per_learner=500,
-        num_learners=64,
-        num_weights_server_actors=2,
+        num_learners=128,
+        num_weights_server_actors=8,
     )
     time.sleep(1.0)
 
