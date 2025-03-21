@@ -278,7 +278,7 @@ Ray Serve config file (`serve_TIMESTAMP.yaml`) that you can reference and re-run
 future.
 
 You should read and check how the generated model config looks like. There is
-[vLLMEngine Config](https://docs.vllm.ai/en/latest/serving/engine_args.html)
+`vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
 you can refer and further customize.
 
 Advanced Usage Patterns
