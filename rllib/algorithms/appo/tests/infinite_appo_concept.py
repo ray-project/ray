@@ -470,6 +470,7 @@ class Algo:
                 metrics_actor=self.metrics_actor,
             ) for _ in range(self.num_learners)
         ]
+        print(f"Created {num_learners} Learners.")
         #self._num_learners_w_dealer = min(num_learners_w_dealer, num_learners)
         #_learner_dealer_channels = {
         #    f"LEARN{aid}": self.router_channel.create_dealer(
@@ -575,20 +576,20 @@ class Algo:
 @ray.remote
 class WeightsServerActor:
     def __init__(self):
-        self._weights = None
+        self._weights_ref = None
         self._other_weights_server_actors = []
 
     def add_peers(self, other_weights_server_actors):
         self._other_weights_server_actors = other_weights_server_actors
 
-    def put(self, weights):
-        self._weights = weights
+    def put(self, weights_ref):
+        self._weights_ref = weights_ref
         # Send new weights to all peers.
         for peer in self._other_weights_server_actors:
-            peer.put.remote(weights)
+            peer.put.remote(weights_ref)
 
     def get(self):
-        return self._weights
+        return self._weights_ref
 
 
 @ray.remote
