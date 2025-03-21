@@ -151,18 +151,11 @@ class TrainLoopRunner:
 
     def train_step(self, input_batch, labels):
         self.model.train()
-        self.optimizer.zero_grad()  # 1. Clear FIRST
         out = self.model(input_batch)
         loss = self.loss_fn(out, labels)
-
-        # Use detect_anomaly to catch any issues during the backward pass
-        if self.benchmark_config.train_step_anomaly_detection:
-            with torch.autograd.detect_anomaly():
-                loss.backward()  # 2. Compute gradients
-        else:
-            loss.backward()  # 2. Compute gradients
-
-        self.optimizer.step()  # 3. Update parameters
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
     def validate_and_checkpoint(self):
         with self._metrics["validation/epoch"].timer():
