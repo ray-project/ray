@@ -1,6 +1,11 @@
 Workflow Metadata
 =================
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 Observability is important for workflows - sometimes we not only want
 to get the output, but also want to gain insights on the internal
 states (e.g., to measure the performance or find bottlenecks).

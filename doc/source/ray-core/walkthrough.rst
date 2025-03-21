@@ -1,6 +1,6 @@
 .. _core-walkthrough:
 
-What is Ray Core?
+What's Ray Core?
 =================
 
 .. toctree::
@@ -13,20 +13,20 @@ What is Ray Core?
     api/index
 
 
-Ray Core provides a small number of core primitives (i.e., tasks, actors, objects) for building and scaling distributed applications. Below we'll walk through simple examples that show you how to turn your functions and classes easily into Ray tasks and actors, and how to work with Ray objects.
+Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications.
+This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
 
 .. note::
 
-    Ray has introduced an experimental API for high-performance workloads that is
+    Ray has introduced an experimental API for high-performance workloads that's
     especially well suited for applications using multiple GPUs.
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
-    
-    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+
 
 Getting Started
 ---------------
 
-To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray <installation>` for more installation options. The following few sections will walk through the basics of using Ray Core.
+To get started, install Ray using ``pip install -U ray``. For additional installation options, see :ref:`Installing Ray <installation>`.
 
 The first step is to import and initialize Ray:
 
@@ -42,9 +42,13 @@ The first step is to import and initialize Ray:
 Running a Task
 --------------
 
-Ray lets you run functions as remote tasks in the cluster. To do this, you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
-Then, you call that function with ``.remote()`` instead of calling it normally.
-This remote call returns a future, a so-called Ray *object reference*, that you can then fetch with ``ray.get``:
+Tasks are the simplest way to parallelize your Python functions across a Ray cluster. To create a task:
+
+1. Decorate your function with ``@ray.remote`` to indicate it should run remotely
+2. Call the function with ``.remote()`` instead of a normal function call
+3. Use ``ray.get()`` to retrieve the result from the returned future (Ray *object reference*)
+
+Here's a simple example:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -54,19 +58,33 @@ This remote call returns a future, a so-called Ray *object reference*, that you 
 Calling an Actor
 ----------------
 
-Ray provides actors to allow you to parallelize computation across multiple actor instances. When you instantiate a class that is a Ray actor, Ray will start a remote instance of that class in the cluster. This actor can then execute remote method calls and maintain its own internal state:
+While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls. 
+When you instantiate a Ray actor:
+
+1. Ray starts a dedicated worker process somewhere in your cluster
+2. The actor's methods run on that specific worker and can access and modify its state
+3. The actor executes method calls serially in the order it receives them, preserving consistency
+
+Here's a simple Counter example:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
     :start-after: __calling_actor_start__
     :end-before: __calling_actor_end__
 
-The above covers very basic actor usage. For a more in-depth example, including using both tasks and actors together, check out :ref:`monte-carlo-pi`.
+The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, see the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
 
-Passing an Object
------------------
+Passing Objects
+---------------
 
-As seen above, Ray stores task and actor call results in its :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved. Object references can also be created explicitly via ``ray.put``, and object references can be passed to tasks as substitutes for argument values:
+Ray's distributed object store efficiently manages data across your cluster. There are three main ways to work with objects in Ray:
+
+1. **Implicit creation**: When tasks and actors return values, they are automatically stored in Ray's :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved.
+2. **Explicit creation**: Use ``ray.put()`` to directly place objects in the store.
+3. **Passing references**: You can pass object references to other tasks and actors, avoiding unnecessary data copying and enabling lazy execution.
+
+
+Here's an example showing these techniques:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -76,10 +94,10 @@ As seen above, Ray stores task and actor call results in its :ref:`distributed o
 Next Steps
 ----------
 
-.. tip:: To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.
+.. tip:: To monitor your application's performance and resource usage, check out the :ref:`Ray dashboard <observability-getting-started>`.
 
-Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
-Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:
+You can combine Ray's simple primitives in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's :ref:`key concepts <core-key-concepts>`,
+explore these user guides:
 
 .. grid:: 1 2 3 3
     :gutter: 1

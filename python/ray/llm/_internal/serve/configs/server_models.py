@@ -28,8 +28,12 @@ from pydantic import (
     model_validator,
 )
 
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudMirrorConfig,
+    is_remote_path,
+)
 from ray.llm._internal.utils import try_import
-
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -49,7 +53,6 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
-from ray.llm._internal.serve.configs.base import BaseModelExtended
 
 transformers = try_import("transformers")
 
@@ -59,48 +62,6 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 logger = get_logger(__name__)
-
-
-class ExtraFiles(BaseModelExtended):
-    bucket_uri: str
-    destination_path: str
-
-
-class MirrorConfig(BaseModelExtended):
-    bucket_uri: Optional[str] = None
-    extra_files: List[ExtraFiles] = Field(default_factory=list)
-
-
-class S3AWSCredentials(BaseModelExtended):
-    create_aws_credentials_url: str
-    auth_token_env_variable: Optional[str] = None
-
-
-class GCSMirrorConfig(MirrorConfig):
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if not value.startswith("gs://"):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "gs://".'
-            )
-        return value
-
-
-class S3MirrorConfig(MirrorConfig):
-    s3_sync_args: Optional[List[str]] = None
-    s3_aws_credentials: Optional[S3AWSCredentials] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if value and not value.startswith("s3://"):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://".'
-            )
-        return value
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -125,7 +86,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "VLLM"
+    vLLM = "vLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -164,7 +125,7 @@ class LoraConfig(BaseModelExtended):
         if value is None:
             return value
 
-        assert value.startswith("s3://") or value.startswith("gs://"), (
+        assert is_remote_path(value), (
             "Only AWS S3 and Google Cloud Storage are supported. The "
             'dynamic_lora_loading_path must start with "s3://" or "gs://". '
             f'Got "{value}" instead.'
@@ -176,7 +137,7 @@ class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
-    model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
+    model_source: Optional[Union[str, CloudMirrorConfig]] = Field(
         default=None,
         description=(
             "Where to obtain the model weights from. "
@@ -215,7 +176,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: str = Field(
-        default=LLMEngine.VLLM.value,
+        default=LLMEngine.vLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -229,7 +190,15 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: str = Field(
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
+    )
+
+    accelerator_type: Optional[str] = Field(
+        default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -252,6 +221,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     _supports_vision: bool = PrivateAttr(False)
+    _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
         default_factory=HuggingFacePromptFormat
     )
@@ -265,11 +235,29 @@ class LLMConfig(BaseModelExtended):
         hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
+    def _set_model_architecture(
+        self,
+        model_id_or_path: Optional[str] = None,
+        model_architecture: Optional[str] = None,
+    ) -> None:
+        """Called in llm node initializer together with other transformers calls. It
+        loads the model config from huggingface and sets the model_architecture
+        attribute based on whether the config has `architectures`.
+        """
+        if model_id_or_path:
+            hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
+            if hasattr(hf_config, "architectures"):
+                self._model_architecture = hf_config.architectures[0]
+
+        if model_architecture:
+            self._model_architecture = model_architecture
+
     def apply_checkpoint_info(
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
+        self._set_model_architecture(model_id_or_path)
         self._prompt_format.set_processor(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
@@ -278,6 +266,10 @@ class LLMConfig(BaseModelExtended):
     @property
     def supports_vision(self) -> bool:
         return self._supports_vision
+
+    @property
+    def model_architecture(self) -> str:
+        return self._model_architecture
 
     @property
     def prompt_format(self) -> HuggingFacePromptFormat:
@@ -332,13 +324,6 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
-    def ray_accelerator_type(self) -> str:
-        """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
-
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:
@@ -354,7 +339,7 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        if self.llm_engine == LLMEngine.VLLM:
+        if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
@@ -430,18 +415,16 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
-                from ray.serve.llm.deployments import VLLMDeployment
-
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
-                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    model_loading_config=dict(model_id="test_model"),
                     accelerator_type="L4",
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.
@@ -618,37 +601,6 @@ class FinishReason(str, Enum):
         if finish_reason == "abort":
             return cls.CANCELLED
         return cls.STOP
-
-
-class LoraMirrorConfig(BaseModelExtended):
-    lora_model_id: str
-    bucket_uri: str
-    max_total_tokens: Optional[int]
-    sync_args: Optional[List[str]] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def validate_bucket_uri(cls, value: str):
-        # TODO(tchordia): remove this. this is a short term fix.
-        # We should fix this on the LLM-forge side
-        if not value.startswith("s3://") and not value.startswith("gs://"):
-            value = "s3://" + value
-        return value
-
-    @property
-    def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
-            if self.bucket_uri.startswith(prefix):
-                return self.bucket_uri[len(prefix) :]
-        return self.bucket_uri
-
-    @property
-    def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
-
-    @property
-    def bucket_path(self) -> str:
-        return "/".join(self._bucket_name_and_path.split("/")[1:])
 
 
 class DiskMultiplexConfig(BaseModelExtended):

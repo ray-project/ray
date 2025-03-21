@@ -83,30 +83,22 @@ Status RayletClient::Disconnect(
                          creation_task_exception_pb_bytes->Size());
   }
   const auto &fb_exit_detail = fbb.CreateString(exit_detail);
-  protocol::DisconnectClientBuilder builder(fbb);
+  protocol::DisconnectClientRequestBuilder builder(fbb);
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
-  builder.add_disconnect_type(static_cast<int>(exit_type));
-  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
-  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
-  // Don't be too strict for disconnection errors.
-  // Just create logs and prevent it from crash.
-  // TODO(myan): In the current implementation, if raylet is already terminated in the
-  // "WriteMessage" function above, the worker process will exit early in the function
-  // and will not reach here. However, the code path here is shared between graceful
-  // shutdown and force termination. We need to make sure the above early exit
-  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
-  // leak if early exit is triggered
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << status.ToString()
-        << " [RayletClient] Failed to disconnect from raylet. This means the "
-           "raylet the worker is connected is probably already dead.";
-  }
-  return Status::OK();
+  std::vector<uint8_t> reply;
+  // NOTE(edoakes): AtomicRequestReply will fast fail and exit the process if the raylet
+  // is already dead.
+  // TODO(edoakes): we should add a timeout to this call in case the raylet is overloaded.
+  return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
+                                   MessageType::DisconnectClientReply,
+                                   &reply,
+                                   &fbb);
 }
 
 // TODO(hjiang): After we merge register client and announce port, should delete this
@@ -363,7 +355,8 @@ void RayletClient::PushMutableObject(
     request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
+    request.set_payload(absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char *>(data) + offset, chunk_size), []() {}));
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(

@@ -198,7 +198,7 @@ Note that the current set of collective communication API are imperative, and ex
 * All the collective APIs are synchronous blocking calls
 * Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
   Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
-* The APIs are imperative and the communication happends out-of-band --- they need to be used inside the collective process (actor/task) code.
+* The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using ``ray.util.collective.allreduce`` is below:
 

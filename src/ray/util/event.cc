@@ -78,7 +78,7 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
   log_sink_ = spdlog::get(log_sink_key);
   // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
   // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
-  // We alow to rotate for {rotate_max_file_num_} times.
+  // We allow to rotate for {rotate_max_file_num_} times.
   if (log_sink_ == nullptr) {
     log_sink_ = spdlog::rotating_logger_mt(log_sink_key,
                                            log_dir_ + file_name_,

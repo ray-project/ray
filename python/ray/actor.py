@@ -200,6 +200,16 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
+        """
+        Bind arguments to the actor method for Ray DAG building.
+
+        This method generates and returns an intermediate representation (IR)
+        node that indicates the actor method will be called with the given
+        arguments at execution time.
+
+        This method is used in both :ref:`Ray DAG <ray-dag-guide>` and
+        :ref:`Ray Compiled Graph <ray-compiled-graph>` for building a DAG.
+        """
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):
@@ -1768,7 +1778,10 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When the API is called, the actor raises an exception and exits.
+    When this API is called, an exception is raised and the actor
+    will exit immediately. For asyncio actors, there may be a short
+    delay before the actor exits if the API is called from a background
+    task.
     Any queued methods will fail. Any ``atexit``
     handlers installed in the actor will be run.
 
@@ -1778,6 +1791,7 @@ def exit_actor():
     """
     worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
+        worker.core_worker.set_current_actor_should_exit()
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
         # raise a custom error to the main thread to tell it to exit.

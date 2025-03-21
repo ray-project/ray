@@ -21,7 +21,7 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# Hermetic python envionment, currently only used for CI infra and scripts.
+# Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(
     name = "python3_runtime",
@@ -423,7 +423,6 @@ PLASMA_LINKOPTS = [] + select({
 ray_cc_library(
     name = "plasma_client",
     srcs = [
-        "src/ray/object_manager/common.cc",
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",
@@ -438,7 +437,6 @@ ray_cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/connection.h",
@@ -463,6 +461,7 @@ ray_cc_library(
     deps = [
         ":plasma_fbs",
         ":ray_common",
+        ":object_manager_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:compat",
@@ -527,7 +526,13 @@ ray_cc_library(
     name = "ray_mock",
     hdrs = glob(
         ["src/mock/**/*.h"],
+        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
     ),
+)
+
+ray_cc_library(
+    name = "ray_mock_syncer",
+    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
 )
 
 cc_grpc_library(
@@ -569,7 +574,7 @@ ray_cc_binary(
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -806,7 +811,7 @@ ray_cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -852,6 +857,15 @@ ray_cc_library(
     deps = [
         ":publisher_lib",
         ":subscriber_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_opentelemetry",
+    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
+    deps = [
+        "@io_opentelemetry_cpp//sdk/src/logs:logs",
+        "@io_opentelemetry_cpp//sdk/src/trace:trace",
     ],
 )
 
@@ -1031,6 +1045,7 @@ ray_cc_library(
         ],
     }),
     deps = [
+        ":core_worker_lib",
         ":gcs",
         ":gcs_client_lib",
         ":node_manager_fbs",
@@ -1122,7 +1137,6 @@ ray_cc_library(
         "src/ray/core_worker/transport/scheduling_util.cc",
         "src/ray/core_worker/transport/sequential_actor_submit_queue.cc",
         "src/ray/core_worker/transport/task_receiver.cc",
-        "src/ray/core_worker/transport/thread_pool.cc",
     ],
     hdrs = [
         "src/ray/core_worker/actor_creator.h",
@@ -1159,7 +1173,6 @@ ray_cc_library(
         "src/ray/core_worker/transport/scheduling_util.h",
         "src/ray/core_worker/transport/sequential_actor_submit_queue.h",
         "src/ray/core_worker/transport/task_receiver.h",
-        "src/ray/core_worker/transport/thread_pool.h",
     ],
     deps = [
         ":gcs",
@@ -1168,6 +1181,7 @@ ray_cc_library(
         ":ray_common",
         ":raylet_client_lib",
         ":stats_lib",
+        ":thread_pool",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
@@ -1177,7 +1191,7 @@ ray_cc_library(
         "//src/ray/util:process",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -1186,6 +1200,18 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "thread_pool",
+    srcs = [
+        "src/ray/core_worker/transport/thread_pool.cc",
+    ],
+    hdrs = ["src/ray/core_worker/transport/thread_pool.h"],
+    deps = [
+        "//src/ray/util:logging",
+        "@boost//:asio",
     ],
 )
 
@@ -1560,7 +1586,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":pull_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1573,7 +1599,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":object_buffer_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1586,7 +1612,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":ownership_based_object_directory",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2482,39 +2508,165 @@ ray_cc_test(
 
 ray_cc_library(
     name = "object_manager",
-    srcs = [
-        "src/ray/object_manager/chunk_object_reader.cc",
-        "src/ray/object_manager/common.cc",
-        "src/ray/object_manager/memory_object_reader.cc",
-        "src/ray/object_manager/object_buffer_pool.cc",
-        "src/ray/object_manager/object_manager.cc",
-        "src/ray/object_manager/ownership_based_object_directory.cc",
-        "src/ray/object_manager/pull_manager.cc",
-        "src/ray/object_manager/push_manager.cc",
-        "src/ray/object_manager/spilled_object_reader.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/chunk_object_reader.h",
-        "src/ray/object_manager/common.h",
-        "src/ray/object_manager/memory_object_reader.h",
-        "src/ray/object_manager/object_buffer_pool.h",
-        "src/ray/object_manager/object_directory.h",
-        "src/ray/object_manager/object_manager.h",
-        "src/ray/object_manager/object_reader.h",
-        "src/ray/object_manager/ownership_based_object_directory.h",
-        "src/ray/object_manager/pull_manager.h",
-        "src/ray/object_manager/push_manager.h",
-        "src/ray/object_manager/spilled_object_reader.h",
-    ],
+    srcs = ["src/ray/object_manager/object_manager.cc"],
+    hdrs = ["src/ray/object_manager/object_manager.h"],
     deps = [
-        ":core_worker_lib",
-        ":gcs",
+        ":chunk_object_reader",
+        ":object_buffer_pool",
+        ":object_manager_common",
+        ":object_directory",
+        ":ownership_based_object_directory",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
-        ":ray_common",
-        "//src/ray/util",
+        ":pull_manager",
+        ":push_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
         "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
     ],
+)
+
+ray_cc_library(
+    name = "push_manager",
+    srcs = ["src/ray/object_manager/push_manager.cc"],
+    hdrs = ["src/ray/object_manager/push_manager.h"],
+    deps = [
+        ":stats_metric",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "pull_manager",
+    srcs = ["src/ray/object_manager/pull_manager.cc"],
+    hdrs = ["src/ray/object_manager/pull_manager.h"],
+    deps = [
+        ":object_manager_rpc",
+        ":ownership_based_object_directory",
+        ":stats_metric",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:container_util",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "ownership_based_object_directory",
+    srcs = ["src/ray/object_manager/ownership_based_object_directory.cc"],
+    hdrs = ["src/ray/object_manager/ownership_based_object_directory.h"],
+    deps = [
+        ":gcs_client_lib",
+        ":object_directory",
+        ":subscriber_lib",
+        ":worker_rpc",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/util:sequencer",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "object_directory",
+    hdrs = ["src/ray/object_manager/object_directory.h"],
+    deps = [
+        ":gcs_client_lib",
+        ":object_manager_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "object_buffer_pool",
+    srcs = ["src/ray/object_manager/object_buffer_pool.cc"],
+    hdrs = ["src/ray/object_manager/object_buffer_pool.h"],
+    deps = [
+        ":memory_object_reader",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_common",
+    srcs = ["src/ray/object_manager/common.cc"],
+    hdrs = ["src/ray/object_manager/common.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "@boost//:asio",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_object_reader",
+    srcs = ["src/ray/object_manager/memory_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/memory_object_reader.h"],
+    deps = [
+        ":object_reader",
+        ":plasma_client",
+    ],
+)
+
+ray_cc_library(
+    name = "chunk_object_reader",
+    srcs = ["src/ray/object_manager/chunk_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/chunk_object_reader.h"],
+    deps = [
+        ":spilled_object_reader",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
+    name = "spilled_object_reader",
+    srcs = ["src/ray/object_manager/spilled_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/spilled_object_reader.h"],
+    deps = [
+        ":object_reader",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "object_reader",
+    hdrs = ["src/ray/object_manager/object_reader.h"],
+    deps = ["//src/ray/protobuf:common_cc_proto"],
 )
 
 ray_cc_library(
@@ -2928,6 +3080,8 @@ pyx_library(
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection",
     ],
 )
 

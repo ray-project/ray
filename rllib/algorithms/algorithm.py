@@ -1041,10 +1041,23 @@ class Algorithm(Checkpointable, Trainable):
 
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
+            if self.config.enable_env_runner_and_connector_v2:
+                if (
+                    self.env_runner_group is not None
+                    and self.env_runner_group.healthy_env_runner_ids()
+                ):
+                    # TODO (sven): Replace this with a new ActorManager API:
+                    #  try_remote_request_till_success("get_state") -> tuple(int,
+                    #  remoteresult)
+                    weights_src = self.env_runner_group._worker_manager._actors[
+                        self.env_runner_group.healthy_env_runner_ids()[0]
+                    ]
+                else:
+                    weights_src = self.learner_group
+            else:
+                weights_src = self.env_runner_group.local_env_runner
             self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group
-                if self.config.enable_env_runner_and_connector_v2
-                else self.env_runner_group.local_env_runner,
+                from_worker_or_learner_group=weights_src,
                 inference_only=True,
             )
 
@@ -1444,7 +1457,7 @@ class Algorithm(Checkpointable, Trainable):
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
-        def _env_runner_remote(worker, num, round, iter):
+        def _env_runner_remote(worker, num, round, iter, _force_reset):
             # Sample AND get_metrics, but only return metrics (and steps actually taken)
             # to save time. Also return the iteration to check, whether we should
             # discard and outdated result (from a slow worker).
@@ -1453,7 +1466,7 @@ class Algorithm(Checkpointable, Trainable):
                     num[worker.worker_index] if unit == "timesteps" else None
                 ),
                 num_episodes=(num[worker.worker_index] if unit == "episodes" else None),
-                force_reset=force_reset and round == 0,
+                force_reset=_force_reset and round == 0,
             )
             metrics = worker.get_metrics()
             env_steps = sum(e.env_steps() for e in episodes)
@@ -1491,7 +1504,11 @@ class Algorithm(Checkpointable, Trainable):
                 ]
                 self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
+                        _env_runner_remote,
+                        num=_num,
+                        round=_round,
+                        iter=algo_iteration,
+                        _force_reset=force_reset,
                     ),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
@@ -1783,7 +1800,7 @@ class Algorithm(Checkpointable, Trainable):
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -1803,7 +1820,7 @@ class Algorithm(Checkpointable, Trainable):
             )
 
     @PublicAPI
-    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> Optional[RLModule]:
         """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
 
         Args:
@@ -1811,12 +1828,12 @@ class Algorithm(Checkpointable, Trainable):
                 used by the local EnvRunner.
 
         Returns:
-            The SingleAgentRLModule sitting under the ModuleID key inside the
-            local worker's (EnvRunner's) MARLModule.
+            The RLModule found under the ModuleID key inside the local EnvRunner's
+            MultiRLModule. None if `module_id` doesn't exist.
         """
         module = self.env_runner.module
         if isinstance(module, MultiRLModule):
-            return module[module_id]
+            return module.get(module_id)
         else:
             return module
 
@@ -3104,7 +3121,7 @@ class Algorithm(Checkpointable, Trainable):
                 "num_healthy_workers"
             ] = self.eval_env_runner_group.num_healthy_remote_workers()
             eval_results[
-                "num_in_flight_async_reqs"
+                "actor_manager_num_outstanding_async_reqs"
             ] = self.eval_env_runner_group.num_in_flight_async_reqs()
             eval_results[
                 "num_remote_worker_restarts"
@@ -3677,7 +3694,7 @@ class Algorithm(Checkpointable, Trainable):
             "num_healthy_workers"
         ] = self.env_runner_group.num_healthy_remote_workers()
         results[
-            "num_in_flight_async_sample_reqs"
+            "actor_manager_num_outstanding_async_reqs"
         ] = self.env_runner_group.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"

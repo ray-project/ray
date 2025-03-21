@@ -11,7 +11,6 @@ import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
 import time
-from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
@@ -19,6 +18,7 @@ from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.channel.utils import get_default_torch_device
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
@@ -40,7 +40,7 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 @ray.remote
 class TorchTensorWorker:
     def __init__(self):
-        self.device = torch_utils.get_devices()[0]
+        self.device = get_default_torch_device(allow_cpu=True)
 
     def init_distributed(self, world_size, rank):
         torch.distributed.init_process_group(
@@ -68,8 +68,6 @@ class TorchTensorWorker:
         return value
 
     def recv(self, tensor):
-        # Check that tensor got loaded to the correct device.
-        assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
@@ -82,7 +80,6 @@ class TorchTensorWorker:
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2
         assert two_d_tensor.size(0) == two_d_tensor.size(1)
-        assert two_d_tensor.device == self.device
         torch.matmul(two_d_tensor, two_d_tensor)
         return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
 
@@ -98,7 +95,6 @@ class TorchTensorWorker:
         return tensor
 
     def recv_tensor(self, tensor):
-        assert tensor.device == self.device
         return tensor
 
     def ping(self):
@@ -125,20 +121,6 @@ class TrainWorker:
 
     def forward(self, inp):
         return torch.randn(10, 10)
-
-
-@ray.remote
-class Worker:
-    def __init__(self):
-        self.device = None
-
-    def echo(self, tensor):
-        assert isinstance(tensor, torch.Tensor)
-        self.device = tensor.device
-        return tensor
-
-    def get_device(self):
-        return self.device
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -249,6 +231,11 @@ def test_torch_tensor_nccl(
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # We need to explicitly teardown because Python will not del right
+    # when the reassign happens, so channels will not be properly closed
+    # before we open new ones on these actors below.
+    compiled_dag.teardown()
+
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
@@ -283,11 +270,12 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
 
     shape = (10,)
     dtype = torch.float16
+    device = "cpu" if num_gpus[0] == 0 or num_gpus[1] == 0 else "default"
 
     # Test normal execution.
     with InputNode() as inp:
         data = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        data_annotated = data.with_tensor_transport(transport="auto")
+        data_annotated = data.with_tensor_transport(transport="auto", device=device)
         dag = receiver.recv.bind(data_annotated)
 
     compiled_dag = dag.experimental_compile()
@@ -300,10 +288,15 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # We need to explicitly teardown because Python will not del right
+    # when the reassign happens, so channels will not be properly closed
+    # before we open new ones on these actors below.
+    compiled_dag.teardown()
+
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="auto")
+        dag = dag.with_tensor_transport(transport="auto", device=device)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -576,7 +569,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -710,7 +703,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -857,7 +850,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -1546,8 +1539,8 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     result = ray.get(ref)
     reduced_value = value * 2
     expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_value
-    assert torch.equal(result[0], expected_tensor_val)
-    assert torch.equal(result[1], expected_tensor_val)
+    assert torch.equal(result[0].cpu(), expected_tensor_val)
+    assert torch.equal(result[1].cpu(), expected_tensor_val)
     assert result[2] == (value, shape, dtype)
 
 
@@ -1625,198 +1618,6 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     for log in logs:
         assert "The given NumPy array is not writable" not in log, log
     compiled_dag.teardown()
-
-
-class TestTorchTensorTypeHintCustomSerializer:
-    # All tests inside this file are running in the same process, so we need to
-    # manually deregister the custom serializer for `torch.Tensor` before and
-    # after each test to avoid side effects.
-    def setup_method(self):
-        ray.util.serialization.deregister_serializer(torch.Tensor)
-
-    def teardown_method(self):
-        ray.util.serialization.deregister_serializer(torch.Tensor)
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
-    def test_input_node_without_type_hint(self, ray_start_regular, tensor_device):
-        """
-        Since no TorchTensorType hint is provided in this compiled graph,
-        normal serialization and deserialization functions are used, which will
-        not move the tensor to GPU/CPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = worker.echo.bind(inp)
-
-        compiled_dag = dag.experimental_compile()
-        tensor = torch.tensor([5])
-        if tensor_device == "cuda":
-            tensor = tensor.cuda()
-        ref = compiled_dag.execute(tensor)
-        t = ray.get(ref)
-        assert torch.equal(t, tensor)
-
-        device = ray.get(worker.get_device.remote())
-        assert device.type == tensor_device
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
-    def test_input_node_with_tensor_transport(self, ray_start_regular, tensor_device):
-        """
-        Since `inp` has a TorchTensorType hint, both the driver and `worker` will
-        use the custom serializer.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `input_tensor` and
-                move the tensor to CPU if it is on GPU.
-        Step 2: The `worker` calls `deserialize_tensor` to deserialize `input_tensor`
-               and moves it to GPU.
-        Step 3: The `worker` calls `serialize_tensor` to serialize the result of
-               `echo` and moves it to CPU.
-        Step 4: The driver calls `deserialize_tensor` to deserialize the result of
-               `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
-               the tensor will not be moved to GPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = worker.echo.bind(inp.with_tensor_transport())
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor = torch.tensor([1])
-        input_tensor = cpu_tensor
-        if tensor_device == "cuda":
-            input_tensor = input_tensor.cuda()
-        ref = compiled_dag.execute(input_tensor)
-        # Verify Step 4
-        t = ray.get(ref)
-        assert torch.equal(t, cpu_tensor)
-
-        # Verify Step 2
-        device = ray.get(worker.get_device.remote())
-        assert device.type == "cuda"
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_attr_nodes_with_all_tensor_type_hint(self, ray_start_regular):
-        """
-        Since both `inp[0]` and `inp[1]` have tensor type hint, both workers will
-        use the custom serializer.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
-        and `cpu_tensor_2`.
-
-        Step 2:
-        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
-          and moves it to GPU.
-        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
-          and moves it to GPU.
-
-        Step 3:
-        * The `worker1` calls `serialize_tensor` to serialize the result of
-          `echo` and moves it to CPU.
-        * The `worker2` calls `serialize_tensor` to serialize the result of
-          `echo` and moves it to CPU.
-
-        Step 4: The driver calls `deserialize_tensor` to deserialize the result
-        of `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
-        the tensor will not be moved to GPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
-        with InputNode() as inp:
-            dag = inp[0].with_tensor_transport()
-            branch1 = worker1.echo.bind(dag)
-            dag = inp[1].with_tensor_transport()
-            branch2 = worker2.echo.bind(dag)
-            dag = MultiOutputNode([branch1, branch2])
-
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor_1 = torch.tensor([1])
-        cpu_tensor_2 = torch.tensor([2])
-        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
-
-        # Verify Step 4
-        t1, t2 = ray.get(ref)
-        assert torch.equal(t1, cpu_tensor_1)
-        assert torch.equal(t2, cpu_tensor_2)
-
-        # Verify Step 2
-        device1 = ray.get(worker1.get_device.remote())
-        device2 = ray.get(worker2.get_device.remote())
-        assert device1.type == "cuda"
-        assert device2.type == "cuda"
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_attr_nodes_with_and_without_type_hint(self, ray_start_regular):
-        """
-        Only `inp[0]` has a tensor type hint, so only `worker1` will use the custom
-        serializer. Note that although we don't register the custom serializer for
-        `worker2`, it still uses the custom deserializer. This is because when custom
-        serializers are registered with Ray, the registered deserializer is shipped
-        with the serialized value and used on the receiving end. See the comment in
-        `ChannelOutputType.register_custom_serializer` for more details.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
-        and `cpu_tensor_2`.
-
-        Step 2:
-        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
-          and moves it to GPU.
-        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
-          and moves it to GPU.
-
-        Step 3:
-        * The `worker1` calls `serialize_tensor` to serialize the result of `echo`
-          and moves it to CPU.
-        * The `worker2` calls the normal serialization function to serialize the
-          result of `echo` because it doesn't have a custom serializer, so the
-          tensor is still on GPU.
-
-        Step 4:
-        * The driver calls `deserialize_tensor` to deserialize the tensor from
-          `worker1`. Since the driver's `ChannelContext.torch_device` is CPU,
-          the tensor will not be moved to GPU.
-        * The driver calls normal deserialization function to deserialize the
-          tensor from `worker2`.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = inp[0].with_tensor_transport()
-            branch1 = worker1.echo.bind(dag)
-            dag = inp[1]
-            branch2 = worker2.echo.bind(dag)
-            dag = MultiOutputNode([branch1, branch2])
-
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor_1 = torch.tensor([1])
-        cpu_tensor_2 = torch.tensor([2])
-        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
-        t1, t2 = ray.get(ref)
-        # Verify Step 3-1
-        assert torch.equal(t1, cpu_tensor_1)
-        # Verify Step 3-2
-        gpu_tensor_2 = cpu_tensor_2.cuda()
-        assert torch.equal(t2, gpu_tensor_2)
-
-        # Verify Step 2
-        device1 = ray.get(worker1.get_device.remote())
-        device2 = ray.get(worker2.get_device.remote())
-        assert device1.type == "cuda"
-        assert device2.type == "cuda"
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

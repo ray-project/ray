@@ -340,7 +340,7 @@ How can I reproduce experiments?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Reproducing experiments and experiment results means that you get the exact same
 results when running an experiment again and again. To achieve this, the
-conditions have to be exactly the same each time you run the exeriment.
+conditions have to be exactly the same each time you run the experiment.
 In terms of ML training and tuning, this mostly concerns
 the random number generators that are used for sampling in various places of the
 training and tuning lifecycle.
@@ -402,7 +402,7 @@ Here's a blueprint on how to do all this in your training code:
 For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
 than other trials, affecting the behavior of the schedulers. Which trials finish first
 can however depend on the current system load, network communication, or other factors
-in the envrionment that we cannot control with random seeds. This is also true for search
+in the environment that we cannot control with random seeds. This is also true for search
 algorithms such as Bayesian Optimization, which take previous results into account when
 sampling new configurations. This can be tackled by
 using the **synchronous modes** of PBT and Hyperband, where the schedulers wait for all trials to
@@ -497,10 +497,6 @@ Look for issues with "[tune]" in the title.
 .. note::
 
     If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
-
-For project organization, Tune maintains a relatively up-to-date organization of
-issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
-Here, you can track and identify how issues are organized.
 
 
 .. _tune-reproducible:

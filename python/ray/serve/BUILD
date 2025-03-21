@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:python.bzl", "doctest")
 
 doctest(

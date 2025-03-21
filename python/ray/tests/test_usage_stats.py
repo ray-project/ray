@@ -788,7 +788,6 @@ ray_usage_lib.record_library_usage("pre_init")
 ray.init(address="{}")
 
 ray_usage_lib.record_library_usage("post_init")
-ray.workflow.init()
 
 class Actor:
     def get_actor_metadata(self):
@@ -829,7 +828,6 @@ with joblib.parallel_backend("ray"):
     expected = {
         "pre_init",
         "post_init",
-        "workflow",
         "util.ActorGroup",
         "util.ActorPool",
         "util.multiprocessing.Pool",
@@ -1137,24 +1135,18 @@ provider:
 
         cluster = ray_start_cluster
         node = cluster.add_node(num_cpus=3)
-        if os.environ.get("RAY_MINIMAL") != "1":
-            from ray import train  # noqa: F401
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
 
         ray.init(address=cluster.address)
 
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
-
-        if os.environ.get("RAY_MINIMAL") != "1":
-            from ray import tune  # noqa: F401
-
-            def objective(*args):
-                pass
-
-            tuner = tune.Tuner(objective)
-            tuner.fit()
 
         """
         Verify the usage stats are reported to the server.
@@ -1221,18 +1213,10 @@ provider:
             "gcs_storage": gcs_storage_type,
             "dashboard_used": "False",
         }
-        if os.environ.get("RAY_MINIMAL") != "1":
-            expected_payload["tune_scheduler"] = "FIFOScheduler"
-            expected_payload["tune_searcher"] = "BasicVariantGenerator"
-            expected_payload["air_entrypoint"] = "Tuner.fit"
-            expected_payload["air_storage_configuration"] = "local"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert set(payload["library_usages"]) == set()
-        else:
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "core"}
+        assert set(payload["library_usages"]) == {"core"}
         assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
@@ -1406,110 +1390,6 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_st
             read_file(temp_dir, "usage_stats")["total_failed"]
             raise
         assert read_file(temp_dir, "usage_stats")["total_success"] == 0
-
-
-def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_usage_stats):
-    """
-    Test library usage is correctly reported when they are imported from
-    a driver.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray.init(address=cluster.address)
-
-        script = """
-import ray
-import os
-if os.environ.get("RAY_MINIMAL") != "1":
-    from ray import train  # noqa: F401
-    from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-ray.init(address="{addr}")
-
-if os.environ.get("RAY_MINIMAL") != "1":
-    from ray import tune  # noqa: F401
-    def objective(*args):
-        pass
-
-    tune.run(objective)
-"""
-        # Run a script in a separate process. It is a workaround to
-        # reimport libraries. Without this, `import train`` will become
-        # no-op since we already imported this lib in previous tests.
-        run_string_as_driver(script.format(addr=cluster.address))
-
-        """
-        Verify the usage_stats.json is updated.
-        """
-        print("Verifying lib usage report.")
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            print(lib_usages)
-            if os.environ.get("RAY_MINIMAL") == "1":
-                return set(lib_usages) == set()
-            else:
-                return set(lib_usages) == {"rllib", "train", "tune", "core"}
-
-        wait_for_condition(verify)
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
-def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats):
-    """
-    Test library usage is correctly reported when they are imported from
-    workers.
-    """
-    with monkeypatch.context() as m:
-        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
-        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
-        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        cluster = ray_start_cluster
-        cluster.add_node(num_cpus=3)
-        ray_usage_lib._recorded_library_usages.clear()
-
-        ray.init(address=cluster.address)
-
-        @ray.remote
-        class ActorWithLibImport:
-            def __init__(self):
-                from ray import train  # noqa: F401
-                from ray.rllib.algorithms.ppo import PPO  # noqa: F401
-
-            def ready(self):
-                from ray import tune  # noqa: F401
-
-                def objective(*args):
-                    pass
-
-                tune.run(objective)
-
-        a = ActorWithLibImport.remote()
-        ray.get(a.ready.remote())
-
-        """
-        Verify the usage_stats.json contains the lib usage.
-        """
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
-        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
-
-        def verify():
-            lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            return set(lib_usages) == {"tune", "rllib", "train", "core"}
-
-        wait_for_condition(verify)
 
 
 def test_usage_stats_tags(

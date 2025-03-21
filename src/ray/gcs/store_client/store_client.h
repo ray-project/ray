@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/postable.h"

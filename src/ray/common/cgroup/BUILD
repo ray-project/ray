@@ -13,6 +13,9 @@ ray_cc_library(
 ray_cc_library(
     name = "cgroup_context",
     hdrs = ["cgroup_context.h"],
+    deps = [
+        "//src/ray/util:compat",
+    ],
 )
 
 ray_cc_library(
@@ -48,6 +51,7 @@ ray_cc_library(
     hdrs = ["fake_cgroup_setup.h"],
     deps = [
         ":base_cgroup_setup",
+        "//src/ray/common:status",
         "//src/ray/util:logging",
         "//src/ray/util:process",
         "@com_google_absl//absl/container:flat_hash_map",
