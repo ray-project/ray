@@ -2057,20 +2057,20 @@ class DeploymentState:
         # Update the deployment message only if replicas are failing during
         # the very first time the controller is trying to start replicas of
         # this version.
+        retrying_msg = ""
         if not self._replica_has_started:
-            retrying_msg = "Retrying"
             remaining_retries = max(
                 self._failed_to_start_threshold
                 - self._replica_constructor_retry_counter,
                 0,
             )
-            retrying_msg += f" {remaining_retries} more time(s)"
+            retrying_msg = f" {remaining_retries} more time(s)"
 
-            message = (
-                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
-                f"{error_msg}"
-            )
-            self._curr_status_info = self._curr_status_info.update_message(message)
+        message = (
+            f"A replica failed to start with exception. Retrying{retrying_msg}. "
+            f"Error:\n{error_msg}"
+        )
+        self._curr_status_info = self._curr_status_info.update_message(message)
 
     def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
