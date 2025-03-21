@@ -34,8 +34,8 @@ namespace ray {
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
 
-constexpr std::string_view kGroupKeyword = "group";
-constexpr size_t kGroupKeywordSize = kGroupKeyword.size();
+inline constexpr std::string_view kGroupKeyword = "_group_";
+inline constexpr size_t kGroupKeywordSize = kGroupKeyword.size();
 
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:

@@ -38,11 +38,11 @@ enum PredefinedResourcesEnum {
   PredefinedResourcesEnum_MAX
 };
 
-constexpr std::string_view kCPU_ResourceLabel = "CPU";
-constexpr std::string_view kGPU_ResourceLabel = "GPU";
-constexpr std::string_view kObjectStoreMemory_ResourceLabel = "object_store_memory";
-constexpr std::string_view kMemory_ResourceLabel = "memory";
-constexpr std::string_view kBundle_ResourceLabel = "bundle";
+inline constexpr std::string_view kCPU_ResourceLabel = "CPU";
+inline constexpr std::string_view kGPU_ResourceLabel = "GPU";
+inline constexpr std::string_view kObjectStoreMemory_ResourceLabel = "object_store_memory";
+inline constexpr std::string_view kMemory_ResourceLabel = "memory";
+inline constexpr std::string_view kBundle_ResourceLabel = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
