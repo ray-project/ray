@@ -531,7 +531,7 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is "
+        "log to stderr if set empty, default is "
         f'"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}"',
     )
     parser.add_argument(
@@ -575,22 +575,23 @@ if __name__ == "__main__":
     )
     logger = setup_component_logger(**logging_params)
 
-    # Setup stdout/stderr redirect files
-    out_filepath, err_filepath = get_capture_filepaths(args.logs_dir)
-    StreamRedirector.redirect_stdout(
-        out_filepath,
-        logging_rotation_bytes,
-        logging_rotation_backup_count,
-        False,
-        False,
-    )
-    StreamRedirector.redirect_stderr(
-        err_filepath,
-        logging_rotation_bytes,
-        logging_rotation_backup_count,
-        False,
-        False,
-    )
+    # Setup stdout/stderr redirect files if redirection enabled
+    if args.logging_filename:
+        out_filepath, err_filepath = get_capture_filepaths(args.logs_dir)
+        StreamRedirector.redirect_stdout(
+            out_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+        StreamRedirector.redirect_stderr(
+            err_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
 
     # Setup stdout/stderr redirect files
     stdout_fileno = sys.stdout.fileno()

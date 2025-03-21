@@ -1127,7 +1127,7 @@ class Node:
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=False,
+            redirect_logging=self.should_redirect_logs(),
             stdout_file=None,
             stderr_file=None,
         )
