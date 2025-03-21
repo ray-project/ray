@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import numpy as np
 
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI, Deprecated
@@ -177,6 +176,8 @@ class AggregateFnV2(AggregateFn):
 
     def _validate(self, schema: Optional["Schema"]) -> None:
         if self._target_col_name:
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
             SortKey(self._target_col_name).validate_schema(schema)
 
 
