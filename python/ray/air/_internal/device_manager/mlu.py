@@ -7,6 +7,7 @@ import torch
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
+from ray._private.accelerators.mlu import MLU_VISIBLE_DEVICES_ENV_VAR
 
 
 def is_package_present(package_name: str) -> bool:
@@ -54,9 +55,7 @@ class MLUTorchDeviceManager(TorchDeviceManager):
             device_ids = []
 
             if len(mlu_ids) > 0:
-                mlu_visible_str = os.environ.get(
-                    ray_constants.MLU_VISIBLE_DEVICES_ENV_VAR, ""
-                )
+                mlu_visible_str = os.environ.get(MLU_VISIBLE_DEVICES_ENV_VAR, "")
                 if mlu_visible_str and mlu_visible_str != "NoDevFiles":
                     mlu_visible_list = mlu_visible_str.split(",")
                 else:
