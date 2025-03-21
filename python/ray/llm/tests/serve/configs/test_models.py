@@ -211,11 +211,10 @@ class TestModelConfig:
             "name": "Test:test_model",
         }
         assert serve_options == expected_options
-        
-        
+
     def test_resources_per_bundle(self):
         """Test that resources_per_bundle is correctly parsed."""
-        
+
         # Test the default resource bundle
         serve_options = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
