@@ -147,9 +147,7 @@ class AggregateFnV2(AggregateFn):
             name=name,
             init=_safe_zero_factory,
             merge=_safe_combine,
-            accumulate_block=(
-                lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
-            ),
+            accumulate_block=lambda _, block: _safe_aggregate(block),
             finalize=_safe_finalize,
         )
 
