@@ -26,7 +26,7 @@ ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS)
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
+.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show markdown singlemarkdown
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
@@ -55,7 +55,8 @@ help:
 	@echo "  linkcheck_all   to check all external links for integrity"
 	@echo "  doctest         to run all doctests embedded in the documentation (if enabled)"
 	@echo "  coverage        to run coverage check of the documentation (if enabled)"
-
+	@echo "  markdown        to make Markdown files using sphinx-markdown-builder"
+	@echo "  singlemarkdown  to make a single Markdown file using sphinx-markdown-builder"
 clean:
 	rm -rf $(BUILDDIR)/*
 	rm -rf ./source/__pycache__/
@@ -231,3 +232,13 @@ pseudoxml:
 
 show:
 	python -m http.server -d _build/html/
+
+markdown:
+	$(SPHINXBUILD) -M markdown $(ALLSPHINXOPTS) $(BUILDDIR)/markdown
+	@echo
+	@echo "Build finished. The Markdown files are in $(BUILDDIR)/markdown."
+
+singlemarkdown:
+	$(SPHINXBUILD) -M markdown $(ALLSPHINXOPTS) $(BUILDDIR)/singlemarkdown
+	@echo
+	@echo "Build finished. The single Markdown file is in $(BUILDDIR)/singlemarkdown."
