@@ -29,7 +29,7 @@ if [[ "$BUILD_TYPE" == "skip" || "${BUILD_TYPE}" == "ubsan" ]]; then
   exit 0
 fi
 
-if [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" || "$BUILD_TYPE" == "tsan-clang" ]]; then
+if [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" || "$BUILD_TYPE" == "tsan-clang" || "$BUILD_TYPE" == "cgroup" ]]; then
   echo "--- Install LLVM dependencies (and skip building ray package)"
   bash ci/env/install-llvm-binaries.sh
   exit 0

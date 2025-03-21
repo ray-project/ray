@@ -208,3 +208,16 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+# This test is only run on linux machines
+# with docker containers that have --privileged
+# enabled.
+py_test(
+    name = "test_privileged",
+    size = "small",
+    srcs = ["test_privileged.py"],
+    tags = [
+        "team:ci"
+    ],
+    deps = [ci_require("pytest")],
+)
