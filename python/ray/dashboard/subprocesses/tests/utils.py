@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 import signal
 from typing import AsyncIterator
 
@@ -116,6 +117,8 @@ class TestModule(SubprocessModule):
     async def logging_in_module(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         request_body_str = await req.text()
         logger.info(f"In /logging_in_module, {request_body_str}.")
+        print("In /logging_in_module, stdout")
+        print("In /logging_in_module, stderr", file=sys.stderr)
         return aiohttp.web.Response(text="done!")
 
     @routes.post("/kill_self")
