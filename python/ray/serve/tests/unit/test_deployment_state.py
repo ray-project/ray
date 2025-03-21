@@ -3447,7 +3447,9 @@ class TestAutoscaling:
             == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
         )
 
-    def test_replicas_fail_during_initial_scale_from_zero(self, mock_deployment_state_manager):
+    def test_replicas_fail_during_initial_scale_from_zero(
+        self, mock_deployment_state_manager
+    ):
         """Test the following case:
 
         - An "erroneous" deployment (w/ autoscaling enabled) is deployed
@@ -3480,18 +3482,15 @@ class TestAutoscaling:
         ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
         # Send request metrics to controller to make the deployment upscale
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
-                deployment_id=TEST_DEPLOYMENT_ID,
-                handle_id="random",
-                actor_id=None,
-                handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=1,
-                running_requests={},
-                send_timestamp=timer.time(),
-            )
-        else:
-            1 / 0
+        asm.record_request_metrics_for_handle(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=1,
+            running_requests={},
+            send_timestamp=timer.time(),
+        )
 
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY and NOT retry
@@ -3519,7 +3518,9 @@ class TestAutoscaling:
                         ],
                     )
                 else:
-                    check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+                    check_counts(
+                        ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)]
+                    )
 
                 # Set replica finished stopping
                 replica._actor.set_done_stopping()
@@ -3531,8 +3532,9 @@ class TestAutoscaling:
                     == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
                 )
 
-
-    def test_replicas_fail_during_subsequent_scale_from_zero(self, mock_deployment_state_manager):
+    def test_replicas_fail_during_subsequent_scale_from_zero(
+        self, mock_deployment_state_manager
+    ):
         """Test the following case:
 
         - An autoscaling deployment is deployed and it reaches HEALTHY
@@ -3594,18 +3596,15 @@ class TestAutoscaling:
         check_counts(ds, total=0)
 
         # Send request metrics to controller to make the deployment upscale
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-            asm.record_request_metrics_for_handle(
-                deployment_id=TEST_DEPLOYMENT_ID,
-                handle_id="random",
-                actor_id=None,
-                handle_source=DeploymentHandleSource.UNKNOWN,
-                queued_requests=1,
-                running_requests={},
-                send_timestamp=timer.time(),
-            )
-        else:
-            1 / 0
+        asm.record_request_metrics_for_handle(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            handle_id="random",
+            actor_id=None,
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=1,
+            running_requests={},
+            send_timestamp=timer.time(),
+        )
 
         # The controller should try to start a new replica. If that replica repeatedly
         # fails to start, the deployment should transition to UNHEALTHY. Meanwhile
