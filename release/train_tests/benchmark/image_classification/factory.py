@@ -53,13 +53,9 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
-        train_ds = (
-            ray.data.read_parquet(
-                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
-            )
-            .limit(self.benchmark_config.limit_training_rows)
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
-        )
+        train_ds = ray.data.read_parquet(
+            IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
+        ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
 
         val_ds = (
             ray.data.read_parquet(
@@ -168,6 +164,10 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
             else None
         )
 
+        # TODO: Without limit_training_rows_per_worker, the traing step hangs in
+        # the backward progagation step. This is due to imbalance of data processing in the Torch
+        # dataloader workers. Need to figure a better way to distribute data between Torch dataloader
+        # workers.
         train_ds = S3ParquetImageIterableDataset(
             file_urls=self._get_file_urls(self.train_url, total_training_rows),
             random_transforms=True,
