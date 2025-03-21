@@ -98,11 +98,11 @@ def cli_to_config() -> BenchmarkConfig:
         nested_parser = argparse.ArgumentParser()
         config_cls = BenchmarkConfig.model_fields[nested_field].annotation
 
-        if (
-            config_cls == DataLoaderConfig
-            and top_level_args.dataloader_type == DataloaderType.RAY_DATA
-        ):
-            config_cls = RayDataConfig
+        if config_cls == DataLoaderConfig:
+            if top_level_args.dataloader_type == DataloaderType.RAY_DATA:
+                config_cls = RayDataConfig
+            elif top_level_args.dataloader_type == DataloaderType.TORCH:
+                config_cls = TorchConfig
 
         for field, field_info in config_cls.model_fields.items():
             _add_field_to_parser(nested_parser, field, field_info)

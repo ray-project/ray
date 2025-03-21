@@ -1,8 +1,10 @@
-from typing import Dict
+from typing import Dict, Iterator, Tuple
 import logging
+import time
 
 import torch
 import torchvision
+from torch.utils.data import IterableDataset
 
 import ray.train
 
@@ -17,7 +19,10 @@ from image_classification.imagenet import (
     get_preprocess_map_fn,
     IMAGENET_PARQUET_SPLIT_S3_DIRS,
 )
-
+from image_classification.torch_parquet_image_iterable_dataset import (
+    S3Reader,
+    S3ParquetImageIterableDataset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +96,128 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         return batch["image"], batch["label"]
 
 
-class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
-    """Factory for creating PyTorch DataLoaders for image classification tasks."""
+class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader):
+    """Factory for creating PyTorch DataLoaders for image classification tasks.
+
+    This factory:
+    1. Creates DataLoaders that read Parquet files from S3
+    2. Distributes files among Ray workers using round-robin allocation
+    3. Handles device transfer and error handling for batches
+    4. Supports row limits per worker for controlled data processing
+    """
 
     def __init__(self, benchmark_config: BenchmarkConfig):
-        train_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        val_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        super().__init__(
-            benchmark_config,
-            train_urls,
-            val_urls,
-            limit_validation_rows=benchmark_config.limit_validation_rows,
+        super().__init__(benchmark_config)
+        self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+        self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+
+    def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
+        """Get the train and validation datasets.
+
+        Returns:
+            A dictionary containing the train and validation datasets.
+        """
+        # Calculate row limits per worker for validation
+        dataloader_config = self.get_dataloader_config()
+        num_workers = max(0, dataloader_config.num_torch_workers)
+        total_workers = self.benchmark_config.num_workers * num_workers
+
+        limit_rows_per_worker = None
+        if self.benchmark_config.limit_validation_rows is not None:
+            if total_workers > 0:
+                limit_rows_per_worker = max(
+                    1, self.benchmark_config.limit_validation_rows // total_workers
+                )
+            else:
+                limit_rows_per_worker = self.benchmark_config.limit_validation_rows
+
+        train_ds = S3ParquetImageIterableDataset(
+            file_urls=self._get_file_urls(self.train_url),
+            random_transforms=True,
         )
+
+        val_ds = S3ParquetImageIterableDataset(
+            file_urls=self._get_file_urls(self.val_url),
+            random_transforms=False,
+            limit_rows_per_worker=limit_rows_per_worker,
+        )
+
+        return {"train": train_ds, "val": val_ds}
+
+    def create_batch_iterator(
+        self, dataloader: torch.utils.data.DataLoader, device: torch.device
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Create a safe iterator that handles device transfer and error handling.
+
+        Args:
+            dataloader: The PyTorch DataLoader to iterate over
+            device: The device to move tensors to
+
+        Returns:
+            An iterator that yields batches moved to the specified device
+        """
+        worker_rank = ray.train.get_context().get_world_rank()
+        logger.info(
+            f"[ImageClassification] Worker {worker_rank}: Starting batch iteration"
+        )
+
+        try:
+            last_batch_time = time.time()
+            for batch_idx, batch in enumerate(dataloader):
+                try:
+                    # Check for delays between batches
+                    current_time = time.time()
+                    time_since_last_batch = current_time - last_batch_time
+                    if time_since_last_batch > 10:
+                        logger.warning(
+                            f"[ImageClassification] Worker {worker_rank}: "
+                            f"Long delay ({time_since_last_batch:.2f}s) between batches {batch_idx-1} and {batch_idx}"
+                        )
+
+                    # Move batch to device
+                    images, labels = batch
+                    logger.info(
+                        f"[ImageClassification] Worker {worker_rank}: Processing batch {batch_idx} "
+                        f"(shape: {images.shape}, time since last: {time_since_last_batch:.2f}s)"
+                    )
+
+                    transfer_start = time.time()
+                    dataloader_config = self.get_dataloader_config()
+                    images = images.to(
+                        device, non_blocking=dataloader_config.torch_non_blocking
+                    )
+                    labels = labels.to(
+                        device, non_blocking=dataloader_config.torch_non_blocking
+                    )
+                    transfer_time = time.time() - transfer_start
+
+                    if transfer_time > 5:
+                        logger.warning(
+                            f"[ImageClassification] Worker {worker_rank}: "
+                            f"Slow device transfer ({transfer_time:.2f}s) for batch {batch_idx}"
+                        )
+
+                    logger.info(
+                        f"[ImageClassification] Worker {worker_rank}: Completed device transfer "
+                        f"for batch {batch_idx} in {transfer_time:.2f}s"
+                    )
+
+                    last_batch_time = time.time()
+                    yield images, labels
+
+                except Exception as e:
+                    logger.error(
+                        f"[ImageClassification] Worker {worker_rank}: Error processing batch {batch_idx}: {str(e)}",
+                        exc_info=True,
+                    )
+                    raise
+
+        except Exception as e:
+            logger.error(
+                f"[ImageClassification] Worker {worker_rank}: Error in batch iterator: {str(e)}",
+                exc_info=True,
+            )
+            raise
 
 
 class ImageClassificationFactory(BenchmarkFactory):
