@@ -9,7 +9,7 @@
    Getting Started <ray-overview/getting-started>
    Installation <ray-overview/installation>
    Use Cases <ray-overview/use-cases>
-   Reference Architectures <ray-overview/ref-archs/index>
+   Examples <ray-overview/examples/index>
    Ecosystem <ray-overview/ray-libraries>
    Ray Core <ray-core/walkthrough>
    Ray Data <data/data>
