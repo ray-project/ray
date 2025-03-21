@@ -244,6 +244,7 @@ def test_add_build_tag_to_wheel():
         expected_wheel_path = os.path.join(tmp_dir, expected_wheel_name)
         assert os.path.exists(expected_wheel_path)
 
+
 def test_add_build_tag_to_wheels():
     with tempfile.TemporaryDirectory() as tmp_dir:
         wheels = [
@@ -254,8 +255,13 @@ def test_add_build_tag_to_wheels():
             with open(os.path.join(tmp_dir, wheel), "w") as f:
                 f.write("")
         add_build_tag_to_wheels(directory_path=tmp_dir, build_tag="123")
-        assert os.path.exists(os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl"))
-        assert os.path.exists(os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_aarch64.whl"))
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_x86_64.whl")
+        )
+        assert os.path.exists(
+            os.path.join(tmp_dir, "ray-1.0.0-123-cp39-cp39-manylinux2014_aarch64.whl")
+        )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
