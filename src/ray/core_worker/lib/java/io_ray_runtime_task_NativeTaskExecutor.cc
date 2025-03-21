@@ -19,7 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/raylet_client/raylet_client.h"
 
 #ifdef __cplusplus

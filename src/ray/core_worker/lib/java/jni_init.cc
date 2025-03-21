@@ -14,7 +14,7 @@
 
 #include <string>
 
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;

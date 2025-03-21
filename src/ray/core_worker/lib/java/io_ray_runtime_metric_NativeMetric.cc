@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "opencensus/tags/tag_key.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/stats/metric.h"
 
 using TagKeyType = opencensus::tags::TagKey;

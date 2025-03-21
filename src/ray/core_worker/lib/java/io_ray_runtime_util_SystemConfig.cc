@@ -16,7 +16,7 @@
 #include <jni.h>
 
 #include "nlohmann/json.hpp"
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/util/logging.h"
 
 using json = nlohmann::json;
