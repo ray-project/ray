@@ -5,7 +5,7 @@ Hello World
 -----------
 This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
-.. testcode::
+.. code-block:: bash
 
     pip install "ray[cgraph]"
     
