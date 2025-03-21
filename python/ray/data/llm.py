@@ -147,6 +147,15 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
                 ),
             )
 
+            # The processor requires specific input columns, which depend on
+            # your processor config. You can use the following API to check
+            # the required input columns:
+            processor.log_input_column_names()
+            # Example log:
+            # The first stage of the processor is ChatTemplateStage.
+            # Required input columns:
+            #     messages: A list of messages in OpenAI chat format.
+
             ds = ray.data.range(300)
             ds = processor(ds)
             for row in ds.take_all():
