@@ -230,12 +230,11 @@ def test_fallback_allocation_failure(shutdown_only):
     file_system_config = {
         "type": "filesystem",
         "params": {
-            "directory_path": "/tmp",
+            "directory_path": "/dev/shm",
         },
     }
     ray.init(
         object_store_memory=100e6,
-        _temp_dir="/dev/shm",
         _system_config={
             "object_spilling_config": json.dumps(file_system_config),
             # set local fs capacity to 100% so it never errors with out of disk.
