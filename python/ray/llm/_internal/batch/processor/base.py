@@ -30,6 +30,12 @@ class ProcessorConfig(BaseModelExtended):
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case. Defaults to 64.",
     )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
+    )
     accelerator_type: Optional[str] = Field(
         default=None,
         description="The accelerator type used by the LLM stage in a processor. "
