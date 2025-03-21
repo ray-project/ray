@@ -354,6 +354,15 @@ class Stats:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
         return self._throughput_stats.peek()
 
+    @property
+    def has_throughput(self) -> bool:
+        """Returns whether this Stats object tracks throughput.
+
+        Returns:
+            True if this Stats object has throughput tracking enabled, False otherwise.
+        """
+        return self._throughput_stats is not None
+
     def reduce(self) -> Any:
         """Reduces the internal values list according to the constructor settings.
 
@@ -368,15 +377,15 @@ class Stats:
         """
         reduced, values = self._reduced_values()
 
-        # Reduce everything to a single (init) value.
-        self._set_values(values)
-
-        # Shift historic reduced valued by one in our reduce_history-tuple.
-        self._reduce_history.append(reduced)
-
         # `clear_on_reduce` -> Clear the values list.
         if self._clear_on_reduce:
             self._set_values([])
+        else:
+            # Reduce everything to a single (init) value.
+            self._set_values(values)
+
+        # Shift historic reduced valued by one in our reduce_history-tuple.
+        self._reduce_history.append(reduced)
 
         return reduced
 

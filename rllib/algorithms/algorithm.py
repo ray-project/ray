@@ -3256,12 +3256,11 @@ class Algorithm(Checkpointable, Trainable):
         def _reduce(p, s):
             if isinstance(s, Stats):
                 ret = s.peek()
-                _throughput = s.peek(throughput=True)
-                if _throughput is not None:
+                if s.throughput is not None:
                     _curr = throughputs
                     for k in p[:-1]:
                         _curr = _curr.setdefault(k, {})
-                    _curr[p[-1] + "_throughput"] = _throughput
+                    _curr[p[-1] + "_throughput"] = s.throughput
             else:
                 ret = s
             return ret
