@@ -145,7 +145,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
         """
         # Calculate row limits per worker for validation
         dataloader_config = self.get_dataloader_config()
-        num_workers = max(0, dataloader_config.num_torch_workers)
+        num_workers = max(1, dataloader_config.num_torch_workers)
         total_workers = self.benchmark_config.num_workers * num_workers
 
         limit_training_rows_per_worker = self.calculate_rows_per_worker(

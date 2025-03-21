@@ -22,7 +22,7 @@ class RayDataConfig(DataLoaderConfig):
 
 
 class TorchConfig(DataLoaderConfig):
-    num_torch_workers: int = 0
+    num_torch_workers: int = 8
     torch_dataloader_timeout_seconds: int = 300
     torch_pin_memory: bool = True
     torch_non_blocking: bool = True
@@ -50,7 +50,7 @@ class BenchmarkConfig(BaseModel):
     num_epochs: int = 1
     skip_train_step: bool = False
     train_step_anomaly_detection: bool = False
-    limit_training_rows: int = 100000
+    limit_training_rows: int = 1000000
 
     # Validation
     validate_every_n_steps: int = -1
