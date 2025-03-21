@@ -143,7 +143,7 @@ class VLLMEngineConfig(BaseModelExtended):
         if self.resources_per_bundle:
             bundle = self.resources_per_bundle
         else:
-            bundle = {"GPU": 1, "CPU": 1}
+            bundle = {"GPU": 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
         bundles = [bundle for _ in range(self.num_devices)]
