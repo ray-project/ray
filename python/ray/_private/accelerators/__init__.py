@@ -1,3 +1,4 @@
+import os
 from typing import Set, Optional
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -8,6 +9,8 @@ from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
+
+USE_NVIDIA_GPU_ACCELERATOR_MANAGER_ENV_VAR = "RAY_FORCE_NVIDIA_GPU_ACCELERATOR_MANAGER"
 
 
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
@@ -50,13 +53,14 @@ def get_accelerator_manager_for_resource(
             for accelerator_manager in get_all_accelerator_managers()
         }
         # Special handling for GPU resource name since multiple accelerator managers
-        # have the same GPU resource name.
-        if AMDGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
-            resource_name_to_accelerator_manager["GPU"] = AMDGPUAcceleratorManager
-        elif IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
-            resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
-        else:
-            resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
+        # have the same GPU resource name. We should also respect the environment
+        # variable to force using NvidiaGPUAcceleratorManager
+        resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
+        if not os.environ.get(USE_NVIDIA_GPU_ACCELERATOR_MANAGER_ENV_VAR):
+            if AMDGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+                resource_name_to_accelerator_manager["GPU"] = AMDGPUAcceleratorManager
+            elif IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
+                resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
         get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
             resource_name_to_accelerator_manager
         )
