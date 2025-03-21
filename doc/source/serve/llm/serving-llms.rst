@@ -275,7 +275,7 @@ provide the correct values.
 
 This command generates two files: an LLM config file, saved in `model_config/`, and a
 Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
- future.
+future.
 
 Read and check how the generated model config looks like. Refer to
 `vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
