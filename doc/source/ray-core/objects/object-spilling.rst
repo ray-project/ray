@@ -2,8 +2,8 @@ Object Spilling
 ===============
 .. _object-spilling:
 
-Ray spills objects to external storage once the object store is full. By default, Ray 
-spills objects to the temporary directory in the local filesystem. 
+Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray 
+spills objects to the temporary directory. 
 
 Spilling to a custom directory
 -------------------------------
