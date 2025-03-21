@@ -1412,10 +1412,10 @@ class DeploymentState:
 
         return False
 
-    def _version_terminally_failed(self) -> bool:
-        """Check whether the deployment is terminally errored.
+    def _terminally_failed(self) -> bool:
+        """Check whether the current version is terminally errored.
 
-        The deployment is considered terminally errored if the number of
+        The version is considered terminally errored if the number of
         replica failures has exceeded a threshold, and there hasn't been
         any replicas of the target version that has successfully started.
         """
@@ -1477,7 +1477,7 @@ class DeploymentState:
         multiplexed model IDs.
         """
         running_replica_infos = self.get_running_replica_infos()
-        is_available = not self._version_terminally_failed()
+        is_available = not self._terminally_failed()
 
         running_replicas_changed = (
             set(self._last_broadcasted_running_replica_infos)
@@ -1884,7 +1884,7 @@ class DeploymentState:
                 stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
                 to_add = max(delta_replicas - stopping_replicas, 0)
 
-            if to_add > 0 and not self._version_terminally_failed():
+            if to_add > 0 and not self._terminally_failed():
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
@@ -1942,7 +1942,6 @@ class DeploymentState:
             # leave it to the controller to fully scale to target
             # number of replicas and only return as completed once
             # reached target replica count
-            # self._replica_constructor_retry_counter = -1
             self._replica_has_started = True
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
