@@ -13,29 +13,17 @@ from snowflake.connector import connect
 import ray
 from ray.tests.conftest import *  # noqa
 
-# Note: Snowflake secrets are on `anyscale-dev-product` account.
+# Note: Snowflake secrets are only used in postmerge authenticated tests.
 
 
 @pytest.fixture
 def connection_parameters():
-    secret_name = "runtime/ci/snowflake_connection_parameters"
-    region_name = "us-east-2"
-
-    session = boto3.session.Session()
-    client = session.client(service_name="secretsmanager", region_name=region_name)
-
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    except ClientError as e:
-        raise e
-
-    secret = json.loads(get_secret_value_response["SecretString"])
     parameters = {
-        "user": secret["SNOWFLAKE_USER"],
-        "account": secret["SNOWFLAKE_ACCOUNT"],
-        "password": secret["SNOWFLAKE_PASSWORD"],
-        "database": secret["SNOWFLAKE_DATABASE"],
-        "schema": secret["SNOWFLAKE_SCHEMA"],
+        "user": os.getenv("SNOWFLAKE_USER"),
+        "account": os.getenv("SNOWFLAKE_ACCOUNT"),
+        "password": os.getenv("SNOWFLAKE_PASSWORD"),
+        "database": os.getenv("SNOWFLAKE_DATABASE"),
+        "schema": os.getenv("SNOWFLAKE_SCHEMA"),
     }
 
     yield parameters
@@ -52,6 +40,7 @@ def temp_table(connection_parameters):
         connection.commit()
 
 
+@pytest.mark.needs_credentials
 def test_read(ray_start_regular_shared, connection_parameters):
     # This query fetches a small dataset with a variety of column types.
     query = "SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF100TCL.CALL_CENTER"
@@ -66,6 +55,7 @@ def test_read(ray_start_regular_shared, connection_parameters):
     assert sorted(actual_rows) == sorted(expected_rows)
 
 
+@pytest.mark.needs_credentials
 def test_read_query_once(ray_start_regular_shared, connection_parameters):
     # This query fetches a small dataset with a variety of column types.
     query = "SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF100TCL.CALL_CENTER"
@@ -83,6 +73,7 @@ def test_read_query_once(ray_start_regular_shared, connection_parameters):
         mock_cursor.execute.assert_called_once_with(query)
 
 
+@pytest.mark.needs_credentials
 def test_write(ray_start_regular_shared, temp_table, connection_parameters):
     expected_column_names = ["title", "year", "score"]
     expected_rows = [
@@ -101,6 +92,7 @@ def test_write(ray_start_regular_shared, temp_table, connection_parameters):
     assert sorted(actual_rows) == sorted(expected_rows)
 
 
+@pytest.mark.needs_credentials
 def execute(
     query: str, connection_parameters: Dict[str, str]
 ) -> Tuple[List[str], List[Tuple[Any]]]:
