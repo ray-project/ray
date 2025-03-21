@@ -9,10 +9,10 @@ import ray.train
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
 from dataloader_factory import (
-    RayDataLoaderFactory,
     BaseDataLoaderFactory,
-    TorchDataLoaderFactory,
 )
+from ray_dataloader_factory import RayDataLoaderFactory
+from torch_dataloader_factory import TorchDataLoaderFactory
 from image_classification.imagenet import (
     get_preprocess_map_fn,
     IMAGENET_PARQUET_SPLIT_S3_DIRS,
