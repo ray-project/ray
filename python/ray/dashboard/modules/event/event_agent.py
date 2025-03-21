@@ -87,11 +87,10 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                     json=data,
                 ) as response:
                     response.raise_for_status()
-                    assert response.json()["success"]
                 self.total_request_sent += 1
                 break
-            except Exception:
-                logger.exception("Report event failed, reconnect to the dashboard.")
+            except Exception as e:
+                logger.warning(f"Report event failed, retrying... {e}")
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
