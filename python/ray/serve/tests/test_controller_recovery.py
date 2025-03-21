@@ -12,7 +12,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
-from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     SERVE_CONTROLLER_NAME,
@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import check_replica_counts
 from ray.serve.schema import LoggingConfig
+from ray.serve.schema_types import ReplicaState
 from ray.serve.tests.test_failure import request_with_retries
 from ray.util.state import list_actors
 
