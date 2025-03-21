@@ -14,7 +14,6 @@ from torch.utils.data import IterableDataset
 import ray.train
 import ray
 
-from config import BenchmarkConfig
 from image_classification.imagenet import get_preprocess_map_fn
 
 logger = logging.getLogger(__name__)
@@ -94,15 +93,9 @@ class S3Reader:
 
         pass
 
-    def __init__(self, benchmark_config: Optional[BenchmarkConfig] = None):
-        """Initialize the S3Reader.
-
-        Args:
-            benchmark_config: Optional benchmark configuration
-        """
+    def __init__(self):
+        """Initialize the S3Reader."""
         self._s3_client = None
-        self.benchmark_config = benchmark_config
-        self.worker_rank = ray.train.get_context().get_world_rank()
 
     @property
     def s3_client(self):
@@ -210,8 +203,9 @@ class S3Reader:
             tasks.append(task)
 
         # Wait for all tasks to complete
+        worker_rank = ray.train.get_context().get_world_rank()
         logger.info(
-            f"[DataLoader] Worker {self.worker_rank}: Waiting for metadata from {len(tasks)} files..."
+            f"[DataLoader] Worker {worker_rank}: Waiting for metadata from {len(tasks)} files..."
         )
         results = ray.get(tasks)
 
@@ -219,7 +213,7 @@ class S3Reader:
         file_urls, file_rows = zip(*results) if results else ([], [])
 
         logger.info(
-            f"[DataLoader] Worker {self.worker_rank}: Collected metadata for {len(file_urls)} files"
+            f"[DataLoader] Worker {worker_rank}: Collected metadata for {len(file_urls)} files"
         )
         return list(file_urls), list(file_rows)
 
@@ -360,8 +354,10 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
         """
         try:
             start_time = time.time()
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id if worker_info else 0
             logger.info(
-                f"[Dataset] Worker {self.worker_rank}: Reading Parquet file: {file_url}"
+                f"[Dataset] Worker {worker_id}: Reading Parquet file: {file_url}"
             )
 
             # Get parquet file metadata
@@ -371,7 +367,7 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             num_row_groups = parquet_file.num_row_groups
 
             logger.info(
-                f"[Dataset] Worker {self.worker_rank}: Found {num_row_groups} row groups in {file_url}"
+                f"[Dataset] Worker {worker_id}: Found {num_row_groups} row groups in {file_url}"
             )
 
             for row_group in range(num_row_groups):
@@ -382,12 +378,14 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
 
             total_time = time.time() - start_time
             logger.info(
-                f"[Dataset] Worker {self.worker_rank}: Completed reading {file_url} in {total_time:.2f}s"
+                f"[Dataset] Worker {worker_id}: Completed reading {file_url} in {total_time:.2f}s"
             )
 
         except Exception as e:
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id if worker_info else 0
             logger.error(
-                f"[Dataset] Worker {self.worker_rank}: Error reading file {file_url}: {str(e)}"
+                f"[Dataset] Worker {worker_id}: Error reading file {file_url}: {str(e)}"
             )
             raise
 

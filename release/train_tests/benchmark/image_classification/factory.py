@@ -108,6 +108,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
 
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
+        S3Reader.__init__(self)  # Initialize S3Reader to set up _s3_client
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
 

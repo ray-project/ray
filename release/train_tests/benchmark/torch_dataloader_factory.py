@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Iterator, Tuple
+from typing import Dict, Iterator, Tuple
 import logging
 import multiprocessing
 from abc import ABC, abstractmethod
@@ -71,21 +71,22 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         self.num_torch_workers = dataloader_config.num_torch_workers
         self.num_ray_workers = benchmark_config.num_workers
 
-        # Log configuration
-        worker_rank = ray.train.get_context().get_world_rank()
+        # Log configuration without worker rank since context may not be initialized
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Configuration: {self.num_ray_workers * self.num_torch_workers} total workers "
+            f"[DataLoader] Configuration: {self.num_ray_workers * self.num_torch_workers} total workers "
             f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
             f"across {num_gpus} GPUs"
         )
 
     def _get_device(self) -> torch.device:
         """Get the device for the current worker using Ray Train's device management."""
-        device = ray.train.torch.get_device()
+        try:
+            device = ray.train.torch.get_device()
+        except RuntimeError:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(
-            f"[DataLoader] Worker {worker_rank}: Using Ray Train device: {device}"
-        )
+        logger.info(f"[DataLoader] Worker {worker_rank}: Using device: {device}")
         return device
 
     @abstractmethod
@@ -161,7 +162,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
 
-        return self._create_batch_iterator(dataloader, device)
+        return self.create_batch_iterator(dataloader, device)
 
     def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a DataLoader for validation data.
@@ -214,4 +215,4 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
 
-        return self._create_batch_iterator(dataloader, device)
+        return self.create_batch_iterator(dataloader, device)
