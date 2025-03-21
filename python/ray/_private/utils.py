@@ -348,7 +348,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
     """
