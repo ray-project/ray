@@ -1869,6 +1869,17 @@ class Node:
             object_spilling_config = json.dumps(
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
             )
+        else:
+            logger.warning(
+                "The object spilling config is specified from an unstable "
+                "API - system config or environment variable. This is "
+                "subject to change in the future. You can use the stable "
+                "API - --object-spilling-storage-path in ray start or "
+                "object_spilling_storage_path in ray.init() to specify the "
+                "object spilling directory instead. If you need more "
+                "advanced settings, please open a github issue with the "
+                "Ray team."
+            )
 
         return object_spilling_config
 
