@@ -34,6 +34,7 @@ from ray.data.block import (
     BlockType,
     U,
     BlockColumnAccessor,
+    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -427,5 +428,28 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         )
         return res.as_py() if as_py else res
 
-    def to_pylist(self):
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        array = pac.quantile(self._column, q=q, skip_nulls=ignore_nulls)
+        # NOTE: That quantile method still returns an array
+        res = array[0]
+        return res.as_py() if as_py else res
+
+    def unique(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.unique(self._column)
+
+    def flatten(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.list_flatten(self._column)
+
+    def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self._column

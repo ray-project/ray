@@ -62,9 +62,10 @@ def test_processor_with_stages(has_extra: bool):
         def __init__(
             self,
             data_column: str,
+            expected_input_keys: List[str],
             factor: int,
         ):
-            super().__init__(data_column)
+            super().__init__(data_column, expected_input_keys)
             self.factor = factor
 
         async def udf(
@@ -80,14 +81,13 @@ def test_processor_with_stages(has_extra: bool):
                     self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 }
 
-        @property
-        def expected_input_keys(self) -> List[str]:
-            return ["val"]
-
     class DummyStage(StatefulStage):
         fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = dict(concurrency=1)
+
+        def get_required_input_keys(self) -> Dict[str, str]:
+            return {"val": "The value to multiply."}
 
     stages = [
         DummyStage(fn_constructor_kwargs=dict(factor=2)),

@@ -254,6 +254,33 @@ To deploy using either configuration file:
 
     serve run config.yaml
 
+Generate config files
+---------------------
+
+Ray Serve LLM provides a CLI to generate config files for your deployment:
+
+.. code-block:: bash
+
+    python -m ray.serve.llm.gen_config
+
+*Note*: This command requires interactive inputs. You should execute it directly in the
+terminal.
+
+This command lets you pick from a common set of OSS LLMs and helps you configure them.
+You can tune settings like GPU type, tensor parallelism, and autoscaling parameters.
+
+Note that if you're configuring a model whose architecture is different from the
+provided list of models, you should closely review the generated model config file to
+provide the correct values.
+
+This command generates two files: an LLM config file, saved in `model_config/`, and a
+Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
+future.
+
+Read and check how the generated model config looks like. Refer to
+`vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
+to further customize.
+
 Advanced Usage Patterns
 -----------------------
 

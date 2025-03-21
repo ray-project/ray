@@ -27,26 +27,8 @@ steps:
   - label: doc tests
     instance_type: large
     commands:
-      # doc tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... none
-        --build-name doctestbuild
-        --only-tags doctest
-        --except-tags gpu
-        --parallelism-per-worker 3
-      # doc memory pressure example
-      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
-        --build-name doctestbuild
-        --only-tags mem_pressure
-        --except-tags gpu
-        --skip-ray-installation
-    depends_on: doctestbuild
-
-  - label: failing doc tests
-    instance_type: large
-    soft_fail: true
-    commands:
-      # doc tests
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc:doctest none
+      # Disable test DB to avoid any hidden failures going forward.
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... none
         --build-name doctestbuild
         --only-tags doctest
         --except-tags gpu

@@ -26,6 +26,7 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     yield SubprocessModuleConfig(
         cluster_id_hex="test_cluster_id",
         gcs_address="",
+        session_name="test_session",
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
@@ -157,6 +158,23 @@ async def test_websocket_bytes_str(aiohttp_client, default_module_config):
     assert res == ["1\n", "2\n", "3\n", "4\n", "5\n"]
 
 
+async def test_websocket_raise_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_http_error")
+    assert response.status == 400
+    assert await response.text() == "400: Hello this is a bad request"
+
+
+async def test_websocket_raise_non_http_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/websocket_raise_non_http_error")
+    assert response.status == 500
+
+
 async def test_kill_self(aiohttp_client, default_module_config):
     """
     If a module died, all pending requests should be failed, and the module should be
@@ -230,6 +248,17 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     assert all(
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
+
+    # Assert that stdout and stderr are logged to "dashboard.TestModule.err"
+    err_log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
+    )
+    with err_log_file_path.open("r") as f:
+        err_log_file_content = f.read()
+    assert (
+        err_log_file_content
+        == "In /logging_in_module, stdout\nIn /logging_in_module, stderr\n"
+    )
 
 
 async def test_logging_in_module_with_multiple_incarnations(

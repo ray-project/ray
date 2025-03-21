@@ -26,17 +26,7 @@ namespace ray {
 // 1. This function should be called **at most once** per process; redirected stream
 // will be flushed and synchronized at process termination to guarantee no data loss.
 // 2. This function is _NOT_ thread-safe.
-//
-// TODO(hjiang): Implement full-featured redirection for windows.
-void RedirectStdout(const StreamRedirectionOption &opt);
-void RedirectStderr(const StreamRedirectionOption &opt);
-
-// Flush on redirected stream synchronously.
-//
-// TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
-// and could miss those in the pipe; it's acceptable because we only use it in the unit
-// test for now.
-void FlushOnRedirectedStdout();
-void FlushOnRedirectedStderr();
+void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt);
+void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt);
 
 }  // namespace ray

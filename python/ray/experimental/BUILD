@@ -5,5 +5,5 @@ doctest(
         ["**/*.py"],
         exclude = ["tf_utils.py"],
     ),
-    tags = ["team:none"],
+    tags = ["team:core"],
 )

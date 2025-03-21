@@ -266,6 +266,6 @@ def push_telemetry_report_for_all_models(
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
             gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
-            num_gpus=engine_config.num_gpu_workers,
+            num_gpus=engine_config.num_devices,
         )
         _push_telemetry_report(telemetry_model)

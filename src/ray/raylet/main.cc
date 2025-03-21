@@ -34,8 +34,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/subreaper.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stdout_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
   }
 
   if (!FLAGS_stderr_filepath.empty()) {
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stderr_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStderr(stderr_redirection_options);
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
   }
 
   // Backward compatibility notes:

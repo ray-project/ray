@@ -285,32 +285,39 @@ class SubprocessModuleHandle:
 
     async def proxy_websocket(
         self, request: aiohttp.web.Request
-    ) -> aiohttp.web.WebSocketResponse:
+    ) -> aiohttp.web.StreamResponse:
         """
         Proxy handler for WebSocket API
         It establishes a WebSocket connection with the client and simultaneously connects
         to the backend server's WebSocket endpoint. Messages are forwarded in single
         direction from the backend to the client.
+        If the backend responds with normal HTTP response, then try to treat it as a normal
+        HTTP request and calls proxy_http instead.
 
         TODO: Support bidirectional communication if needed. We only support one direction
               because it's sufficient for the current use case.
         """
-        ws_from_client = aiohttp.web.WebSocketResponse()
-        await ws_from_client.prepare(request)
-
         url = f"http://localhost{request.path_qs}"
 
-        async with self.http_client_session.ws_connect(
-            url, headers=filter_hop_by_hop_headers(request.headers)
-        ) as ws_to_backend:
-            async for msg in ws_to_backend:
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    await ws_from_client.send_str(msg.data)
-                elif msg.type == aiohttp.WSMsgType.BINARY:
-                    await ws_from_client.send_bytes(msg.data)
-                else:
-                    logger.error(f"Unknown msg type: {msg.type}")
-                    await ws_from_client.close()
-
-        await ws_from_client.close()
-        return ws_from_client
+        try:
+            async with self.http_client_session.ws_connect(
+                url, headers=filter_hop_by_hop_headers(request.headers)
+            ) as ws_to_backend:
+                ws_from_client = aiohttp.web.WebSocketResponse()
+                await ws_from_client.prepare(request)
+                async for msg in ws_to_backend:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        await ws_from_client.send_str(msg.data)
+                    elif msg.type == aiohttp.WSMsgType.BINARY:
+                        await ws_from_client.send_bytes(msg.data)
+                    else:
+                        logger.error(f"Unknown msg type: {msg.type}")
+                await ws_from_client.close()
+                return ws_from_client
+        except aiohttp.WSServerHandshakeError as e:
+            logger.warning(f"WebSocket handshake error: {repr(e)}")
+            # Try to treat it as a normal HTTP request
+            return await self.proxy_http(request)
+        except Exception as e:
+            logger.error(f"WebSocket proxy error: {repr(e)}")
+            raise aiohttp.web.HTTPInternalServerError(reason="WebSocket proxy error")

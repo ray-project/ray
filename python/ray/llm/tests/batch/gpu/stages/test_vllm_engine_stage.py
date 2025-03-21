@@ -109,6 +109,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=vLLMTaskType.GENERATE,
         engine_kwargs={

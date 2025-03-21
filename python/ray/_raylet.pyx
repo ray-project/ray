@@ -166,8 +166,8 @@ from ray.includes.libcoreworker cimport (
 )
 from ray.includes.stream_redirection cimport (
     CStreamRedirectionOptions,
-    RedirectStdout,
-    RedirectStderr,
+    RedirectStdoutOncePerProcess,
+    RedirectStderrOncePerProcess,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -2699,7 +2699,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStdout(opt)
+        RedirectStdoutOncePerProcess(opt)
 
     @staticmethod
     def redirect_stderr(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
@@ -2709,7 +2709,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStderr(opt)
+        RedirectStderrOncePerProcess(opt)
 
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:

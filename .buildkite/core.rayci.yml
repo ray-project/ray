@@ -166,8 +166,13 @@ steps:
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --install-mask all-ray-libraries
-        --except-tags gpu,post_wheel_build,mem_pressure,doctest,multi_gpu
+        --except-tags doctest,post_wheel_build,gpu,multi_gpu,mem_pressure
         --parallelism-per-worker 3
+        --skip-ray-installation
+      # doc memory pressure example
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --only-tags mem_pressure
+        --except-tags gpu
         --skip-ray-installation
 
   - label: ":ray: core: data tests"
