@@ -81,79 +81,51 @@ Hyperparameter optimization frameworks
 .. toctree::
     :hidden:
 
-    Ax Example <ax_example>
-    HyperOpt Example <hyperopt_example>
-    Bayesopt Example <bayesopt_example>
-    BOHB Example <bohb_example>
-    Nevergrad Example <nevergrad_example>
-    Optuna Example <optuna_example>
+    ml-frameworks
+    experiment-tracking
+    hpo-frameworks
+    Other Examples <other-examples>
+    Exercises <exercises>
 
-Tune integrates with a wide variety of hyperparameter optimization frameworks
-and their respective search algorithms. See the following detailed examples
-for each integration:
 
-.. list-table::
+.. tip:: See :ref:<tune-guides> to learn more about Tune features.
 
-  * - :doc:`ax_example`
-  * - :doc:`hyperopt_example`
-  * - :doc:`bayesopt_example`
-  * - :doc:`bohb_example`
-  * - :doc:`nevergrad_example`
-  * - :doc:`optuna_example`
 
-.. _tune-examples-others:
+Below are examples for using Ray Tune for a variety use cases.
 
-Others
-------
+ML frameworks
+-------------
 
 .. list-table::
 
-  * - :doc:`Simple example for doing a basic random and grid search <includes/tune_basic_example>`
-  * - :doc:`Example of using a simple tuning function with AsyncHyperBandScheduler <includes/async_hyperband_example>`
-  * - :doc:`Example of using a trainable function with HyperBandScheduler and the AsyncHyperBandScheduler <includes/hyperband_function_example>`
-  * - :doc:`Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example <pbt_visualization/pbt_visualization>`
-  * - :doc:`includes/pbt_function`
-  * - :doc:`includes/pb2_example`
-  * - :doc:`includes/logging_example`
+  * - :doc:<tune-mnist-keras>
+  * - :doc:<tune-pytorch-cifar-ref>
+  * - :doc:<tune-pytorch-lightning-ref>
+  * - :doc:<tune-rllib-example>
+  * - :doc:<tune-xgboost-ref>
+  * - :doc:<tune-lightgbm-example>
+  * - :doc:<tune-horovod-example>
+  * - :doc:<tune-huggingface-example>
 
-.. _tune-examples-exercises:
+  
 
-Exercises
----------
 
-Learn how to use Tune in your browser with the following Colab-based exercises.
+Intermediate
+------------
 
 .. list-table::
-   :widths: 50 30 20
-   :header-rows: 1
 
-   * - Description
-     - Library
-     - Colab link
-   * - Basics of using Tune
-     - Pytorch
-     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
-          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb
-          :alt: Open in Colab
-   * - Using search algorithms and trial schedulers to optimize your model
-     - Pytorch
-     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
-          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_2_optimize.ipynb
-          :alt: Open in Colab
-   * - Using Population-Based Training (PBT)
-     - Pytorch
-     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
-          :target: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_3_pbt.ipynb" target="_parent
-          :alt: Open in Colab
-   * - Fine-tuning Hugging Face Transformers with PBT
-     - Hugging Face Transformers and Pytorch
-     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
-          :target: https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing
-          :alt: Open in Colab
-   * - Logging Tune runs to Comet ML
-     - Comet
-     - .. image:: https://colab.research.google.com/assets/colab-badge.svg
-          :target: https://colab.research.google.com/drive/1dp3VwVoAH1acn_kG7RuT62mICnOqxU1z?usp=sharing
-          :alt: Open in Colab
+  * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
 
-Tutorial source files are on `GitHub <https://github.com/ray-project/tutorial>`_.
+
+Advanced
+--------
+
+.. list-table::
+
+  * - :doc:`Build Simple AutoML for Time Series Using Ray <automl_for_time_series>`
+  * - :doc:`Build Batch Prediction Using Ray <batch_prediction>`
+  * - :doc:`Build a Simple Parameter Server Using Ray <plot_parameter_server>`
+  * - :doc:`Simple Parallel Model Selection <plot_hyperparameter>`
+  * - :doc:`Learning to Play Pong <plot_pong_example>`
