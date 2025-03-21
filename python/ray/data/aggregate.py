@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, Any
 
 import numpy as np
 
@@ -104,7 +104,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn):
+class AggregateFnV2(AggregateFn, abc.ABC):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -539,12 +539,13 @@ class Unique(AggregateFnV2):
     def __init__(
         self,
         on: Optional[str] = None,
+        ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
-            ignore_nulls=False,
+            ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
 
