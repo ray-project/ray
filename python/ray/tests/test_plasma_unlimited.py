@@ -22,7 +22,11 @@ pytestmark = [pytest.mark.timeout(1800 if platform.system() == "Darwin" else 180
 
 
 def _init_ray():
-    return ray.init(num_cpus=2, object_store_memory=700e6)
+    return ray.init(
+        num_cpus=2,
+        object_store_memory=700e6,
+        object_spilling_storage_path="/tmp/ray/plasma",
+    )
 
 
 @pytest.mark.skipif(
