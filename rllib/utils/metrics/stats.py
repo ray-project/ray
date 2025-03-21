@@ -236,9 +236,9 @@ class Stats:
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
 
-        # On each `.reduce()` call, we store the result of this call in hist[0] and the
-        # previous `reduce()` result in hist[1].
-        self._hist = deque([0, 0, 0], maxlen=3)
+        # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
+        # previous `reduce()` result in reduce_history[1].
+        self._reduce_history = deque([0, 0, 0], maxlen=3)
 
         self._throughput_ema_coeff = throughput_ema_coeff
         self._throughput_stats = None
@@ -319,26 +319,29 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: Optional[int] = None) -> Any:
+    def peek(self) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
         Thus, users can call this method to get an accurate look at the reduced value
         given the current internal values list.
 
-        Args:
-            previous: If provided (int), returns that previously (reduced) result of
-                this `Stats` object, which was generated `previous` number of `reduce()`
-                calls ago). If None (default), returns the current (reduced) value.
+        Returns:
+            The result of reducing the internal values list.
+        """
+        return self._reduced_values()[0]
+
+    def get_reduce_history(self) -> List[Any]:
+        """Returns the history of reduced values as a list.
+
+        The history contains the most recent reduced values, with the most recent value
+        at the end of the list. The length of the history is limited by the maxlen of
+        the internal history deque.
 
         Returns:
-            The result of reducing the internal values list (or the previously computed
-            reduced result, if `previous` is True).
+            A list containing the history of reduced values.
         """
-        # Return previously reduced value.
-        if previous is not None:
-            return self._hist[-abs(previous)]
-        return self._reduced_values()[0]
+        return list(self._reduce_history)
 
     @property
     def throughput(self) -> float:
@@ -351,7 +354,7 @@ class Stats:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
         return self._throughput_stats.peek()
 
-    def reduce(self) -> "Stats":
+    def reduce(self) -> Any:
         """Reduces the internal values list according to the constructor settings.
 
         Thereby, the internal values list is changed (note that this is different from
@@ -360,28 +363,22 @@ class Stats:
         the constructor settings, such as `window`, `reduce`, etc..
 
         Returns:
-            Returns `self` (now reduced) if self._reduced_values is False.
-            Returns a new `Stats` object with an empty internal values list, but
-            otherwise the same constructor settings (window, reduce, etc..) as `self`.
+            The reduced value (can be of any type, depending on the input values and
+            reduction method).
         """
         reduced, values = self._reduced_values()
 
         # Reduce everything to a single (init) value.
         self._set_values(values)
 
-        # Shift historic reduced valued by one in our hist-tuple.
-        self._hist.append(reduced)
+        # Shift historic reduced valued by one in our reduce_history-tuple.
+        self._reduce_history.append(reduced)
 
-        # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
-        # (from after the reduction). Also, set `self`'s values to empty.
+        # `clear_on_reduce` -> Clear the values list.
         if self._clear_on_reduce:
-            values = self.values
             self._set_values([])
-        # No reset required upon `reduce()` -> Return deepcopy of `self` values in
-        # a new Stats object.
-        else:
-            values = copy.deepcopy(self.values)
-        return Stats.similar_to(self, init_value=values)
+
+        return reduced
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         # Make sure `others` have same reduction settings.
@@ -654,7 +651,7 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "_hist": list(self._hist),
+            "_reduce_history": list(self._reduce_history),
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
@@ -681,7 +678,7 @@ class Stats:
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],   
             )
-        stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        stats._reduce_history = deque(state["_reduce_history"], maxlen=stats._reduce_history.maxlen)
         if "throughput_stats" in state:
             stats._throughput_stats = Stats.from_state(state["throughput_stats"])
         return stats
@@ -715,7 +712,7 @@ class Stats:
             throughput=other._throughput_stats.peek() if other._throughput_stats is not None else False,
             throughput_ema_coeff=other._throughput_ema_coeff,
         )
-        stats._hist = other._hist
+        stats._reduce_history = other._reduce_history
         return stats
 
     def _set_values(self, new_values):
