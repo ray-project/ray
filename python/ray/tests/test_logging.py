@@ -626,10 +626,6 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     ), f"Python stack trace not found in stderr: {stderr}"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32" or sys.platform == "darwin",
-    reason="TODO(simon): Failing on Windows and OSX.",
-)
 def test_log_java_worker_logs(shutdown_only, capsys):
     tmp_dir = tempfile.mkdtemp()
     print("using tmp_dir", tmp_dir)
