@@ -612,7 +612,7 @@ class EnvRunner:
         rollout_fragment_length=50,
         env_step_time=0.015,
         weights_server_actors,
-        sync_freq=1,
+        sync_freq=10,
     ):
         self.observation_space = observation_space
         self.num_envs_per_env_runner = num_envs_per_env_runner
@@ -705,7 +705,7 @@ class AggregatorActor:
         observation_space,
         batch_size=500,
         process_time_per_env_step=0.01,
-        sync_freq=1,
+        sync_freq=10,
     ):
         self.observation_space = observation_space
         self.batch_size = batch_size
