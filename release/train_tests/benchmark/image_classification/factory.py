@@ -188,7 +188,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
             }
         )
 
-        val_file_urls = self._get_file_urls(self.val_url, total_validation_rows)
+        val_file_urls = self._get_file_urls(self.val_url)
         val_ds = S3ParquetImageIterableDataset(
             file_urls=val_file_urls,
             random_transforms=False,

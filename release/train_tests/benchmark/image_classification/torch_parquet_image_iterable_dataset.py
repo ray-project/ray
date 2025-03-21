@@ -31,8 +31,11 @@ if torch.cuda.is_available():
 # AWS configuration
 AWS_REGION = "us-west-2"
 
+# TODO Look into https://github.com/webdataset/webdataset for more canonical way to do data
+# distribution between Ray Train and Torch Dataloader workers.
 
-@ray.remote
+
+@ray.remote(num_cpus=0.25)
 def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, int]:
     """Standalone Ray task to fetch Parquet row count using S3 Select.
 
@@ -236,12 +239,11 @@ class S3Reader:
 
         return [f"s3://{bucket}/{file['Key']}" for file in response["Contents"]]
 
-    def _get_file_urls(self, url: str, limit_rows: Optional[int] = None) -> List[str]:
+    def _get_file_urls(self, url: str) -> List[str]:
         """Get file URLs from S3 and distribute them among Ray workers.
 
         Args:
             url: The S3 URL to list files from
-            limit_rows: Optional limit on total rows to process
 
         Returns:
             List of S3 URLs assigned to the current Ray worker
@@ -264,19 +266,7 @@ class S3Reader:
             # Log file count
             logger.info(f"[DataLoader] Found {len(file_urls)} files in {url}")
 
-            # If row limit is provided, use simple distribution
-            if limit_rows is not None:
-                logger.info(
-                    "[DataLoader] Using simple file distribution due to row limit"
-                )
-                return self._distribute_files(
-                    file_urls=file_urls,
-                    file_rows=[1] * len(file_urls),  # Dummy row counts
-                    worker_rank=worker_rank,
-                    num_workers=num_workers,
-                )
-
-            # Otherwise, collect metadata for balanced distribution
+            # Collect metadata for balanced distribution
             logger.info(
                 "[DataLoader] Collecting file metadata for balanced distribution"
             )
@@ -398,14 +388,8 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             if worker_info is None:
                 files_to_read = self.file_urls
             else:
-                per_worker = max(1, len(self.file_urls) // num_workers)
-                start_idx = worker_id * per_worker
-                end_idx = (
-                    start_idx + per_worker
-                    if worker_id < num_workers - 1
-                    else len(self.file_urls)
-                )
-                files_to_read = self.file_urls[start_idx:end_idx]
+                # Round-robin distribution between PyTorch workers
+                files_to_read = self.file_urls[worker_id::num_workers]
 
             logger.info(
                 f"[Dataset] Worker {worker_id}: Processing {len(files_to_read)} files"
