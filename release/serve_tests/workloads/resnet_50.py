@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from io import BytesIO
 import PIL
 from PIL import Image
@@ -62,9 +62,12 @@ class Model:
                 sm_output = torch.nn.functional.softmax(output[0], dim=0)
             return torch.argmax(sm_output)
 
-        future = self.model_thread_pool.submit(run_model)
-        ind = future.result(timeout=5)
-        return self.categories[ind]
+        try:
+            future = self.model_thread_pool.submit(run_model)
+            ind = future.result(timeout=5)
+            return self.categories[ind]
+        except TimeoutError:
+            return
 
 
 app = Model.bind()
