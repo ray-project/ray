@@ -27,6 +27,10 @@ Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ra
     :start-after: __ray_core_usage_start__
     :end-before: __ray_core_usage_end__
 
+.. code-block::
+
+  Execution takes 969.0364822745323 us
+
 Now, create an equivalent program using Ray Compiled Graph. 
 First, define a graph to execute using classic Ray Core, without any compilation.
 Later, compile this graph, to apply optimizations and prevent further modifications to the graph.
@@ -53,6 +57,10 @@ The graph uses the same APIs for execution:
     :language: python
     :start-after: __cgraph_usage_start__
     :end-before: __cgraph_usage_end__
+
+.. code-block::
+
+  Execution takes 86.72196418046951 us
 
 The performance of the same task graph improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
 the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1 ms+ system overhead.
@@ -85,6 +93,10 @@ For example, the following uses the preceding example to create a DAG that passe
     :start-after: __cgraph_bind_start__
     :end-before: __cgraph_bind_end__
 
+.. code-block::
+
+  hello
+
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
 Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` returns multiple :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>` objects, one per node:
@@ -93,6 +105,10 @@ Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` retu
     :language: python
     :start-after: __cgraph_multi_output_start__
     :end-before: __cgraph_multi_output_end__
+
+.. code-block::
+
+  Execution takes 86.72196418046951 us
 
 
 Be aware that:
