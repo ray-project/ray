@@ -30,7 +30,7 @@ class _NcclGroup(Communicator):
     def __init__(
         self,
         world_size: int,
-        comm_id: int,
+        comm_id: tuple,
         rank: Optional[int],
         actor_handles: List["ray.actor.ActorHandle"],
         cuda_stream: Optional[int],
