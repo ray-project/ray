@@ -34,7 +34,7 @@ AWS_REGION = "us-west-2"
 
 @ray.remote
 def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, int]:
-    """Standalone Ray task to fetch Parquet metadata.
+    """Standalone Ray task to fetch Parquet metadata using S3 Select.
 
     Args:
         bucket: S3 bucket name
@@ -45,21 +45,34 @@ def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, 
         Tuple of (file_url, row_count)
     """
     import boto3
-    import pyarrow.parquet as pq
-    import io
     import logging
 
     logger = logging.getLogger(__name__)
     s3_client = boto3.client("s3", region_name=AWS_REGION)
 
-    # Step 1: Read the last 8 bytes to get the footer size
-    response = s3_client.get_object(
-        Bucket=bucket, Key=key, Range="bytes=-8"  # Read only last 8 bytes
+    # Use S3 Select to count rows
+    query = "SELECT COUNT(*) FROM s3object"
+    response = s3_client.select_object_content(
+        Bucket=bucket,
+        Key=key,
+        Expression=query,
+        ExpressionType="SQL",
+        InputSerialization={"Parquet": {}},
+        OutputSerialization={"CSV": {}},
     )
-    footer_bytes = response["Body"].read()
 
-    # Extract footer size (last 4 bytes contain the size)
-    footer_size = int.from_bytes(footer_bytes[-4:], byteorder="little")
+    # Parse the response to get row count
+    row_count = 0
+    for event in response["Payload"]:
+        if "Records" in event:
+            row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
+
+    logger.info(f"[DataLoader] File {file_url} has {row_count} rows")
+
+    # Get file size to calculate footer size
+    response = s3_client.head_object(Bucket=bucket, Key=key)
+    file_size = response["ContentLength"]
+    footer_size = min(file_size, 8 * 1024 * 1024)  # Use up to 8MB for footer
 
     # Step 2: Read the Parquet metadata footer
     metadata_range = (
@@ -147,36 +160,34 @@ class S3Reader:
         except Exception as e:
             raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
 
-    def _get_parquet_metadata(self, bucket: str, key: str) -> pq.FileMetaData:
-        """Fetch Parquet metadata efficiently by reading only necessary bytes.
+    def _get_parquet_metadata(self, bucket: str, key: str) -> int:
+        """Fetch Parquet row count efficiently using S3 Select.
 
         Args:
             bucket: S3 bucket name
             key: S3 object key
 
         Returns:
-            PyArrow FileMetaData object
+            Number of rows in the Parquet file
         """
-        # Step 1: Read the last 8 bytes to get the footer size
-        response = self.s3_client.get_object(
-            Bucket=bucket, Key=key, Range="bytes=-8"  # Read only last 8 bytes
-        )
-        footer_bytes = response["Body"].read()
-
-        # Extract footer size (last 4 bytes contain the size)
-        footer_size = int.from_bytes(footer_bytes[-4:], byteorder="little")
-
-        # Step 2: Read the Parquet metadata footer
-        metadata_range = (
-            f"bytes=-{footer_size + 8}"  # Include footer + 8-byte metadata indicator
-        )
-        response = self.s3_client.get_object(
-            Bucket=bucket, Key=key, Range=metadata_range
+        # Use S3 Select to count rows
+        query = "SELECT COUNT(*) FROM s3object"
+        response = self.s3_client.select_object_content(
+            Bucket=bucket,
+            Key=key,
+            Expression=query,
+            ExpressionType="SQL",
+            InputSerialization={"Parquet": {}},
+            OutputSerialization={"CSV": {}},
         )
 
-        # Step 3: Parse Parquet metadata
-        metadata = pq.read_metadata(io.BytesIO(response["Body"].read()))
-        return metadata
+        # Parse the response to get row count
+        row_count = 0
+        for event in response["Payload"]:
+            if "Records" in event:
+                row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
+
+        return row_count
 
     def _collect_file_info(
         self, bucket: str, prefix: str
@@ -279,11 +290,29 @@ class S3Reader:
         )
         return my_files
 
-    def _get_file_urls(self, url: str) -> List[str]:
-        """Get file URLs from S3 and distribute them among Ray workers based on row counts.
+    def _list_s3_files(self, bucket: str, prefix: str) -> List[str]:
+        """List files in an S3 bucket with the given prefix.
+
+        Args:
+            bucket: S3 bucket name
+            prefix: S3 prefix to list
+
+        Returns:
+            List of S3 URLs for the files
+        """
+        response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        if "Contents" not in response:
+            logger.warning(f"[DataLoader] No files found in s3://{bucket}/{prefix}")
+            return []
+
+        return [f"s3://{bucket}/{file['Key']}" for file in response["Contents"]]
+
+    def _get_file_urls(self, url: str, limit_rows: Optional[int] = None) -> List[str]:
+        """Get file URLs from S3 and distribute them among Ray workers.
 
         Args:
             url: The S3 URL to list files from
+            limit_rows: Optional limit on total rows to process
 
         Returns:
             List of S3 URLs assigned to the current Ray worker
@@ -296,13 +325,38 @@ class S3Reader:
                 f"[DataLoader] Worker {worker_rank}/{num_workers}: Listing files"
             )
 
-            # List files and get row counts
+            # List files
             bucket, prefix = self._parse_s3_url(url)
-            file_urls, file_rows = self._collect_file_info(bucket, prefix)
+            file_urls = self._list_s3_files(bucket, prefix)
 
-            # Distribute files among workers
+            if not file_urls:
+                return []
+
+            # Log file count
+            logger.info(f"[DataLoader] Found {len(file_urls)} files in {url}")
+
+            # If row limit is provided, use simple distribution
+            if limit_rows is not None:
+                logger.info(
+                    "[DataLoader] Using simple file distribution due to row limit"
+                )
+                return self._distribute_files(
+                    file_urls=file_urls,
+                    file_rows=[1] * len(file_urls),  # Dummy row counts
+                    worker_rank=worker_rank,
+                    num_workers=num_workers,
+                )
+
+            # Otherwise, collect metadata for balanced distribution
+            logger.info(
+                "[DataLoader] Collecting file metadata for balanced distribution"
+            )
+            file_urls, file_rows = self._collect_file_info(bucket, prefix)
             return self._distribute_files(
-                file_urls, file_rows, worker_rank, num_workers
+                file_urls=file_urls,
+                file_rows=file_rows,
+                worker_rank=worker_rank,
+                num_workers=num_workers,
             )
 
         except NoCredentialsError:

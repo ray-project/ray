@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, Tuple
+from typing import Dict, Iterator, Tuple, Optional
 import logging
 import time
 
@@ -53,9 +53,13 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
-        train_ds = ray.data.read_parquet(
-            IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
-        ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+        train_ds = (
+            ray.data.read_parquet(
+                IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
+            )
+            .limit(self.benchmark_config.limit_training_rows)
+            .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+        )
 
         val_ds = (
             ray.data.read_parquet(
@@ -112,6 +116,27 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
 
+    def calculate_rows_per_worker(
+        self, total_rows: Optional[int], num_workers: int
+    ) -> Optional[int]:
+        """Calculate how many rows each worker should process.
+
+        Args:
+            total_rows: Total number of rows to process across all workers.
+            num_workers: Total number of workers (Ray workers × Torch workers)
+
+        Returns:
+            Number of rows each worker should process, or None if no limit.
+            If total_rows is less than num_workers, each worker will process at least 1 row.
+        """
+        if total_rows is None:
+            return None
+
+        if num_workers == 0:
+            return total_rows
+
+        return max(1, total_rows // num_workers)
+
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
         """Get the train and validation datasets.
 
@@ -123,24 +148,36 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader
         num_workers = max(0, dataloader_config.num_torch_workers)
         total_workers = self.benchmark_config.num_workers * num_workers
 
-        limit_rows_per_worker = None
-        if self.benchmark_config.limit_validation_rows is not None:
-            if total_workers > 0:
-                limit_rows_per_worker = max(
-                    1, self.benchmark_config.limit_validation_rows // total_workers
-                )
-            else:
-                limit_rows_per_worker = self.benchmark_config.limit_validation_rows
+        limit_training_rows_per_worker = self.calculate_rows_per_worker(
+            self.benchmark_config.limit_training_rows, total_workers
+        )
+
+        limit_validation_rows_per_worker = self.calculate_rows_per_worker(
+            self.benchmark_config.limit_validation_rows, total_workers
+        )
+
+        # Calculate total rows to process
+        total_training_rows = (
+            self.benchmark_config.limit_training_rows
+            if self.benchmark_config.limit_training_rows is not None
+            else None
+        )
+        total_validation_rows = (
+            self.benchmark_config.limit_validation_rows
+            if self.benchmark_config.limit_validation_rows is not None
+            else None
+        )
 
         train_ds = S3ParquetImageIterableDataset(
-            file_urls=self._get_file_urls(self.train_url),
+            file_urls=self._get_file_urls(self.train_url, total_training_rows),
             random_transforms=True,
+            limit_rows_per_worker=limit_training_rows_per_worker,
         )
 
         val_ds = S3ParquetImageIterableDataset(
-            file_urls=self._get_file_urls(self.val_url),
+            file_urls=self._get_file_urls(self.val_url, total_validation_rows),
             random_transforms=False,
-            limit_rows_per_worker=limit_rows_per_worker,
+            limit_rows_per_worker=limit_validation_rows_per_worker,
         )
 
         return {"train": train_ds, "val": val_ds}
