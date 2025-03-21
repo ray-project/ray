@@ -444,5 +444,26 @@ class TestSizeBytes:
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
 
+def test_index_reset(ray_start_regular_shared):
+    # pandas blocks should have index reset after processing
+    import ray
+
+    ds = ray.data.range(100, override_num_blocks=10)
+    ds = ds.map_batches(
+        lambda df: df.assign(val=(50.6 - df["id"]).abs(), idx=-df["id"]).set_index(
+            "idx"
+        ),
+        batch_format="pandas",
+    )
+    # ensure index is reset after map
+    for df in ray.get(ds.get_internal_block_refs()):
+        assert (df.index == df.reset_index(drop=True).index).all()
+
+    ds = ds.sort("val")
+    # ensure index is reset after sort
+    for df in ray.get(ds.get_internal_block_refs()):
+        assert (df.index == df.reset_index(drop=True).index).all()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
