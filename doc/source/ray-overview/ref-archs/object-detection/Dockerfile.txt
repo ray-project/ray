@@ -1,4 +1,6 @@
+# Use base image.
 FROM anyscale/ray:2.41.0-slim-py312-cu123
+# For open source-ray, use: rayproject/ray:2.41.0-py312-cu123.
 
 # Install system dependencies.
 RUN sudo apt update && sudo apt install -y \
