@@ -2383,7 +2383,10 @@ typing-extensions==4.12.2
     #   torch
     #   typer
 tzlocal==5.3
-    # via -r python/requirements/cloud-requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 ujson==5.10.0
     # via python-lsp-jsonrpc
 uri-template==1.3.0
