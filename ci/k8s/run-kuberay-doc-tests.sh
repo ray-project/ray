@@ -8,7 +8,7 @@ SKIP_CREATE_KIND_CLUSTER=1 bash ci/k8s/prep-k8s-environment.sh
 echo "--- Install Python dependencies"
 pip install -c python/requirements_compiled.txt pytest nbval bash_kernel
 python -m bash_kernel.install
-pip install "ray[default]==2.43.0"
+pip install "ray[default]==2.41.0"
 
 echo "--- Run doc tests"
 cd doc/source/cluster/kubernetes
