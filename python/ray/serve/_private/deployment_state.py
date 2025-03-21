@@ -1403,14 +1403,11 @@ class DeploymentState:
         """Check whether replicas are currently failing and the number of
         failures has exceeded a threshold.
         """
-        if (
+        return (
             self._target_state.target_num_replicas > 0
             and self._replica_constructor_retry_counter
             >= self._failed_to_start_threshold
-        ):
-            return True
-
-        return False
+        )
 
     def _terminally_failed(self) -> bool:
         """Check whether the current version is terminally errored.
