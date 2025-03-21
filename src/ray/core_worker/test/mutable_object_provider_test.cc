@@ -26,8 +26,6 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/client.h"
 
-// using namespace testing;
-
 namespace ray {
 namespace core {
 namespace experimental {
