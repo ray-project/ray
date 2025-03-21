@@ -29,6 +29,7 @@ from ray.data.block import (
     BlockType,
     U,
     BlockColumnAccessor,
+    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -150,6 +151,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
             sum_ / self.count(ignore_nulls=ignore_nulls) if not is_null(sum_) else sum_
         )
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        return self._column.quantile(q=q)
+
+    def unique(self) -> BlockColumn:
+        pd = lazy_import_pandas()
+        return pd.Series(self._column.unique())
+
+    def flatten(self) -> BlockColumn:
+        return self._column.list.flatten()
+
     def sum_of_squared_diffs_from_mean(
         self,
         ignore_nulls: bool,
@@ -164,8 +177,11 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return ((self._column - mean) ** 2).sum(skipna=ignore_nulls)
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         return self._column.to_list()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self.to_pylist()
 
     def _is_all_null(self):
         return not self._column.notna().any()
