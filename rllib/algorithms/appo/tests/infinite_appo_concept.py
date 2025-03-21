@@ -234,8 +234,9 @@ class WeightsServerActor:
     def put(self, weights_ref, broadcast=False):
         self._weights_ref = weights_ref
         # Send new weights to all peers.
-        for peer in self._other_weights_server_actors:
-            peer.put.remote(weights_ref, broadcast=broadcast)
+        if broadcast:
+            for peer in self._other_weights_server_actors:
+                peer.put.remote(weights_ref, broadcast=False)
 
     def get(self):
         return self._weights_ref
