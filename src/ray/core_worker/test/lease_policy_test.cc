@@ -14,6 +14,9 @@
 
 #include "ray/core_worker/lease_policy.h"
 
+#include <memory>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 
@@ -37,7 +40,8 @@ class MockLocalityDataProvider : public LocalityDataProviderInterface {
  public:
   MockLocalityDataProvider() {}
 
-  MockLocalityDataProvider(absl::flat_hash_map<ObjectID, LocalityData> locality_data)
+  explicit MockLocalityDataProvider(
+      absl::flat_hash_map<ObjectID, LocalityData> locality_data)
       : locality_data_(locality_data) {}
 
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const {
