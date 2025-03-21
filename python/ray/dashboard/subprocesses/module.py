@@ -10,6 +10,7 @@ import setproctitle
 import multiprocessing
 
 import ray
+from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import configure_log_file
 from ray._private.utils import open_log
@@ -32,6 +33,7 @@ class SubprocessModuleConfig:
 
     cluster_id_hex: str
     gcs_address: str
+    session_name: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -63,8 +65,10 @@ class SubprocessModule(abc.ABC):
         self._config = config
         self._parent_process = multiprocessing.parent_process()
         # Lazy init
+        self._gcs_client = None
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
+        self._http_session = None
 
     async def _detect_parent_process_death(self):
         """
@@ -139,6 +143,35 @@ class SubprocessModule(abc.ABC):
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_aio_client
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            if not ray.experimental.internal_kv._internal_kv_initialized():
+                gcs_client = GcsClient(
+                    address=self._config.gcs_address,
+                    cluster_id=self._config.cluster_id_hex,
+                )
+                ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+            self._gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        return self._gcs_client
+
+    @property
+    def session_name(self):
+        """
+        Return the Ray session name. It's not related to the aiohttp session.
+        """
+        return self._config.session_name
+
+    @property
+    def http_session(self):
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
 
     async def _internal_module_health_check(self, request):
         return aiohttp.web.Response(

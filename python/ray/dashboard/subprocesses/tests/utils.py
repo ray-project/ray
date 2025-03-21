@@ -14,11 +14,17 @@ from ray.dashboard.subprocesses.utils import ResponseType
 logger = logging.getLogger(__name__)
 
 
-class TestModule(SubprocessModule):
-    """
-    For some reason you can't put this inline with the pytest that calls pytest.main.
-    """
+class BaseTestModule(SubprocessModule):
+    @property
+    def gcs_aio_client(self):
+        return None
 
+    @property
+    def gcs_client(self):
+        return None
+
+
+class TestModule(BaseTestModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.run_finished = False
@@ -29,10 +35,6 @@ class TestModule(SubprocessModule):
         self.run_finished = True
         await asyncio.sleep(0.1)
         logger.info("TestModule is done initing")
-
-    @property
-    def gcs_aio_client(self):
-        return None
 
     @routes.get("/test")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -107,6 +109,18 @@ class TestModule(SubprocessModule):
         await ws.close()
         return ws
 
+    @routes.get("/websocket_raise_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise aiohttp.web.HTTPBadRequest(reason="Hello this is a bad request")
+
+    @routes.get("/websocket_raise_non_http_error", resp_type=ResponseType.WEBSOCKET)
+    async def websocket_raise_non_http_error(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.WebSocketResponse:
+        raise ValueError("Hello world")
+
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         while True:
@@ -129,15 +143,7 @@ class TestModule(SubprocessModule):
         return aiohttp.web.Response(text="done!")
 
 
-class TestModule1(SubprocessModule):
-    """
-    For some reason you can't put this inline with the pytest that calls pytest.main.
-    """
-
-    @property
-    def gcs_aio_client(self):
-        return None
-
+class TestModule1(BaseTestModule):
     @routes.get("/test1")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return aiohttp.web.Response(text="Hello from TestModule1")
