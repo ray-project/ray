@@ -34,7 +34,7 @@ AWS_REGION = "us-west-2"
 
 @ray.remote
 def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, int]:
-    """Standalone Ray task to fetch Parquet metadata using S3 Select.
+    """Standalone Ray task to fetch Parquet row count using S3 Select.
 
     Args:
         bucket: S3 bucket name
@@ -68,24 +68,7 @@ def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, 
             row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
 
     logger.info(f"[DataLoader] File {file_url} has {row_count} rows")
-
-    # Get file size to calculate footer size
-    response = s3_client.head_object(Bucket=bucket, Key=key)
-    file_size = response["ContentLength"]
-    footer_size = min(file_size, 8 * 1024 * 1024)  # Use up to 8MB for footer
-
-    # Step 2: Read the Parquet metadata footer
-    metadata_range = (
-        f"bytes=-{footer_size + 8}"  # Include footer + 8-byte metadata indicator
-    )
-    response = s3_client.get_object(Bucket=bucket, Key=key, Range=metadata_range)
-
-    # Step 3: Parse Parquet metadata
-    metadata = pq.read_metadata(io.BytesIO(response["Body"].read()))
-    total_rows = metadata.num_rows
-
-    logger.info(f"[DataLoader] File {file_url} has {total_rows} rows")
-    return file_url, total_rows
+    return file_url, row_count
 
 
 class S3Reader:
@@ -134,60 +117,6 @@ class S3Reader:
             return s3_parts[0], s3_parts[1]
         else:
             raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-    def read_file(self, s3_url: str) -> bytes:
-        """Download a file from S3 and return its contents as bytes.
-
-        Args:
-            s3_url: The S3 URL of the file
-
-        Returns:
-            bytes: The file contents
-
-        Raises:
-            S3CredentialsError: If AWS credentials are not found
-            S3FileError: If there's an error reading the file
-            ValueError: If the S3 URL is invalid
-        """
-        try:
-            bucket, key = self._parse_s3_url(s3_url)
-            response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            return response["Body"].read()
-        except NoCredentialsError:
-            raise self.S3CredentialsError(
-                "AWS credentials not found. Ensure you have configured them."
-            )
-        except Exception as e:
-            raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
-
-    def _get_parquet_metadata(self, bucket: str, key: str) -> int:
-        """Fetch Parquet row count efficiently using S3 Select.
-
-        Args:
-            bucket: S3 bucket name
-            key: S3 object key
-
-        Returns:
-            Number of rows in the Parquet file
-        """
-        # Use S3 Select to count rows
-        query = "SELECT COUNT(*) FROM s3object"
-        response = self.s3_client.select_object_content(
-            Bucket=bucket,
-            Key=key,
-            Expression=query,
-            ExpressionType="SQL",
-            InputSerialization={"Parquet": {}},
-            OutputSerialization={"CSV": {}},
-        )
-
-        # Parse the response to get row count
-        row_count = 0
-        for event in response["Payload"]:
-            if "Records" in event:
-                row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
-
-        return row_count
 
     def _collect_file_info(
         self, bucket: str, prefix: str
