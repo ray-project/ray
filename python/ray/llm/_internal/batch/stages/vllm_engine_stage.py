@@ -668,15 +668,16 @@ class vLLMEngineStage(StatefulStage):
                 accelerator_type,
                 resources_per_bundle,
             )
-
-        if not resources_per_bundle:
-            # Default to GPUs per bundle if custom resources are not specified.
-            ray_remote_args["num_gpus"] = num_bundles_per_replica
+            ray_remote_args["num_gpus"] = 0
         else:
-            ray_remote_args["resources"] = {
-                resource_key: resource_count * num_bundles_per_replica
-                for resource_key, resource_count in resources_per_bundle.items()
-            }
+            if not resources_per_bundle:
+                # Default to GPUs per bundle if custom resources are not specified.
+                ray_remote_args["num_gpus"] = num_bundles_per_replica
+            else:
+                ray_remote_args["resources"] = {
+                    resource_key: resource_count * num_bundles_per_replica
+                    for resource_key, resource_count in resources_per_bundle.items()
+                }
 
         map_batches_kwargs.update(ray_remote_args)
         return values

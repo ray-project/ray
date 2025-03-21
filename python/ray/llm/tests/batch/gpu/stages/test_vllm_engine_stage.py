@@ -91,7 +91,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         "concurrency": 1,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
-        "num_gpus": 8,
+        "num_gpus": 0,
     }
     scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
