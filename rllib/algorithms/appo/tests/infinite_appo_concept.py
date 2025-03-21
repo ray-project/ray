@@ -6,7 +6,6 @@ import zmq.asyncio
 import msgpack
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -71,11 +70,11 @@ class RouterChannel:
     """
 
     def __init__(
-        self,
-        _asyncio: bool = False,
-        max_num_actors: int = 100,
-        max_outbound_messages: int = 1000,
-        max_inbound_messages: int = 1000,
+            self,
+            _asyncio: bool = False,
+            max_num_actors: int = 100,
+            max_outbound_messages: int = 1000,
+            max_inbound_messages: int = 1000,
     ):
         """
         Initializes a RouterChannel object.
@@ -120,12 +119,12 @@ class RouterChannel:
         self._client_ids_to_actors = {}
 
     def create_dealer(
-        self,
-        actor: "ray.actor.ActorHandle",
-        on_actor_failure: Optional[Callable[[None], None]] = None,
-        _asyncio: bool = False,
-        max_outbound_messages: int = 1000,
-        max_inbound_messages: int = 1000,
+            self,
+            actor: "ray.actor.ActorHandle",
+            on_actor_failure: Optional[Callable[[None], None]] = None,
+            _asyncio: bool = False,
+            max_outbound_messages: int = 1000,
+            max_inbound_messages: int = 1000,
     ) -> "DealerChannel":
         """
         Gives user a DealerChannel to communicate with the Router.
@@ -247,14 +246,14 @@ class RouterChannel:
 
 class DealerChannel:
     def __init__(
-        self,
-        server_address: str,
-        local_server_address: str,
-        server_node_id: str,
-        client_id: str,
-        asyncio: bool,
-        max_outbound_messages: int,
-        max_inbound_messages: int,
+            self,
+            server_address: str,
+            local_server_address: str,
+            server_node_id: str,
+            client_id: str,
+            asyncio: bool,
+            max_outbound_messages: int,
+            max_inbound_messages: int,
     ):
         self._server_address = server_address
         self._local_server_address = local_server_address
@@ -369,25 +368,27 @@ from ray.rllib.algorithms.impala.impala_learner import _GPULoaderThread
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger, Stats
-#from ray.util.anyscale.zmq_channel import RouterChannel
+
+
+# from ray.util.anyscale.zmq_channel import RouterChannel
 
 
 class Algo:
     def __init__(
-        self,
-        *,
-        observation_space,
-        num_env_runners=2,
-        num_envs_per_env_runner=1,
-        rollout_fragment_length=50,
-        num_aggregator_actors=2,
-        train_batch_size_per_learner=500,
-        num_learners=1,
-        zmq_asyncio=False,
-        min_time_s_per_iteration=1,
-        env_step_time=0.015,
-        num_gpus_per_learner=0,
-        num_weights_server_actors=1,
+            self,
+            *,
+            observation_space,
+            num_env_runners=2,
+            num_envs_per_env_runner=1,
+            rollout_fragment_length=50,
+            num_aggregator_actors=2,
+            train_batch_size_per_learner=500,
+            num_learners=1,
+            zmq_asyncio=False,
+            min_time_s_per_iteration=1,
+            env_step_time=0.015,
+            num_gpus_per_learner=0,
+            num_weights_server_actors=1,
     ):
         self.observation_space = observation_space
         self.num_env_runners = num_env_runners
@@ -404,15 +405,16 @@ class Algo:
             WeightsServerActor.remote() for _ in range(num_weights_server_actors)
         ]
         for aid, actor in enumerate(self.weights_server_actors):
-            actor.add_peers.remote(self.weights_server_actors[:aid] + self.weights_server_actors[aid+1:])
+            actor.add_peers.remote(
+                self.weights_server_actors[:aid] + self.weights_server_actors[aid + 1:])
         self.metrics_actor = MetricsActor.remote()
 
-        #self.router_channel = RouterChannel(
+        # self.router_channel = RouterChannel(
         #    _asyncio=self.zmq_asyncio,
         #    max_num_actors=1_000,
         #    max_outbound_messages=100_000,
         #    max_inbound_messages=100_000,
-        #)
+        # )
 
         # Create the env runners.
         self.env_runners = [
@@ -436,30 +438,30 @@ class Algo:
         print(f"Created {num_aggregator_actors} AggregatorActors.")
         # Create 5 aggregator dealer channels.
         # TODO (sven): Figure out current limitation on router/dealer channels.
-        #self._num_aggregator_actors_w_dealer = min(num_aggregator_actors_w_dealer, num_aggregator_actors)
-        #_agg_dealer_channels = {
+        # self._num_aggregator_actors_w_dealer = min(num_aggregator_actors_w_dealer, num_aggregator_actors)
+        # _agg_dealer_channels = {
         #    f"AGG{aid}": self.router_channel.create_dealer(
         #        actor=actor,
         #        _asyncio=self.zmq_asyncio,
         #    )
         #    for aid, actor in enumerate(self.aggregator_actors[:num_aggregator_actors_w_dealer])
-        #}
+        # }
         # Add dealer channels to agg. actors.
-        #for aid, agg in enumerate(self.aggregator_actors[:num_aggregator_actors_w_dealer]):
+        # for aid, agg in enumerate(self.aggregator_actors[:num_aggregator_actors_w_dealer]):
         #    agg.start_zmq.remote(dealer_channel=_agg_dealer_channels[f"AGG{aid}"])
 
         # Add dealer channels to env runners.
-        #self._num_env_runners_w_dealer = min(num_env_runners_w_dealer, num_env_runners)
-        #_er_dealer_channels = {
+        # self._num_env_runners_w_dealer = min(num_env_runners_w_dealer, num_env_runners)
+        # _er_dealer_channels = {
         #    f"ER{aid}": self.router_channel.create_dealer(
         #        actor=actor,
         #        _asyncio=self.zmq_asyncio,
         #    )
         #    for aid, actor in enumerate(self.env_runners[:num_env_runners_w_dealer])
-        #}
+        # }
         # Kick off env runners infinite sampling loops.
         for aid, er in enumerate(self.env_runners):
-            #if aid < num_env_runners_w_dealer:
+            # if aid < num_env_runners_w_dealer:
             #    er.start_zmq.remote(dealer_channel=_er_dealer_channels[f"ER{aid}"])
             er.add_aggregator_actors.remote(self.aggregator_actors)
 
@@ -471,16 +473,16 @@ class Algo:
             ) for _ in range(self.num_learners)
         ]
         print(f"Created {num_learners} Learners.")
-        #self._num_learners_w_dealer = min(num_learners_w_dealer, num_learners)
-        #_learner_dealer_channels = {
+        # self._num_learners_w_dealer = min(num_learners_w_dealer, num_learners)
+        # _learner_dealer_channels = {
         #    f"LEARN{aid}": self.router_channel.create_dealer(
         #        actor=actor,
         #        _asyncio=self.zmq_asyncio,
         #    )
         #    for aid, actor in enumerate(self.learners[:num_learners_w_dealer])
-        #}
+        # }
         # Add dealer channels to Learners.
-        #for aid, learner in enumerate(self.learners[:num_learners_w_dealer]):
+        # for aid, learner in enumerate(self.learners[:num_learners_w_dealer]):
         #    learner.start_zmq.remote(
         #        dealer_channel=_learner_dealer_channels[f"LEARN{aid}"],
         #    )
@@ -510,67 +512,67 @@ class Algo:
         return metrics
 
         # While the iteration is ongoing ...
-        #while time.time() - t0 < self.min_time_s_per_iteration:
-            # Ping all env runners w/ dealer channel and query their metrics.
-            #env_runner_metrics = []
-            #for er in self.env_runners[:self._num_env_runners_w_dealer]:
-            #    self.router_channel.write(
-            #        actor=er,
-            #        message="get_metrics",
-            #    )
-            #    time.sleep(0.01)
-            #    env_runner_metrics.append(self.router_channel.read()[0])
-            #metrics = MetricsLogger()
-            #metrics.merge_and_log_n_dicts(
-            #    tree.map_structure(
-            #        lambda s: Stats.from_state(msgpack.unpackb(s)),
-            #        env_runner_metrics,
-            #    ),
-            #)
-            ## Extrapolate metrics and override existing "env_runner" metrics.
-            #tree.map_structure(
-            #    lambda s: (
-            #        _extrapolate_stats(
-            #            s, self.num_env_runners, self._num_env_runners_w_dealer
-            #        )
-            #    ),
-            #    metrics.stats,
-            #)
-            #self.metrics.stats["env_runners"] = metrics.stats
-            #
-            ## Ping one env runner and query its metrics.
-            #agg_actor = self.aggregator_actors[self._aggregator_actor_idx % len(self.aggregator_actors)]
-            #self.router_channel.write(
-            #    actor=agg_actor,
-            #    message="get_metrics",
-            #)
-            #time.sleep(0.01)
-            #response = self.router_channel.read()
-            #self.metrics.merge_and_log_n_dicts(
-            #    [tree.map_structure(
-            #        lambda s: Stats.from_state(msgpack.unpackb(s)),
-            #        response[0],
-            #    )],
-            #    key="aggregator_actors",
-            #)
-            #
-            ## Ping one Learner and query its metrics.
-            #learner = self.learners[self._learner_idx % len(self.learners)]
-            #self.router_channel.write(
-            #    actor=learner,
-            #    message="get_metrics",
-            #)
-            #time.sleep(0.01)
-            #response = self.router_channel.read()
-            #self.metrics.merge_and_log_n_dicts(
-            #    [tree.map_structure(
-            #        lambda s: Stats.from_state(msgpack.unpackb(s)),
-            #        response[0],
-            #    )],
-            #    key="learners",
-            #)
+        # while time.time() - t0 < self.min_time_s_per_iteration:
+        # Ping all env runners w/ dealer channel and query their metrics.
+        # env_runner_metrics = []
+        # for er in self.env_runners[:self._num_env_runners_w_dealer]:
+        #    self.router_channel.write(
+        #        actor=er,
+        #        message="get_metrics",
+        #    )
+        #    time.sleep(0.01)
+        #    env_runner_metrics.append(self.router_channel.read()[0])
+        # metrics = MetricsLogger()
+        # metrics.merge_and_log_n_dicts(
+        #    tree.map_structure(
+        #        lambda s: Stats.from_state(msgpack.unpackb(s)),
+        #        env_runner_metrics,
+        #    ),
+        # )
+        ## Extrapolate metrics and override existing "env_runner" metrics.
+        # tree.map_structure(
+        #    lambda s: (
+        #        _extrapolate_stats(
+        #            s, self.num_env_runners, self._num_env_runners_w_dealer
+        #        )
+        #    ),
+        #    metrics.stats,
+        # )
+        # self.metrics.stats["env_runners"] = metrics.stats
+        #
+        ## Ping one env runner and query its metrics.
+        # agg_actor = self.aggregator_actors[self._aggregator_actor_idx % len(self.aggregator_actors)]
+        # self.router_channel.write(
+        #    actor=agg_actor,
+        #    message="get_metrics",
+        # )
+        # time.sleep(0.01)
+        # response = self.router_channel.read()
+        # self.metrics.merge_and_log_n_dicts(
+        #    [tree.map_structure(
+        #        lambda s: Stats.from_state(msgpack.unpackb(s)),
+        #        response[0],
+        #    )],
+        #    key="aggregator_actors",
+        # )
+        #
+        ## Ping one Learner and query its metrics.
+        # learner = self.learners[self._learner_idx % len(self.learners)]
+        # self.router_channel.write(
+        #    actor=learner,
+        #    message="get_metrics",
+        # )
+        # time.sleep(0.01)
+        # response = self.router_channel.read()
+        # self.metrics.merge_and_log_n_dicts(
+        #    [tree.map_structure(
+        #        lambda s: Stats.from_state(msgpack.unpackb(s)),
+        #        response[0],
+        #    )],
+        #    key="learners",
+        # )
 
-        #return self.metrics.reduce()
+        # return self.metrics.reduce()
 
 
 @ray.remote
@@ -606,14 +608,14 @@ class MetricsActor:
 
 class EnvRunner:
     def __init__(
-        self,
-        *,
-        observation_space,
-        num_envs_per_env_runner=1,
-        rollout_fragment_length=50,
-        env_step_time=0.015,
-        weights_server_actors,
-        sync_freq=10,
+            self,
+            *,
+            observation_space,
+            num_envs_per_env_runner=1,
+            rollout_fragment_length=50,
+            env_step_time=0.015,
+            weights_server_actors,
+            sync_freq=10,
     ):
         self.observation_space = observation_space
         self.num_envs_per_env_runner = num_envs_per_env_runner
@@ -624,19 +626,19 @@ class EnvRunner:
 
         # Assuming synchronous/sequential env stepping.
         self._sample_time = (
-            self.env_step_time
-            * self.num_envs_per_env_runner
-            * self.rollout_fragment_length
+                self.env_step_time
+                * self.num_envs_per_env_runner
+                * self.rollout_fragment_length
         )
 
         self.metrics = MetricsLogger()
-        #self.metrics._threading_lock = threading.RLock()
+        # self.metrics._threading_lock = threading.RLock()
 
         self._size_per_sample_kb = (
-            np.prod(self.observation_space.shape)
-            * self.observation_space.dtype.itemsize
-            * self.num_envs_per_env_runner
-            * self.rollout_fragment_length
+                np.prod(self.observation_space.shape)
+                * self.observation_space.dtype.itemsize
+                * self.num_envs_per_env_runner
+                * self.rollout_fragment_length
         )
         # 0.1 for "all the reset" (actions, rewards, terminateds, etc..)
         self._size_per_sample_kb += 0.1 * self._size_per_sample_kb
@@ -647,7 +649,7 @@ class EnvRunner:
 
         self._control_num_env_steps = 0
 
-    #def start_zmq(self, dealer_channel):
+    # def start_zmq(self, dealer_channel):
     #    self._dealer_channel = dealer_channel
     #    # Start a dealer channel thread.
     #    DealerChannelThread(self._dealer_channel, self.metrics).start()
@@ -669,6 +671,7 @@ class EnvRunner:
         # Pull new weights, every n times.
         if iteration % 5 == 0 and self.weights_server_actors:
             weights = ray.get(random.choice(self.weights_server_actors).get.remote())
+
             # Time to apply weights to our model.
             time.sleep(0.01)
 
@@ -688,7 +691,8 @@ class EnvRunner:
         if not self._aggregator_actor_refs:
             return
 
-        agg_actor = self._aggregator_actor_refs[self._curr_agg_idx % len(self._aggregator_actor_refs)]
+        agg_actor = self._aggregator_actor_refs[
+            self._curr_agg_idx % len(self._aggregator_actor_refs)]
         agg_actor.produce_batch.remote(
             data,
             env_steps=env_steps,
@@ -702,11 +706,11 @@ class EnvRunner:
 @ray.remote
 class AggregatorActor:
     def __init__(
-        self,
-        observation_space,
-        batch_size=500,
-        process_time_per_env_step=0.01,
-        sync_freq=10,
+            self,
+            observation_space,
+            batch_size=500,
+            process_time_per_env_step=0.005,
+            sync_freq=10,
     ):
         self.observation_space = observation_space
         self.batch_size = batch_size
@@ -717,8 +721,8 @@ class AggregatorActor:
         self.metrics._threading_lock = threading.RLock()
 
         self._size_per_batch_kb = (
-            np.prod(observation_space.shape)
-            * self.batch_size
+                np.prod(observation_space.shape)
+                * self.batch_size
         )
         # 0.5 for "all the reset" (actions, rewards, terminateds, etc..)
         self._size_per_batch_kb += 0.5 * self._size_per_batch_kb
@@ -733,7 +737,7 @@ class AggregatorActor:
     def sync(self):
         return None
 
-    #def start_zmq(self, dealer_channel):
+    # def start_zmq(self, dealer_channel):
     #    self._dealer_channel = dealer_channel
     #    # Start the dealer channel thread.
     #    DealerChannelThread(self._dealer_channel, self.metrics).start()
@@ -778,13 +782,13 @@ class AggregatorActor:
 
 class Learner:
     def __init__(
-        self,
-        *,
-        process_time_per_update=0.1,
-        num_gpu_loader_threads=8,
-        weights_server_actors,
-        metrics_actor=None,
-        num_gpus_per_learner=0,
+            self,
+            *,
+            process_time_per_update=0.05,
+            num_gpu_loader_threads=8,
+            weights_server_actors,
+            metrics_actor=None,
+            num_gpus_per_learner=0,
     ):
         self._device = get_device(AlgorithmConfig(), num_gpus_per_learner)
 
@@ -815,6 +819,7 @@ class Learner:
             t.start()
 
         self._learner_thread = _LearnerThread(
+            process_time_per_update=self.process_time_per_update,
             in_queue=self._learner_thread_in_queue,
             metrics=self.metrics,
         )
@@ -826,7 +831,7 @@ class Learner:
     def sync(self):
         return None
 
-    #def start_zmq(self, dealer_channel):
+    # def start_zmq(self, dealer_channel):
     #    self._dealer_channel = dealer_channel
     #    # Start the dealer channel thread.
     #    DealerChannelThread(self._dealer_channel, self.metrics).start()
@@ -835,11 +840,10 @@ class Learner:
         self._push_weights = push_weights
 
     def update(self, batch, env_steps: int, aggregator_metrics):
-        time.sleep(self.process_time_per_update)
-
         self.metrics.merge_and_log_n_dicts([aggregator_metrics])
 
-        ma_batch = MultiAgentBatch({"default_policy": SampleBatch(batch)}, env_steps=env_steps)
+        ma_batch = MultiAgentBatch({"default_policy": SampleBatch(batch)},
+                                   env_steps=env_steps)
         self._gpu_loader_in_queue.put(ma_batch)
 
         # Figure out, whether we need to send our weights to a weights server.
@@ -856,17 +860,17 @@ class Learner:
 
 class _LearnerThread(threading.Thread):
     def __init__(
-        self,
-        *,
-        in_queue,
-        update_time=0.2,
-        metrics,
+            self,
+            *,
+            in_queue,
+            process_time_per_update,
+            metrics,
     ):
         super().__init__()
-        self.update_time = update_time
+        self.process_time_per_update = process_time_per_update
         self.metrics = metrics
-        #self.daemon = True
-        #self.stopped = False
+        # self.daemon = True
+        # self.stopped = False
         self._in_queue = in_queue
 
     def run(self) -> None:
@@ -876,7 +880,7 @@ class _LearnerThread(threading.Thread):
     def step(self):
         # Get a new batch from the GPU-data (learner queue OR circular buffer).
         ma_batch_on_gpu = self._in_queue.sample()
-        time.sleep(self.update_time)
+        time.sleep(self.process_time_per_update)
         self.metrics.log_value(
             ("learners", "num_env_steps_trained_lifetime"),
             ma_batch_on_gpu.env_steps(),
@@ -885,7 +889,7 @@ class _LearnerThread(threading.Thread):
         )
 
 
-#class DealerChannelThread(threading.Thread):
+# class DealerChannelThread(threading.Thread):
 #    def __init__(self, dealer_channel, metrics):
 #        super().__init__()
 #        self.dealer_channel = dealer_channel
@@ -931,13 +935,13 @@ def create_data(size_kb, n_components=1, dtype=np.float32):
 if __name__ == "__main__":
     algo = Algo(
         observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
-        num_env_runners=128,
+        num_env_runners=8192,
         num_envs_per_env_runner=1,
         rollout_fragment_length=50,
-        num_aggregator_actors=128,
+        num_aggregator_actors=512,
         train_batch_size_per_learner=500,
         num_learners=64,
-        num_weights_server_actors=0,
+        num_weights_server_actors=1,
     )
     time.sleep(1.0)
 
@@ -951,7 +955,8 @@ if __name__ == "__main__":
                 f"({env_steps_sampled.peek(throughput=True):.0f}/sec) "
             )
         if "aggregator_actors" in results:
-            env_steps_aggregated = results['aggregator_actors']['num_env_steps_aggregated_lifetime']
+            env_steps_aggregated = results['aggregator_actors'][
+                'num_env_steps_aggregated_lifetime']
             msg += (
                 f"aggregated={env_steps_aggregated.peek()} "
                 f"({env_steps_aggregated.peek(throughput=True):.0f}/sec) "
@@ -966,5 +971,6 @@ if __name__ == "__main__":
                 )
         print(msg)
         if iteration == 50:
-            control = ray.get(algo.aggregator_actors[0].control_num_env_steps.remote()) * algo.num_aggregator_actors
+            control = ray.get(algo.aggregator_actors[
+                                  0].control_num_env_steps.remote()) * algo.num_aggregator_actors
             print(f"CONTROL: num_env_steps_aggregated_lifetime={control}")
