@@ -895,7 +895,7 @@ class TestCompactScheduling:
             ),
         )
 
-        ray.util.placement_group
+        _ = ray.util.placement_group
         scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
 

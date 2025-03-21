@@ -31,7 +31,7 @@ from starlette.types import ASGIApp, Message
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -46,15 +46,15 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
-    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RECONFIGURE_METHOD,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -81,7 +81,11 @@ from ray.serve._private.utils import parse_import_path
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -170,10 +174,12 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
 
+        # log REQUEST_LATENCY_BUCKET_MS
+        logger.debug(f"REQUEST_LATENCY_BUCKETS_MS: {REQUEST_LATENCY_BUCKETS_MS}")
         self._processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("route",),
         )
         if self._cached_metrics_enabled:
@@ -344,6 +350,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Flipped to `True` when health checks pass and `False` when they fail. May be
+        # used by replica subclass implementations.
+        self._healthy = False
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
@@ -615,7 +624,7 @@ class ReplicaBase(ABC):
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
-            logger.warning(
+            logger.debug(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},
@@ -801,13 +810,19 @@ class ReplicaBase(ABC):
         await self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # If there's no user-defined health check, nothing runs on the user code event
-        # loop and no future is returned.
-        f: Optional[
-            concurrent.futures.Future
-        ] = self._user_callable_wrapper.call_user_health_check()
-        if f is not None:
-            await asyncio.wrap_future(f)
+        try:
+            # If there's no user-defined health check, nothing runs on the user code event
+            # loop and no future is returned.
+            f: Optional[
+                concurrent.futures.Future
+            ] = self._user_callable_wrapper.call_user_health_check()
+            if f is not None:
+                await asyncio.wrap_future(f)
+            self._healthy = True
+        except Exception as e:
+            logger.warning("Replica health check failed.")
+            self._healthy = False
+            raise e from None
 
 
 class Replica(ReplicaBase):
@@ -1601,7 +1616,7 @@ class UserCallableWrapper:
                 if request_metadata.is_streaming
                 else None,
             )
-            return await self._handle_user_method_result(
+            final_result = await self._handle_user_method_result(
                 result,
                 request_metadata,
                 user_method_info,
@@ -1610,7 +1625,14 @@ class UserCallableWrapper:
                 asgi_args=asgi_args,
             )
 
-        except Exception:
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
+
+            return final_result
+        except Exception as e:
+            unavailable_error = isinstance(
+                e, (BackPressureError, DeploymentUnavailableError)
+            )
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
@@ -1618,17 +1640,31 @@ class UserCallableWrapper:
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
-                await self._send_user_result_over_asgi(
-                    starlette.responses.Response(
+                response = (
+                    starlette.responses.Response(e.message, status_code=503)
+                    if unavailable_error
+                    else starlette.responses.Response(
                         "Internal Server Error", status_code=500
-                    ),
-                    asgi_args,
+                    )
                 )
+                await self._send_user_result_over_asgi(response, asgi_args)
 
-            raise
-        finally:
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
+
+            raise
+        except asyncio.CancelledError:
+            user_method_info = self._get_user_method_info(request_metadata.call_method)
+            if receive_task is not None and not receive_task.done():
+                # Do NOT cancel the receive task if the request has been
+                # cancelled, but the call is a batched call. This is
+                # because we cannot guarantee cancelling the batched
+                # call, so in the case that the call continues executing
+                # we should continue fetching data from the client.
+                if not hasattr(user_method_info.callable, "set_max_batch_size"):
+                    receive_task.cancel()
+
+            raise
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):

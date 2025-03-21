@@ -19,8 +19,8 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
     ParametricActionsCartPole,
 )
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=tune.RunConfig(stop=stop, verbose=1),
         param_space=config,
     ).fit()
 

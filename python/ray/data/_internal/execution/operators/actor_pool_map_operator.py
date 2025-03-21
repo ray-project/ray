@@ -98,18 +98,23 @@ class ActorPoolMapOperator(MapOperator):
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-        data_context = self.data_context
-        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+
+        if (
+            "_generator_backpressure_num_objects"
+            not in self._ray_actor_task_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
             self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
-                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
+
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args = self._apply_default_remote_args(
-            self._ray_remote_args, data_context
+            self._ray_remote_args, self.data_context
         )
 
         per_actor_resource_usage = ExecutionResources(
@@ -162,7 +167,9 @@ class ActorPoolMapOperator(MapOperator):
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
-        actor = self._cls.remote(
+        actor = self._cls.options(
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+        ).remote(
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
@@ -275,7 +282,7 @@ class ActorPoolMapOperator(MapOperator):
         # parallelization across the actor pool. We only know this information after
         # execution has completed.
         min_workers = self._actor_pool.min_size()
-        if len(self._output_metadata) < min_workers:
+        if len(self._output_blocks_stats) < min_workers:
             # The user created a stream that has too few blocks to begin with.
             logger.warning(
                 "To ensure full parallelization across an actor pool of size "
@@ -379,6 +386,10 @@ class ActorPoolMapOperator(MapOperator):
         """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
         return self._actor_pool.actor_info_progress_str()
 
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
+        return self._actor_pool.actor_info_counts()
+
 
 class _MapWorker:
     """An actor worker for MapOperator."""
@@ -415,6 +426,18 @@ class _MapWorker:
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
+
+    def on_exit(self):
+        """Called when the actor is about to exist.
+        This enables performing cleanup operations via `UDF.__del__`.
+
+        Note, this only ensures cleanup is performed when the job exists gracefully.
+        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        """
+        # `_map_actor_context` is a global variable that references the UDF object.
+        # Delete it to trigger `UDF.__del__`.
+        del ray.data._map_actor_context
+        ray.data._map_actor_context = None
 
 
 @dataclass
@@ -746,6 +769,9 @@ class _ActorPool(AutoscalingActorPool):
         # garbage collect the actor, instead of using ray.kill.
         # Because otherwise the actor cannot be restarted upon lineage reconstruction.
         if actor in self._running_actors:
+            # Call `on_exit` to trigger `UDF.__del__` which may perform
+            # cleanup operations.
+            actor.on_exit.remote()
             del self._running_actors[actor]
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
@@ -758,11 +784,16 @@ class _ActorPool(AutoscalingActorPool):
         """
         return bundle.get_cached_location()
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
         alive = self.num_alive_actors()
         pending = self.num_pending_actors()
         restarting = self.num_restarting_actors()
+        return alive, pending, restarting
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+        alive, pending, restarting = self.actor_info_counts()
         total = alive + pending + restarting
         if total == alive:
             return f"; Actors: {total}"

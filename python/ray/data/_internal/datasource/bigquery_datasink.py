@@ -8,8 +8,8 @@ from typing import Iterable, Optional
 import pyarrow.parquet as pq
 
 import ray
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.datasource import bigquery_datasource
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
@@ -77,7 +77,7 @@ class BigQueryDatasink(Datasink[None]):
 
             block = BlockAccessor.for_block(block).to_arrow()
 
-            client = bigquery_datasource._create_client(project=project_id)
+            client = bigquery_datasource._create_client(project_id=project_id)
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND

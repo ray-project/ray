@@ -5,11 +5,19 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
+from ray._private.arrow_utils import get_pyarrow_version
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    concat,
+    try_combine_chunked_columns,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    shuffle,
+)
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -22,9 +30,40 @@ from ray.data.extensions import (
 )
 
 
+def test_try_defragment_table():
+    chunks = np.array_split(np.arange(1000), 10)
+
+    t = pa.Table.from_pydict(
+        {
+            "id": pa.chunked_array([pa.array(c) for c in chunks]),
+        }
+    )
+
+    assert len(t["id"].chunks) == 10
+
+    dt = try_combine_chunked_columns(t)
+
+    assert len(dt["id"].chunks) == 1
+    assert dt == t
+
+
+def test_shuffle():
+    t = pa.Table.from_pydict(
+        {
+            "index": pa.array(list(range(10))),
+        }
+    )
+
+    shuffled = shuffle(t, seed=0xDEED)
+
+    assert shuffled == pa.Table.from_pydict(
+        {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
+    )
+
+
 def test_arrow_concat_empty():
     # Test empty.
-    assert concat([]) == []
+    assert concat([]) == pa.table([])
 
 
 def test_arrow_concat_single_block():
@@ -198,9 +237,6 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
     # fails for this case.
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_arrow_concat_with_objects():
     obj = types.SimpleNamespace(a=1, b="test")
     t1 = pa.table({"a": [3, 4], "b": [7, 8]})
@@ -212,6 +248,382 @@ def test_arrow_concat_with_objects():
     assert pa.types.is_integer(t3.schema.field("b").type)
     assert t3.column("a").to_pylist() == [3, 4, obj, obj]
     assert t3.column("b").to_pylist() == [7, 8, 0, 1]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_struct_with_different_field_names():
+    # Ensures that when concatenating tables with struct columns having different
+    # field names, missing fields in each struct are filled with None in the
+    # resulting table.
+
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [{"x": 3, "z": "c"}],
+                type=pa.struct([("x", pa.int32()), ("z", pa.string())]),
+            ),
+        }
+    )
+
+    # Concatenate tables with different field names in struct
+    t3 = concat([t1, t2])
+
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 3
+
+    # Check the entire schema
+    expected_schema = pa.schema(
+        [
+            ("a", pa.int64()),
+            (
+                "d",
+                pa.struct(
+                    [
+                        ("x", pa.int32()),
+                        ("y", pa.string()),
+                        ("z", pa.string()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    assert t3.schema == expected_schema
+
+    # Check that missing fields are filled with None
+    assert t3.column("a").to_pylist() == [1, 2, 3]
+    assert t3.column("d").to_pylist() == [
+        {"x": 1, "y": "a", "z": None},
+        {"x": 2, "y": "b", "z": None},
+        {"x": 3, "y": None, "z": "c"},
+    ]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("17.0.0"),
+    reason="Requires PyArrow version 17 or higher",
+)
+def test_nested_structs():
+    # Checks that deeply nested structs (3 levels of nesting) are handled properly
+    # during concatenation and the resulting table preserves the correct nesting
+    # structure.
+
+    t1 = pa.table(
+        {
+            "a": [1],
+            "d": pa.array(
+                [
+                    {
+                        "x": {
+                            "y": {"p": 1},  # Missing "q"
+                            "z": {"m": 3},  # Missing "n"
+                        },
+                        "w": 5,
+                    }
+                ],
+                type=pa.struct(
+                    [
+                        (
+                            "x",
+                            pa.struct(
+                                [
+                                    (
+                                        "y",
+                                        pa.struct([("p", pa.int32())]),  # Only "p"
+                                    ),
+                                    (
+                                        "z",
+                                        pa.struct([("m", pa.int32())]),  # Only "m"
+                                    ),
+                                ]
+                            ),
+                        ),
+                        ("w", pa.int32()),
+                    ]
+                ),
+            ),
+        }
+    )
+
+    t2 = pa.table(
+        {
+            "a": [2],
+            "d": pa.array(
+                [
+                    {
+                        "x": {
+                            "y": {"q": 7},  # Missing "p"
+                            "z": {"n": 9},  # Missing "m"
+                        },
+                        "w": 10,
+                    }
+                ],
+                type=pa.struct(
+                    [
+                        (
+                            "x",
+                            pa.struct(
+                                [
+                                    (
+                                        "y",
+                                        pa.struct([("q", pa.int32())]),  # Only "q"
+                                    ),
+                                    (
+                                        "z",
+                                        pa.struct([("n", pa.int32())]),  # Only "n"
+                                    ),
+                                ]
+                            ),
+                        ),
+                        ("w", pa.int32()),
+                    ]
+                ),
+            ),
+        }
+    )
+
+    # Concatenate tables with nested structs and missing fields
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 2
+
+    # Validate the schema of the resulting table
+    expected_schema = pa.schema(
+        [
+            ("a", pa.int64()),
+            (
+                "d",
+                pa.struct(
+                    [
+                        (
+                            "x",
+                            pa.struct(
+                                [
+                                    (
+                                        "y",
+                                        pa.struct(
+                                            [("p", pa.int32()), ("q", pa.int32())]
+                                        ),
+                                    ),
+                                    (
+                                        "z",
+                                        pa.struct(
+                                            [("m", pa.int32()), ("n", pa.int32())]
+                                        ),
+                                    ),
+                                ]
+                            ),
+                        ),
+                        ("w", pa.int32()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    assert t3.schema == expected_schema
+
+    # Validate the data in the concatenated table
+    assert t3.column("a").to_pylist() == [1, 2]
+    assert t3.column("d").to_pylist() == [
+        {
+            "x": {
+                "y": {"p": 1, "q": None},  # Missing "q" filled with None
+                "z": {"m": 3, "n": None},  # Missing "n" filled with None
+            },
+            "w": 5,
+        },
+        {
+            "x": {
+                "y": {"p": None, "q": 7},  # Missing "p" filled with None
+                "z": {"m": None, "n": 9},  # Missing "m" filled with None
+            },
+            "w": 10,
+        },
+    ]
+
+
+def test_struct_with_null_values():
+    # Ensures that when concatenating tables with struct columns containing null
+    # values, the null values are properly handled, and the result reflects the
+    # expected structure.
+
+    # Define the first table with struct containing null values
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, None],  # Second row is null
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Define the second table with struct containing a null value
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [None],  # Entire struct is null
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Concatenate tables with struct columns containing null values
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 3
+
+    # Validate the schema of the resulting table
+    expected_schema = pa.schema(
+        [
+            ("a", pa.int64()),
+            ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
+        ]
+    )
+    assert (
+        t3.schema == expected_schema
+    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+
+    # Verify the PyArrow table content
+    assert t3.column("a").to_pylist() == [1, 2, 3]
+
+    # Adjust expected to match the format of the actual result
+    expected = [
+        {"x": 1, "y": "a"},
+        None,  # Entire struct is None, not {"x": None, "y": None}
+        None,  # Entire struct is None, not {"x": None, "y": None}
+    ]
+
+    result = t3.column("d").to_pylist()
+    assert result == expected, f"Expected {expected}, but got {result}"
+
+
+def test_struct_with_mismatched_lengths():
+    # Verifies that when concatenating tables with struct columns of different lengths,
+    # the missing values are properly padded with None in the resulting table.
+    # Define the first table with 2 rows and a struct column
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Define the second table with 1 row and a struct column
+    t2 = pa.table(
+        {
+            "a": [3],
+            "d": pa.array(
+                [{"x": 3, "y": "c"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Concatenate tables with struct columns of different lengths
+    t3 = concat([t1, t2])
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 3  # Check that the resulting table has the correct number of rows
+
+    # Validate the schema of the resulting table
+    expected_schema = pa.schema(
+        [
+            ("a", pa.int64()),
+            ("d", pa.struct([("x", pa.int32()), ("y", pa.string())])),
+        ]
+    )
+    assert (
+        t3.schema == expected_schema
+    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+
+    # Verify the content of the resulting table
+    assert t3.column("a").to_pylist() == [1, 2, 3]
+    expected = [
+        {"x": 1, "y": "a"},
+        {"x": 2, "y": "b"},
+        {"x": 3, "y": "c"},
+    ]
+    result = t3.column("d").to_pylist()
+
+    assert result == expected, f"Expected {expected}, but got {result}"
+
+
+def test_struct_with_empty_arrays():
+    # Checks the behavior when concatenating tables with structs containing empty
+    # arrays, verifying that null structs are correctly handled.
+
+    # Define the first table with valid struct data
+    t1 = pa.table(
+        {
+            "a": [1, 2],
+            "d": pa.array(
+                [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}],
+                type=pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),
+        }
+    )
+
+    # Define the second table with null struct value (empty arrays for fields)
+    x_array = pa.array([None], type=pa.int32())
+    y_array = pa.array([None], type=pa.string())
+
+    # Create a struct array from null field arrays
+    null_struct_array = pa.StructArray.from_arrays(
+        [x_array, y_array],
+        ["x", "y"],
+        mask=pa.array([True]),
+    )
+
+    t2 = pa.table({"a": [3], "d": null_struct_array})
+
+    # Concatenate tables with struct columns containing null values
+    t3 = concat([t1, t2])
+
+    # Verify that the concatenated result is a valid PyArrow Table
+    assert isinstance(t3, pa.Table)
+    assert len(t3) == 3  # Check that the concatenated table has 3 rows
+
+    # Validate the schema of the resulting concatenated table
+    expected_schema = pa.schema(
+        [
+            ("a", pa.int64()),  # Assuming 'a' is an integer column
+            (
+                "d",
+                pa.struct([("x", pa.int32()), ("y", pa.string())]),
+            ),  # Struct column 'd'
+        ]
+    )
+    assert (
+        t3.schema == expected_schema
+    ), f"Expected schema: {expected_schema}, but got {t3.schema}"
+
+    # Verify the content of the concatenated table
+    assert t3.column("a").to_pylist() == [1, 2, 3]
+    expected = [
+        {"x": 1, "y": "a"},
+        {"x": 2, "y": "b"},
+        None,  # Entire struct is None, as PyArrow handles it
+    ]
+    result = t3.column("d").to_pylist()
+
+    assert result == expected, f"Expected {expected}, but got {result}"
 
 
 def test_arrow_concat_object_with_tensor_fails():
@@ -332,6 +744,65 @@ def test_unify_schemas():
             ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
             ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
         ]
+    )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_unify_schemas_type_promotion():
+    s_non_null = pa.schema(
+        [
+            pa.field("A", pa.int32()),
+        ]
+    )
+
+    s_nullable = pa.schema(
+        [
+            pa.field("A", pa.int32(), nullable=True),
+        ]
+    )
+
+    # No type promotion
+    assert (
+        unify_schemas(
+            [s_non_null, s_nullable],
+            promote_types=False,
+        )
+        == s_nullable
+    )
+
+    s1 = pa.schema(
+        [
+            pa.field("A", pa.int64()),
+        ]
+    )
+
+    s2 = pa.schema(
+        [
+            pa.field("A", pa.float64()),
+        ]
+    )
+
+    # No type promotion
+    with pytest.raises(pa.lib.ArrowTypeError) as exc_info:
+        unify_schemas(
+            [s1, s2],
+            promote_types=False,
+        )
+
+    assert "Unable to merge: Field A has incompatible types: int64 vs double" == str(
+        exc_info.value
+    )
+
+    # Type promoted
+    assert (
+        unify_schemas(
+            [s1, s2],
+            promote_types=True,
+        )
+        == s2
     )
 
 
@@ -497,6 +968,11 @@ def test_fallback_to_pandas_on_incompatible_data(
     assert isinstance(block, pd.DataFrame)
 
 
+_PYARROW_SUPPORTS_TYPE_PROMOTION = (
+    get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+)
+
+
 @pytest.mark.parametrize(
     "op, data, should_fail, expected_type",
     [
@@ -504,9 +980,15 @@ def test_fallback_to_pandas_on_incompatible_data(
         ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
-        # Case B: No fallback to `ArrowPythonObjectType` and hence arrow is enforcing
-        #         deduced schema
-        ("map_batches", [1.0, 2**4], True, None),
+        # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
+        #         int to be promoted to a double
+        (
+            "map_batches",
+            [1.0, 2**4],
+            not _PYARROW_SUPPORTS_TYPE_PROMOTION,
+            pa.float64(),
+        ),
+        # Case C: No fallback to `ArrowPythonObjectType` and no type promotion possible
         ("map_batches", ["1.0", 2**4], True, None),
     ],
 )

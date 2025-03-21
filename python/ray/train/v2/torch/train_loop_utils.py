@@ -18,7 +18,7 @@ from torch.utils.data import (
 import ray.train.torch
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.torch.train_loop_utils import _WrappedDataLoader
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
@@ -26,6 +26,17 @@ else:
     from torch.distributed.fsdp import FullyShardedDataParallel
 
 logger = logging.getLogger(__name__)
+
+
+_TORCH_AMP_DEPRECATION_MESSAGE = (
+    "The `accelerate`, `backward`, and `prepare_optimizer` utility methods "
+    "in the `ray.train.torch` module are deprecated and will be removed in a "
+    "future release. "
+    "Please use the native PyTorch mixed precision API directly, or "
+    "a library such as Lightning or HuggingFace Transformers/Accelerate. "
+    "See this issue for more context: "
+    "https://github.com/ray-project/ray/issues/49454"
+)
 
 
 def prepare_model(
@@ -246,19 +257,19 @@ def prepare_data_loader(
     return data_loader
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 def accelerate(amp: bool = False) -> None:
-    raise NotImplementedError
+    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
-    raise NotImplementedError
+    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 def backward(tensor: torch.Tensor) -> None:
-    raise NotImplementedError
+    raise DeprecationWarning(_TORCH_AMP_DEPRECATION_MESSAGE)
 
 
 @PublicAPI(stability="stable")

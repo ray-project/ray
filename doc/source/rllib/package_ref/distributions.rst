@@ -17,3 +17,8 @@ Base Distribution class
    :toctree: doc/
 
     ~Distribution
+    ~Distribution.from_logits
+    ~Distribution.sample
+    ~Distribution.rsample
+    ~Distribution.logp
+    ~Distribution.kl

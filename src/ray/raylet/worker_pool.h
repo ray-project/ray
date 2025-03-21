@@ -19,10 +19,14 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <deque>
+#include <list>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -159,6 +163,14 @@ class WorkerPoolInterface {
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
+  /// Get registered worker process by id or nullptr if not found.
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const = 0;
+
+  /// Get registered driver process by id or nullptr if not found.
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const = 0;
+
   virtual ~WorkerPoolInterface() = default;
 };
 
@@ -260,7 +272,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool() override;
+  ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();
@@ -343,7 +355,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Get the registered worker by worker id or nullptr if not found.
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override;
 
   /// Get the client connection's registered driver.
   ///
@@ -352,6 +365,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// if the client has not registered a driver.
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const std::shared_ptr<ClientConnection> &connection) const;
+
+  /// Get the registered driver by worker id or nullptr if not found.
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override;
 
   /// Disconnect a registered worker.
   ///
@@ -426,9 +443,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// We aim to prestart 1 worker per CPU, up to the the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
-  /// Try to prestart a number of CPU workers with the given language.
-  ///
-  void PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed);
+  void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
@@ -544,7 +559,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  /// Gloabl startup token variable. Incremented once assigned
+  /// Global startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
   StartupToken worker_startup_token_counter_;

@@ -65,7 +65,7 @@ Training iteration 1 -> evaluation round 2
 """
 from typing import Tuple
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup

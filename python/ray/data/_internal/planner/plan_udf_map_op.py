@@ -4,14 +4,14 @@ import inspect
 import queue
 from threading import Thread
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import Any, Callable, Iterable, List, Optional
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -36,7 +36,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
 )
-from ray.data._internal.numpy_support import is_valid_udf_return
+from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -116,6 +116,28 @@ def plan_project_op(
         transform_fn,
     )
 
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
+def plan_streaming_repartition_op(
+    op: Project,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+    compute = get_compute(op._compute)
+    transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
+    transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
+    map_transformer = MapTransformer([transform_fn])
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -337,7 +359,7 @@ def _validate_batch_output(batch: Block) -> None:
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
-            if not is_valid_udf_return(value):
+            if not _is_valid_column_values(value):
                 raise ValueError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "The `fn` you passed to `map_batches` returned a "
@@ -574,75 +596,3 @@ def _create_map_transformer_for_block_based_map_op(
         BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
-
-
-# Following are util functions for the legacy code path.
-
-
-def generate_map_rows_fn(
-    target_max_block_size: int,
-) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
-    """Generate function to apply the UDF to each record of blocks."""
-
-    def fn(
-        blocks: Iterator[Block],
-        ctx: TaskContext,
-        row_fn: UserDefinedFunction,
-    ) -> Iterator[Block]:
-        transform_fn = _generate_transform_fn_for_map_rows(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
-        map_transformer.set_target_max_block_size(target_max_block_size)
-        yield from map_transformer.apply_transform(blocks, ctx)
-
-    return fn
-
-
-def generate_flat_map_fn(
-    target_max_block_size: int,
-) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
-    """Generate function to apply the UDF to each record of blocks,
-    and then flatten results.
-    """
-
-    def fn(
-        blocks: Iterator[Block],
-        ctx: TaskContext,
-        row_fn: UserDefinedFunction,
-    ) -> Iterator[Block]:
-        transform_fn = _generate_transform_fn_for_flat_map(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
-        map_transformer.set_target_max_block_size(target_max_block_size)
-        yield from map_transformer.apply_transform(blocks, ctx)
-
-    return fn
-
-
-def generate_map_batches_fn(
-    target_max_block_size: int,
-    batch_size: Optional[int] = None,
-    batch_format: str = "default",
-    zero_copy_batch: bool = False,
-) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
-    """Generate function to apply the batch UDF to blocks."""
-
-    def fn(
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-        batch_fn: UserDefinedFunction,
-        *fn_args,
-        **fn_kwargs,
-    ) -> Iterator[Block]:
-        def _batch_fn(batch):
-            return batch_fn(batch, *fn_args, **fn_kwargs)
-
-        transform_fn = _generate_transform_fn_for_map_batches(_batch_fn)
-        map_transformer = _create_map_transformer_for_map_batches_op(
-            transform_fn,
-            batch_size,
-            batch_format,
-            zero_copy_batch,
-        )
-        map_transformer.set_target_max_block_size(target_max_block_size)
-        yield from map_transformer.apply_transform(blocks, ctx)
-
-    return fn
