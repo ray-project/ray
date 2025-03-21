@@ -97,6 +97,8 @@ Below are examples for using Ray Tune for a variety use cases.
 ML frameworks
 -------------
 
+Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you will often find links to even more examples.
+
 .. list-table::
 
   * - :doc:`tune_mnist_keras`
@@ -120,13 +122,16 @@ Experiment tracking
   * - :doc:`tune-mlflow`
   * - :doc:`tune-aim`
   * - :doc:`tune-comet`
-Advanced
---------
+
+
+Hyperparameter optimization frameworks
+--------------------------------------
 
 .. list-table::
    :widths: 50 30 20
    :header-rows: 1
 
+<<<<<<< HEAD
    * - Description
      - Library
      - Colab link
@@ -157,3 +162,36 @@ Advanced
           :alt: Open in Colab
 
 Tutorial source files are on `GitHub <https://github.com/ray-project/tutorial>`_.
+=======
+  * - :doc:`ax_example`
+  * - :doc:`hyperopt_example`
+  * - :doc:`bayesopt_example`
+  * - :doc:`bohb_example`
+  * - :doc:`nevergrad_example`
+  * - :doc:`optuna_example`
+
+
+Others
+------
+
+.. list-table::
+
+  * - :doc:`includes/tune_basic_example`
+  * - :doc:`includes/async_hyperband_example`
+  * - :doc:`includes/hyperband_function_example`
+  * - :doc:`pbt_visualization/pbt_visualization`
+  * - :doc:`includes/pbt_function`
+  * - :doc:`includes/pb2_example`
+  * - :doc:`includes/logging_example`
+
+
+Exercises
+---------
+
+.. list-table::
+
+  * - :doc:`../../../`
+  * - :doc:`tune-mlflow`
+  * - :doc:`tune-aim`
+  * - :doc:`tune-comet`
+>>>>>>> b9636a9c1c (added more examples to tune examples summary page)
