@@ -255,17 +255,20 @@ def test_uv_run_runtime_env_hook(with_uv):
             expected_error="Make sure the requirements file is in the working directory.",
         )
 
+    # Make sure the runtime environment hook gives the appropriate error message
+    # when combined with the 'pip' or 'uv' environment.
+    for runtime_env in [{"uv": ["emoji"]}, {"pip": ["emoji"]}]:
+        check_uv_run(
+            cmd=[uv, "run"],
+            runtime_env=runtime_env,
+            expected_output=None,
+            expected_error="You are using the 'pip' or 'uv' runtime environments together with 'uv run'.",
+        )
+
     # Check without uv run
     subprocess.check_output(
         [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
     ).strip().decode() == "{}"
-
-    # Make sure the runtime environment hook gives the appropriate error message
-    # when combined with the 'pip' or 'uv' environment.
-    with pytest.raises(RuntimeError):
-        ray._private.runtime_env.uv_runtime_env_hook.hook({"uv": ["emoji"]})
-    with pytest.raises(RuntimeError):
-        ray._private.runtime_env.uv_runtime_env_hook.hook({"pip": ["emoji"]})
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
