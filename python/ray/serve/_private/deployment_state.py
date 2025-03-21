@@ -1860,11 +1860,7 @@ class DeploymentState:
                 stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
                 to_add = max(delta_replicas - stopping_replicas, 0)
 
-            if (
-                to_add > 0
-                and self._replica_constructor_retry_counter
-                < self._failed_to_start_threshold
-            ):
+            if to_add > 0 and not self.is_failed:
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
