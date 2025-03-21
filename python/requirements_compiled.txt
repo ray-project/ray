@@ -1755,7 +1755,7 @@ python-multipart==0.0.6
     # via gradio
 python-snappy==0.7.2
     # via -r python/requirements/ml/data-test-requirements.txt
-pytorch-lightning==1.8.6
+pytorch-lightning==2.4.0
     # via -r python/requirements/ml/tune-test-requirements.txt
 pytorch-ranger==0.1.1
     # via torch-optimizer
