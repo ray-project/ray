@@ -121,7 +121,7 @@ def test_many_actors(num_actors: int):
         logger.info("Skipping test with no actors")
         return
 
-    @ray.remote
+    @ray.remote(concurrency_groups={"io": 1})
     class TestActor:
         def running(self):
             return True
