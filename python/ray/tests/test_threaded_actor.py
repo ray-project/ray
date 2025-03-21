@@ -16,7 +16,7 @@ def ensure_cpu_returned(expected_cpus):
     )
 
 
-def test_threaded_actor_basic(shutdown_only):
+def test_threaded_actor_basic(ray_start_cluster):
     """Test the basic threaded actor."""
     ray.init(num_cpus=1)
 
@@ -45,7 +45,7 @@ def test_threaded_actor_basic(shutdown_only):
     ensure_cpu_returned(1)
 
 
-def test_threaded_actor_api_thread_safe(shutdown_only):
+def test_threaded_actor_api_thread_safe(ray_start_cluster):
     """Test if Ray APIs are thread safe
     when they are used within threaded actor.
     """
