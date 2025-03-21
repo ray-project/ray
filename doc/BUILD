@@ -421,6 +421,9 @@ doctest(
         ],
     ),
     tags = ["team:none"],
+    # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
+    # so we use its pytest plugin file (which is a superset of the default).
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
 )
 
 doctest(
