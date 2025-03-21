@@ -941,7 +941,7 @@ if __name__ == "__main__":
         num_aggregator_actors=512,
         train_batch_size_per_learner=500,
         num_learners=64,
-        num_weights_server_actors=1,
+        num_weights_server_actors=2,
     )
     time.sleep(1.0)
 
