@@ -22,8 +22,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import check_replica_counts
 from ray.serve.schema import LoggingConfig
+from ray.serve.schema_types import ReplicaState
 from ray.serve.tests.test_failure import request_with_retries
-from ray.serve.types import ReplicaState
 from ray.util.state import list_actors
 
 

@@ -68,7 +68,7 @@ from ray.serve.schema import (
     ReplicaDetails,
     _deployment_info_to_schema,
 )
-from ray.serve.types import (
+from ray.serve.schema_types import (
     ALL_REPLICA_STATES,
     DeploymentStatus,
     DeploymentStatusTrigger,

@@ -56,7 +56,7 @@ from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
 )
-from ray.serve.types import DeploymentStatus, DeploymentStatusTrigger
+from ray.serve.schema_types import DeploymentStatus, DeploymentStatusTrigger
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

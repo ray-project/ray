@@ -26,7 +26,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
-from ray.serve.types import (
+from ray.serve.schema_types import (
     APIType,
     ApplicationStatus,
     DeploymentStatus,

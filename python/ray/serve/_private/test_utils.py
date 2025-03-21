@@ -27,7 +27,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.types import (
+from ray.serve.schema_types import (
     ALL_REPLICA_STATES,
     ApplicationStatus,
     DeploymentStatus,

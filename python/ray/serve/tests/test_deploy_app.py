@@ -30,11 +30,11 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
+from ray.serve.schema_types import ApplicationStatus, DeploymentStatus
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_RUNTIME_ENV_PINNED_URI,
 )
-from ray.serve.types import ApplicationStatus, DeploymentStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 

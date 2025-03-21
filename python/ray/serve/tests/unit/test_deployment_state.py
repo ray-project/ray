@@ -46,7 +46,11 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
-from ray.serve.types import DeploymentStatus, DeploymentStatusTrigger, ReplicaState
+from ray.serve.schema_types import (
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    ReplicaState,
+)
 from ray.util.placement_group import validate_placement_group
 
 # Global variable that is fetched during controller recovery that

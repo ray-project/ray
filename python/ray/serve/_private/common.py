@@ -16,7 +16,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
-from ray.serve.types import DeploymentStatus, DeploymentStatusTrigger
+from ray.serve.schema_types import DeploymentStatus, DeploymentStatusTrigger
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 

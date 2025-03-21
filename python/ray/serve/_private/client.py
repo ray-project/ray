@@ -39,7 +39,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
 )
-from ray.serve.types import DeploymentStatus
+from ray.serve.schema_types import DeploymentStatus
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
