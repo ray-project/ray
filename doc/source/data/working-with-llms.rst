@@ -77,6 +77,19 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
     {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 
+Each processor requires specific input columns. You can find get more info by using the following API:
+
+.. testcode::
+
+    processor.log_input_column_names()
+
+.. testoutput::
+    :options: +MOCK
+
+    The first stage of the processor is ChatTemplateStage.
+    Required input columns:
+            messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
+
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
 .. testcode::
@@ -84,25 +97,6 @@ Some models may require a Hugging Face token to be specified. You can specify th
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
         runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
-        concurrency=1,
-        batch_size=64,
-    )
-
-If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
-
-.. note::
-    Install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
-
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="s3://your-bucket/your-model/",  # Make sure adding the trailing slash!
-        engine_kwargs={"load_format": "runai_streamer"},
-        runtime_env={"env_vars": {
-            "AWS_ACCESS_KEY_ID": "your_access_key_id",
-            "AWS_SECRET_ACCESS_KEY": "your_secret_access_key",
-            "AWS_REGION": "your_region",
-        }},
         concurrency=1,
         batch_size=64,
     )
@@ -146,13 +140,32 @@ The underlying `Processor` object instantiates replicas of the vLLM engine and a
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
 if specified).
 
-To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`:
+To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`.
+
+.. note::
+    In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
 
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"load_format": "runai_streamer"},
+        concurrency=1,
+        batch_size=64,
+    )
+
+If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model_source="s3://your-bucket/your-model/",  # Make sure adding the trailing slash!
+        engine_kwargs={"load_format": "runai_streamer"},
+        runtime_env={"env_vars": {
+            "AWS_ACCESS_KEY_ID": "your_access_key_id",
+            "AWS_SECRET_ACCESS_KEY": "your_secret_access_key",
+            "AWS_REGION": "your_region",
+        }},
         concurrency=1,
         batch_size=64,
     )
