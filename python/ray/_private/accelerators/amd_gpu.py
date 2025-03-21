@@ -114,9 +114,9 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
         if os.environ.get(NOSET_HIP_VISIBLE_DEVICES_ENV_VAR):
             return
 
-        os.environ[
-            AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_amd_devices])
+        os.environ[AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            ",".join([str(i) for i in visible_amd_devices])
+        )
 
     @staticmethod
     def _get_amd_device_ids() -> List[str]:

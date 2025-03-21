@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+
 import json
 import logging
 import threading
@@ -660,7 +661,6 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
         The current cluster status or empty if it fails to get that information.
     """
     try:
-
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
         if is_autoscaler_v2():

@@ -18,7 +18,6 @@ default_logger = logging.getLogger(__name__)
 
 
 class JavaJarsPlugin(RuntimeEnvPlugin):
-
     name = "java_jars"
 
     def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):

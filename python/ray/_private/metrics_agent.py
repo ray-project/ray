@@ -414,7 +414,6 @@ class OpenCensusProxyCollector:
             return
 
         elif isinstance(agg_data, DistributionAggregationData):
-
             assert agg_data.bounds == sorted(agg_data.bounds)
             # buckets are a list of buckets. Each bucket is another list with
             # a pair of bucket name and value, or a triple of bucket name,
@@ -676,8 +675,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                 self.write()
             except Exception as e:
                 logger.warning(
-                    "Writing a service discovery file, {},"
-                    "failed.".format(self.get_target_file_name())
+                    "Writing a service discovery file, {}," "failed.".format(
+                        self.get_target_file_name()
+                    )
                 )
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")

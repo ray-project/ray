@@ -18,6 +18,7 @@ pre_commit() {
   HOOKS=(
     python-no-log-warn
     ruff
+    ruff-format
     check-added-large-files
     check-ast
     check-toml

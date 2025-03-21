@@ -162,7 +162,6 @@ class Collector(object):
             return
 
         elif isinstance(agg_data, aggregation_data_module.DistributionAggregationData):
-
             assert agg_data.bounds == sorted(agg_data.bounds)
             # buckets are a list of buckets. Each bucket is another list with
             # a pair of bucket name and value, or a triple of bucket name,

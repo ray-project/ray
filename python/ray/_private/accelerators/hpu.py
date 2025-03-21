@@ -116,6 +116,6 @@ class HPUAcceleratorManager(AcceleratorManager):
         if os.environ.get(NOSET_HABANA_VISIBLE_MODULES_ENV_VAR):
             return
 
-        os.environ[
-            HPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_hpu_devices])
+        os.environ[HPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            ",".join([str(i) for i in visible_hpu_devices])
+        )

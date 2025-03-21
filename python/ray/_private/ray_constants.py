@@ -70,7 +70,8 @@ ID_SIZE = 28
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", 200 * 10**9  # 200 GB
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES",
+    200 * 10**9,  # 200 GB
 )
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
@@ -392,7 +393,8 @@ GRPC_CPP_MAX_MESSAGE_SIZE = 512 * 1024 * 1024
 #       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
 #       have to be set at the same time)
 AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
-    "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
+    "AGENT_GRPC_MAX_MESSAGE_LENGTH",
+    20 * 1024 * 1024,  # 20MB
 )
 
 
