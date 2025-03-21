@@ -6,19 +6,23 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-    from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2._internal.execution.controller import (
+        TrainControllerState,
+    )
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
     from ray.train.v2._internal.execution.worker_group import (
+        Worker,
         WorkerGroup,
-        WorkerGroupStatus,
+        WorkerGroupContext,
+        WorkerGroupPollStatus,
     )
 
 
 @DeveloperAPI
 class WorkerGroupCallback(RayTrainCallback):
     def before_init_train_context(
-        self, worker_group: "WorkerGroup"
+        self, workers: List["Worker"]
     ) -> Dict[str, List[Any]]:
         """Called before initializing the TrainContext for the worker_group.
 
@@ -32,6 +36,10 @@ class WorkerGroupCallback(RayTrainCallback):
     @contextmanager
     def on_worker_group_start(self):
         yield
+
+    def before_worker_group_start(self, worker_group_context: "WorkerGroupContext"):
+        """Called before the worker group actors are initialized."""
+        pass
 
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
@@ -51,7 +59,9 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
-    def after_worker_group_poll_status(self, worker_group_status: "WorkerGroupStatus"):
+    def after_worker_group_poll_status(
+        self, worker_group_status: "WorkerGroupPollStatus"
+    ):
         pass
 
 
@@ -78,7 +88,6 @@ class ControllerCallback(RayTrainCallback):
     def before_controller_execute_failure_decision(
         self,
         failure_decision: "FailureDecision",
-        worker_group_status: "WorkerGroupStatus",
     ):
         """Called before the controller executes a failure decision."""
         pass

@@ -6,6 +6,8 @@ import pyarrow.compute as pc
 import ray
 
 from benchmark import Benchmark
+from ray.data import DataContext
+from ray.data.context import ShuffleStrategy
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,6 +26,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Which columns to group by",
     )
+    parser.add_argument(
+        "--shuffle-strategy",
+        required=False,
+        default=ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        nargs="?",
+        type=str,
+        help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--aggregate", action="store_true")
@@ -38,6 +48,11 @@ def main(args):
 
     def benchmark_fn():
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
+
+        # Configure appropriate shuffle-strategy
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy(
+            args.shuffle_strategy
+        )
 
         grouped_ds = ray.data.read_parquet(path).groupby(args.group_by)
         consume_fn(grouped_ds)

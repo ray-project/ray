@@ -39,7 +39,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -76,6 +76,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 Space = gym.Space
 
@@ -996,16 +997,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = EnvToModulePipeline(
@@ -1078,16 +1079,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = ModuleToEnvPipeline(
@@ -2517,9 +2518,10 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            to_check = force_list(callbacks_class)
+            if not all(callable(c) for c in to_check):
                 raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
+                    "`config.callbacks_class` must be a callable or list of callables that "
                     "returns a subclass of DefaultCallbacks, got "
                     f"{callbacks_class}!"
                 )
@@ -4572,20 +4574,6 @@ class AlgorithmConfig(_Config):
                         f"`config.multi_agent(policies=..)`!"
                     )
 
-        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
-        #  multi-agent.
-        if (
-            self.is_multi_agent
-            and self.enable_env_runner_and_connector_v2
-            and self.num_envs_per_env_runner > 1
-        ):
-            self._value_error(
-                "For now, using env vectorization "
-                "(`config.num_envs_per_env_runner > 1`) in combination with "
-                "multi-agent AND the new EnvRunners is not supported! Try setting "
-                "`config.num_envs_per_env_runner = 1`."
-            )
-
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
 
@@ -4712,14 +4700,15 @@ class AlgorithmConfig(_Config):
             return
 
         # Warn about new API stack on by default.
-        logger.warning(
-            f"You are running {self.algo_class.__name__} on the new API stack! "
-            "This is the new default behavior for this algorithm. If you don't "
-            "want to use the new API stack, set `config.api_stack("
-            "enable_rl_module_and_learner=False,"
-            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-        )
+        if log_once(f"{self.algo_class.__name__}_on_new_api_stack"):
+            logger.warning(
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.

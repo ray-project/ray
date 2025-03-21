@@ -29,9 +29,19 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "env",
+    srcs = ["env.cc"],
+    hdrs = ["env.h"],
+    deps = [
+        ":logging",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
     name = "exponential_backoff",
-    hdrs = ["exponential_backoff.h"],
     srcs = ["exponential_backoff.cc"],
+    hdrs = ["exponential_backoff.h"],
     deps = [
         ":logging",
     ],
@@ -39,8 +49,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "logging",
-    hdrs = ["logging.h"],
     srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
     deps = [
         ":event_label",
         ":macros",
@@ -56,8 +66,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "filesystem",
-    hdrs = ["filesystem.h"],
     srcs = ["filesystem.cc"],
+    hdrs = ["filesystem.h"],
     deps = [
         "//src/ray/common:status_or",
     ],
@@ -76,16 +86,17 @@ ray_cc_library(
 
 ray_cc_library(
     name = "process",
-    hdrs = [
-        "process.h",
-        "subreaper.h",
-    ],
     srcs = [
         "process.cc",
         "subreaper.cc",
     ],
+    hdrs = [
+        "process.h",
+        "subreaper.h",
+    ],
     deps = [
         ":cmd_line_utils",
+        ":compat",
         ":filesystem",
         ":logging",
         ":macros",
@@ -108,13 +119,14 @@ ray_cc_library(
     hdrs = ["counter_map.h"],
     deps = [
         ":logging",
+        ":mutex_protected",
     ],
 )
 
 ray_cc_library(
     name = "event",
-    hdrs = ["event.h"],
     srcs = ["event.cc"],
+    hdrs = ["event.h"],
     deps = [
         ":logging",
         ":random",
@@ -128,6 +140,15 @@ ray_cc_library(
         "@com_google_googletest//:gtest_prod",
         "@com_google_protobuf//:protobuf",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "scoped_env_setter",
+    srcs = ["scoped_env_setter.cc"],
+    hdrs = ["scoped_env_setter.h"],
+    deps = [
+        ":env",
     ],
 )
 
@@ -146,14 +167,17 @@ ray_cc_library(
 
 ray_cc_library(
     name = "string_utils",
-    hdrs = ["string_utils.h"],
     srcs = ["string_utils.cc"],
+    hdrs = ["string_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 ray_cc_library(
     name = "memory",
-    hdrs = ["memory.h"],
     srcs = ["memory.cc"],
+    hdrs = ["memory.h"],
 )
 
 ray_cc_library(
@@ -185,8 +209,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "cmd_line_utils",
-    hdrs = ["cmd_line_utils.h"],
     srcs = ["cmd_line_utils.cc"],
+    hdrs = ["cmd_line_utils.h"],
     deps = [
         ":logging",
         ":string_utils",
@@ -196,8 +220,8 @@ ray_cc_library(
 # TODO(hjiang): Split URL related functions into a separate util target.
 ray_cc_library(
     name = "util",
-    hdrs = ["util.h"],
     srcs = ["util.cc"],
+    hdrs = ["util.h"],
     deps = [
         ":filesystem",
         ":logging",
@@ -216,9 +240,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "thread_checker",
-    hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],
-
+    hdrs = ["thread_checker.h"],
 )
 
 ray_cc_library(
@@ -238,8 +261,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "compat",
-    hdrs = ["compat.h"],
     srcs = ["compat.cc"],
+    hdrs = ["compat.h"],
     deps = [
         ":logging",
         "//src/ray/common:status",
@@ -253,14 +276,16 @@ ray_cc_library(
 
 ray_cc_library(
     name = "pipe_logger",
-    hdrs = ["pipe_logger.h"],
     srcs = ["pipe_logger.cc"],
+    hdrs = ["pipe_logger.h"],
     deps = [
         ":compat",
         ":spdlog_fd_sink",
+        ":spdlog_newliner_sink",
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "//src/ray/common:ray_config",
         "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:inlined_vector",
@@ -270,10 +295,11 @@ ray_cc_library(
 
 ray_cc_library(
     name = "stream_redirection_utils",
-    hdrs = ["stream_redirection_utils.h"],
     srcs = ["stream_redirection_utils.cc"],
+    hdrs = ["stream_redirection_utils.h"],
     deps = [
         ":pipe_logger",
+        ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
     ],
@@ -290,11 +316,61 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "spdlog_newliner_sink",
+    hdrs = ["spdlog_newliner_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+    ],
+)
+
+ray_cc_library(
     name = "temporary_directory",
-    hdrs = ["temporary_directory.h"],
     srcs = ["temporary_directory.cc"],
+    hdrs = ["temporary_directory.h"],
     deps = [
         ":util",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "mutex_protected",
+    hdrs = ["mutex_protected.h"],
+    deps = [
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "scoped_dup2_wrapper",
+    srcs = select({
+        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
+        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
+    }),
+    hdrs = ["scoped_dup2_wrapper.h"],
+    deps = [
+        ":compat",
+        ":logging",
+    ],
+)
+
+ray_cc_library(
+    name = "process_cleaner",
+    srcs = ["process_cleaner.cc"],
+    hdrs = ["process_cleaner.h"],
+    deps = [":invoke_once_token"] +
+           select({
+               "@platforms//os:windows": [],
+               "//conditions:default": ["//src/ray/util:logging"],
+           }),
+)
+
+ray_cc_library(
+    name = "invoke_once_token",
+    hdrs = ["invoke_once_token.h"],
+    deps = [
+        ":logging",
     ],
 )

@@ -17,8 +17,9 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string, import_attr
+from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -605,3 +606,15 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     elif isinstance(obj, DeploymentResponse):
         # Launch async task to convert DeploymentResponse to an object ref
         return asyncio.create_task(obj._to_object_ref())
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise

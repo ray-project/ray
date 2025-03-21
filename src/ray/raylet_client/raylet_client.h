@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -23,6 +26,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -42,7 +46,6 @@ using ray::Language;
 // Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
 namespace ray {
 
@@ -169,7 +172,7 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Inteface for getting resource reports.
+/// Interface for getting resource reports.
 class ResourceTrackingInterface {
  public:
   virtual void GetResourceLoad(
@@ -247,6 +250,10 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
       const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
@@ -289,7 +296,7 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  explicit RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -344,9 +351,8 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \param release_resources: true if the dirct call blocking needs to release
-  /// resources. \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -364,13 +370,14 @@ class RayletClient : public RayletClientInterface {
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids,
-                   const std::vector<rpc::Address> &owner_addresses,
-                   int num_returns,
-                   int64_t timeout_milliseconds,
-                   const TaskID &current_task_id,
-                   WaitResultPair *result);
+  /// \return ray::StatusOr containing error status or the set of object ids that were
+  /// found.
+  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds,
+      const TaskID &current_task_id);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -496,6 +503,11 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      override;
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,

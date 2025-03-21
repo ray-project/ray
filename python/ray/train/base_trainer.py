@@ -14,6 +14,7 @@ import pyarrow.fs
 import ray
 import ray.cloudpickle as pickle
 from ray._private.dict import deep_update
+from ray._private.usage import usage_lib
 from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
@@ -264,6 +265,7 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
+        usage_lib.record_library_usage("train")
         air_usage.tag_air_trainer(self)
 
     @classmethod
@@ -653,7 +655,7 @@ class BaseTrainer(abc.ABC):
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures during the execution
+            ray.train.base_trainer.TrainingFailedError: If any failures during the execution
                 of ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import ResumeConfig, TuneError

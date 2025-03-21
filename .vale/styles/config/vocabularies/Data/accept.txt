@@ -12,6 +12,7 @@ dtype
 [Ii]ngest
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
+LLM(s)?
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
@@ -23,6 +24,7 @@ Predibase('s)?
 [Pp]reprocess
 [Pp]reprocessor(s)?
 [Pp]ushdown
+runai
 [Ss]calers
 Spotify('s)?
 TFRecord(s)?

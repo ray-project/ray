@@ -13,12 +13,9 @@
 // limitations under the License.
 #pragma once
 
-#include "ray/core_worker/common.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
-#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
 namespace core {

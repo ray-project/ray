@@ -1,22 +1,24 @@
-import argparse
 import collections
+import json
+import logging
 import os
 import pprint
+import time
 import tempfile
-import json
 from typing import Dict
 
-from ray._private.test_utils import safe_write_to_results_json
-import ray.data
-from ray.data._internal.stats import Timer
 import ray.train
+from ray._private.test_utils import safe_write_to_results_json
+from ray.data._internal.stats import Timer
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
 import torch
 
-from config import BenchmarkConfig
+from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
 from image_classification.factory import ImageClassificationFactory
+
+logger = logging.getLogger(__name__)
 
 
 # TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
@@ -28,10 +30,6 @@ class TrainLoopRunner:
         model = factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
 
-        # TODO: Might want to re-initialize dataloaders at the start of every epoch.
-        self.train_dataloader = factory.get_train_dataloader()
-        self.val_dataloader = factory.get_val_dataloader()
-
         self.loss_fn = factory.get_loss_fn()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
@@ -39,14 +37,27 @@ class TrainLoopRunner:
         self._train_batch_idx: int = 0
         self._train_epoch_idx: int = 0
 
-        # Load checkpoint if available.
-        checkpoint = ray.train.get_checkpoint()
-        if checkpoint:
-            with checkpoint.as_directory() as temp_checkpoint_dir:
-                self.load_checkpoint(temp_checkpoint_dir)
-
         # Performance metrics
         self._metrics = collections.defaultdict(lambda: Timer())
+
+        checkpoint = ray.train.get_checkpoint()
+        if checkpoint:
+            self.restore_from_checkpoint(checkpoint)
+
+    def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+        with tempfile.TemporaryDirectory(
+            dir="/mnt/local_storage"
+        ) as temp_checkpoint_dir:
+            download_start = time.perf_counter()
+            checkpoint.to_directory(temp_checkpoint_dir)
+            download_time = time.perf_counter() - download_start
+
+            load_start = time.perf_counter()
+            self.load_checkpoint(temp_checkpoint_dir)
+            load_time = time.perf_counter() - load_start
+
+            self._metrics["checkpoint/download"].add(download_time)
+            self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
         starting_epoch = self._train_epoch_idx
@@ -58,7 +69,7 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
             if ray.train.get_context().get_world_rank() == 0:
-                pprint.pprint(self.get_metrics())
+                logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
     def train_epoch(self):
         with self._metrics["train/epoch"].timer():
@@ -66,14 +77,24 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            print(f"Training starting @ epoch={self._train_epoch_idx}")
+            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+
+        train_dataloader = self.factory.get_train_dataloader()
 
         # NOTE: Time the first batch separately since it includes the dataset
         # pipeline warmup time.
         with self._metrics["train/iter_first_batch"].timer():
-            batch = self.get_next_batch(self.train_dataloader)
+            batch = self.get_next_batch(train_dataloader)
 
-        # TODO: Handle the case where we restored to a middle of the epoch.
+        # Skip through batches if we restored to a middle of the epoch.
+        # TODO: Compare this baseline to the data checkpointing approach once we have it.
+        if self._train_batch_idx > 0:
+            if ray.train.get_context().get_world_rank() == 0:
+                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+
+            for _ in range(self._train_batch_idx):
+                with self._metrics["train/iter_skip_batch"].timer():
+                    self.get_next_batch(train_dataloader)
 
         while batch:
             input_batch, labels = batch
@@ -85,26 +106,33 @@ class TrainLoopRunner:
             self._train_batch_idx += 1
             self._metrics["train/rows_processed"].add(len(labels))
 
-            if (
-                self.benchmark_config.validate_every_n_steps > 0
-                and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
-                == 0
-            ):
+            if self._should_validate_during_epoch():
                 self.validate_and_checkpoint()
 
-            if (
-                self.benchmark_config.log_metrics_every_n_steps > 0
-                and self._train_batch_idx
-                % self.benchmark_config.log_metrics_every_n_steps
-                == 0
-            ):
-                pprint.pprint(self.get_metrics())
+            if self._should_log_metrics():
+                logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
             with self._metrics["train/iter_batch"].timer():
-                batch = self.get_next_batch(self.train_dataloader)
+                batch = self.get_next_batch(train_dataloader)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
+
+    def _should_validate_during_epoch(self) -> bool:
+        """Handles the validate_every_n_steps logic."""
+        return (
+            self.benchmark_config.validate_every_n_steps > 0
+            and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
+            == 0
+        )
+
+    def _should_log_metrics(self) -> bool:
+        """Handles the log_metrics_every_n_steps logic."""
+        return (
+            self.benchmark_config.log_metrics_every_n_steps > 0
+            and self._train_batch_idx % self.benchmark_config.log_metrics_every_n_steps
+            == 0
+        )
 
     def get_next_batch(self, dataloader):
         try:
@@ -124,7 +152,9 @@ class TrainLoopRunner:
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        with tempfile.TemporaryDirectory(
+            dir="/mnt/local_storage"
+        ) as temp_checkpoint_dir:
             with self._metrics["checkpoint/save"].timer():
                 self.save_checkpoint(temp_checkpoint_dir)
 
@@ -136,9 +166,12 @@ class TrainLoopRunner:
 
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
-            print(
-                f"Validation starting @ epoch={self._train_epoch_idx}, batch={self._train_batch_idx}"
+            logger.info(
+                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
+                f"batch={self._train_batch_idx}"
             )
+
+        val_dataloader = self.factory.get_val_dataloader()
 
         self.model.eval()
 
@@ -146,39 +179,63 @@ class TrainLoopRunner:
         num_rows = 0
 
         with self._metrics["validation/iter_first_batch"].timer():
-            batch = self.get_next_batch(self.val_dataloader)
+            batch = self.get_next_batch(val_dataloader)
 
         while batch:
             input_batch, labels = batch
 
             with self._metrics["validation/step"].timer():
-                with torch.no_grad():
-                    out = self.model(input_batch)
-                    loss = self.loss_fn(out, labels)
-                    total_loss += loss
-                    num_rows += len(labels)
-                    self._metrics["validation/rows_processed"].add(len(labels))
+                if not self.benchmark_config.skip_validation_step:
+                    total_loss += self.validate_step(input_batch, labels)
+
+            num_rows += len(labels)
+            self._metrics["validation/rows_processed"].add(len(labels))
 
             with self._metrics["validation/iter_batch"].timer():
-                batch = self.get_next_batch(self.val_dataloader)
+                batch = self.get_next_batch(val_dataloader)
 
         return {"validation/loss": total_loss.item() / num_rows}
 
+    def validate_step(self, input_batch, labels):
+        with torch.no_grad():
+            out = self.model(input_batch)
+            loss = self.loss_fn(out, labels)
+        return loss
+
     def report_checkpoint(self, metrics, checkpoint):
-        ray.train.report(metrics, checkpoint=checkpoint)
+        checkpoint_dir_name = (
+            f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
+        )
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_dir_name=checkpoint_dir_name,
+        )
 
     def load_checkpoint(self, local_dir: str):
-        self.model.load_state_dict(torch.load(os.path.join(local_dir, "model.pt")))
+        self.model.load_state_dict(
+            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
+        )
         self.optimizer.load_state_dict(
-            torch.load(os.path.join(local_dir, "optimizer.pt"))
+            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
         )
 
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
         self._train_epoch_idx = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
-        print(
-            f"[Fault Tolerance] Restored to epoch={self._train_epoch}, train_batch_idx={self._train_batch_idx}"
-        )
+
+        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
+            metrics_json = json.load(f)
+
+        for k, v in metrics_json.items():
+            self._metrics[k].__dict__.update(v)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"{ray.train.get_checkpoint()}"
+            )
 
     def save_checkpoint(self, local_dir: str):
         train_state = {
@@ -188,6 +245,16 @@ class TrainLoopRunner:
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
         torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
         torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
+
+        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
+            json.dump(metrics_json, f)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx}"
+            )
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
@@ -231,6 +298,17 @@ class TrainLoopRunner:
                 metrics["validation/local_throughput"] * num_workers
             )
 
+        # Extra time that each worker spends to restore from checkpoint,
+        # which includes downloading the checkpoint, loading the checkpoint,
+        # and skipping through batches that were already processed.
+        restoration_time = (
+            self._metrics["checkpoint/download"].get()
+            + self._metrics["checkpoint/load"].get()
+            + self._metrics["train/iter_skip_batch"].get()
+        )
+        if restoration_time > 0:
+            metrics["checkpoint/restoration_time"] = restoration_time
+
         # Dataloader metrics (ex: Ray Data stats)
         metrics.update(self.factory.get_dataloader_metrics())
 
@@ -251,30 +329,9 @@ def train_fn_per_worker(config):
             json.dump(metrics, f)
 
 
-def parse_cli_args():
-    parser = argparse.ArgumentParser()
-    for field, field_info in BenchmarkConfig.model_fields.items():
-        field_type = field_info.annotation
-        assert field_type
-
-        if field_type is bool:
-            assert (
-                not field_info.default
-            ), "Only supports bool flags that are False by default."
-            parser.add_argument(
-                f"--{field}", action="store_true", default=field_info.default
-            )
-        else:
-            parser.add_argument(
-                f"--{field}", type=field_type, default=field_info.default
-            )
-    args = parser.parse_args()
-    return BenchmarkConfig(**vars(args))
-
-
 def main():
-    benchmark_config = parse_cli_args()
-    print(benchmark_config.model_dump_json(indent=2))
+    benchmark_config: BenchmarkConfig = cli_to_config()
+    logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 
     if benchmark_config.task == "image_classification":
         factory = ImageClassificationFactory(benchmark_config)
@@ -286,11 +343,15 @@ def main():
         train_loop_config={"factory": factory},
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
-            use_gpu=True,
+            use_gpu=not benchmark_config.mock_gpu,
+            resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
             name=date_str(include_ms=True),
+            failure_config=ray.train.FailureConfig(
+                max_failures=benchmark_config.max_failures
+            ),
         ),
         datasets=factory.get_ray_datasets(),
     )
@@ -299,10 +360,10 @@ def main():
     with open(METRICS_OUTPUT_PATH, "r") as f:
         metrics = json.load(f)
 
-    print("-" * 80)
-    print("Final metrics:")
-    pprint.pprint(metrics)
-    print("-" * 80)
+    final_metrics_str = (
+        "Final metrics:\n" + "-" * 80 + "\n" + pprint.pformat(metrics) + "\n" + "-" * 80
+    )
+    logger.info(final_metrics_str)
 
     # Write metrics as a release test result.
     safe_write_to_results_json(metrics)

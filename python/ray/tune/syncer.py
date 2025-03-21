@@ -23,8 +23,6 @@ class SyncConfig(TrainSyncConfig):
     For a Ray Tune run with many trials, each trial will upload its trial directory
     to storage, which includes arbitrary files that you dumped during the run.
 
-    See :ref:`persistent-storage-guide` for more details and examples.
-
     Args:
         sync_period: Minimum time in seconds to wait between two sync operations.
             A smaller ``sync_period`` will have the data in storage updated more often
@@ -33,7 +31,7 @@ class SyncConfig(TrainSyncConfig):
             to finish running. A sync operation will run for at most this long
             before raising a `TimeoutError`. Defaults to 30 minutes.
         sync_artifacts: [Beta] Whether or not to sync artifacts that are saved to the
-            trial directory (accessed via `tune.get_context().get_trial_dir()`)
+            trial directory (accessed via `ray.tune.get_context().get_trial_dir()`)
             to the persistent storage configured via `tune.RunConfig(storage_path)`.
             The trial or remote worker will try to launch an artifact syncing
             operation every time `tune.report` happens, subject to `sync_period`

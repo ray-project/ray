@@ -4,10 +4,14 @@ import os
 import pathlib
 import random
 import sys
+import psutil
+import platform
 import threading
 import time
+import functools
 import urllib.parse
 from queue import Empty, Full, Queue
+from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -27,7 +31,7 @@ import numpy as np
 import pyarrow
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -110,11 +114,9 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        version = _get_pyarrow_version()
+        version = get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
-
-            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+            if version < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
                     f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
@@ -318,9 +320,8 @@ def _check_import(obj, *, module: str, package: str) -> None:
         importlib.import_module(module)
     except ImportError:
         raise ImportError(
-            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
+            f"`{obj.__class__.__name__}` depends on '{module}', but Ray Data couldn't "
+            f"import it. Install '{module}' by running `pip install {package}`."
         )
 
 
@@ -1144,8 +1145,8 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
         super().__init__(handler)
 
     @property
-    def data_context(self):
-        return self.handler.data_context
+    def retryable_errors(self) -> List[str]:
+        return self.handler._retryable_errors
 
     def unwrap(self):
         return self.handler.unwrap()
@@ -1154,13 +1155,15 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
     def wrap(
         cls,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str],
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
         if isinstance(fs, RetryingPyFileSystem):
             return fs
-        handler = RetryingPyFileSystemHandler(fs, context, max_attempts, max_backoff_s)
+        handler = RetryingPyFileSystemHandler(
+            fs, retryable_errors, max_attempts, max_backoff_s
+        )
         return cls(handler)
 
     def __reduce__(self):
@@ -1183,7 +1186,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
     def __init__(
         self,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str] = tuple(),
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
@@ -1199,20 +1202,16 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
             fs, RetryingPyFileSystem
         ), "Cannot wrap a RetryingPyFileSystem"
         self._fs = fs
-        self._data_context = context
+        self._retryable_errors = retryable_errors
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
-
-    @property
-    def data_context(self):
-        return self._data_context
 
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
         return call_with_retry(
             operation,
             description=description,
-            match=self._data_context.retried_io_errors,
+            match=self._retryable_errors,
             max_attempts=self._max_attempts,
             max_backoff_s=self._max_backoff_s,
         )
@@ -1486,11 +1485,19 @@ def _validate_rows_per_file_args(
     return min_rows_per_file
 
 
-def is_nan(value):
+def is_nan(value) -> bool:
+    """Returns true if provide value is ``np.nan``"""
+
     try:
         return isinstance(value, float) and np.isnan(value)
     except TypeError:
         return False
+
+
+def is_null(value: Any) -> bool:
+    """This generalization of ``is_nan`` util qualifying both None and np.nan
+    as null values"""
+    return value is None or is_nan(value)
 
 
 def keys_equal(keys1, keys2):
@@ -1513,3 +1520,123 @@ def get_total_obj_store_mem_on_node() -> int:
         node_id in total_resources_per_node
     ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
     return total_resources_per_node[node_id]["object_store_memory"]
+
+
+class MemoryProfiler:
+    """A context manager that polls the USS of the current process.
+
+    This class approximates the max USS by polling memory and subtracting the amount
+    of shared memory from the resident set size (RSS). It's not a
+    perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
+    estimating the USS is much cheaper than computing the actual USS.
+
+    .. warning::
+
+        This class only works with Linux. If you use it on another platform,
+        `estimate_max_uss` always returns ``None``.
+
+    Example:
+
+        .. testcode::
+
+            with MemoryProfiler(poll_interval_s=1.0) as profiler:
+                for i in range(10):
+                    ...  # Your code here
+                    print(f"Max USS: {profiler.estimate_max_uss()}")
+                    profiler.reset()
+    """
+
+    def __init__(self, poll_interval_s: Optional[float]):
+        """
+
+        Args:
+            poll_interval_s: The interval to poll the USS of the process. If `None`,
+                this class won't poll the USS.
+        """
+        self._poll_interval_s = poll_interval_s
+
+        self._process = psutil.Process(os.getpid())
+        self._max_uss = None
+        self._max_uss_lock = threading.Lock()
+
+        self._uss_poll_thread = None
+        self._stop_uss_poll_event = None
+
+    def __repr__(self):
+        return f"MemoryProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        if self._can_estimate_uss() and self._poll_interval_s is not None:
+            (
+                self._uss_poll_thread,
+                self._stop_uss_poll_event,
+            ) = self._start_uss_poll_thread()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._uss_poll_thread is not None:
+            self._stop_uss_poll_thread()
+
+    def estimate_max_uss(self) -> Optional[int]:
+        """Get an estimate of the max USS of the current process.
+
+        Returns:
+            An estimate of the max USS of the process in bytes, or ``None`` if an
+            estimate isn't available.
+        """
+        if not self._can_estimate_uss():
+            assert self._max_uss is None
+            return None
+
+        with self._max_uss_lock:
+            if self._max_uss is None:
+                self._max_uss = self._estimate_uss()
+            else:
+                self._max_uss = max(self._max_uss, self._estimate_uss())
+
+        assert self._max_uss is not None
+        return self._max_uss
+
+    def reset(self):
+        with self._max_uss_lock:
+            self._max_uss = None
+
+    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        assert self._poll_interval_s is not None
+        assert self._can_estimate_uss()
+
+        stop_event = threading.Event()
+
+        def poll_uss():
+            while not stop_event.is_set():
+                with self._max_uss_lock:
+                    if self._max_uss is None:
+                        self._max_uss = self._estimate_uss()
+                    else:
+                        self._max_uss = max(self._max_uss, self._estimate_uss())
+                stop_event.wait(self._poll_interval_s)
+
+        thread = threading.Thread(target=poll_uss, daemon=True)
+        thread.start()
+
+        return thread, stop_event
+
+    def _stop_uss_poll_thread(self):
+        if self._stop_uss_poll_event is not None:
+            self._stop_uss_poll_event.set()
+            self._uss_poll_thread.join()
+
+    def _estimate_uss(self) -> int:
+        assert self._can_estimate_uss()
+        memory_info = self._process.memory_info()
+        # Estimate the USS (the amount of memory that'd be free if we killed the
+        # process right now) as the difference between the RSS (total physical memory)
+        # and amount of shared physical memory.
+        return memory_info.rss - memory_info.shared
+
+    @staticmethod
+    @functools.cache
+    def _can_estimate_uss() -> bool:
+        # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
+        return platform.system() == "Linux"

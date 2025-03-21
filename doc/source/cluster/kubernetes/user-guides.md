@@ -22,13 +22,13 @@ user-guides/gpu
 user-guides/tpu
 user-guides/rayserve-dev-doc
 user-guides/pod-command
-user-guides/pod-security
 user-guides/helm-chart-rbac
 user-guides/tls
 user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
+user-guides/reduce-image-pull-latency
 ```
 
 
@@ -53,7 +53,6 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-dev-serve`
 * {ref}`kuberay-pod-command`
-* {ref}`kuberay-pod-security`
 * {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
 * {ref}`kuberay-gke-bucket`
@@ -61,3 +60,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
 * {ref}`kubectl-plugin`
 * {ref}`kuberay-auth`
+* {ref}`reduce-image-pull-latency`
