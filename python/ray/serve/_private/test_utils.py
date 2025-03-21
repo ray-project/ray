@@ -19,17 +19,20 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentID,
-    DeploymentStatus,
     RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.schema import ApplicationStatus
+from ray.serve.types import (
+    ALL_REPLICA_STATES,
+    ApplicationStatus,
+    DeploymentStatus,
+    ReplicaState,
+)
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"

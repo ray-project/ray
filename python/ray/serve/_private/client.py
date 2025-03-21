@@ -11,7 +11,6 @@ from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.build_app import BuiltApplication
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
 )
@@ -40,6 +39,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
 )
+from ray.serve.types import DeploymentStatus
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

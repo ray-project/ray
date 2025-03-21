@@ -16,6 +16,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.types import DeploymentStatus, DeploymentStatusTrigger
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -98,38 +99,6 @@ ApplicationName = str
 class EndpointInfo:
     route: str
     app_is_cross_language: bool = False
-
-
-# Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
-class ReplicaState(str, Enum):
-    STARTING = "STARTING"
-    UPDATING = "UPDATING"
-    RECOVERING = "RECOVERING"
-    RUNNING = "RUNNING"
-    STOPPING = "STOPPING"
-    PENDING_MIGRATION = "PENDING_MIGRATION"
-
-
-class DeploymentStatus(str, Enum):
-    UPDATING = "UPDATING"
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DEPLOY_FAILED = "DEPLOY_FAILED"
-    UPSCALING = "UPSCALING"
-    DOWNSCALING = "DOWNSCALING"
-
-
-class DeploymentStatusTrigger(str, Enum):
-    UNSPECIFIED = "UNSPECIFIED"
-    CONFIG_UPDATE_STARTED = "CONFIG_UPDATE_STARTED"
-    CONFIG_UPDATE_COMPLETED = "CONFIG_UPDATE_COMPLETED"
-    UPSCALE_COMPLETED = "UPSCALE_COMPLETED"
-    DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
-    AUTOSCALING = "AUTOSCALING"
-    REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
-    HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
-    INTERNAL_ERROR = "INTERNAL_ERROR"
-    DELETING = "DELETING"
 
 
 # Internal Enum used to manage deployment state machine
@@ -554,10 +523,6 @@ class RunningReplicaInfo:
 class DeploymentTargetInfo:
     is_available: bool
     running_replicas: List[RunningReplicaInfo]
-
-
-class ServeDeployMode(str, Enum):
-    MULTI_APP = "MULTI_APP"
 
 
 class ServeComponentType(str, Enum):

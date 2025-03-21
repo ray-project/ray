@@ -15,9 +15,7 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentStatus,
     DeploymentStatusInfo,
-    DeploymentStatusTrigger,
     EndpointInfo,
     TargetCapacityDirection,
 )
@@ -58,6 +56,7 @@ from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
 )
+from ray.serve.types import DeploymentStatus, DeploymentStatusTrigger
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

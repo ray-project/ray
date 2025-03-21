@@ -1,7 +1,6 @@
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
 from zlib import crc32
 
@@ -17,12 +16,6 @@ from ray._private.pydantic_compat import (
 )
 from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve._private.common import (
-    DeploymentStatus,
-    DeploymentStatusTrigger,
-    ReplicaState,
-    ServeDeployMode,
-)
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -33,6 +26,16 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
+from ray.serve.types import (
+    APIType,
+    ApplicationStatus,
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    EncodingType,
+    ProxyStatus,
+    ReplicaState,
+    ServeDeployMode,
+)
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -77,14 +80,6 @@ def _route_prefix_format(cls, v):
         )
 
     return v
-
-
-@PublicAPI(stability="alpha")
-class EncodingType(str, Enum):
-    """Encoding type for the serve logs."""
-
-    TEXT = "TEXT"
-    JSON = "JSON"
 
 
 @PublicAPI(stability="alpha")
@@ -807,22 +802,6 @@ class ServeDeploySchema(BaseModel):
         return {"applications": []}
 
 
-# Keep in sync with ServeSystemActorStatus in
-# python/ray/dashboard/client/src/type/serve.ts
-@PublicAPI(stability="stable")
-class ProxyStatus(str, Enum):
-    """The current status of the proxy."""
-
-    STARTING = "STARTING"
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DRAINING = "DRAINING"
-    # The DRAINED status is a momentary state
-    # just before the proxy is removed
-    # so this status won't show up on the dashboard.
-    DRAINED = "DRAINED"
-
-
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
@@ -840,18 +819,6 @@ class DeploymentStatusOverview:
     status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
-
-
-@PublicAPI(stability="stable")
-class ApplicationStatus(str, Enum):
-    """The current status of the application."""
-
-    NOT_STARTED = "NOT_STARTED"
-    DEPLOYING = "DEPLOYING"
-    DEPLOY_FAILED = "DEPLOY_FAILED"
-    RUNNING = "RUNNING"
-    UNHEALTHY = "UNHEALTHY"
-    DELETING = "DELETING"
 
 
 @PublicAPI(stability="alpha")
@@ -978,15 +945,6 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
-
-
-@PublicAPI(stability="alpha")
-class APIType(str, Enum):
-    """Tracks the type of API that an application originates from."""
-
-    UNKNOWN = "unknown"
-    IMPERATIVE = "imperative"
-    DECLARATIVE = "declarative"
 
 
 @PublicAPI(stability="stable")
