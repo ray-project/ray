@@ -260,6 +260,7 @@ Generate config files
 Ray Serve LLM provides a CLI to generate config files for your deployment:
 
 .. code-block:: bash
+
     python -m ray.serve.llm.gen_config
 
 *Note*: This command requires interactive inputs and should be executed directly in the
