@@ -82,47 +82,46 @@ Hyperparameter optimization frameworks
 .. toctree::
     :hidden:
 
-    Ax Example <ax_example>
-    HyperOpt Example <hyperopt_example>
-    Bayesopt Example <bayesopt_example>
-    BOHB Example <bohb_example>
-    Nevergrad Example <nevergrad_example>
-    Optuna Example <optuna_example>
+    ml-frameworks
+    experiment-tracking
+    hpo-frameworks
+    Other Examples <other-examples>
+    Exercises <exercises>
 
-Tune integrates with a wide variety of hyperparameter optimization frameworks
-and their respective search algorithms. See the following detailed examples
-for each integration:
 
-.. list-table::
+.. tip:: See :ref:<tune-guides> to learn more about Tune features.
 
-  * - :doc:`ax_example`
-  * - :doc:`hyperopt_example`
-  * - :doc:`bayesopt_example`
-  * - :doc:`bohb_example`
-  * - :doc:`nevergrad_example`
-  * - :doc:`optuna_example`
 
-.. _tune-examples-others:
+Below are examples for using Ray Tune for a variety use cases.
 
-Others
-------
+ML frameworks
+-------------
 
 .. list-table::
 
-  * - :doc:`Simple example for doing a basic random and grid search <includes/tune_basic_example>`
-  * - :doc:`Example of using a simple tuning function with AsyncHyperBandScheduler <includes/async_hyperband_example>`
-  * - :doc:`Example of using a trainable function with HyperBandScheduler and the AsyncHyperBandScheduler <includes/hyperband_function_example>`
-  * - :doc:`Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example <pbt_visualization/pbt_visualization>`
-  * - :doc:`includes/pbt_function`
-  * - :doc:`includes/pb2_example`
-  * - :doc:`includes/logging_example`
+  * - :doc:<tune-mnist-keras>
+  * - :doc:<tune-pytorch-cifar-ref>
+  * - :doc:<tune-pytorch-lightning-ref>
+  * - :doc:<tune-rllib-example>
+  * - :doc:<tune-xgboost-ref>
+  * - :doc:<tune-lightgbm-example>
+  * - :doc:<tune-horovod-example>
+  * - :doc:<tune-huggingface-example>
 
-.. _tune-examples-exercises:
+  
 
-Exercises
----------
 
-Learn how to use Tune in your browser with the following Colab-based exercises.
+Intermediate
+------------
+
+.. list-table::
+
+  * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
+
+
+Advanced
+--------
 
 .. list-table::
    :widths: 50 30 20
