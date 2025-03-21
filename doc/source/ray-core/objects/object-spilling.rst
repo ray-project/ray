@@ -9,7 +9,7 @@ Spilling to a custom directory
 -------------------------------
 
 You can specify a custom directory for spilling objects by setting the 
-``object_spilling_storage_path`` parameter in the Ray init function or the 
+``object_spilling_storage_path`` parameter in the ``ray.init`` function or the 
 ``--object-spilling-storage-path`` command line option in the ``ray start`` command.
 
 .. tab-set::
