@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
-from packaging.version import Version
 
 import ray
 from ray._raylet import GcsClient
@@ -163,17 +162,7 @@ class SubprocessModule(abc.ABC):
 
     @property
     def http_session(self):
-        # Assumes non minimal Ray.
-        from ray.dashboard.optional_deps import aiohttp
-        from ray.dashboard.utils import get_or_create_event_loop
-
-        if self._http_session is not None:
-            return self._http_session
-        # Create a http session for this module.
-        # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if Version(aiohttp.__version__) < Version("4.0.0"):
-            self._http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
-        else:
+        if self._http_session is None:
             self._http_session = aiohttp.ClientSession()
         return self._http_session
 
