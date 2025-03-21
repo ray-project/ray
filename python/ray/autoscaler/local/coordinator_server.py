@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import threading
+import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
@@ -107,7 +108,7 @@ def main():
     parser.add_argument(
         "--host",
         type=str,
-        required=True,
+        required=False,
         help="The Host on which the coordinator listens.",
     )
     parser.add_argument(
@@ -117,10 +118,11 @@ def main():
         help="The port on which the coordinator listens.",
     )
     args = parser.parse_args()
+    host = args.host or socket.gethostbyname(socket.gethostname())
     list_of_node_ips = args.ips.split(",")
     OnPremCoordinatorServer(
         list_of_node_ips=list_of_node_ips,
-        host=args.host,
+        host=host,
         port=args.port,
     )
 
