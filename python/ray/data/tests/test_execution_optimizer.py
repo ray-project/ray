@@ -49,13 +49,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import (
-    PhysicalOptimizer,
-    get_logical_rules,
-    get_physical_rules,
-    register_logical_rule,
-    register_physical_rule,
-)
+from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
@@ -1811,46 +1805,6 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BuildOutputBlocksMapTransformFn,
         ],
     )
-
-
-def test_insert_logical_optimization_rules():
-    class FakeRule1:
-        pass
-
-    class FakeRule2:
-        pass
-
-    # By default, add the rule to the end of the list.
-    register_logical_rule(FakeRule1)
-    assert get_logical_rules()[-1] == FakeRule1
-
-    register_logical_rule(FakeRule2, 0)
-    assert get_logical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_logical_rule(FakeRule1, 0)
-    assert get_logical_rules()[-1] == FakeRule1
-    assert get_logical_rules()[0] == FakeRule2
-
-
-def test_insert_physical_optimization_rules():
-    class FakeRule1:
-        pass
-
-    class FakeRule2:
-        pass
-
-    # By default, add the rule to the end of the list.
-    register_physical_rule(FakeRule1)
-    assert get_physical_rules()[-1] == FakeRule1
-
-    register_physical_rule(FakeRule2, 0)
-    assert get_physical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_physical_rule(FakeRule1, 0)
-    assert get_physical_rules()[-1] == FakeRule1
-    assert get_physical_rules()[0] == FakeRule2
 
 
 @pytest.mark.parametrize(
