@@ -154,8 +154,15 @@ class EventHead(
         The request body is a JSON array of event strings in type string.
         Response should contain {"success": true}.
         """
-        request_body: List[str] = await request.json()
-        events = [parse_event_strings(event_str) for event_str in request_body]
+        try:
+            request_body: List[str] = await request.json()
+        except Exception as e:
+            logger.warning(f"Failed to parse request body: {request=}, {e=}")
+            raise aiohttp.web.HTTPBadRequest()
+        if not isinstance(request_body, list):
+            logger.warning(f"Request body is not a list, {request_body=}")
+            raise aiohttp.web.HTTPBadRequest()
+        events = parse_event_strings(request_body)
         logger.debug("Received %d events", len(events))
         self._update_events(events)
         self.total_report_events_count += 1
