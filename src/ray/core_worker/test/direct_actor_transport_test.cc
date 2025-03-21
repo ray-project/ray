@@ -821,11 +821,6 @@ class MockTaskReceiver : public TaskReceiver {
                      task_handler,
                      initialize_thread_callback,
                      actor_creation_task_done_) {}
-
-  void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
-                                    const std::vector<ConcurrencyGroup> &cgs) {
-    concurrency_groups_cache_[actor_id] = cgs;
-  }
 };
 
 class TaskReceiverTest : public ::testing::Test {
@@ -911,7 +906,6 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
     receiver_->HandleTask(request, &reply, reply_callback);
   }
 
