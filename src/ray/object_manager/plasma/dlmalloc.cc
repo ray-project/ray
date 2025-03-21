@@ -318,6 +318,11 @@ void SetDLMallocConfig(const std::string &plasma_directory,
                        const std::string &fallback_directory,
                        bool hugepage_enabled,
                        bool fallback_enabled) {
+  RAY_LOG(INFO) << "Setting dlmalloc config: "
+                << "plasma_directory=" << plasma_directory
+                << ", fallback_directory=" << fallback_directory
+                << ", hugepage_enabled=" << hugepage_enabled
+                << ", fallback_enabled=" << fallback_enabled;
   dlmalloc_config.hugepages_enabled = hugepage_enabled;
   dlmalloc_config.directory = plasma_directory;
   dlmalloc_config.fallback_directory = fallback_directory;

@@ -20,6 +20,7 @@ from ray._private.external_storage import (
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClientOptions
+import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
     file_system_object_spilling_config,
@@ -227,6 +228,18 @@ def test_default_config_cluster(ray_start_cluster_enabled):
         ray.get(ray.put(arr))
 
     ray.get([task.remote() for _ in range(2)])
+
+
+def test_custom_spill_dir(shutdown_only):
+    # Make sure the object spilling storage path can be set by the user
+    ray.init(object_spilling_storage_path="/tmp/custom_spill_dir")
+    config = json.loads(
+        ray._private.worker._global_node._config["object_spilling_config"]
+    )
+    assert config["type"] == "filesystem"
+    assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+    run_basic_workload()
+    ray.shutdown()
 
 
 def test_node_id_in_spill_dir_name():

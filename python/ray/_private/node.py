@@ -243,8 +243,25 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
-        # If it is a head node, try validating if
-        # external storage is configurable.
+        self._object_spilling_config = self._get_object_spilling_config()
+        logger.debug(
+            f"Starting node with object spilling config: {self._object_spilling_config}"
+        )
+
+        # Obtain the fallback directoy from the object spilling config
+        # Currently, we set the fallback directory to be the same as the object spilling
+        # path when the object spills to file system
+        self._fallback_directory = None
+        if self._object_spilling_config:
+            config = json.loads(self._object_spilling_config)
+            if config.get("type") == "filesystem":
+                directory_path = config.get("params", {}).get("directory_path")
+                if isinstance(directory_path, list):
+                    self._fallback_directory = directory_path[0]
+                elif isinstance(directory_path, str):
+                    self._fallback_directory = directory_path
+
+        # If it is a head node, try validating if external storage is configurable.
         if head:
             self.validate_external_storage()
 
@@ -1227,6 +1244,7 @@ class Node:
     def start_raylet(
         self,
         plasma_directory: str,
+        fallback_directory: str,
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
@@ -1261,6 +1279,7 @@ class Node:
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
+            fallback_directory,
             object_store_memory,
             self.session_name,
             is_head_node=self.is_head(),
@@ -1457,13 +1476,16 @@ class Node:
         resource_spec = self.get_resource_spec()
         (
             plasma_directory,
+            fallback_directory,
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_spec.object_store_memory,
+            self._temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
+            fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory)
+        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
@@ -1781,22 +1803,14 @@ class Node:
         This will also fill up the default setting for object spilling
         if not specified.
         """
-        object_spilling_config = self._config.get("object_spilling_config", {})
+
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
         )
         if not automatic_spilling_enabled:
             return
 
-        if not object_spilling_config:
-            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
-
-        # If the config is not specified, we fill up the default.
-        if not object_spilling_config:
-            object_spilling_config = json.dumps(
-                {"type": "filesystem", "params": {"directory_path": self._session_dir}}
-            )
-
+        object_spilling_config = self._object_spilling_config
         # Try setting up the storage.
         # Configure the proper system config.
         # We need to set both ray param's system config and self._config
@@ -1828,6 +1842,46 @@ class Node:
         )
         storage.destroy_external_storage()
         external_storage.reset_external_storage()
+
+    def _get_object_spilling_config(self):
+        """Consolidate the object spilling config from the ray params, environment
+        variable, and system config. The object spilling storage path specified through
+        ray params will override the one specified through environment variable and
+        system config."""
+
+        if self._ray_params.object_spilling_storage_path:
+            return json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": self._ray_params.object_spilling_storage_path
+                    },
+                }
+            )
+
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        if not object_spilling_config:
+            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
+
+        # If the config is not specified in ray params, system config or environment
+        # variable, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps(
+                {"type": "filesystem", "params": {"directory_path": self._session_dir}}
+            )
+        else:
+            logger.warning(
+                "The object spilling config is specified from an unstable "
+                "API - system config or environment variable. This is "
+                "subject to change in the future. You can use the stable "
+                "API - --object-spilling-storage-path in ray start or "
+                "object_spilling_storage_path in ray.init() to specify the "
+                "object spilling directory instead. If you need more "
+                "advanced settings, please open a github issue with the "
+                "Ray team."
+            )
+
+        return object_spilling_config
 
     def _record_stats(self):
         # This is only called when a new node is started.
