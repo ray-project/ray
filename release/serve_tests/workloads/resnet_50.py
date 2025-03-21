@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import PIL
 from PIL import Image
@@ -31,6 +32,8 @@ class Model:
         with open("imagenet_classes.txt", "r") as f:
             self.categories = [s.strip() for s in f.readlines()]
 
+        self.model_thread_pool = ThreadPoolExecutor(max_workers=5)
+
     async def __call__(self, request: starlette.requests.Request) -> str:
         uri = (await request.json())["uri"]
 
@@ -49,13 +52,18 @@ class Model:
             return
 
         images = [image]  # Batch size is 1
-        input_tensor = torch.cat(
-            [self.preprocess(img).unsqueeze(0) for img in images]
-        ).to(self.device)
-        with torch.no_grad():
-            output = self.resnet50(input_tensor)
-            sm_output = torch.nn.functional.softmax(output[0], dim=0)
-        ind = torch.argmax(sm_output)
+
+        def run_model():
+            input_tensor = torch.cat(
+                [self.preprocess(img).unsqueeze(0) for img in images]
+            ).to(self.device)
+            with torch.no_grad():
+                output = self.resnet50(input_tensor)
+                sm_output = torch.nn.functional.softmax(output[0], dim=0)
+            return torch.argmax(sm_output)
+
+        future = self.model_thread_pool.submit(run_model)
+        ind = future.result(timeout=5)
         return self.categories[ind]
 
 
