@@ -259,7 +259,7 @@ def test_uv_run_runtime_env_hook(with_uv):
     # when combined with the 'pip' or 'uv' environment.
     for runtime_env in [{"uv": ["emoji"]}, {"pip": ["emoji"]}]:
         check_uv_run(
-            cmd=[uv, "run"],
+            cmd=[uv, "run", "--no-project"],
             runtime_env=runtime_env,
             expected_output=None,
             expected_error="You are using the 'pip' or 'uv' runtime environments together with 'uv run'.",
