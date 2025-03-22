@@ -871,6 +871,7 @@ class TaskReceiverTest : public ::testing::Test {
   void StopIOService() {
     // We must delete the receiver before stopping the IO service, since it
     // contains timers referencing the service.
+    receiver_->Stop();
     receiver_.reset();
     main_io_service_.stop();
   }
@@ -904,15 +905,16 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply = new rpc::PushTaskReply();
+    auto reply_callback = [&callback_count, reply](Status status,
+                                                   std::function<void()> success,
+                                                   std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
+      delete reply;
     };
     receiver_->UpdateConcurrencyGroupsCache(actor_id, {});
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->HandleTask(request, reply, reply_callback);
   }
 
   // Push a task request with actor counter 1. This should scucceed
@@ -920,14 +922,15 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply = new rpc::PushTaskReply();
+    auto reply_callback = [&callback_count, reply](Status status,
+                                                   std::function<void()> success,
+                                                   std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
+      delete reply;
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->HandleTask(request, reply, reply_callback);
   }
 
   // Create another request with the same caller id, but a different worker id,
@@ -939,14 +942,15 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     auto worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply = new rpc::PushTaskReply();
+    auto reply_callback = [&callback_count, reply](Status status,
+                                                   std::function<void()> success,
+                                                   std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
+      delete reply;
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->HandleTask(request, reply, reply_callback);
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
@@ -955,14 +959,15 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     auto worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
-    rpc::PushTaskReply reply;
-    auto reply_callback = [&callback_count](Status status,
-                                            std::function<void()> success,
-                                            std::function<void()> failure) {
+    auto reply = new rpc::PushTaskReply();
+    auto reply_callback = [&callback_count, reply](Status status,
+                                                   std::function<void()> success,
+                                                   std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
+      delete reply;
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->HandleTask(request, reply, reply_callback);
   }
 
   StartIOService();
