@@ -1562,7 +1562,6 @@ def test_exit_actor(ray_start_regular, enable_concurrency_group):
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-        key_suffix="0",
         limit=1000,
     )
 
@@ -1572,7 +1571,6 @@ def test_exit_actor(ray_start_regular, enable_concurrency_group):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-        key_suffix="0",
         limit=1000,
     )
 
@@ -1580,7 +1578,6 @@ def test_exit_actor(ray_start_regular, enable_concurrency_group):
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
-        key_suffix="0",
         limit=1000,
     )
 
