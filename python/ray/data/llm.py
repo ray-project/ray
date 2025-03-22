@@ -175,8 +175,6 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
             will use the default value from the SGLang engine.
-            max_pending_requests: The maximum number of pending requests. If not specified,
-            will use the default value from the vLLM engine.
         max_concurrent_batches: The maximum number of concurrent batches in the engine.
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
