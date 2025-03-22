@@ -3782,7 +3782,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      args.push_back(std::make_shared<RayObject>(
+      args->push_back(std::make_shared<RayObject>(
           std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(ObjectID::Nil().Binary());
