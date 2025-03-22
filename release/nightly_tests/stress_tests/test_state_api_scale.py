@@ -126,6 +126,7 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
         limit=STATE_LIST_LIMIT,
     )
 
@@ -141,6 +142,7 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
         limit=STATE_LIST_LIMIT,
     )
 
@@ -152,6 +154,7 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
         limit=STATE_LIST_LIMIT,
     )
 
