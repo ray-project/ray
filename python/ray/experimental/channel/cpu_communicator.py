@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+import uuid
 
 import ray
 from ray.experimental.channel.communicator import (
@@ -184,3 +185,15 @@ class CPUCommunicator(Communicator):
 
     def send_stream(self):
         raise NotImplementedError
+
+
+def get_cpu_unique_id():
+    """
+    Generate a unique identifier.
+
+    This function returns a randomly generated UUID as cpu communicator's unique identifier.
+
+    Returns:
+        str: A unique identifier as a string.
+    """
+    return str(uuid.uuid4())

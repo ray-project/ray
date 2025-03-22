@@ -4,7 +4,6 @@ from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import dataclass, asdict
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     FrozenSet,
@@ -83,9 +82,6 @@ from ray.dag.dag_node_operation import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 logger = logging.getLogger(__name__)
 
@@ -371,17 +367,20 @@ def _device_context_manager():
     if not ChannelContext.get_current().torch_available:
         return nullcontext()
 
-    import torch
+    from ray.experimental.channel.utils import AccleratorRuntime
 
     device = ChannelContext.get_current().torch_device
 
-    if device.type == "cuda" and torch.cuda.is_available():
+    if (
+        AccleratorRuntime.is_acclerator_communicator_available(device) is not None
+        and AccleratorRuntime.get().is_available()
+    ):
         # In the case of mocked NCCL, we may get a device with type "cuda"
         # but CUDA is not available. We return nullcontext() in that case,
         # otherwise torch raises a runtime error if the cuda device context
         # manager is used.
         # TODO(rui): consider better mocking NCCL to support device context.
-        return torch.cuda.device(device)
+        return AccleratorRuntime.get().get_device_context(device)
     return nullcontext()
 
 
@@ -591,8 +590,8 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self._send_stream = nullcontext()
+        self._recv_stream = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -675,7 +674,8 @@ class ExecutableTask:
             # a GPUFuture so that this read operation (communication) can
             # be overlapped with computation.
             self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
+                input_data,
+                wrap_in_gpu_future=overlap_gpu_communication,
             )
         except RayChannelError:
             # Channel closed. Exit the loop.

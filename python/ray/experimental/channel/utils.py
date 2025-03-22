@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 
@@ -98,19 +98,212 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
 def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
     """Get the default torch device inside this actor or driver.
 
-    If any GPUs are available, the default device will be cuda:0 and we will rely on
-    torch to handle mapping CUDA_VISIBLE_DEVICES to a physical device.
+    If any acclerators are available, the default device will be index 0 and we
+    will rely on torch to handle mapping the VISIBLE_DEVICES to a physical device.
 
-    If no GPUs are available, a CPU device will be returned if allow_cpu is true, else
-    the function will raise a RuntimeError.
+    If no acclerators are available, a CPU device will be returned if allow_cpu
+    is true, else the function will raise a RuntimeError.
     """
     import torch
 
     accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
-    if not accelerator_ids.get("GPU", []):
+    if accelerator_ids.get("GPU", []):
+        return torch.device("cuda:0")
+    elif accelerator_ids.get("NPU", []):
+        return torch.device("npu:0")
+    else:
         if allow_cpu:
             return torch.device("cpu")
         else:
-            raise RuntimeError("No CUDA device available.")
+            raise RuntimeError("No acclerator available.")
 
-    return torch.device("cuda:0")
+
+class AccleratorRuntime:
+    """
+    Base class for managing device-specific runtime operations. This class
+    provides an interface for device-related operations such as stream
+    management, event creation, and device communication.
+    """
+
+    _instance = None
+
+    @classmethod
+    def get(cls):
+        """
+        Singleton method to get the runtime instance based on the default torch
+        device. It initializes the appropriate runtime class based on the
+        detected device type.
+
+        Returns:
+            AcceleratorRuntime: An instance of the appropriate runtime class
+            (CudaRuntime, NpuRuntime, or CpuRuntime).
+        """
+        if cls._instance is None:
+            device = get_default_torch_device(allow_cpu=True)
+            if device.type == "cuda":
+                cls._instance = CudaRuntime()
+            elif device.type == "npu":
+                cls._instance = NpuRuntime()
+            elif device.type == "cpu":
+                cls._instance = CpuRuntime()
+            else:
+                raise RuntimeError(f"Device type {device.type} is not support.")
+
+        return cls._instance
+
+    @classmethod
+    def is_acclerator_communicator_available(
+        self, device: Optional[Union["torch.device", str]] = None
+    ):
+        """
+        Check if an accelerator communicator is available for the specified device.
+        If no device is provided, the function determines the default non-CPU device.
+        Args:
+            device (Optional[Union["torch.device", str]]):
+                The target device or device type, which can be a `torch.device`
+                object or a string. If not provided, the function uses the default
+                non-CPU device.
+        Returns:
+            bool: True if the device supports CUDA or NPU accelerators, False otherwise.
+        """
+        if device is None:
+            device = get_default_torch_device(allow_cpu=False)
+        if device in ["cuda", "npu"]:
+            return True
+        if device.type in ["cuda", "npu"]:
+            return True
+        return False
+
+    def get_device_context(self, device):
+        """
+        Retrieves the context manager for the specified accelerator device.
+        This function checks the type of the provided `device` and returns the
+        appropriate context manager for that device. Currently, it supports CUDA
+        and NPU devices.
+        Args:
+            device (torch.device): The target device for which the context manager
+            is required.
+        Returns:
+            contextmanager: A context manager specific to the device type.
+        """
+        raise NotImplementedError
+
+    def is_available(self) -> bool:
+        """
+        Check if the specific accelerator is available.
+
+        Returns:
+            bool: False by default, overridden by subclasses.
+        """
+        return False
+
+    def current_stream(self):
+        """
+        Retrieves the current execution stream for the accelerator device.
+        """
+        raise NotImplementedError
+
+    def create_event(self):
+        """
+        Creates an event object for the accelerator device.
+        """
+        raise NotImplementedError
+
+    def get_unique_id(self) -> str:
+        """
+        Generates a unique identifier for communication purposes.
+        """
+        raise NotImplementedError
+
+    def get_communicator(self, *args, **kwargs):
+        """
+        Retrieves the communication group for collective operations.
+        """
+        raise NotImplementedError
+
+
+class CudaRuntime(AccleratorRuntime):
+    """
+    CUDA implementation of AcceleratorRuntime.
+    """
+
+    def is_available(self) -> bool:
+        import torch
+
+        return torch.cuda.is_available()
+
+    def current_stream(self):
+        import torch
+
+        return torch.cuda.current_stream()
+
+    def create_event(self):
+        import torch
+
+        return torch.cuda.Event()
+
+    def get_device_context(self, device):
+        import torch
+
+        return torch.cuda.device(device)
+
+    def get_unique_id(self) -> str:
+        from ray.experimental.channel.nccl_group import get_nccl_unique_id
+
+        return get_nccl_unique_id()
+
+    def get_communicator(self, *args, **kwargs):
+        from ray.experimental.channel.nccl_group import _NcclGroup
+
+        return _NcclGroup(*args, **kwargs)
+
+
+class NpuRuntime(AccleratorRuntime):
+    """
+    Ascend NPU implementation of AcceleratorRuntime.
+    """
+
+    def is_available(self) -> bool:
+        import torch
+        import torch_npu  # noqa F401
+
+        return torch.npu.is_available()
+
+    def current_stream(self):
+        import torch
+        import torch_npu  # noqa F401
+
+        return torch.npu.current_stream()
+
+    def create_event(self):
+        import torch
+        import torch_npu  # noqa F401
+
+        return torch.npu.Event()
+
+    def get_device_context(self, device):
+        import torch
+        import torch_npu  # noqa F401
+
+        return torch.npu.device(device)
+
+    def get_unique_id(self) -> str:
+        from ray.experimental.channel.hccl_group import get_hccl_unique_id
+
+        return get_hccl_unique_id()
+
+    def get_communicator(self, *args, **kwargs):
+        from ray.experimental.channel.hccl_group import _HcclGroup
+
+        return _HcclGroup(*args, **kwargs)
+
+
+class CpuRuntime(AccleratorRuntime):
+    """
+    CPU implementation of AcceleratorRuntime.
+    """
+
+    def get_unique_id(self) -> str:
+        from ray.experimental.channel.cpu_communicator import generate_uid_id
+
+        return generate_uid_id()
