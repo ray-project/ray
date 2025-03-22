@@ -51,7 +51,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // - Existing operating internal processes and internal components will be placed under
   // internal cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
-  explicit CgroupSetup(const std::string &node_id);
+  CgroupSetup(const std::string &cgroup_directory, const std::string &node_id);
 
   // On destruction, all processes in the managed cgroup will be killed via SIGKILL.
   ~CgroupSetup() override;
@@ -62,7 +62,8 @@ class CgroupSetup : public BaseCgroupSetup {
 
  private:
   // Setup cgroup folders for the given [node_id].
-  Status InitializeCgroupv2Directory(const std::string &node_id);
+  Status InitializeCgroupV2Directory(const std::string &directory,
+                                     const std::string &node_id);
 
   // Util function to cleanup cgroup after raylet exits.
   // NOTICE: This function is expected to be called once for each raylet instance at its

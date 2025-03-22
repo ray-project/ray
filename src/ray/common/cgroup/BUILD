@@ -1,11 +1,17 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
+    name = "constants",
+    hdrs = "constants.h",
+)
+
+ray_cc_library(
     name = "cgroup_setup",
     srcs = ["cgroup_setup.cc"],
     hdrs = ["cgroup_setup.h"],
     deps = [
         ":base_cgroup_setup",
+        ":constants",
         "//src/ray/util",
         "//src/ray/util:invoke_once_token",
         "@com_google_absl//absl/strings:str_format",

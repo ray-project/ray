@@ -51,6 +51,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "ray/common/cgroup/constants.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
@@ -59,16 +60,6 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 namespace ray {
 
 namespace {
-
-// TODO(hjiang): Cleanup all constants in the followup PR.
-//
-// Parent cgroup path.
-constexpr std::string_view kRootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
-// Cgroup subtree control path.
-constexpr std::string_view kRootCgroupSubtreeControl =
-    "/sys/fs/cgroup/cgroup.subtree_control";
-// Owner can read and write.
-constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;
 
 // Move all pids under [from] to [to].
 bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
@@ -140,28 +131,28 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 
 }  // namespace internal
 
-CgroupSetup::CgroupSetup(const std::string &node_id) {
+CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
-  SetupCgroups(node_id);
+  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
 }
 
-void CgroupSetup::SetupCgroups(const std::string &node_id) {
+Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
+                                                const std::string &node_id) {
   // Check cgroup accessibility before setup.
-  RAY_CHECK(internal::IsCgroupV2MountedAsRw())
-      << "Cgroup v2 is not mounted in read-write mode.";
-  RAY_CHECK(internal::CanCurrenUserWriteCgroupV2())
-      << "Current user doesn't have the permission to update cgroup v2.";
+  if (Status s = internal::CheckCgroupV2MountedRW(directory); !s.ok()) {
+    return s;
+  }
 
   // Cgroup folder for the current ray node.
-  cgroup_v2_folder_ = absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
+  const std::string cgroup_folder = absl::StrFormat("%s/ray_node_%s", directory, node_id);
 
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   const std::string cgroup_v2_app_procs =
-      ray::JoinPaths(cgroup_v2_app_folder_, "cgroup.procs");
+      ray::JoinPaths(cgroup_v2_app_folder_, kProcFilename);
   const std::string cgroup_v2_app_subtree_control =
-      ray::JoinPaths(cgroup_v2_app_folder_, "cgroup.subtree_control");
+      ray::JoinPaths(cgroup_v2_app_folder_, kSubtreeControlFilename);
   const std::string cgroup_v2_internal_procs =
       ray::JoinPaths(cgroup_v2_internal_folder_, "cgroup.procs");
 
