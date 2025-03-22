@@ -14,6 +14,14 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <list>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
@@ -412,7 +420,7 @@ class MockActorCreator : public ActorCreatorInterface {
 
 class MockLeasePolicy : public LeasePolicyInterface {
  public:
-  MockLeasePolicy(const NodeID &node_id = NodeID::Nil()) {
+  explicit MockLeasePolicy(const NodeID &node_id = NodeID::Nil()) {
     fallback_rpc_address_ = rpc::Address();
     fallback_rpc_address_.set_raylet_id(node_id.Binary());
   }
