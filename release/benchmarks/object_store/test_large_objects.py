@@ -1,7 +1,6 @@
 import numpy as np
 
 import ray
-import ray.autoscaler.sdk
 
 import json
 import os
