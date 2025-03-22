@@ -16,6 +16,7 @@
 
 #include <jni.h>
 
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include <string>
 
 #include "ray/common/id.h"
@@ -23,7 +24,6 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
-#include "jni_utils.h"  // NOLINT(build/include_subdir)
 
 #ifdef __cplusplus
 extern "C" {

@@ -16,6 +16,7 @@
 
 #include <jni.h>
 
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -25,7 +26,6 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "jni_utils.h"  // NOLINT(build/include_subdir)
 
 /// A helper that computes the hash code of a Java object.
 inline jint GetHashCodeOfJavaObject(JNIEnv *env, jobject java_object) {

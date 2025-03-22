@@ -20,8 +20,8 @@
 #include <string>
 #include <vector>
 
-#include "opencensus/tags/tag_key.h"
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
+#include "opencensus/tags/tag_key.h"
 #include "ray/stats/metric.h"
 
 using TagKeyType = opencensus::tags::TagKey;
