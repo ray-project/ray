@@ -151,6 +151,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "grpc_stub_manager",
+    hdrs = ["src/ray/rpc/grpc_stub_manager.h"],
+    deps = [
+        ":grpc_client",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
     name = "rpc_server_call",
     srcs = ["src/ray/rpc/server_call.cc"],
     hdrs = ["src/ray/rpc/server_call.h"],
@@ -310,6 +319,7 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
+        ":grpc_stub_manager",
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
