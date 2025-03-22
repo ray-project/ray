@@ -42,17 +42,10 @@ class BaseCgroupSetup {
   BaseCgroupSetup &operator=(const BaseCgroupSetup &) = delete;
 
   // Add system process into system cgroup.
-  virtual ScopedCgroupHandler AddSystemProcess(pid_t pid) = 0;
+  virtual void AddInternalProcess(pid_t pid) = 0;
 
   // Apply cgroup context, which adds the process id into the corresponding cgroup.
   virtual ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
-
- protected:
-  // Remove the given system process [pid] from system cgroup.
-  virtual void CleanupSystemProcess(pid_t pid) = 0;
-
-  // Remove the process indicated by cgroup context from application cgroup.
-  virtual void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
 };
 
 // A noop cgroup setup class, which does nothing. Used when physical mode is not enabled,
@@ -62,16 +55,11 @@ class NoopCgroupSetup : public BaseCgroupSetup {
   NoopCgroupSetup() = default;
   ~NoopCgroupSetup() override = default;
 
-  ScopedCgroupHandler AddSystemProcess(pid_t pid) override { return {}; }
+  void AddInternalProcess(pid_t pid) override {}
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override {
     return {};
   }
-
- protected:
-  void CleanupSystemProcess(pid_t pid) override {}
-
-  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) override {}
 };
 
 }  // namespace ray

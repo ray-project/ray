@@ -5,7 +5,9 @@ ray_cc_library(
     srcs = ["cgroup_setup.cc"],
     hdrs = ["cgroup_setup.h"],
     deps = [
+        ":base_cgroup_setup",
         "//src/ray/util",
+        "//src/ray/util:invoke_once_token",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -15,18 +17,6 @@ ray_cc_library(
     hdrs = ["cgroup_context.h"],
     deps = [
         "//src/ray/util:compat",
-    ],
-)
-
-ray_cc_library(
-    name = "cgroup_utils",
-    srcs = ["cgroup_utils.cc"],
-    hdrs = ["cgroup_utils.h"],
-    deps = [
-        ":cgroup_context",
-        "//src/ray/util",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
