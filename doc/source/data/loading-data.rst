@@ -498,7 +498,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
             ds.show(3)
 
-        .. testouput::
+        .. testoutput::
 
             {'int_col': 0, 'str_col': '0'}
             {'int_col': 1, 'str_col': '1'}
