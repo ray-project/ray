@@ -1,16 +1,48 @@
+import enum
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from filelock import FileLock
 
-from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.utils import try_import
+from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     CloudMirrorConfig,
+    is_remote_path,
 )
 
+torch = try_import("torch")
+
 logger = get_logger(__name__)
+
+
+class NodeModelDownloadable(enum.Enum):
+    """Defines which files to download from cloud storage."""
+
+    MODEL_AND_TOKENIZER = enum.auto()
+    TOKENIZER_ONLY = enum.auto()
+    NONE = enum.auto()
+
+    def __bool__(self):
+        return self != NodeModelDownloadable.NONE
+
+    def union(self, other: "NodeModelDownloadable") -> "NodeModelDownloadable":
+        """Return a NodeModelDownloadable that is a union of this and the other."""
+        if (
+            self == NodeModelDownloadable.MODEL_AND_TOKENIZER
+            or other == NodeModelDownloadable.MODEL_AND_TOKENIZER
+        ):
+            return NodeModelDownloadable.MODEL_AND_TOKENIZER
+
+        if (
+            self == NodeModelDownloadable.TOKENIZER_ONLY
+            or other == NodeModelDownloadable.TOKENIZER_ONLY
+        ):
+            return NodeModelDownloadable.TOKENIZER_ONLY
+
+        return NodeModelDownloadable.NONE
 
 
 def get_model_location_on_disk(model_id: str) -> str:
@@ -162,3 +194,128 @@ class CloudModelDownloader:
             with FileLock(lock_path, timeout=-1):
                 pass
         return paths
+
+
+def _log_download_info(
+    *, source: str, download_model: NodeModelDownloadable, download_extra_files: bool
+):
+    if download_model == NodeModelDownloadable.NONE:
+        if download_extra_files:
+            logger.info("Downloading extra files from %s", source)
+        else:
+            logger.info("Not downloading anything from %s", source)
+    elif download_model == NodeModelDownloadable.TOKENIZER_ONLY:
+        if download_extra_files:
+            logger.info("Downloading tokenizer and extra files from %s", source)
+        else:
+            logger.info("Downloading tokenizer from %s", source)
+    elif download_model == NodeModelDownloadable.MODEL_AND_TOKENIZER:
+        if download_extra_files:
+            logger.info("Downloading model, tokenizer, and extra files from %s", source)
+        else:
+            logger.info("Downloading model and tokenizer from %s", source)
+
+
+def download_model_files(
+    model_id: Optional[str] = None,
+    mirror_config: Optional[CloudMirrorConfig] = None,
+    download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
+    download_extra_files: bool = True,
+) -> Optional[str]:
+    """
+    Download the model files from the cloud storage. We support two ways to specify
+    the remote model path in the cloud storage:
+    Approach 1:
+    - model_id: The vanilla model id such as "meta-llama/Llama-3.1-8B-Instruct".
+    - mirror_config: Config for downloading model from cloud storage.
+
+    Approach 2:
+    - model_id: The remote path (s3:// or gs://) in the cloud storage.
+    - mirror_config: None.
+    In this approach, we will create a CloudMirrorConfig from the model_id and use that
+    to download the model.
+
+    Args:
+        model_id: The model id.
+        mirror_config: Config for downloading model from cloud storage.
+        download_model: What parts of the model to download.
+        download_extra_files: Whether to download extra files specified in the mirror config.
+
+    Returns:
+        The local path to the downloaded model, or the original model ID
+        if no cloud storage mirror is configured or if the model is not downloaded.
+    """
+
+    # Create the torch cache kernels directory if it doesn't exist.
+    # This is a workaround for a torch issue, where the kernels directory
+    # cannot be created by torch if the parent directory doesn't exist.
+    torch_cache_home = torch.hub._get_torch_home()
+    os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
+    model_path_or_id = None
+
+    if model_id is None:
+        return None
+
+    if mirror_config is None:
+        if is_remote_path(model_id):
+            logger.info(
+                "Creating a CloudMirrorConfig from remote model path %s", model_id
+            )
+            mirror_config = CloudMirrorConfig(bucket_uri=model_id)
+        else:
+            logger.info("No cloud storage mirror configured")
+            return model_id
+
+    storage_type = mirror_config.storage_type
+    source = (
+        f"{storage_type.upper()} mirror" if storage_type else "Cloud storage mirror"
+    )
+
+    _log_download_info(
+        source=source,
+        download_model=download_model,
+        download_extra_files=download_extra_files,
+    )
+
+    downloader = CloudModelDownloader(model_id, mirror_config)
+
+    if download_model != NodeModelDownloadable.NONE:
+        model_path_or_id = downloader.get_model(
+            tokenizer_only=download_model == NodeModelDownloadable.TOKENIZER_ONLY
+        )
+
+    if download_extra_files:
+        downloader.get_extra_files()
+
+    return model_path_or_id
+
+
+def download_lora_adapter(
+    lora_name: str,
+    remote_path: Optional[str] = None,
+) -> str:
+    """If remote_path is specified, pull the lora to the local
+    directory and return the local path.
+
+    TODO: Refactor lora_model_loader in llm/_intenral/serve/deployments/llm/multiplex
+    and move them here to unify with this function.
+
+    Args:
+        lora_name: The lora name.
+        remote_path: The remote path to the lora. If specified, the remote_path will be
+            used as the base path to load the lora.
+
+    Returns:
+        The local path to the lora if remote_path is specified, otherwise the lora name.
+    """
+    assert not is_remote_path(
+        lora_name
+    ), "lora_name cannot be a remote path (s3:// or gs://)"
+
+    if remote_path is None:
+        return lora_name
+
+    lora_path = os.path.join(remote_path, lora_name)
+    mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
+    downloader = CloudModelDownloader(lora_name, mirror_config)
+    return downloader.get_model(tokenizer_only=False)
