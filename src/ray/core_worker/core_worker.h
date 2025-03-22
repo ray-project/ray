@@ -1886,6 +1886,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::atomic<bool> is_shutdown_ = false;
 
+  /// Whether the `Exit` function has been called, to avoid executing the exit
+  /// process multiple times.
+  std::atomic<bool> is_exit_ = false;
+
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
