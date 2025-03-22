@@ -71,6 +71,7 @@ extensions = [
     "sphinx_design",
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
+    "sphinx_markdown_builder",
 ]
 
 # Configuration for algolia
