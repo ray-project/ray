@@ -61,7 +61,8 @@ steps:
       branch: "release-1.3"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        KUBERAY_TEST_RAY_IMAGE: "rayproject/ray:nightly"
+        # Using the ray nightly image created from this commit
+        KUBERAY_TEST_RAY_IMAGE: "rayproject/ray:nightly.$(date +"%y%m%d").${BUILDKITE_COMMIT:0:6}-py311"
         IS_FROM_RAY_RELEASE_AUTOMATION: 1
 
   - label: "Trigger Postmerge MacOS test"
