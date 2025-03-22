@@ -116,6 +116,9 @@ async def test_load_multiple_modules(aiohttp_client, default_module_config):
 
 
 async def test_cached_endpoint(aiohttp_client, default_module_config):
+    """
+    Test whether the ray.dashboard.optional_utils.aiohttp_cache decorator works.
+    """
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
