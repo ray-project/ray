@@ -680,7 +680,7 @@ grpcio-tools==1.48.2
     # via -r python/requirements/cloud-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
-gunicorn==20.1.0
+gunicorn==23.0.0
     # via mlflow
 gymnasium==1.0.0
     # via
