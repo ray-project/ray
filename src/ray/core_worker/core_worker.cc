@@ -1174,6 +1174,13 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  if (is_exit_) {
+    RAY_LOG(INFO) << "Exit signal received, but the core worker has already received a "
+                     "signal and is shutting down.";
+    return;
+  }
+  is_exit_ = true;
+
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
