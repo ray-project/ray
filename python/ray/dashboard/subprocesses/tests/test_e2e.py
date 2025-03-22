@@ -115,6 +115,32 @@ async def test_load_multiple_modules(aiohttp_client, default_module_config):
     assert await response.text() == "Hello from TestModule1"
 
 
+async def test_cached_endpoint(aiohttp_client, default_module_config):
+    """
+    Test whether the ray.dashboard.optional_utils.aiohttp_cache decorator works.
+    """
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/not_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /not_cached, count: 1"
+
+    # Call again, count should increase.
+    response = await client.get("/not_cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /not_cached, count: 2"
+
+    response = await client.get("/cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /cached, count: 1"
+
+    # Call again, count should NOT increase.
+    response = await client.get("/cached")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /cached, count: 1"
+
+
 async def test_streamed_iota(aiohttp_client, default_module_config):
     # TODO(ryw): also test streams that raise exceptions.
     app = await start_http_server_app(default_module_config, [TestModule])
