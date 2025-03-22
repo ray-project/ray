@@ -168,31 +168,42 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
   return result;
 }
 
-bool SpilledObjectReader::ReadFromDataSection(uint64_t offset,
-                                              uint64_t size,
-                                              std::string &output) const {
+std::optional<absl::Cord> SpilledObjectReader::ReadFromDataSection(uint64_t offset,
+                                                                   uint64_t size) const {
   std::ifstream file(file_path_, std::ios::binary);
   file.seekg(data_offset_ + offset);
   std::istreambuf_iterator<char> start(file), end;
   uint64_t size_idx = 0;
+  std::string output;
+  output.reserve(size);
   for (auto it = start; size_idx < size && it != end; ++it) {
     output.push_back(*it);
     ++size_idx;
   }
-  return size_idx == size;
+  if (size_idx != size) {
+    RAY_LOG(WARNING) << "Failed to read from data section in spilled file " << file_path_;
+    return std::nullopt;
+  }
+  return absl::Cord(std::move(output));
 }
 
-bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                  uint64_t size,
-                                                  std::string &output) const {
+std::optional<absl::Cord> SpilledObjectReader::ReadFromMetadataSection(
+    uint64_t offset, uint64_t size) const {
   std::ifstream file(file_path_, std::ios::binary);
   file.seekg(metadata_offset_ + offset);
   std::istreambuf_iterator<char> start(file), end;
   uint64_t size_idx = 0;
+  std::string output;
+  output.reserve(size);
   for (auto it = start; size_idx < size && it != end; ++it) {
     output.push_back(*it);
     ++size_idx;
   }
-  return size_idx == size;
+  if (size_idx != size) {
+    RAY_LOG(WARNING) << "Failed to read from metadata section in spilled file "
+                     << file_path_;
+    return std::nullopt;
+  }
+  return absl::Cord(std::move(output));
 }
 }  // namespace ray

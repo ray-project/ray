@@ -35,7 +35,9 @@ message PushRequest {
   // The metadata size.
   uint64 metadata_size = 7;
   // The chunk data
-  bytes data = 8;
+  // absl::Cord allows us to pass a view of the data to the protobuf message instead
+  // of copying into a string
+  bytes data = 8 [ctype = CORD];
 }
 
 message PullRequest {
@@ -50,12 +52,9 @@ message FreeObjectsRequest {
 }
 
 // Reply for request
-message PushReply {
-}
-message PullReply {
-}
-message FreeObjectsReply {
-}
+message PushReply {}
+message PullReply {}
+message FreeObjectsReply {}
 
 service ObjectManagerService {
   // Push service used to send object chunks

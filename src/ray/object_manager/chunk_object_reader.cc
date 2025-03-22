@@ -33,7 +33,7 @@ uint64_t ChunkObjectReader::GetNumChunks() const {
          chunk_size_;
 }
 
-absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
+std::optional<absl::Cord> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   // The spilled file stores metadata before data. But the GetChunk needs to
   // return data before metadata. We achieve by first read from data section,
   // then read from metadata section.
@@ -41,16 +41,16 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
   const auto cur_chunk_size =
       std::min(chunk_size_,
                object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
-
-  std::string result;
-  result.reserve(cur_chunk_size);
+  absl::Cord result;
 
   if (cur_chunk_offset < object_->GetDataSize()) {
     // read from data section.
     auto offset = cur_chunk_offset;
-    auto data_size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
-    if (!object_->ReadFromDataSection(offset, data_size, result)) {
-      return absl::optional<std::string>();
+    auto size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
+    if (auto data = object_->ReadFromDataSection(offset, size)) {
+      result.Append(std::move(*data));
+    } else {
+      return std::nullopt;
     }
   }
 
@@ -60,10 +60,12 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
         std::max(cur_chunk_offset, object_->GetDataSize()) - object_->GetDataSize();
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
-    if (!object_->ReadFromMetadataSection(offset, size, result)) {
-      return absl::optional<std::string>();
+    if (auto metadata = object_->ReadFromMetadataSection(offset, size)) {
+      result.Append(std::move(*metadata));
+    } else {
+      return std::nullopt;
     }
   }
-  return absl::optional<std::string>(std::move(result));
+  return result;
 }
 };  // namespace ray

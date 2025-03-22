@@ -32,24 +32,28 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
-                                             uint64_t size,
-                                             std::string &output) const {
+std::optional<absl::Cord> MemoryObjectReader::ReadFromDataSection(uint64_t offset,
+                                                                  uint64_t size) const {
   if (offset + size > GetDataSize()) {
-    return false;
+    RAY_LOG(WARNING) << "Failed to read from data section in shared memory";
+    return std::nullopt;
   }
-  output.append(reinterpret_cast<char *>(object_buffer_.data->Data() + offset), size);
-  return true;
+  return absl::MakeCordFromExternal(
+      absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data() + offset),
+                        size},
+      []() {});
 }
 
-bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                 uint64_t size,
-                                                 std::string &output) const {
+std::optional<absl::Cord> MemoryObjectReader::ReadFromMetadataSection(
+    uint64_t offset, uint64_t size) const {
   if (offset + size > GetMetadataSize()) {
-    return false;
+    RAY_LOG(WARNING) << "Failed to read from metadata section in shared memory.";
+    return std::nullopt;
   }
-  output.append(reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size);
-  return true;
+  return absl::MakeCordFromExternal(
+      absl::string_view{
+          reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size},
+      []() {});
 }
 
 }  // namespace ray

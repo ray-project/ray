@@ -314,7 +314,7 @@ class ObjectManager : public ObjectManagerInterface,
                        const NodeID &node_id,
                        uint64_t chunk_index,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                       std::function<void(const Status &)> on_complete,
+                       std::function<void()> on_complete,
                        std::shared_ptr<ChunkObjectReader> chunk_reader,
                        bool from_disk);
 
@@ -381,7 +381,7 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t data_size,
                           uint64_t metadata_size,
                           uint64_t chunk_index,
-                          const std::string &data);
+                          const absl::Cord &data);
 
   /// Send pull request
   ///
