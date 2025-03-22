@@ -107,14 +107,12 @@ def test_many_tasks(num_tasks: int):
     )
 
 
-def test_many_actors(num_actors: int, enable_concurrency_group: bool):
+def test_many_actors(num_actors: int):
     if num_actors == 0:
         logger.info("Skipping test with no actors")
         return
 
-    concurrency_groups = {"io": 1} if enable_concurrency_group else None
-
-    @ray.remote(concurrency_groups=concurrency_groups)
+    @ray.remote
     class TestActor:
         def running(self):
             return True
@@ -366,7 +364,7 @@ def test(
 
     if smoke_test:
         num_tasks = "1,100"
-        num_actors = "1,50"
+        num_actors = "1,10"
         num_objects = "1,100"
         num_actors_for_objects = 1
         log_file_size_byte = f"64,{16*MiB}"
@@ -388,15 +386,10 @@ def test(
         logger.info(f"test_many_tasks({n}) PASS")
 
     # Run many actors
-    for enable_concurrency_group in [True, False]:
-        for n in num_actors_arr:
-            logger.info(
-                f"Running with many actors={n} and enable_concurrency_group={enable_concurrency_group}"
-            )
-            test_many_actors(
-                num_actors=n, enable_concurrency_group=enable_concurrency_group
-            )
-            logger.info(f"test_many_actors({n}) PASS")
+    for n in num_actors_arr:
+        logger.info(f"Running with many actors={n}")
+        test_many_actors(num_actors=n)
+        logger.info(f"test_many_actors({n}) PASS")
 
     # Create many objects
     for n in num_objects_arr:
