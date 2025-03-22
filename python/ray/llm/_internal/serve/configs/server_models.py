@@ -332,16 +332,27 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
+        # Note (genesu): This is important that we cache the engine config as the
+        # `hf_model_id` attribute on the engine config will be set based on whether
+        #  the model is downloaded from a remote storage and will be set to the
+        #  local path of the model. This is important for vLLM not going to Hugging
+        #  Face to download the model again after it's already downloaded during node
+        #  initialization step.
+        if hasattr(self, "_engine_config") and self._engine_config:
+            return self._engine_config
+
         if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
 
-            return VLLMEngineConfig.from_llm_config(self)
+            self._engine_config = VLLMEngineConfig.from_llm_config(self)
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
+
+        return self._engine_config
 
     def _set_deployment_placement_options(self) -> Dict[str, Any]:
         deployment_config = self.deployment_config

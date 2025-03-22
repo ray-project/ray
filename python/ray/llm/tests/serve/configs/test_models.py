@@ -212,6 +212,19 @@ class TestModelConfig:
         }
         assert serve_options == expected_options
 
+    def test_engine_config_cached(self):
+        """Test that the engine config is cached and not recreated when calling
+        get_engine_config so the attributes on the engine will be persisted."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        old_engine_config = llm_config.get_engine_config()
+        old_engine_config.hf_model_id = "fake_hf_model_id"
+        new_engine_config = llm_config.get_engine_config()
+        assert new_engine_config is old_engine_config
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -306,7 +306,7 @@ class CloudFileSystem:
                 )
             else:
                 f_hash = "0000000000000000000000000000000000000000"
-                logger.warning(
+                logger.info(
                     f"Hash file does not exist in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
                 )

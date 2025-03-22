@@ -476,6 +476,56 @@ For multimodal models that can process both text and images:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
+Using remote storage for model weights
+~~~~~~~~~~~~~~~~~~~~~~
+
+You can use remote storage (S3 and GCS) to store your model weights instead of
+downloading them from Hugging Face.
+
+For example, if you have a model stored in S3 that looks like the below structure:
+
+.. code-block:: bash
+
+    $ aws s3 ls s3://rob-general-test-bucket/meta-llama/
+                               PRE original/
+    2025-03-21 16:26:32       1519 .gitattributes
+    2025-03-21 16:28:02       7627 LICENSE
+    2025-03-21 16:29:35      44044 README.md
+    2025-03-21 16:28:46       4691 USE_POLICY.md
+    2025-03-21 16:27:32        855 config.json
+    2025-03-21 16:27:52        184 generation_config.json
+    2025-03-21 16:28:15 4976698672 model-00001-of-00004.safetensors
+    2025-03-21 16:30:48 4999802720 model-00002-of-00004.safetensors
+    2025-03-21 16:31:24 4915916176 model-00003-of-00004.safetensors
+    2025-03-21 16:30:32 1168138808 model-00004-of-00004.safetensors
+    2025-03-21 16:30:01      23950 model.safetensors.index.json
+    2025-03-21 16:29:24        296 special_tokens_map.json
+    2025-03-21 16:29:00    9085657 tokenizer.json
+    2025-03-21 16:29:13      55351 tokenizer_config.json
+
+You can then specify the `bucket_uri` in the `model_loading_config` to point to your S3 bucket.
+
+.. code-block:: yaml
+
+    # config.yaml
+    applications:
+    - args:
+        llm_configs:
+            - accelerator_type: L40S
+              engine_kwargs:
+                enable_chunked_prefill: true
+                max_model_len: 8192
+                max_num_batched_tokens: 2048
+                tensor_parallel_size: 1
+              model_loading_config:
+                model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+                model_source:
+                  bucket_uri: s3://rob-general-test-bucket/meta-llama
+      import_path: ray.serve.llm:build_openai_app
+      name: llm_app
+      route_prefix: "/"
+
+
 Frequently Asked Questions
 --------------------------
 
