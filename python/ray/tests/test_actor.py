@@ -20,6 +20,10 @@ from ray.tests.client_test_utils import create_remote_signal_actor
 from ray._private.test_utils import SignalActor
 from ray.core.generated import gcs_pb2
 from ray._private.utils import hex_to_binary
+from ray._private.state_api_test_utils import invoke_state_api
+
+from ray.util.state import list_actors
+
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -1537,6 +1541,47 @@ def test_get_local_actor_state(ray_start_regular_shared):
     ray.kill(actor)
     wait_for_condition(
         lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
+    )
+
+
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_exit_actor(ray_start_regular, enable_concurrency_group):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
+    class TestActor:
+        def exit(self):
+            ray.actor.exit_actor()
+
+    num_actors = 50
+    actor_class_name = TestActor.__ray_metadata__.class_name
+
+    actors = [TestActor.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
+        limit=1000,
+    )
+
+    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
+
+    invoke_state_api(
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
+        limit=1000,
+    )
+
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
+        limit=1000,
     )
 
 
