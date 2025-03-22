@@ -190,7 +190,7 @@ using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Rep
 /// `CompletionQueue`, and post the callback function to the main event loop when a reply
 /// is received.
 ///
-/// Multiple clients can share one `ClientCallManager`, with responses deleted to a
+/// Multiple clients can share one `ClientCallManager`, with responses delegated to one
 /// completion queue in the round-robin style.
 class ClientCallManager {
  public:
@@ -224,7 +224,7 @@ class ClientCallManager {
       cq->Shutdown();
     }
     for (auto &polling_thread : polling_threads_) {
-      RAY_DCHECK(polling_thread.joinable());
+      RAY_CHECK(polling_thread.joinable());
       polling_thread.join();
     }
   }
