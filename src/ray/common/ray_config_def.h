@@ -18,6 +18,11 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
+#pragma once
+
+#include <algorithm>
+#include <string>
+
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
@@ -348,7 +353,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 /// excessive memory usage during object broadcast to many receivers.
 RAY_CONFIG(uint64_t,
            object_manager_max_bytes_in_flight,
-           ((uint64_t)2) * 1024 * 1024 * 1024)
+           (static_cast<uint64_t>(2) * 1024 * 1024 * 1024))
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -871,7 +876,7 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// The pool size for grpc server call.
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max(static_cast<int64_t>(1), static_cast<int64_t>(std::thread::hardware_concurrency() / 4U))
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.

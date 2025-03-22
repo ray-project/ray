@@ -25,7 +25,12 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -33,8 +38,8 @@
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
 
-using namespace std::chrono;
-using namespace ray::syncer;
+using namespace std::chrono;  // NOLINT
+using namespace ray::syncer;  // NOLINT
 using ray::NodeID;
 using ::testing::_;
 using ::testing::Eq;
@@ -202,7 +207,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
 }
 
 struct SyncerServerTest {
-  SyncerServerTest(std::string port)
+  explicit SyncerServerTest(std::string port)
       : SyncerServerTest(
             std::move(port), /*node_id=*/NodeID::FromRandom(), /*ray_sync_observer=*/{}) {
   }
@@ -526,8 +531,8 @@ TEST_F(SyncerTest, Test1To1) {
   s2.local_versions[0] = 0;
   std::this_thread::sleep_for(1s);
 
-  ASSERT_TRUE(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()) == 2);
-  ASSERT_TRUE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()) == 1);
+  ASSERT_EQ(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), 2);
+  ASSERT_EQ(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), 1);
   // Change it back
   s2.local_versions[0] = 1;
 

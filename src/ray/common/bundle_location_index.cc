@@ -14,6 +14,10 @@
 
 #include "ray/common/bundle_location_index.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 namespace ray {
 
 void BundleLocationIndex::AddBundleLocations(

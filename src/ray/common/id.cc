@@ -20,6 +20,7 @@
 #include <chrono>
 #include <mutex>
 #include <random>
+#include <string>
 
 #include "absl/time/clock.h"
 #include "ray/common/constants.h"
@@ -72,7 +73,9 @@ void FillNil(T *data) {
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::string data(WorkerID::Size(), '\0');
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), (char)0xFF);
+  std::fill_n(data.data() + JobID::Size(),
+              WorkerID::Size() - JobID::Size(),
+              static_cast<char>(0xFF));
   return WorkerID::FromBinary(data);
 }
 
@@ -103,19 +106,19 @@ __suppress_ubsan__("undefined") uint64_t
 
   switch (len & 7) {
   case 7:
-    h ^= uint64_t(data2[6]) << 48;
+    h ^= static_cast<uint64_t>(data2[6]) << 48;
   case 6:
-    h ^= uint64_t(data2[5]) << 40;
+    h ^= static_cast<uint64_t>(data2[5]) << 40;
   case 5:
-    h ^= uint64_t(data2[4]) << 32;
+    h ^= static_cast<uint64_t>(data2[4]) << 32;
   case 4:
-    h ^= uint64_t(data2[3]) << 24;
+    h ^= static_cast<uint64_t>(data2[3]) << 24;
   case 3:
-    h ^= uint64_t(data2[2]) << 16;
+    h ^= static_cast<uint64_t>(data2[2]) << 16;
   case 2:
-    h ^= uint64_t(data2[1]) << 8;
+    h ^= static_cast<uint64_t>(data2[1]) << 8;
   case 1:
-    h ^= uint64_t(data2[0]);
+    h ^= static_cast<uint64_t>(data2[0]);
     h *= m;
   };
 
@@ -254,7 +257,7 @@ ObjectID ObjectID::FromIndex(const TaskID &task_id, ObjectIDIndexType index) {
 }
 
 ObjectID ObjectID::FromRandom() {
-  std::string task_id_bytes(TaskID::kLength, (char)0xFF);
+  std::string task_id_bytes(TaskID::kLength, static_cast<char>(0xFF));
   FillRandom(&task_id_bytes);
   return GenerateObjectId(task_id_bytes);
 }

@@ -16,7 +16,9 @@
 
 #include <flatbuffers/flatbuffers.h>
 
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/util/logging.h"

@@ -14,6 +14,8 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
+#include <string>
+
 #ifndef __linux__
 namespace ray {
 Status InitializeCgroupv2Directory(const std::string &node_id /*unused*/) {
@@ -54,8 +56,8 @@ namespace {
 //
 // Root folder for cgroup v2 for the current raylet instance.
 // See README under the current folder for details.
-std::string cgroup_v2_app_folder;
-std::string cgroup_v2_system_folder;
+std::string cgroup_v2_app_folder;     // NOLINT
+std::string cgroup_v2_system_folder;  // NOLINT
 
 // TODO(hjiang): Cleanup all constants in the followup PR.
 //

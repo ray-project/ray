@@ -23,6 +23,7 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <utility>
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
@@ -75,7 +76,7 @@ class BaseID {
   std::string Hex() const;
 
  protected:
-  BaseID(const std::string &binary) {
+  explicit BaseID(const std::string &binary) {
     if (!binary.empty()) {
       RAY_CHECK(binary.size() == Size())
           << "expected size is " << Size() << ", but got data " << binary << " of size "
@@ -100,7 +101,7 @@ class UniqueID : public BaseID<UniqueID> {
   MSGPACK_DEFINE(id_);
 
  protected:
-  UniqueID(const std::string &binary);
+  explicit UniqueID(const std::string &binary);
 
  protected:
   uint8_t id_[kUniqueIDSize];
@@ -267,7 +268,8 @@ class ObjectID : public BaseID<ObjectID> {
 
  public:
   /// The maximum number of objects that can be returned or put by a task.
-  static constexpr int64_t kMaxObjectIndex = ((int64_t)1 << kObjectIdIndexSize) - 1;
+  static constexpr int64_t kMaxObjectIndex =
+      (static_cast<int64_t>(1) << kObjectIdIndexSize) - 1;
 
   /// The length of ObjectID in bytes.
   static constexpr size_t kLength = kIndexBytesLength + TaskID::kLength;
@@ -602,7 +604,6 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
-#include "ray/common/id_def.h"
 
 #undef DEFINE_UNIQUE_ID
 }  // namespace std

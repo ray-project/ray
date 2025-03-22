@@ -14,6 +14,9 @@
 
 #include "ray/common/scheduling/resource_instance_set.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"

@@ -18,6 +18,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <utility>
 
 #include "ray/common/asio/asio_chaos.h"

@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_syncer/common.h"

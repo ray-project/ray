@@ -14,10 +14,13 @@
 
 #include "ray/common/scheduling/scheduling_ids.h"
 
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 namespace ray {
-using namespace ray::scheduling;
+using namespace ray::scheduling;  // NOLINT
 
 struct SchedulingIDsTest : public ::testing::Test {};
 
