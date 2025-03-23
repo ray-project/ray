@@ -287,6 +287,44 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_exit_actor(ray_start_regular, enable_concurrency_group):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
+    class TestActor:
+        def exit(self):
+            ray.actor.exit_actor()
+
+    num_actors = 50
+    actor_class_name = TestActor.__ray_metadata__.class_name
+
+    actors = [TestActor.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
+
+    invoke_state_api(
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
@@ -1541,44 +1579,6 @@ def test_get_local_actor_state(ray_start_regular_shared):
     ray.kill(actor)
     wait_for_condition(
         lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
-    )
-
-
-@pytest.mark.parametrize("enable_concurrency_group", [False, True])
-def test_exit_actor(ray_start_regular, enable_concurrency_group):
-    concurrency_groups = {"io": 1} if enable_concurrency_group else None
-
-    @ray.remote(concurrency_groups=concurrency_groups)
-    class TestActor:
-        def exit(self):
-            ray.actor.exit_actor()
-
-    num_actors = 50
-    actor_class_name = TestActor.__ray_metadata__.class_name
-
-    actors = [TestActor.remote() for _ in range(num_actors)]
-    ray.get([actor.__ray_ready__.remote() for actor in actors])
-    invoke_state_api(
-        lambda res: len(res) == num_actors,
-        list_actors,
-        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-        limit=1000,
-    )
-
-    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
-
-    invoke_state_api(
-        lambda res: len(res) == 0,
-        list_actors,
-        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-        limit=1000,
-    )
-
-    invoke_state_api(
-        lambda res: len(res) == num_actors,
-        list_actors,
-        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
-        limit=1000,
     )
 
 
