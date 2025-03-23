@@ -530,63 +530,6 @@ def _generate_transform_fn_for_flat_map(
     return transform_fn
 
 
-def _generate_transform_fn_for_async_flat_map(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        # Use a queue to store outputs from async generator calls.
-        # We will put output rows into this queue from async
-        # generators, and in the main event loop, yield them from
-        # the queue as they become available.
-        output_row_queue = queue.Queue()
-        # Sentinel object to signal the end of the async generator.
-        sentinel = object()
-
-        async def process_row(row: Row):
-            try:
-                output_row_iterator = await fn(row)
-                # As soon as results become available from the async generator,
-                # put them into the result queue so they can be yielded.
-                async for output_row in output_row_iterator:
-                    output_row_queue.put(output_row)
-            except Exception as e:
-                output_row_queue.put(
-                    e
-                )  # Put the exception into the queue to signal an error
-
-        async def process_all_rows():
-            try:
-                loop = ray.data._map_actor_context.udf_map_asyncio_loop
-                tasks = [loop.create_task(process_row(x)) for x in rows]
-
-                ctx = ray.data.DataContext.get_current()
-                if ctx.execution_options.preserve_order:
-                    for task in tasks:
-                        await task
-                else:
-                    for task in asyncio.as_completed(tasks):
-                        await task
-            finally:
-                output_row_queue.put(sentinel)
-
-        # Use the existing event loop to create and run Tasks to process each row
-        loop = ray.data._map_actor_context.udf_map_asyncio_loop
-        asyncio.run_coroutine_threadsafe(process_all_rows(), loop)
-
-        # Yield results as they become available.
-        while True:
-            out_row = output_row_queue.get()
-            if out_row is sentinel:
-                # Break out of the loop when the sentinel is received.
-                break
-            if isinstance(out_row, Exception):
-                raise out_row
-            _validate_row_output(out_row)
-            yield out_row
-
-    return transform_fn
-
-
 def _generate_transform_fn_for_filter(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
