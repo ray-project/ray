@@ -12,34 +12,34 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala_learner import _GPULoaderThread
+from ray.rllib.algorithms.utils import AggregatorActor
+from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
+from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 
 class Algo:
     def __init__(
         self,
         *,
+        config,
         observation_space,
-        num_env_runners=2,
-        num_envs_per_env_runner=1,
-        rollout_fragment_length=50,
-        num_aggregator_actors=2,
-        train_batch_size_per_learner=500,
-        num_learners=1,
-        min_time_s_per_iteration=1,
-        env_step_time=0.015,
-        num_gpus_per_learner=0,
+        action_space,
         num_weights_server_actors=1,
     ):
         self.observation_space = observation_space
-        self.num_env_runners = num_env_runners
-        self.num_aggregator_actors = num_aggregator_actors
-        self.train_batch_size_per_learner = train_batch_size_per_learner
-        self.num_learners = num_learners
-        self.min_time_s_per_iteration = min_time_s_per_iteration
-
+        self.action_space = action_space
+        self.config = config
         self.metrics = MetricsLogger()
 
         # Create 1 weights server actor.
@@ -53,24 +53,27 @@ class Algo:
 
         # Create the env runners.
         self.env_runners = [
-            ray.remote(EnvRunner).remote(
-                observation_space=self.observation_space,
-                num_envs_per_env_runner=num_envs_per_env_runner,
-                rollout_fragment_length=rollout_fragment_length,
-                env_step_time=env_step_time,
+            ray.remote(InfiniteAPPOMultiAgentEnvRunner).remote(
                 weights_server_actors=self.weights_server_actors,
-            ) for _ in range(self.num_env_runners)
+                sync_freq=10,
+                config=self.config,
+            ) for _ in range(self.config.num_env_runners)
         ]
-        print(f"Created {num_env_runners} EnvRunners.")
+        print(f"Created {self.config.num_env_runners} EnvRunners.")
 
         # Create the agg. actors.
+        rl_module_spec = self.config.get_multi_rl_module_spec(
+            spaces=ray.get(self.env_runners[0].get_spaces.remote()),
+            inference_only=False,
+        )
         self.aggregator_actors = [
-            AggregatorActor.remote(
-                observation_space=self.observation_space,
-                batch_size=self.train_batch_size_per_learner,
-            ) for _ in range(self.num_aggregator_actors)
+            InfiniteAPPOAggregatorActor.remote(
+                config=self.config,
+                rl_module_spec=rl_module_spec,
+                sync_freq=10,
+            ) for _ in range(self.config.num_aggregator_actors_per_learner * self.config.num_learners)
         ]
-        print(f"Created {num_aggregator_actors} AggregatorActors.")
+        print(f"Created {self.config.num_aggregator_actors_per_learner * self.config.num_learners} AggregatorActors.")
 
         # Add agg. actors to env runners.
         for aid, er in enumerate(self.env_runners):
@@ -78,14 +81,14 @@ class Algo:
 
         # Create the Learner actors.
         self.learners = [
-            ray.remote(num_cpus=1, num_gpus=num_gpus_per_learner)(Learner).remote(
+            ray.remote(num_cpus=1, num_gpus=self.config.num_gpus_per_learner)(Learner).remote(
                 weights_server_actors=self.weights_server_actors,
                 metrics_actor=self.metrics_actor,
-            ) for _ in range(self.num_learners)
+            ) for _ in range(self.config.num_learners)
         ]
         # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
         self.learners[0].set_push_weights.remote(True)
-        print(f"Created {num_learners} Learners.")
+        print(f"Created {self.config.num_learners} Learners.")
 
         # Assign a Learner actor to each aggregator actor.
         for aid, agg in enumerate(self.aggregator_actors):
@@ -97,7 +100,7 @@ class Algo:
 
         # Kick of sampling, aggregating, and training.
         for er in self.env_runners:
-            er.sample.remote()
+            er.start_infinite_sample.remote()
 
     def train(self) -> dict:
         t0 = time.time()
@@ -106,7 +109,7 @@ class Algo:
         metrics = ray.get(self.metrics_actor.get.remote())
 
         # Wait until iteration is done.
-        time.sleep(max(0, self.min_time_s_per_iteration - (time.time() - t0)))
+        time.sleep(max(0, self.config.min_time_s_per_iteration - (time.time() - t0)))
 
         return metrics
 
@@ -136,148 +139,81 @@ class MetricsActor:
     def __init__(self):
         self.metrics = MetricsLogger()
 
-    def add(self, metrics):
-        self.metrics.merge_and_log_n_dicts([metrics])
+    def add(self, env_runner_metrics, aggregator_metrics, learner_metrics):
+        assert isinstance(env_runner_metrics, list)
+        self.metrics.merge_and_log_n_dicts(
+            env_runner_metrics,
+            key="env_runners",
+        )
+        self.metrics.merge_and_log_n_dicts(
+            [aggregator_metrics],
+            key="aggregator_actors",
+        )
+        self.metrics.merge_and_log_n_dicts(
+            [learner_metrics],
+            key="learners",
+        )
 
     def get(self):
         return self.metrics.reduce()
 
 
-class EnvRunner:
-    def __init__(
-        self,
-        *,
-        observation_space,
-        num_envs_per_env_runner=1,
-        rollout_fragment_length=50,
-        env_step_time=0.015,
-        weights_server_actors,
-        sync_freq=10,
-    ):
-        self.observation_space = observation_space
-        self.num_envs_per_env_runner = num_envs_per_env_runner
-        self.rollout_fragment_length = rollout_fragment_length
-        self.env_step_time = env_step_time
+class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
+    def __init__(self, *, weights_server_actors, sync_freq, **kwargs):
+        super().__init__(**kwargs)
+
         self.weights_server_actors = weights_server_actors
         self.sync_freq = sync_freq
 
-        _dummy_episode = MultiAgentEpisode(
-
-        )
-        self._DUMMY_EPISODES = []
-
-        # Assuming synchronous/sequential env stepping.
-        self._sample_time = (
-            self.env_step_time
-            * self.num_envs_per_env_runner
-            * self.rollout_fragment_length
-        )
-
-        self.metrics = MetricsLogger()
-
-        self._size_per_sample_kb = (
-            np.prod(self.observation_space.shape)
-            * self.observation_space.dtype.itemsize
-            * self.num_envs_per_env_runner
-            * self.rollout_fragment_length
-        )
-        # 0.1 for "all the reset" (actions, rewards, terminateds, etc..)
-        self._size_per_sample_kb += 0.1 * self._size_per_sample_kb
-        self._size_per_sample_kb = int(self._size_per_sample_kb / 1024)
-
         self._curr_agg_idx = 0
         self._aggregator_actor_refs = []
-
-        self._control_num_env_steps = 0
 
     def add_aggregator_actors(self, aggregator_actor_refs):
         random.shuffle(aggregator_actor_refs)
         self._aggregator_actor_refs = aggregator_actor_refs
 
-    def sample(self):
+    def start_infinite_sample(self):
         iteration = 0
         while True:
-            self._sample(iteration=iteration)
-            iteration += 1
+            # Pull new weights, every n times.
+            if iteration % self.config.broadcast_interval == 0 and self.weights_server_actors:
+                weights = ray.get(random.choice(self.weights_server_actors).get.remote())
+                time.sleep(0.02)
+                #self.module.set_state({COMPONENT_RL_MODULE: weights})
+
+            episodes = self.sample()
+            # Send data directly to an aggregator actor.
+            # Pick an aggregator actor round-robin.
+            if not self._aggregator_actor_refs:
+                return
+
+            agg_actor = self._aggregator_actor_refs[
+                self._curr_agg_idx % len(self._aggregator_actor_refs)
+            ]
+            metrics = self.get_metrics()
+            agg_actor.push_episodes.remote(
+                episodes,
+                env_runner_metrics=metrics,
+            )
+            self._curr_agg_idx += 1
+
             # Sync with one aggregator actor.
             if iteration % self.sync_freq == 0 and self._aggregator_actor_refs:
                 ray.get(random.choice(self._aggregator_actor_refs).sync.remote())
 
-    def _sample(self, iteration):
-        # Pull new weights, every n times.
-        if iteration % 5 == 0 and self.weights_server_actors:
-            weights = ray.get(random.choice(self.weights_server_actors).get.remote())
-
-            # Time to apply weights to our model.
-            time.sleep(0.01)
-
-        time.sleep(self._sample_time)
-        episodes = create_data(size_kb=self._size_per_sample_kb, n_components=5)
-
-        env_steps = self.rollout_fragment_length * self.num_envs_per_env_runner
-        self.metrics.log_value(
-            ("env_runners", "num_env_steps_sampled_lifetime"),
-            env_steps,
-            reduce="sum",
-            with_throughput=True,
-        )
-
-        # Send data directly to an aggregator actor.
-        # Pick an aggregator actor round-robin.
-        if not self._aggregator_actor_refs:
-            return
-
-        agg_actor = self._aggregator_actor_refs[
-            self._curr_agg_idx % len(self._aggregator_actor_refs)]
-        agg_actor.produce_batch.remote(
-            episodes,
-            env_runner_metrics=self.metrics.reduce(),
-        )
-        self._curr_agg_idx += 1
-
-        return env_steps
+            iteration += 1
 
 
 @ray.remote
-class AggregatorActor:
-    def __init__(
-        self,
-        observation_space,
-        action_space,
-        batch_size=500,
-        process_time_per_env_step=0.005,
-        sync_freq=10,
-    ):
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.batch_size = batch_size
-        self.process_time_per_env_step = process_time_per_env_step
+class InfiniteAPPOAggregatorActor(AggregatorActor):
+    def __init__(self, *, config, rl_module_spec, sync_freq):
+        super().__init__(config=config, rl_module_spec=rl_module_spec)
         self.sync_freq = sync_freq
-
-        self.metrics = MetricsLogger()
-        self.metrics._threading_lock = threading.RLock()
-
         self._learner_ref = None
-
-        self._control_num_env_steps = 0
-        self._iteration = 0
-
-        _dummy_sa_batch = SampleBatch({
-            "obs": np.random.random((batch_size,) + tuple(self.observation_space.shape)).astype(np.float32),
-            "actions": np.random.random_integers(0, action_space.n - 1, (batch_size,)),
-            "rewards": np.random.random((batch_size,)).astype(np.float32),
-            "terminateds": np.random.random((batch_size,)).astype(bool),
-            "truncateds": np.random.random((batch_size,)).astype(bool),
-            "action_logp": np.random.random((batch_size,)).astype(np.float32),
-            "action_dist_inputs": np.random.random((batch_size, action_space.n)).astype(np.float32),
-        })
-        self._DUMMY_BATCH = MultiAgentBatch(
-            {
-                "p0": _dummy_sa_batch,
-                "p1": _dummy_sa_batch,
-            },
-            env_steps=batch_size,
-        )
+        self._num_batches_produced = 0
+        self._ts = 0
+        self._episodes = []
+        self._env_runner_metrics = []
 
     # Synchronization helper method.
     def sync(self):
@@ -286,38 +222,59 @@ class AggregatorActor:
     def add_learner(self, learner_ref):
         self._learner_ref = learner_ref
 
-    def produce_batch(self, data, env_runner_metrics):
-        self.metrics.merge_and_log_n_dicts([env_runner_metrics])
-
-        batch = copy.deepcopy(self._DUMMY_BATCH)
-        assert batch.env_steps() == self.batch_size
-        time.sleep(self.process_time_per_env_step * self.batch_size)
-
+    def push_episodes(self, episodes, env_runner_metrics):
         if not self._learner_ref:
             return
 
-        self.metrics.log_value(
-            ("aggregator_actors", "num_env_steps_aggregated_lifetime"),
-            self.batch_size,
-            reduce="sum",
-            with_throughput=True,
-        )
+        # Make sure we count how many timesteps we already have and only produce a
+        # batch, once we have enough episode data.
+        self._episodes.extend(episodes)
+        self._env_runner_metrics.append(env_runner_metrics)
+        env_steps = sum(len(e) for e in episodes)
+        self._ts += env_steps
 
-        # Forward results to a Learner actor.
-        self._learner_ref.update.remote(
-            batch,
-            aggregator_metrics=self.metrics.reduce(),
-        )
+        if self._ts >= self.config.train_batch_size_per_learner:
+            # If we have enough episodes collected to create a single train batch, pass
+            # them at once through the connector to recieve a single train batch.
+            batch = self._learner_connector(
+                episodes=self._episodes,
+                rl_module=self._module,
+                metrics=self.metrics,
+            )
+            batch_env_steps = sum(len(e) for e in self._episodes)
+            # Convert to a dict into a `MultiAgentBatch`.
+            # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
+            #  batch iterators support splitting over a dict).
+            ma_batch = MultiAgentBatch(
+                policy_batches={
+                    pid: SampleBatch(pol_batch) for pid, pol_batch in batch.items()
+                },
+                env_steps=batch_env_steps,
+            )
 
-        self._control_num_env_steps += self.batch_size
-        self._iteration += 1
+            self._ts = 0
+            self._episodes = []
 
-        # Sync with the Learner actor.
-        if self._iteration % self.sync_freq == 0 and self._learner_ref:
-            ray.get(self._learner_ref.sync.remote())
+            self.metrics.log_value(
+                "num_env_steps_aggregated_lifetime",
+                batch_env_steps,
+                reduce="sum",
+                with_throughput=True,
+            )
 
-    def control_num_env_steps(self):
-        return self._control_num_env_steps
+            # Forward results to a Learner actor.
+            self._learner_ref.update.remote(
+                ma_batch,
+                aggregator_metrics=self.metrics.reduce(),
+                env_runner_metrics=self._env_runner_metrics,
+            )
+
+            self._env_runner_metrics = []
+            self._num_batches_produced += 1
+
+            # Sync with the Learner actor.
+            if self._num_batches_produced % self.sync_freq == 0:
+                ray.get(self._learner_ref.sync.remote())
 
 
 class Learner:
@@ -376,8 +333,8 @@ class Learner:
     def set_push_weights(self, push_weights):
         self._push_weights = push_weights
 
-    def update(self, batch, aggregator_metrics):
-        self.metrics.merge_and_log_n_dicts([aggregator_metrics])
+    def update(self, batch, aggregator_metrics, env_runner_metrics):
+        #self.metrics.merge_and_log_n_dicts([aggregator_metrics])
 
         self._gpu_loader_in_queue.put(batch)
 
@@ -392,7 +349,11 @@ class Learner:
         # Send metrics to metrics actor.
         self._num_updates += 1
         if self._num_updates % 10 == 0:
-            self.metrics_actor.add.remote(self.metrics.reduce())
+            self.metrics_actor.add.remote(
+                env_runner_metrics=env_runner_metrics,
+                aggregator_metrics=aggregator_metrics,
+                learner_metrics=self.metrics.reduce(),
+            )
 
 
 class _LearnerThread(threading.Thread):
@@ -446,15 +407,94 @@ def create_data(size_kb, n_components=1, dtype=np.float32):
 
 
 if __name__ == "__main__":
+    NUM_LEARNERS = 1
+
+    def _make_env_to_module_connector(env):
+        return FrameStackingEnvToModule(num_frames=4, multi_agent=True)
+
+
+    def _make_learner_connector(input_observation_space, input_action_space):
+        return FrameStackingLearner(num_frames=4, multi_agent=True)
+
+
+    def _env_creator(cfg):
+        return wrap_atari_for_new_api_stack(
+            gym.make("ale_py:ALE/Pong-v5", **cfg, **{"render_mode": "rgb_array"}),
+            dim=64,
+            framestack=None,
+        )
+
+
+    MultiAgentPong = make_multi_agent(_env_creator)
+    NUM_AGENTS = 2
+    NUM_POLICIES = 1
+    main_spec = RLModuleSpec(
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            conv_filters=[(16, 4, 2), (32, 4, 2), (64, 4, 2), (128, 4, 2)],
+            conv_activation="relu",
+            head_fcnet_hiddens=[256],
+        ),
+    )
+
+    config = (
+        APPOConfig()
+        .environment(
+            MultiAgentPong,
+            env_config={
+                "num_agents": NUM_AGENTS,
+                # Make analogous to old v4 + NoFrameskip.
+                "frameskip": 1,
+                "full_action_space": False,
+                "repeat_action_probability": 0.0,
+            },
+            clip_rewards=True,
+        )
+        .env_runners(
+            env_to_module_connector=_make_env_to_module_connector,
+            num_env_runners=2,
+            rollout_fragment_length=50,
+            num_envs_per_env_runner=1,
+        )
+        .learners(
+            num_learners=NUM_LEARNERS,
+            num_aggregator_actors_per_learner=2,
+        )
+        .training(
+            learner_connector=_make_learner_connector,
+            train_batch_size_per_learner=500,
+            target_network_update_freq=2,
+            lr=0.0005 * ((NUM_LEARNERS or 1) ** 0.5),
+            vf_loss_coeff=1.0,
+            entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
+            # Only update connector states and model weights every n training_step calls.
+            broadcast_interval=5,
+            # learner_queue_size=1,
+            circular_buffer_num_batches=4,
+            circular_buffer_iterations_per_batch=2,
+        )
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs=(
+                    {f"p{i}": main_spec for i in range(NUM_POLICIES)}
+                    | {"random": RLModuleSpec(module_class=RandomRLModule)}
+                ),
+            ),
+        )
+        .multi_agent(
+            policies={f"p{i}" for i in range(NUM_POLICIES)} | {"random"},
+            policy_mapping_fn=lambda aid, eps, **kw: (
+                random.choice([f"p{i}" for i in range(NUM_POLICIES)] + ["random"])
+            ),
+            policies_to_train=[f"p{i}" for i in range(NUM_POLICIES)],
+        )
+    )
+
     algo = Algo(
+        config=config,
         observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
-        num_env_runners=8192,
-        num_envs_per_env_runner=1,
-        rollout_fragment_length=50,
-        num_aggregator_actors=512,
-        train_batch_size_per_learner=500,
-        num_learners=128,
-        num_weights_server_actors=8,
+        action_space=gym.spaces.Discrete(6),
+        num_weights_server_actors=1,
     )
     time.sleep(1.0)
 
