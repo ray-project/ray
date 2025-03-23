@@ -399,16 +399,17 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "Component": self._component,
             "SessionName": self.session_name,
         }
-        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
-            float(self._dashboard_proc.cpu_percent())
-        )
-        memory_full_info = self._dashboard_proc.memory_full_info()
-        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
-            float(memory_full_info.uss) / 1.0e6
-        )
-        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
-            float(memory_full_info.rss) / 1.0e6
-        )
+        with self._dashboard_proc.oneshot():
+            self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+                float(self._dashboard_proc.cpu_percent())
+            )
+            memory_full_info = self._dashboard_proc.memory_full_info()
+            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+                float(memory_full_info.uss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+                float(memory_full_info.rss) / 1.0e6
+            )
 
         loop = get_or_create_event_loop()
 
