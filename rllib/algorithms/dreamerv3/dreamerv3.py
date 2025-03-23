@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
+    REPLAY_BUFFER_RESULTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
@@ -586,9 +587,14 @@ class DreamerV3(Algorithm):
         report_sampling_and_replay_buffer(
             metrics=self.metrics, replay_buffer=self.replay_buffer
         )
+        # Get the replay buffer metrics.
+        replay_buffer_results = self.local_replay_buffer.get_metrics()
+        self.metrics.merge_and_log_n_dicts(
+            [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
+        )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
-        # and using these to update our models (`LearnerGroup.update_from_batch()`)
+        # and using these to update our models (`LearnerGroup.update()`)
         # until the computed `training_ratio` is larger than the configured one, meaning
         # we should go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
@@ -622,7 +628,7 @@ class DreamerV3(Algorithm):
                     )
 
                 # Perform the actual update via our learner group.
-                learner_results = self.learner_group.update_from_batch(
+                learner_results = self.learner_group.update(
                     batch=SampleBatch(sample).as_multi_agent(),
                     # TODO(sven): Maybe we should do this broadcase of global timesteps
                     #  at the end, like for EnvRunner global env step counts. Maybe when

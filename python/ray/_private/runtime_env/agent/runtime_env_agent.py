@@ -24,11 +24,12 @@ from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
     create_for_plugin_if_needed,
 )
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
@@ -216,6 +217,7 @@ class RuntimeEnvAgent:
         self._py_modules_plugin = PyModulesPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        self._py_executable_plugin = PyExecutablePlugin()
         self._java_jars_plugin = JavaJarsPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
@@ -238,6 +240,7 @@ class RuntimeEnvAgent:
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
+            self._py_executable_plugin,
             self._java_jars_plugin,
             self._container_plugin,
             self._nsight_plugin,

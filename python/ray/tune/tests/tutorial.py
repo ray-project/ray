@@ -12,7 +12,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -82,7 +82,7 @@ def test_func(model, data_loader):
 import os
 import tempfile
 
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 
 def train_mnist(config):
     # Data Setup
@@ -122,7 +122,7 @@ def train_mnist(config):
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
             # Send the current training result back to Tune
-            train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+            tune.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 # __train_func_end__
 # fmt: on
@@ -220,7 +220,7 @@ search_space = {
 
 tuner = tune.Tuner(
     TrainMNIST,
-    run_config=train.RunConfig(stop={"training_iteration": 10}),
+    run_config=tune.RunConfig(stop={"training_iteration": 10}),
     param_space=search_space,
 )
 results = tuner.fit()

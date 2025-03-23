@@ -3,7 +3,10 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
-from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.train.utils import _copy_doc, _log_deprecation_warning
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -20,8 +23,7 @@ _GET_METADATA_DEPRECATION_MESSAGE = (
     "`get_metadata` was an experimental API that accessed the metadata passed "
     "to `<Framework>Trainer(metadata=...)`. This API can be replaced by passing "
     "the metadata directly to the training function (e.g., via `train_loop_config`). "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
@@ -29,8 +31,7 @@ _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
     "soon be removed in Ray Train."
     "Ray Train will no longer assume that it's running within a Ray Tune `Trial` "
     "in the future. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
 )
 
 
@@ -131,8 +132,7 @@ def get_context() -> TrainContext:
                 "`ray.train.get_context()` should be switched to "
                 "`ray.tune.get_context()` when running in a function "
                 "passed to Ray Tune. This will be an error in the future. "
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/49454"
+                f"{V2_MIGRATION_GUIDE_MESSAGE}"
             )
         return get_tune_context()
 

@@ -16,8 +16,13 @@
 
 #include <gtest/gtest.h>
 
+#include <future>
+#include <memory>
 #include <string>
+#include <thread>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace ray::utils::container {
 
@@ -26,7 +31,7 @@ constexpr size_t kTestCacheSz = 1;
 
 class TestClassWithHashAndEq {
  public:
-  TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
+  explicit TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
   bool operator==(const TestClassWithHashAndEq &rhs) const { return data_ == rhs.data_; }
   template <typename H>
   friend H AbslHashValue(H h, const TestClassWithHashAndEq &obj) {
@@ -78,6 +83,41 @@ TEST(SharedLruCache, SameKeyTest) {
   val = cache.Get(1);
   EXPECT_NE(val, nullptr);
   EXPECT_EQ(2, *val);
+}
+
+TEST(SharedLruCache, FactoryTest) {
+  using CacheType = ThreadSafeSharedLruCache<std::string, std::string>;
+
+  std::atomic<bool> invoked = {false};  // Used to check only invoke once.
+  auto factory = [&invoked](const std::string &key) -> std::shared_ptr<std::string> {
+    EXPECT_FALSE(invoked.exchange(true));
+    // Sleep for a while so multiple threads could kick in and get blocked.
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    return std::make_shared<std::string>(key);
+  };
+
+  CacheType cache{1};
+
+  constexpr size_t kFutureNum = 100;
+  std::vector<std::future<std::shared_ptr<std::string>>> futures;
+  futures.reserve(kFutureNum);
+
+  const std::string key = "key";
+  for (size_t idx = 0; idx < kFutureNum; ++idx) {
+    futures.emplace_back(std::async(std::launch::async, [&cache, &key, &factory]() {
+      return cache.GetOrCreate(key, factory);
+    }));
+  }
+  for (auto &fut : futures) {
+    auto val = fut.get();
+    ASSERT_NE(val, nullptr);
+    ASSERT_EQ(*val, key);
+  }
+
+  // After we're sure key-value pair exists in cache, make one more call.
+  auto cached_val = cache.GetOrCreate(key, factory);
+  ASSERT_NE(cached_val, nullptr);
+  ASSERT_EQ(*cached_val, key);
 }
 
 TEST(SharedLruConstCache, TypeAliasAssertion) {

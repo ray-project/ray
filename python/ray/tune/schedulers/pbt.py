@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
@@ -1036,7 +1036,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import train, tune
+        from ray import tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -1046,7 +1046,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         tuner = tune.Tuner(
             PytorchTrainable,
-            run_config=train.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 100}
             ),
             tune_config=tune.TuneConfig(

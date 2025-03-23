@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 
@@ -399,7 +405,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
-                error_info.set_error_message(reply.scheduling_failure_message());
+                error_info.set_error_message(
+                    absl::StrCat(reply.scheduling_failure_message(),
+                                 " task_id=",
+                                 task_id.Hex(),
+                                 ", task_name=",
+                                 task_name));
 
                 tasks_to_fail = std::move(scheduling_key_entry.task_queue);
                 scheduling_key_entry.task_queue.clear();

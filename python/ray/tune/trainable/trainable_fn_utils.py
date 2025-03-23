@@ -2,7 +2,10 @@ from typing import Dict, Optional
 
 from ray.train._checkpoint import Checkpoint as TrainCheckpoint
 from ray.train._internal.session import _warn_session_misuse, get_session
-from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
 from ray.train.utils import _copy_doc, _log_deprecation_warning
 from ray.util.annotations import PublicAPI
 
@@ -37,10 +40,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         if _v2_migration_warnings_enabled():
             _log_deprecation_warning(
                 "The `Checkpoint` class should be imported from `ray.tune` "
-                "when passing it to `ray.tune.report` in a Tune function."
+                "when passing it to `ray.tune.report` in a Tune function. "
                 "Please update your imports. "
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/49454"
+                f"{V2_MIGRATION_GUIDE_MESSAGE}"
             )
 
     get_session().report(metrics, checkpoint=checkpoint)

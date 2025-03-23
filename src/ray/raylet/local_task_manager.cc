@@ -16,30 +16,19 @@
 
 #include <google/protobuf/map.h>
 
+#include <algorithm>
 #include <boost/range/join.hpp>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
-
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
-  // Check whether the resource is CPU resource or CPU resource inside PG.
-  if (resource_id == ResourceID::CPU()) {
-    return true;
-  }
-
-  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                       /*for_wildcard_resource*/ true,
-                                                       /*for_indexed_resource*/ true);
-  if (possible_pg_resource.has_value() &&
-      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
-    return true;
-  }
-
-  return false;
-}
 
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,

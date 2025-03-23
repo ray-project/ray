@@ -47,7 +47,7 @@ an expert from the get go.
 
 from pathlib import Path
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import (
     COMPONENT_LEARNER,

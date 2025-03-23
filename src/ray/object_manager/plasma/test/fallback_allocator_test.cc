@@ -13,11 +13,15 @@
 // limitations under the License.
 
 #include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
-using namespace std::filesystem;
+using std::filesystem::create_directories;
+using std::filesystem::path;
 
 namespace plasma {
 namespace {

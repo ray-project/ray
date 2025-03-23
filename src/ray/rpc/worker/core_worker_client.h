@@ -17,9 +17,12 @@
 #include <grpcpp/grpcpp.h>
 
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
@@ -53,7 +56,7 @@ inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 inline constexpr int64_t kBaseRequestSize = 1024;
 
 /// Get the estimated size in bytes of the given task.
-const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
+static const int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   int64_t size = kBaseRequestSize;
   for (auto &arg : request.task_spec().args()) {
     size += arg.data().size();
