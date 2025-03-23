@@ -18,7 +18,7 @@ def test_object_ingest():
         def foo(self):
             pass
 
-        def send_objects(self, arr):
+        def send_objects(self):
             return np.ones(OBJECT_SIZE, dtype=np.uint8)
 
     actors = [Actor.remote() for _ in range(NUM_NODES)]
