@@ -338,6 +338,8 @@ You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
+.. _load_data_libraries:
+
 Loading data from other libraries
 =================================
 

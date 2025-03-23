@@ -1,13 +1,30 @@
 .. _data_key_concepts:
 
-Key Concepts
-============
+How does Ray Data work?
+=======================
+
+This page provides a conceptual overview of the architecture and execution model for Ray Data. Understanding these technical details can be useful when designing, debugging, and optimizing Ray applications.
 
 
-Datasets and blocks
--------------------
 
-There are two main concepts in Ray Data:
+
+.. _dataset_conceptual:
+
+
+What is a Ray Dataset?
+----------------------
+
+
+
+You can use Datasets to interact with data. The following are examples
+
+* 
+
+What does a block represent in Ray?
+-----------------------------------
+
+
+
 
 * Datasets
 * Blocks
@@ -36,8 +53,10 @@ Pandas Dataframes or Arrow tables.
 ..
   https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
 
-Operators and Plans
--------------------
+.. _plans:
+
+How does Ray Data plan and execute operations?
+----------------------------------------------
 
 Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program using the Dataset API, Ray Data first builds a *logical plan* - a high-level description of what operations to perform. When execution begins, it converts this into a *physical plan* that specifies exactly how to execute those operations.
 
