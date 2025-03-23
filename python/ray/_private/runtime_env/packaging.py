@@ -929,6 +929,10 @@ async def install_wheel_package(
 ) -> None:
     """Install packages in the wheel URI, and then delete the local wheel file."""
 
+    if Path(target_dir).exists():
+        logger.info("Directory %s already exists, skipping wheel install", target_dir)
+        return
+
     pip_install_cmd = [
         "pip",
         "install",
@@ -941,12 +945,12 @@ async def install_wheel_package(
         # TODO(architkulkarni): Use `await check_output_cmd` or similar.
         exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
     finally:
-        if Path(wheel_uri).exists():
+        if Path(wheel_uri).exists() and is_whl_uri(wheel_uri):
             Path(wheel_uri).unlink()
 
         if exit_code != 0:
             if Path(target_dir).exists():
-                Path(target_dir).unlink()
+                shutil.rmtree(target_dir)
             raise RuntimeError(
                 f"Failed to install py_modules wheel {wheel_uri}"
                 f"to {target_dir}:\n{output}"
