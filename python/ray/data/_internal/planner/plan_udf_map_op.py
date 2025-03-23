@@ -425,14 +425,12 @@ def _generate_transform_fn_for_map_batches(
 
 def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
-    validate_fn, 
+    validate_fn,
 ) -> MapTransformCallable:
     # Generates a transform function for asynchronous mapping of items (either batches or rows)
     # using a user-defined function (UDF). This consolidated function handles both asynchronous
     # batch processing and asynchronous flat mapping (e.g., rows) based on the provided UDF.
-    def transform_fn(
-        input_iterable: Iterable, _: TaskContext
-    ) -> Iterable:
+    def transform_fn(input_iterable: Iterable, _: TaskContext) -> Iterable:
         # Use a queue to store outputs from async generator calls.
         # We will put output items into this queue from async
         # generators, and in the main event loop, yield them from
