@@ -199,12 +199,12 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         # Log important loss stats.
         self.metrics.log_dict(
             {
-                POLICY_LOSS_KEY: mean_pi_loss,
-                VF_LOSS_KEY: mean_vf_loss,
-                ENTROPY_KEY: -mean_entropy_loss,
-                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                POLICY_LOSS_KEY: mean_pi_loss.detach().cpu(),
+                VF_LOSS_KEY: mean_vf_loss.detach().cpu(),
+                ENTROPY_KEY: -mean_entropy_loss.detach().cpu(),
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss.detach().cpu(),
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                    self.curr_kl_coeffs_per_module[module_id]
+                    self.curr_kl_coeffs_per_module[module_id].detach().cpu()
                 ),
             },
             key=module_id,
@@ -229,6 +229,6 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
 
         self.metrics.log_value(
             (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-            kl_coeff_var.item(),
+            kl_coeff_var.detach().cpu(),
             window=1,
         )
