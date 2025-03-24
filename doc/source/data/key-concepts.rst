@@ -5,29 +5,29 @@ How does Ray Data work?
 
 This page provides a conceptual overview of the architecture and execution model for Ray Data. Understanding these technical details can be useful when designing, debugging, and optimizing Ray applications.
 
+To get started working with Ray Data, see :ref:`Ray Data basics<data_quickstart>`.
 
+How does Ray Data relate to the rest of Ray?
+--------------------------------------------
 
+Ray Data is one of the Ray AI Libraries.
+
+.. image:: ../ray-overview/images/map-of-ray.svg
+   :align: center
+   :alt: Ray Framework Architecture
+
+Ray Data uses the `Dataset` abstraction to map common data operations to Ray Core primitives. To learn about Ray Core primitives, see :ref:`Ray Core key concepts<core-key-concepts>`.
+
+Ray Data integrates with Ray Train for optimized data loading, preprocessing, and feature engineering. See :ref:`Ray Train overview<train-overview>`.
 
 .. _dataset_conceptual:
-
 
 What is a Ray Dataset?
 ----------------------
 
-
-
-You can use Datasets to interact with data. The following are examples
+Use Datasets to interact with data. The following are examples
 
 * 
-
-What does a block represent in Ray?
------------------------------------
-
-
-
-
-* Datasets
-* Blocks
 
 `Dataset` is the main user-facing Python API. It represents a distributed data collection and define data loading and processing operations. Users typically use the API by:
 
@@ -39,15 +39,31 @@ The Dataset API is lazy, meaning that operations aren't executed until you mater
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
 and execute operations in a pipelined streaming fashion.
 
-Each *Dataset* consists of *blocks*. A *block* is a contiguous subset of rows from a dataset,
-which are distributed across the cluster and processed independently in parallel.
+What does a block represent in Ray?
+-----------------------------------
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
-(which is usually the entrypoint of the program, referred to as the :term:`driver`)
-and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
-Pandas Dataframes or Arrow tables.
+Ray Data uses _blocks_ to represent subsets of data in a Dataset. Most users of Ray Data 
+
+Blocks have the following characteristics:
+
+* Each record or row in a Dataset is only present in one block.
+* Blocks are distributed across the cluster for independent processing.
+* Blocks are processed in parallel and sequentially, depending on the operations present in an application.
+
+
+If you're troubleshooting or optimizing Ray Data workloads, consider the following details and special cases:
+
+* The number of row or records in a block varies base on the size of each record. Most blocks are between 1 MiB and 128 MiB.
+  * Ray automatically splits blocks into smaller blocks if they exceed the max block size by 50% or more.
+  * A block might only contain a single record if your data is very wide or contains a large record such as an image, vector, or tensor. Ray Data has built-in optimizations for handling large data efficiently, and you should test workloads with built-in defaults before trying to manually optimize your workload.
+  * You can configure block size and splitting behaviors. See :ref:`Block size and performance<block_size>`.
+* Ray uses :ref:`Arrow tables<https://arrow.apache.org/docs/cpp/tables.html>` to internally represent blocks of data.
+  * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See :ref:`Arrow and pandas type differences<https://arrow.apache.org/docs/python/pandas.html#type-differences>`.
+  * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
+
+Overall 
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 
 .. image:: images/dataset-arch-with-blocks.svg
 ..

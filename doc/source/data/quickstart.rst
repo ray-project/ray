@@ -10,9 +10,9 @@ This guide introduces you to the core capabilities of Ray Data and includes exam
 * :ref:`Consuming data <consuming_key_concept>`
 * :ref:`Saving data <saving_key_concept>`
 
+The code examples provided in this guide build upon one another sequentially. You can run these commands interactively in a Jupyter notebook or on Anyscale. 
 
-
-The code examples provided in this guide build upon one another sequentially. You can run these commands interactively in a Jupyter notebook or on Anyscale. Each code example materializes results to return a preview of results. Operations that materialize results or preview data force Ray to perform actions. Removing these operations allows Ray to optimize the logical and physical plans. See :ref:`How does Ray Data plan and execute operations?<plans>`
+Provided code example materializes results to preview data at each step. When moving code to production, only include operations that materialize results if they are essential to your application. This allows Ray to optimize the logical and physical plans. See :ref:`How does Ray Data plan and execute operations?<plans>`
 
 
 

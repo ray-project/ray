@@ -3,6 +3,53 @@
 Advanced: Performance Tips and Tuning
 =====================================
 
+.. _block_size:
+
+Block size and performance
+--------------------------
+
+Ray Data bounds block sizes to avoid excessive communication overhead and prevent out-of-memory errors. Block size relates to the following performance tuning considerations:
+
+* :ref:`Tuning output blocks for read<read_output_blocks>`
+* :ref:`Troubleshooting out-of-memory errors<data_out_of_memory>`
+* :ref:`Handling too-small blocks<small_blocks>`
+
+Smaller blocks are good for latency and more streamed execution, while larger blocks reduce scheduler and communication overhead. The default range attempts to make a good tradeoff for most jobs using the following rules:
+
+* A best-effort is made to bound block sizes between 1 MiB and 128 MiB.
+* Blocks are dynamically split if they exceed the target max block size by 50% or more (192 MiB by default).
+
+.. note::
+
+    Ray Data can't split rows. If your dataset contains large rows (for example, large images), then Ray Data can't bound the block size.
+
+Configure block size
+~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block size range, configure the ``target_min_block_size`` and  ``target_max_block_size`` attributes of :class:`~ray.data.context.DataContext`. The following syntax example sets these attributes using the default values:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_min_block_size = 1 * 1024 * 1024
+    ctx.target_max_block_size = 128 * 1024 * 1024
+
+Configure dynamic block splitting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data dynamically splits a block into smaller blocks when it exceeds a size threshold. This threshold is specified as a multiplier of the `target_max_block_size`. By default, the scaling fact is set to `1.5`, meaning a block is split if it is 50% larger than the target max size, or 192 MiB by default. 
+
+To change the size at which Ray Data splits blocks, configure the `MAX_SAFE_BLOCK_SIZE_FACTOR` attribute. The following syntax example sets this attribute using the default scaling factor:
+
+.. testcode::
+
+    import ray
+
+    ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
+
+
 Optimizing transforms
 ---------------------
 
@@ -332,6 +379,8 @@ Otherwise, it's best to tune your application to avoid spilling.
 The recommended strategy is to manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 .. note:: This is an active area of development. If your Dataset is causing spilling and you don't know why, `file a Ray Data issue on GitHub`_.
+
+.. _small_blocks:
 
 Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
