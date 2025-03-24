@@ -102,7 +102,7 @@ deployments:
         * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
         * `"HEALTHY"`: The deployment is healthy and running at the target replica count.
         * `"UNHEALTHY"`: The deployment has updated and has become unhealthy afterwards. This condition may be due to replicas failing to upscale, replicas failing health checks, or a general system or machine error.
-        * `"DEPLOY_FAILED"`: The deployment failed to update. This condition is likely due to an error in the deployment's constructor.
+        * `"DEPLOY_FAILED"`: The deployment failed to start or update. This condition is likely due to an error in the deployment's constructor.
         * `"UPSCALING"`: The deployment (with autoscaling enabled) is upscaling the number of replicas.
         * `"DOWNSCALING"`: The deployment (with autoscaling enabled) is downscaling the number of replicas.
     * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
