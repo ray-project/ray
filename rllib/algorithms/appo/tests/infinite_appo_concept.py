@@ -8,13 +8,17 @@ import gymnasium as gym
 import numpy as np
 
 import ray
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.algorithms.appo.utils import CircularBuffer
-from ray.rllib.algorithms.impala.impala_learner import _GPULoaderThread
+from ray.rllib.algorithms.appo.torch.appo_torch_learner import APPOTorchLearner
+from ray.rllib.algorithms.impala.impala_learner import (
+    _CURRENT_GLOBAL_TIMESTEPS,
+    LEARNER_THREAD_ENV_STEPS_DROPPED,
+    QUEUE_SIZE_GPU_LOADER_QUEUE,
+)
 from ray.rllib.algorithms.utils import AggregatorActor
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.core import ALL_MODULES, COMPONENT_RL_MODULE
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -23,7 +27,6 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -32,7 +35,7 @@ class Algo:
     def __init__(
         self,
         *,
-        config,
+        config: APPOConfig,
         observation_space,
         action_space,
         num_weights_server_actors=1,
@@ -62,8 +65,9 @@ class Algo:
         print(f"Created {self.config.num_env_runners} EnvRunners.")
 
         # Create the agg. actors.
+        spaces = ray.get(self.env_runners[0].get_spaces.remote())
         rl_module_spec = self.config.get_multi_rl_module_spec(
-            spaces=ray.get(self.env_runners[0].get_spaces.remote()),
+            spaces=spaces,
             inference_only=False,
         )
         self.aggregator_actors = [
@@ -80,14 +84,19 @@ class Algo:
             er.add_aggregator_actors.remote(self.aggregator_actors)
 
         # Create the Learner actors.
-        self.learners = [
-            ray.remote(num_cpus=1, num_gpus=self.config.num_gpus_per_learner)(Learner).remote(
-                weights_server_actors=self.weights_server_actors,
-                metrics_actor=self.metrics_actor,
-            ) for _ in range(self.config.num_learners)
-        ]
+        self.learner_group = self.config.build_learner_group(
+            env=None,
+            spaces=spaces,
+            rl_module_spec=rl_module_spec,
+        )
+        self.learners = list(self.learner_group._worker_manager.actors().values())
         # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
-        self.learners[0].set_push_weights.remote(True)
+        self.learners[0].set_other_actors.remote(
+            weights_server_actors=self.weights_server_actors,
+            metrics_actor=self.metrics_actor,
+        )
+        for learner in self.learners[1:]:
+            learner.set_other_actors.remote(metrics_actor=self.metrics_actor)
         print(f"Created {self.config.num_learners} Learners.")
 
         # Assign a Learner actor to each aggregator actor.
@@ -145,16 +154,21 @@ class MetricsActor:
             env_runner_metrics,
             key="env_runners",
         )
+        assert isinstance(aggregator_metrics, list)
         self.metrics.merge_and_log_n_dicts(
-            [aggregator_metrics],
+            aggregator_metrics,
             key="aggregator_actors",
         )
+        assert isinstance(learner_metrics, dict)
         self.metrics.merge_and_log_n_dicts(
             [learner_metrics],
             key="learners",
         )
+        #print(learner_metrics)
 
     def get(self):
+        #print(f"On MetricsActor: sampled={self.metrics.peek(('env_runners', 'num_env_steps_sampled_lifetime'), default=-1)}")
+        #print(f"On MetricsActor: trained={self.metrics.peek(('learners', ALL_MODULES, 'num_env_steps_trained_lifetime'), default=-1)}")
         return self.metrics.reduce()
 
 
@@ -178,10 +192,11 @@ class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
             # Pull new weights, every n times.
             if iteration % self.config.broadcast_interval == 0 and self.weights_server_actors:
                 weights = ray.get(random.choice(self.weights_server_actors).get.remote())
-                time.sleep(0.02)
-                #self.module.set_state({COMPONENT_RL_MODULE: weights})
+                if weights is not None:
+                    self.module.set_state(weights)
 
             episodes = self.sample()
+
             # Send data directly to an aggregator actor.
             # Pick an aggregator actor round-robin.
             if not self._aggregator_actor_refs:
@@ -190,10 +205,9 @@ class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
             agg_actor = self._aggregator_actor_refs[
                 self._curr_agg_idx % len(self._aggregator_actor_refs)
             ]
-            metrics = self.get_metrics()
             agg_actor.push_episodes.remote(
                 episodes,
-                env_runner_metrics=metrics,
+                env_runner_metrics=self.get_metrics(),
             )
             self._curr_agg_idx += 1
 
@@ -265,8 +279,8 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
             # Forward results to a Learner actor.
             self._learner_ref.update.remote(
                 ma_batch,
-                aggregator_metrics=self.metrics.reduce(),
                 env_runner_metrics=self._env_runner_metrics,
+                aggregator_metrics=self.metrics.reduce(),
             )
 
             self._env_runner_metrics = []
@@ -277,133 +291,77 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
                 ray.get(self._learner_ref.sync.remote())
 
 
-class Learner:
-    def __init__(
-        self,
-        *,
-        process_time_per_update=0.05,
-        num_gpu_loader_threads=8,
-        weights_server_actors,
-        metrics_actor=None,
-        num_gpus_per_learner=0,
-    ):
-        self._device = get_device(AlgorithmConfig(), num_gpus_per_learner)
-
-        self.weights_server_actors = weights_server_actors
-        self.metrics_actor = metrics_actor
-        self.process_time_per_update = process_time_per_update
-
-        self.metrics = MetricsLogger()
-        self.metrics._threading_lock = threading.RLock()
-
-        # Mimic a circular buffer.
-        self._learner_thread_in_queue = (
-            CircularBuffer(num_batches=4, iterations_per_batch=2)
-        )
-
-        # Mimic GPU loader threads.
-        self._gpu_loader_in_queue = queue.Queue()
-        self._gpu_loader_threads = [
-            _GPULoaderThread(
-                in_queue=self._gpu_loader_in_queue,
-                out_queue=self._learner_thread_in_queue,
-                device=self._device,
-                metrics_logger=self.metrics,
-            )
-            for _ in range(num_gpu_loader_threads)
-        ]
-        for t in self._gpu_loader_threads:
-            t.start()
-
-        self._learner_thread = _LearnerThread(
-            process_time_per_update=self.process_time_per_update,
-            in_queue=self._learner_thread_in_queue,
-            metrics=self.metrics,
-        )
-        self._learner_thread.start()
-
-        self._push_weights = False
-
+class InfiniteAPPOLearner(APPOTorchLearner):
+    def __init__(self, *, config, module_spec):
+        super().__init__(config=config, module_spec=module_spec)
         self._num_updates = 0
+
+        self._env_runner_metrics = []
+        self._aggregator_metrics = []
 
     # Synchronization helper method.
     def sync(self):
         return None
 
-    def set_push_weights(self, push_weights):
-        self._push_weights = push_weights
+    def set_other_actors(self, *, metrics_actor, weights_server_actors=None):
+        self._metrics_actor = metrics_actor
+        self._weights_server_actors = weights_server_actors
 
-    def update(self, batch, aggregator_metrics, env_runner_metrics):
-        #self.metrics.merge_and_log_n_dicts([aggregator_metrics])
+    def update(self, batch, env_runner_metrics, aggregator_metrics):
+        self._env_runner_metrics.extend(env_runner_metrics)
+        self._aggregator_metrics.append(aggregator_metrics)
 
-        self._gpu_loader_in_queue.put(batch)
+        global _CURRENT_GLOBAL_TIMESTEPS
+        if _CURRENT_GLOBAL_TIMESTEPS is None:
+            _CURRENT_GLOBAL_TIMESTEPS = 0
+        _CURRENT_GLOBAL_TIMESTEPS += sum(
+            m["num_env_steps_sampled"].peek() for m in env_runner_metrics
+        )
+
+        # Enqueue the batch, either directly into the learner thread's queue or to the
+        # GPU loader threads.
+        if self.config.num_gpus_per_learner > 0:
+            self._gpu_loader_in_queue.put(batch)
+            self.metrics.log_value(
+                (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+                self._gpu_loader_in_queue.qsize(),
+            )
+        else:
+            ts_dropped = self._learner_thread_in_queue.add(batch)
+            self.metrics.log_value(
+                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                ts_dropped,
+                reduce="sum",
+            )
 
         # Figure out, whether we need to send our weights to a weights server.
-        if self._push_weights and self.weights_server_actors:
-            # Time it takes to pull weights down from GPU to the CPU.
-            time.sleep(0.01)
-            weights = create_data(size_kb=10000, n_components=30)
-            weights_ref = ray.put(weights)
-            random.choice(self.weights_server_actors).put.remote(weights_ref, broadcast=True)
+        if self._weights_server_actors:
+            learner_state = self.get_state(
+                # Only return the state of those RLModules that are trainable.
+                components=[
+                    COMPONENT_RL_MODULE + "/" + mid
+                    for mid in self.module.keys()
+                    if self.should_module_be_updated(mid)
+                ],
+                inference_only=True,
+            )
+            learner_state[COMPONENT_RL_MODULE] = ray.put(
+                learner_state[COMPONENT_RL_MODULE]
+            )
+            random.choice(self._weights_server_actors).put.remote(
+                learner_state, broadcast=True
+            )
 
         # Send metrics to metrics actor.
         self._num_updates += 1
         if self._num_updates % 10 == 0:
-            self.metrics_actor.add.remote(
-                env_runner_metrics=env_runner_metrics,
-                aggregator_metrics=aggregator_metrics,
+            self._metrics_actor.add.remote(
+                env_runner_metrics=self._env_runner_metrics,
+                aggregator_metrics=self._aggregator_metrics,
                 learner_metrics=self.metrics.reduce(),
             )
-
-
-class _LearnerThread(threading.Thread):
-    def __init__(
-            self,
-            *,
-            in_queue,
-            process_time_per_update,
-            metrics,
-    ):
-        super().__init__()
-        self.process_time_per_update = process_time_per_update
-        self.metrics = metrics
-        self._in_queue = in_queue
-
-    def run(self) -> None:
-        while True:
-            self.step()
-
-    def step(self):
-        # Get a new batch from the GPU-data (learner queue OR circular buffer).
-        ma_batch_on_gpu = self._in_queue.sample()
-        time.sleep(self.process_time_per_update)
-        self.metrics.log_value(
-            ("learners", "num_env_steps_trained_lifetime"),
-            ma_batch_on_gpu.env_steps(),
-            reduce="sum",
-            with_throughput=True,
-        )
-
-
-def create_data(size_kb, n_components=1, dtype=np.float32):
-    bytes_per_element = np.dtype(dtype).itemsize
-    total_bytes = size_kb * 1024
-
-    # Divide bytes equally among components
-    bytes_per_component = total_bytes / n_components
-
-    if bytes_per_component < bytes_per_element:
-        raise ValueError(
-            "Target size too small for the given number of components and dtype.")
-
-    elements_per_component = bytes_per_component / bytes_per_element
-
-    data = {}
-    for i in range(n_components):
-        size = int(elements_per_component)
-        data[f"component_{i}"] = np.zeros(size, dtype=dtype)
-
-    return data
+            self._env_runner_metrics = []
+            self._aggregator_metrics = []
 
 
 if __name__ == "__main__":
@@ -461,6 +419,7 @@ if __name__ == "__main__":
             num_aggregator_actors_per_learner=2,
         )
         .training(
+            learner_class=InfiniteAPPOLearner,
             learner_connector=_make_learner_connector,
             train_batch_size_per_learner=500,
             target_network_update_freq=2,
@@ -516,14 +475,13 @@ if __name__ == "__main__":
             )
         if "learners" in results:
             learner_results = results["learners"]
-            if "num_env_steps_trained_lifetime" in learner_results:
-                env_steps_trained = learner_results["num_env_steps_trained_lifetime"]
+            if ALL_MODULES in learner_results and "num_env_steps_trained_lifetime" in learner_results[ALL_MODULES]:
+                env_steps_trained = learner_results[ALL_MODULES]["num_env_steps_trained_lifetime"]
                 msg += (
                     f"trained={env_steps_trained.peek()} "
                     f"({env_steps_trained.peek(throughput=True):.0f}/sec) "
                 )
+            if "p0" in learner_results:
+                msg += f"grad-update-delta={learner_results['p0']['diff_num_grad_updates_vs_sampler_policy'].peek()} "
+
         print(msg)
-        if iteration == 50:
-            control = ray.get(algo.aggregator_actors[
-                                  0].control_num_env_steps.remote()) * algo.num_aggregator_actors
-            print(f"CONTROL: num_env_steps_aggregated_lifetime={control}")
