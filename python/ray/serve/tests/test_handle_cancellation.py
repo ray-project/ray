@@ -3,6 +3,7 @@ import sys
 import pytest
 
 import ray
+import asyncio
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
@@ -397,6 +398,151 @@ def test_recursive_cancellation_during_assignment(serve_instance):
     )
     for k, v in requests_pending_assignment.items():
         assert len(v) == 0, f"Request {k} has in flight requests in cache: {v}"
+
+
+def test_ray_serve_cancellation_returns_requestcancellederror(serve_instance):
+    """Test that Ray Serve cancellations produce RequestCancelledError.
+
+    This test verifies that when a request is cancelled via a DeploymentHandle's cancel() method,
+    the error that propagates back is RequestCancelledError, not asyncio.CancelledError.
+    """
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Target:
+        async def __call__(self):
+            await signal_actor.send.remote()
+            await asyncio.sleep(10)
+            return "completed"
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, target_handle):
+            self.target = target_handle
+
+        async def __call__(self):
+            response = self.target.remote()
+            await signal_actor.wait.remote()
+            response.cancel()
+            try:
+                await response
+                return False
+            except RequestCancelledError:
+                return True
+            except asyncio.CancelledError:
+                return False
+
+    h = serve.run(Caller.bind(Target.bind()))
+    assert h.remote().result() is True
+
+
+def test_user_cancellation_preserves_asyncio_cancellederror(serve_instance):
+    """Test that user-initiated cancellations preserve asyncio.CancelledError.
+
+    This test verifies that when a task is cancelled by user code (not via a handle.cancel()),
+    the original asyncio.CancelledError is preserved.
+    """
+
+    @serve.deployment
+    class UserCanceller:
+        async def user_cancel_task(self):
+            """Performs a user-initiated cancellation"""
+            task = None
+            got_cancel_error = False
+            try:
+                task = asyncio.create_task(self._sleeper())
+                await asyncio.sleep(0.1)  # Let the task start
+                task.cancel()
+                await task
+            except RequestCancelledError:
+                return False
+            except asyncio.CancelledError:
+                got_cancel_error = True
+            finally:
+                if task and not task.done():
+                    task.cancel()
+
+            return got_cancel_error
+
+        async def _sleeper(self):
+            await asyncio.sleep(10)
+            return "done"
+
+    h = serve.run(UserCanceller.bind())
+    assert h.user_cancel_task.remote().result() is True
+
+
+def test_cancellation_error_consistency(serve_instance):
+    """Test that errors are consistent regardless of when cancellation happens.
+
+    This test verifies that our fix ensures the parent deployment sees a consistent
+    RequestCancelledError regardless of whether the child request was executing or queued.
+    """
+    executing_signal = SignalActor.remote()
+    queued_signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Child:
+        async def __call__(self, sleep_time=10, signal_actor=None):
+            if signal_actor:
+                await signal_actor.send.remote()
+            await asyncio.sleep(sleep_time)
+            return "completed"
+
+    @serve.deployment
+    class Parent:
+        def __init__(self, child_handle):
+            self.child = child_handle
+
+        async def test_executing_cancellation(self):
+            """Test cancelling a request that's already executing"""
+            child_req = self.child.remote(signal_actor=executing_signal)
+            await executing_signal.wait.remote()
+            child_req.cancel()
+
+            try:
+                await child_req
+                return False
+            except RequestCancelledError:
+                return True
+            except asyncio.CancelledError:
+                return False
+            except Exception:
+                return False
+
+        async def test_queued_cancellation(self):
+            """Test cancelling a request that's still queued"""
+            self.child.remote(sleep_time=1, signal_actor=queued_signal)
+            await queued_signal.wait.remote()
+
+            queued_req = self.child.remote()
+            queued_req.cancel()
+
+            try:
+                await queued_req
+                return False
+            except RequestCancelledError:
+                return True
+            except asyncio.CancelledError:
+                return False
+            except Exception:
+                return False
+
+        async def __call__(self):
+            executing_result = await self.test_executing_cancellation()
+            queued_result = await self.test_queued_cancellation()
+
+            return {"executing": executing_result, "queued": queued_result}
+
+    h = serve.run(Parent.bind(Child.bind()))
+    results = h.remote().result()
+
+    assert (
+        results["executing"] is True
+    ), "Executing request should raise RequestCancelledError"
+    assert (
+        results["queued"] is True
+    ), "Queued request should raise RequestCancelledError"
 
 
 if __name__ == "__main__":

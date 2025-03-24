@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, Union
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import calculate_remaining_timeout
 from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+from ray.serve.exceptions import RequestCancelledError
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -95,7 +96,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
 
             if self._result_callback is not None:
                 result = self._result_callback(result)
-        except asyncio.CancelledError as e:
+        except asyncio.CancelledError:
             # This is specifically for gRPC. The cancellation can happen from client
             # dropped connection before the request is completed. If self._response is
             # not already cancelled, we want to explicitly cancel the task, so it
@@ -105,7 +106,14 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
                 self._response.cancel()
                 self._done = True
 
-            raise e from None
+            # Only convert to RequestCancelledError in the proxy layer, which means
+            # this is definitely a client disconnection or timeout
+            # In the proxy layer, we know that all asyncio.CancelledError instances
+            # originate from actual request cancellations (like client disconnects)
+            if hasattr(self._response, "request_id"):
+                raise RequestCancelledError(self._response.request_id) from None
+            else:
+                raise RequestCancelledError() from None
         except Exception as e:
             self._done = True
             raise e from None

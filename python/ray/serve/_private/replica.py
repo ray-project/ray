@@ -31,7 +31,7 @@ from starlette.types import ASGIApp, Message
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -85,6 +85,7 @@ from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    RequestCancelledError,
 )
 from ray.serve.schema import LoggingConfig
 
@@ -1664,7 +1665,17 @@ class UserCallableWrapper:
                 if not hasattr(user_method_info.callable, "set_max_batch_size"):
                     receive_task.cancel()
 
-            raise
+            # Only convert to RequestCancelledError if the cancellation originated
+            # from Ray Serve (e.g., client disconnection, timeout) which we can infer
+            # based on the presence of a pending request in the _requests_pending_assignment.
+            # Otherwise, propagate the asyncio.CancelledError for user-initiated cancellations.
+            if ray.serve.context._get_requests_pending_assignment(
+                request_metadata.internal_request_id
+            ):
+                raise RequestCancelledError(request_metadata.request_id) from None
+            else:
+                # This is likely a user-initiated cancellation, propagate it as is
+                raise
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):
