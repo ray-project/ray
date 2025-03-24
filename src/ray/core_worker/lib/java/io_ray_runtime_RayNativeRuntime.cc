@@ -16,9 +16,14 @@
 
 #include <jni.h>
 
+#include <memory>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_handle.h"
@@ -69,7 +74,7 @@ jobject ToJavaArgs(JNIEnv *env,
           if (*(check_results + (i++))) {
             // If the type of this argument is ByteBuffer, we create a
             // DirectByteBuffer here To avoid data copy.
-            // TODO: Check native_object->GetMetadata() == "RAW"
+            // TODO(kfstorm): Check native_object->GetMetadata() == "RAW"
             jobject obj = env->NewDirectByteBuffer(native_object->GetData()->Data(),
                                                    native_object->GetData()->Size());
             RAY_CHECK(obj);
@@ -166,7 +171,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         }
 
         // convert args
-        // TODO (kfstorm): Avoid copying binary data from Java to C++
+        // TODO(kfstorm): Avoid copying binary data from Java to C++
         jbooleanArray java_check_results = static_cast<jbooleanArray>(
             env->CallObjectMethod(java_task_executor,
                                   java_task_executor_parse_function_arguments,
@@ -270,7 +275,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
       RAY_LOG(DEBUG) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(DEBUG) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
+      RAY_LOG(DEBUG) << "GC finished in "
+                     << static_cast<double>(last_gc_time_ms - start) / 1000
                      << " seconds.";
     }
   };
@@ -287,7 +293,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.gcs_options = ToGcsClientOptions(env, gcsClientOptions);
   options.enable_logging = true;
   options.log_dir = JavaStringToNativeString(env, logDir);
-  // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
+  // TODO(kfstorm): JVM would crash if install_failure_signal_handler was set to true
   options.install_failure_signal_handler = false;
   options.node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.node_manager_port = static_cast<int>(nodeManagerPort);

@@ -570,26 +570,42 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             self.llm.shutdown()
 
 
-def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
-    """
-    Create a Ray scheduling strategy for vLLM engine.
+def _ray_scheduling_strategy_fn(
+    num_bundles_per_replica: int,
+    accelerator_type: Optional[str] = None,
+    resources_per_bundle: Optional[Dict[str, float]] = None,
+):
+    """Create a Ray scheduling strategy for the engine.
 
     Args:
-        num_gpus_per_instance: The number of GPUs per instance.
-        accelerator_type: The accelerator type.
+        num_bundles_per_replica: The number of device bundles per
+            engine replica.
+        accelerator_type: The accelerator type. If None, the
+            accelerator_type label will not be set.
+        resources_per_bundle: The custom resources per bundle.
+            If None, we default to 1xGPU + 1xCPU bundle.
 
     Returns:
         The Ray scheduling strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-        bundle: Dict[str, float] = {"GPU": 1, "CPU": 1}
+
+        bundle = {}
+        # Custom resources
+        if resources_per_bundle:
+            bundle = resources_per_bundle
+        else:
+            # GPU bundles
+            bundle = {"GPU": 1, "CPU": 1}
+
+        # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
     pg = ray.util.placement_group(
-        [_get_bundle()] * num_gpus_per_instance,
+        [_get_bundle()] * num_bundles_per_replica,
         strategy="STRICT_PACK",
     )
     return dict(
@@ -626,30 +642,40 @@ class vLLMEngineStage(StatefulStage):
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Setup num_gpus required per vLLM engine.
+        # Setup num_workers required per vLLM engine.
         tp_size = engine_kwargs.get("tensor_parallel_size", 1)
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
-        num_gpus = tp_size * pp_size
+        num_bundles_per_replica = tp_size * pp_size
 
         # Use the MP backend by default.
         engine_kwargs.setdefault("distributed_executor_backend", "mp")
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
-        # When Ray is used in the vLLM engine, we set num_gpus to 0 so that
+        # When Ray is used in the vLLM engine, we set num_devices to 0 so that
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        if executor_backend == "ray" and num_gpus > 1:
+        resources_per_bundle = map_batches_kwargs.pop("resources", None)
+        if executor_backend == "ray" and num_bundles_per_replica > 1:
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 _ray_scheduling_strategy_fn,
-                num_gpus,
+                num_bundles_per_replica,
                 accelerator_type,
+                resources_per_bundle,
             )
-            num_gpus = 0
+            ray_remote_args["num_gpus"] = 0
+        else:
+            if not resources_per_bundle:
+                # Default to GPUs per bundle if custom resources are not specified.
+                ray_remote_args["num_gpus"] = num_bundles_per_replica
+            else:
+                ray_remote_args["resources"] = {
+                    resource_key: resource_count * num_bundles_per_replica
+                    for resource_key, resource_count in resources_per_bundle.items()
+                }
 
-        map_batches_kwargs["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
 

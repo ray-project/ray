@@ -6,6 +6,7 @@
 :hidden:
 
 Deploy Ray Serve Apps <user-guides/rayservice>
+user-guides/rayservice-no-ray-serve-replica
 user-guides/rayservice-high-availability
 user-guides/observability
 user-guides/upgrade-guide
@@ -38,6 +39,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 * {ref}`kuberay-rayservice`
+* {ref}`kuberay-rayservice-no-ray-serve-replica`
 * {ref}`kuberay-rayservice-ha`
 * {ref}`kuberay-observability`
 * {ref}`kuberay-upgrade-guide`

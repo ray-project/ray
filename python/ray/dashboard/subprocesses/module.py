@@ -164,6 +164,10 @@ class SubprocessModule(abc.ABC):
         return self._config.session_name
 
     @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
     def http_session(self):
         if self._http_session is None:
             self._http_session = aiohttp.ClientSession()
