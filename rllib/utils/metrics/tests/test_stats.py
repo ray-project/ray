@@ -239,40 +239,40 @@ def test_similar_to():
 def test_reduce_history():
     """Test the reduce history functionality."""
     stats = Stats(reduce="sum")
-    
+
     # Initially history should contain zeros
     assert stats.get_reduce_history() == [0, 0, 0]
-    
+
     # Push some values and reduce
     stats.push(1)
     stats.push(2)
     reduced_value = stats.reduce()
     assert reduced_value == 3  # sum of [1, 2]
     assert stats.get_reduce_history() == [0, 0, 3]
-    
+
     # Push more values and reduce again
     stats.push(3)
     stats.push(4)
     reduced_value = stats.reduce()
     assert reduced_value == 10  # sum of [1, 2, 3, 4]
     assert stats.get_reduce_history() == [0, 3, 10]
-    
+
     # Push and reduce one more time
     stats.push(5)
     stats.push(6)
     reduced_value = stats.reduce()
     assert reduced_value == 21  # sum of [1, 2, 3, 4, 5, 6]
     assert stats.get_reduce_history() == [3, 10, 21]
-    
+
     # Test that history is preserved when creating similar stats
     similar = Stats.similar_to(stats)
     assert similar.get_reduce_history() == [3, 10, 21]
-    
+
     # Test that history is preserved when loading from state
     state = stats.get_state()
     loaded = Stats.from_state(state)
     assert loaded.get_reduce_history() == [3, 10, 21]
-    
+
     # Push and reduce one more time
     stats.push(7)
     stats.push(8)
@@ -284,10 +284,10 @@ def test_reduce_history():
 def test_reduce_history_with_clear_on_reduce():
     """Test the reduce history functionality with clear_on_reduce=True."""
     stats = Stats(reduce="sum", clear_on_reduce=True)
-    
+
     # Initially history should contain zeros
     assert stats.get_reduce_history() == [0, 0, 0]
-    
+
     # Push some values and reduce
     stats.push(1)
     stats.push(2)
@@ -295,7 +295,7 @@ def test_reduce_history_with_clear_on_reduce():
     assert reduced_value == 3  # sum of [1, 2]
     assert stats.get_reduce_history() == [0, 0, 3]
     assert len(stats) == 0  # Values should be cleared
-    
+
     # Push more values and reduce again
     stats.push(3)
     stats.push(4)
@@ -303,7 +303,7 @@ def test_reduce_history_with_clear_on_reduce():
     assert reduced_value == 7  # sum of [3, 4]
     assert stats.get_reduce_history() == [0, 3, 7]
     assert len(stats) == 0  # Values should be cleared
-    
+
     # Push and reduce one more time
     stats.push(5)
     stats.push(6)
@@ -311,18 +311,18 @@ def test_reduce_history_with_clear_on_reduce():
     assert reduced_value == 11  # sum of [5, 6]
     assert stats.get_reduce_history() == [3, 7, 11]
     assert len(stats) == 0  # Values should be cleared
-    
+
     # Test that history is preserved when creating similar stats
     similar = Stats.similar_to(stats)
     assert similar.get_reduce_history() == [3, 7, 11]
     assert similar._clear_on_reduce == True
-    
+
     # Test that history is preserved when loading from state
     state = stats.get_state()
     loaded = Stats.from_state(state)
     assert loaded.get_reduce_history() == [3, 7, 11]
     assert loaded._clear_on_reduce == True
-    
+
     # Push and reduce one more time
     loaded.push(7)
     loaded.push(8)
@@ -359,7 +359,9 @@ def test_throughput_without_reduce():
 
     # Test that throughput is only available when requested
     assert stats.peek() == 6  # Regular peek returns just the value
-    assert stats.throughput == stats.throughput  # Throughput property returns throughput
+    assert (
+        stats.throughput == stats.throughput
+    )  # Throughput property returns throughput
 
     # Test that throughput is 0 when no values are pushed
     empty_stats = Stats(reduce="sum", window=None, throughput=True)

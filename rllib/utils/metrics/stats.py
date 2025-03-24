@@ -251,11 +251,21 @@ class Stats:
                 )
             self._throughput_stats = Stats(
                 # We have to check for bool here because in Python, bool is a subclass of int
-                init_value=throughput if (isinstance(throughput, (int, float))and not isinstance(throughput, bool))  else 0.0,
+                init_value=throughput
+                if (
+                    isinstance(throughput, (int, float))
+                    and not isinstance(throughput, bool)
+                )
+                else 0.0,
                 reduce="mean",
-                ema_coeff=throughput_ema_coeff
+                ema_coeff=throughput_ema_coeff,
             )
-            self._last_push_time = -1  # Track last push time for throughput calculation
+            if init_value is not None:
+                self._last_push_time = time.perf_counter()
+            else:
+                self._last_push_time = (
+                    -1
+                )  # Track last push time for throughput calculation
 
         # The actual, underlying data in this Stats object.
         self.values: Union[List, Deque] = None
@@ -685,9 +695,11 @@ class Stats:
                 reduce=state["reduce"],
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
-                clear_on_reduce=state["clear_on_reduce"],   
+                clear_on_reduce=state["clear_on_reduce"],
             )
-        stats._reduce_history = deque(state["_reduce_history"], maxlen=stats._reduce_history.maxlen)
+        stats._reduce_history = deque(
+            state["_reduce_history"], maxlen=stats._reduce_history.maxlen
+        )
         if "throughput_stats" in state:
             stats._throughput_stats = Stats.from_state(state["throughput_stats"])
         return stats
@@ -718,7 +730,9 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
-            throughput=other._throughput_stats.peek() if other._throughput_stats is not None else False,
+            throughput=other._throughput_stats.peek()
+            if other._throughput_stats is not None
+            else False,
             throughput_ema_coeff=other._throughput_ema_coeff,
         )
         stats._reduce_history = other._reduce_history

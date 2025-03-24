@@ -129,7 +129,7 @@ class MetricsLogger:
         """
         return self._key_in_stats(key)
 
-    def peek(self) -> Any:
+    def peek(self, key: Union[str, Tuple[str, ...], None] = None) -> Any:
         """Returns the (reduced) value(s) found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
@@ -156,14 +156,14 @@ class MetricsLogger:
 
             # Peek at the (reduced) nested struct under ("some", "nested").
             check(
-                logger[("some", "nested")].peek(),
+                logger.peek(("some", "nested")),
                 {"key": {"sequence": expected_reduced}},
             )
 
             # Log some more, check again.
             logger.log_value(key, 4.0)
             expected_reduced = (1.0 - ema) * expected_reduced + ema * 4.0
-            check(logger[key].peek(), expected_reduced)
+            check(logger.peek(), expected_reduced)
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
@@ -171,10 +171,13 @@ class MetricsLogger:
         """
         # Create a reduced view of the entire stats structure.
         with self._threading_lock:
-            ret = tree.map_structure(
-                lambda s: s.peek() if isinstance(s, Stats) else s,
-                self.stats.copy(),
-            )
+            if key is None:
+                ret = tree.map_structure(
+                    lambda s: s.peek() if isinstance(s, Stats) else s,
+                    self.stats.copy(),
+                )
+            else:
+                ret = self._get_key(key).peek()
             return ret
 
     @staticmethod
@@ -202,6 +205,7 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -304,8 +308,9 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: peeked_value, throuthput_per_sec =
-                <MetricsLogger>.peek([key], throughput=True).
+                through: <MetricsLogger>.throughputs([key]).
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if with_throughput=True. Defaults to 0.05.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -329,16 +334,37 @@ class MetricsLogger:
                             ema_coeff=ema_coeff,
                             clear_on_reduce=clear_on_reduce,
                             throughput=with_throughput,
+                            throughput_ema_coeff=throughput_ema_coeff,
                         )
                     ),
                 )
-            # If value itself is a `Stats`, we merge it on time axis into self's
-            # `Stats`.
-            elif isinstance(value, Stats):
-                self._get_key(key).merge_on_time_axis(value)
-            # Otherwise, we just push the value into self's `Stats`.
             else:
-                self._get_key(key).push(value)
+                stats = self._get_key(key)
+                if clear_on_reduce != stats._clear_on_reduce:
+                    raise ValueError(
+                        "clear_on_reduce must be the same for all logged values under the same key, "
+                        "but got argument clear_on_reduce={clear_on_reduce} while the existing Stats object {key} "
+                        "has clear_on_reduce={stats._clear_on_reduce}"
+                    )
+                if with_throughput != stats.has_throughput:
+                    raise ValueError(
+                        "with_throughput must be the same for all logged values under the same key, "
+                        "but got argument with_throughput={with_throughput} while the existing Stats object {key} "
+                        "has has_throughput={stats.has_throughput}"
+                    )
+                if throughput_ema_coeff != stats._throughput_ema_coeff:
+                    raise ValueError(
+                        "throughput_ema_coeff must be the same for all logged values under the same key, "
+                        "but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
+                        "has throughput_ema_coeff={stats._throughput_ema_coeff}"
+                    )
+                if isinstance(value, Stats):
+                    # If value itself is a `Stats`, we merge it on time axis into self's
+                    # `Stats`.
+                    stats.merge_on_time_axis(value)
+                else:
+                    # Otherwise, we just push the value into self's `Stats`.
+                    stats.push(value)
 
     def log_dict(
         self,
@@ -349,6 +375,8 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ) -> None:
         """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
 
@@ -423,6 +451,13 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: <MetricsLogger>.throughputs([key]).
         """
         assert isinstance(
             stats_dict, dict
@@ -440,6 +475,8 @@ class MetricsLogger:
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
+                with_throughput=with_throughput,
+                throughput_ema_coeff=throughput_ema_coeff,
             )
 
         with self._threading_lock:
@@ -456,6 +493,8 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ) -> None:
         """Merges n dicts, generated by n parallel components, and logs the results.
 
@@ -592,6 +631,15 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: <MetricsLogger>.throughputs([key]).
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if with_throughput=True. Defaults to 0.05.
         """
         prefix_key = force_tuple(key)
 
@@ -626,6 +674,8 @@ class MetricsLogger:
                         window=window,
                         ema_coeff=ema_coeff,
                         clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                        throughput_ema_coeff=throughput_ema_coeff,
                     )
 
                 # Create a new Stats object to merge everything into as parallel,
@@ -674,6 +724,8 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ) -> Stats:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -727,6 +779,15 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                metric. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                object under the logged key then keeps track of the time passed
+                between two consecutive calls to `reduce()` and update its throughput
+                estimate. The current throughput estimate of a key can be obtained
+                through: <MetricsLogger>.throughputs([key]).
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if with_throughput=True. Defaults to 0.05.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -741,6 +802,8 @@ class MetricsLogger:
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
+                    throughput=with_throughput,
+                    throughput_ema_coeff=throughput_ema_coeff,
                 ),
             )
 
@@ -874,6 +937,7 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
+        throughput_ema_coeff: Optional[float] = 0.05,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -918,6 +982,8 @@ class MetricsLogger:
                 estimate. The current throughput estimate of a key can be obtained
                 through: peeked_value, throuthput_per_sec =
                 <MetricsLogger>.peek([key], throughput=True).
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if with_throughput=True. Defaults to 0.05.
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
@@ -934,6 +1000,7 @@ class MetricsLogger:
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
                 with_throughput=with_throughput,
+                throughput_ema_coeff=throughput_ema_coeff,
             )
 
     def reset(self) -> None:
@@ -1060,37 +1127,37 @@ class MetricsLogger:
                 if key_error:
                     raise e
 
-    def __getitem__(self, key: Union[str, Tuple[str, ...]]) -> Stats:
-        """Returns the Stats object under the given key.
+    def throughputs(self, key: Optional[str] = None) -> Union[Dict, float]:
+        """Returns throughput values for Stats that have throughput tracking enabled.
 
-        Args:
-            key: The key or key sequence (for nested location within self.stats)
-                to get the Stats object for.
-
-        Returns:
-            The Stats object found under the given key.
-
-        Raises:
-            KeyError: If the key cannot be found in self.stats.
-        """
-        return self._get_key(key)
-
-    def throughputs(self) -> Dict:
-        """Returns a nested dict containing throughput values for all Stats that have throughput tracking enabled.
-
-        This method traverses the entire stats tree and returns a new nested dictionary that mirrors
-        the original stats structure, but with "_throughput" appended to leaf keys. Only Stats objects
-        that have throughput tracking enabled will have corresponding entries in the returned dict.
+        If no key is provided, returns a nested dict containing throughput values for all Stats
+        that have throughput tracking enabled. If a key is provided, returns the throughput value
+        for that specific key.
 
         The throughput values represent the rate of change of the corresponding metrics per second.
         For example, if a metric represents the number of steps taken, its throughput value would
         represent steps per second.
 
+        Args:
+            key: Optional key to get throughput for a specific metric. If provided, returns just
+                the throughput value for that key. If None, returns a nested dict with throughputs
+                for all metrics.
+
         Returns:
-            A nested dict with the same structure as self.stats but with "_throughput" appended to leaf keys
-            and throughput values as leaf values. Only includes entries for Stats objects that have
-            throughput tracking enabled.
+            If key is None: A nested dict with the same structure as self.stats but with "_throughput"
+                appended to leaf keys and throughput values as leaf values. Only includes entries for
+                Stats objects that have throughput tracking enabled.
+            If key is provided: The throughput value for that specific key.
         """
+        if key is not None:
+            # Get the Stats object for the key
+            stats = self._get_key(key)
+            if not isinstance(stats, Stats) or not stats.has_throughput:
+                raise ValueError(
+                    f"Key '{key}' does not have throughput tracking enabled"
+                )
+            return stats.throughput
+
         throughputs = {}
 
         def _map(path, stats):
