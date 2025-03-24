@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/actor_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
