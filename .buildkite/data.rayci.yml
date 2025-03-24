@@ -247,15 +247,12 @@ steps:
     depends_on: docgpubuild
   - label: ":data: postmerge authenticated tests"
     tags:
+      - python
       - data
-      - branch
       - skip-on-premerge
-      - oss
     instance_type: medium
     commands:
-      - pip install -U snowflake-connector-python
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/tests/test_snowflake.py data
-        --parallelism-per-worker 3
         --only-tags needs_credentials
     depends_on: datalbuild
