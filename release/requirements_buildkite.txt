@@ -4,6 +4,7 @@
 #
 #    bazel run //release:requirements_buildkite.update
 #
+setuptools==77.0.3
 accessible-pygments==0.0.5 \
     --hash=sha256:40918d3e6a2b619ad424cb91e556bd3bd8865443d9f22f1dcdf79e33c8046872 \
     --hash=sha256:88ae3211e68a1d0b011504b2ffc1691feafce124b845bd072ab6f9f66f34d4b7
