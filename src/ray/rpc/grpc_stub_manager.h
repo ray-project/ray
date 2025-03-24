@@ -38,7 +38,7 @@ class GrpcStubManager {
                   int port,
                   ClientCallManager &client_call_manager,
                   size_t num_connections) {
-    RAY_CHECK_GT(num_connections, 0);
+    RAY_CHECK_GT(num_connections, static_cast<unsigned int>(0));
     grpc_clients_.reserve(num_connections);
     for (size_t idx = 0; idx < num_connections; ++idx) {
       grpc::ChannelArguments args;
