@@ -96,7 +96,7 @@ compile_pip_dependencies() {
       --pip-args --no-deps --strip-extras --no-header \
       --unsafe-package ray \
       --unsafe-package pip \
-      --unsafe-package setuptools==77.0.3 \
+      --unsafe-package setuptools \
       -o "python/$TARGET" \
       python/requirements.txt \
       python/requirements/lint-requirements.txt \
