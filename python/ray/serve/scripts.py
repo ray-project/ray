@@ -14,7 +14,7 @@ import yaml
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
@@ -728,6 +728,23 @@ def status(address: str, name: Optional[str]):
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
     warn_if_agent_address_set()
+
+    # check if the address is a valid Ray address
+    try:
+        # see what applications are deployed on the cluster
+        serve_details = ServeInstanceDetails(
+            **ServeSubmissionClient(address).get_serve_details()
+        )
+        if serve_details.controller_info.node_id is None:
+            cli_logger.warning(
+                f"No Serve instance found running on the cluster at {address}."
+            )
+            return
+    except Exception as e:
+        cli_logger.error(
+            f"Unable to shutdown Serve on the cluster at address {address}: {e}"
+        )
+        return
 
     if not yes:
         click.confirm(

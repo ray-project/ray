@@ -10,11 +10,15 @@ from typing import Optional, Set
 
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_logging import setup_component_logger
+from ray._private.utils import (
+    format_error_message,
+    publish_error_to_driver,
+)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -40,6 +44,11 @@ class Dashboard:
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
         log_dir: Log directory of dashboard.
+        logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
+        logging_format: The format string for log messages
+        logging_filename: The name of the log file
+        logging_rotate_bytes: Max size in bytes before rotating log file
+        logging_rotate_backup_count: Number of backup files to keep when rotating
     """
 
     def __init__(
@@ -51,7 +60,12 @@ class Dashboard:
         cluster_id_hex: str,
         grpc_port: int,
         node_ip_address: str,
-        log_dir: str = None,
+        log_dir: str,
+        logging_level: int,
+        logging_format: str,
+        logging_filename: str,
+        logging_rotate_bytes: int,
+        logging_rotate_backup_count: int,
         temp_dir: str = None,
         session_dir: str = None,
         minimal: bool = False,
@@ -67,6 +81,11 @@ class Dashboard:
             node_ip_address=node_ip_address,
             grpc_port=grpc_port,
             log_dir=log_dir,
+            logging_level=logging_level,
+            logging_format=logging_format,
+            logging_filename=logging_filename,
+            logging_rotate_bytes=logging_rotate_bytes,
+            logging_rotate_backup_count=logging_rotate_backup_count,
             temp_dir=temp_dir,
             session_dir=session_dir,
             minimal=minimal,
@@ -222,7 +241,7 @@ if __name__ == "__main__":
         # before initializing Dashboard, which will initialize the grpc aio server,
         # which assumes a working event loop. Ref:
         # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
-        loop = ray._private.utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
         dashboard = Dashboard(
             host=args.host,
             port=args.port,
@@ -232,6 +251,11 @@ if __name__ == "__main__":
             grpc_port=args.grpc_port,
             node_ip_address=args.node_ip_address,
             log_dir=args.log_dir,
+            logging_level=args.logging_level,
+            logging_format=args.logging_format,
+            logging_filename=args.logging_filename,
+            logging_rotate_bytes=args.logging_rotate_bytes,
+            logging_rotate_backup_count=args.logging_rotate_backup_count,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
@@ -254,7 +278,7 @@ if __name__ == "__main__":
 
         loop.run_until_complete(dashboard.run())
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        traceback_str = format_error_message(traceback.format_exc())
         message = (
             f"The dashboard on node {platform.uname()[1]} "
             f"failed with the following "
@@ -268,7 +292,7 @@ if __name__ == "__main__":
 
         # Something went wrong, so push an error to all drivers.
         gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
-        ray._private.utils.publish_error_to_driver(
+        publish_error_to_driver(
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
             gcs_publisher=gcs_publisher,

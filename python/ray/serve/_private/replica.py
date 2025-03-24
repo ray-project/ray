@@ -31,7 +31,7 @@ from starlette.types import ASGIApp, Message
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -624,7 +624,7 @@ class ReplicaBase(ABC):
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
-            logger.warning(
+            logger.debug(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},

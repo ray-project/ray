@@ -12,14 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/core_worker_process.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -147,7 +153,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
             ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
         stdout_redirection_options.rotation_max_file_count =
             ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-        ray::RedirectStdout(stdout_redirection_options);
+        ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
       }
 
       // Setup redirection for stderr.
@@ -162,7 +168,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
             ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
         stderr_redirection_options.rotation_max_file_count =
             ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-        ray::RedirectStderr(stderr_redirection_options);
+        ray::RedirectStderrOncePerProcess(stderr_redirection_options);
       }
     }
 
@@ -358,7 +364,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
   if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
-    // TODO (scv119): A better solution could be returning error code
+    // TODO(scv119): A better solution could be returning error code
     // and handling it at language frontend.
     if (options_.worker_type == WorkerType::DRIVER) {
       RAY_LOG(ERROR) << "The core worker has already been shutdown. This happens when "

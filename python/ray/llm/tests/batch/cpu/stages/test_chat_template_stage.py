@@ -20,6 +20,7 @@ async def test_chat_template_udf_basic(mock_tokenizer_setup):
 
     udf = ChatTemplateUDF(
         data_column="__data",
+        expected_input_keys=["messages"],
         model="test-model",
     )
 
@@ -52,6 +53,7 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
 
     udf = ChatTemplateUDF(
         data_column="__data",
+        expected_input_keys=["messages"],
         model="test-model",
     )
 
@@ -80,20 +82,6 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
     assert mock_tokenizer.apply_chat_template.call_count == 2
 
 
-def test_chat_template_udf_expected_input_keys(mock_tokenizer_setup):
-    mock_tokenizer = mock_tokenizer_setup
-    mock_tokenizer.apply_chat_template.side_effect = [
-        "<chat>Hello AI</chat>",
-        "<chat>How are you?</chat>",
-    ]
-
-    udf = ChatTemplateUDF(
-        data_column="__data",
-        model="test-model",
-    )
-    assert udf.expected_input_keys == ["messages"]
-
-
 @pytest.mark.asyncio
 async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
     mock_tokenizer = mock_tokenizer_setup
@@ -104,6 +92,7 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
 
     udf = ChatTemplateUDF(
         data_column="__data",
+        expected_input_keys=["messages"],
         model="test-model",
     )
 

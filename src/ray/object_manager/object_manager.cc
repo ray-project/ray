@@ -14,7 +14,13 @@
 
 #include "ray/object_manager/object_manager.h"
 
+#include <algorithm>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/plasma/store.h"
@@ -550,7 +556,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   rpc::ClientCallback<rpc::PushReply> callback =
       [this, start_time, object_id, node_id, chunk_index, on_complete](
           const Status &status, const rpc::PushReply &reply) {
-        // TODO: Just print warning here, should we try to resend this chunk?
+        // TODO(Eric Liang): Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING).WithField(object_id).WithField(node_id)
               << "Send object chunk to node failed due to" << status.ToString()

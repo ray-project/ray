@@ -37,8 +37,16 @@ fi
 
 if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   echo "--- Apply mask: $RAY_INSTALL_MASK"
-  if [[ "$RAY_INSTALL_MASK" =~ serve ]]; then
+  if [[ "$RAY_INSTALL_MASK" =~ all-ray-libraries ]]; then
+    rm -rf python/ray/air
+    rm -rf python/ray/data
+    rm -rf python/ray/llm
+    # Remove the actual directory and the symlink.
+    rm -rf rllib python/ray/rllib
     rm -rf python/ray/serve
+    rm -rf python/ray/train
+    rm -rf python/ray/tune
+    rm -rf python/ray/workflow
   fi
 fi
 

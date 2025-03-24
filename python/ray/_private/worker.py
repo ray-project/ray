@@ -441,7 +441,7 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
@@ -1027,7 +1027,7 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
@@ -1412,10 +1412,8 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
-            This storage path must be accessible by all nodes of the cluster, otherwise
-            an error will be raised. This option can also be specified as the
-            RAY_STORAGE env var.
+        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
+            be removed in a future version of Ray.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1672,6 +1670,12 @@ def init(
         )
     else:
         driver_mode = SCRIPT_MODE
+
+    if storage is not None:
+        warnings.warn(
+            "Cluster-wide storage configuration is deprecated and will be removed in a "
+            "future version of Ray."
+        )
 
     global _global_node
 
@@ -2235,7 +2239,7 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] not in [
+            if error_data["job_id"] is not None and error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:

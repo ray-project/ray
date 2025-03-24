@@ -541,6 +541,14 @@ class AsyncioRouter:
                 self._replica_scheduler.on_new_queue_len_info(r.replica_id, queue_info)
                 if queue_info.accepted:
                     return result, r.replica_id
+                else:
+                    logger.info(
+                        f"{r.replica_id} rejected request because it is at max "
+                        f"capacity of {r.max_ongoing_requests} ongoing request"
+                        f"{'s' if r.max_ongoing_requests > 1 else ''}. "
+                        f"Retrying request {pr.metadata.request_id}.",
+                        extra={"log_to_stderr": False},
+                    )
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
