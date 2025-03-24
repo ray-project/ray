@@ -1,7 +1,5 @@
 import collections
 import logging
-import os
-import threading
 import time
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
@@ -28,7 +26,6 @@ from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -126,6 +123,8 @@ class BlockExecStats:
         wall_time_s: The wall-clock time it took to compute this block.
         cpu_time_s: The CPU time it took to compute this block.
         node_id: A unique id for the node that computed this block.
+        max_uss_bytes: An estimate of the maximum amount of physical memory that the
+            process was using while computing this block.
     """
 
     def __init__(self):
@@ -135,8 +134,6 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # An estimate of the maximum amount of physical memory that the process was
-        # using while computing this block.
         self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
@@ -156,54 +153,20 @@ class BlockExecStats:
 
 
 class _BlockExecStatsBuilder:
-    """Helper context manager for building block stats.
+    """Helper class for building block stats.
 
     When this class is created, we record the start time. When build() is
     called, the time delta is saved as part of the stats.
     """
 
-    def __init__(self, poll_interval_s: Optional[float] = None):
-        """
-
-        Args:
-            poll_interval_s: The interval to poll the USS of the process. If `None`,
-                this class won't poll the USS.
-        """
-        self._poll_interval_s = poll_interval_s
-
-        # Record start times.
+    def __init__(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
-
-        # Record initial USS.
-        self._process = psutil.Process(os.getpid())
-        self._max_uss = self._estimate_uss()
-        self._max_uss_lock = threading.Lock()
-
-        self._uss_poll_thread = None
-        self._stop_uss_poll_event = None
-
-    def __enter__(self):
-        if self._poll_interval_s is not None:
-            (
-                self._uss_poll_thread,
-                self._stop_uss_poll_event,
-            ) = self._start_uss_poll_thread()
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._uss_poll_thread is not None:
-            self._stop_uss_poll_thread()
 
     def build(self) -> "BlockExecStats":
         # Record end times.
         end_time = time.perf_counter()
         end_cpu = time.process_time()
-
-        # Record max USS.
-        with self._max_uss_lock:
-            self._max_uss = max(self._max_uss, self._estimate_uss())
 
         # Build the stats.
         stats = BlockExecStats()
@@ -211,43 +174,8 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
-        stats.max_uss_bytes = self._max_uss
 
         return stats
-
-    def reset(self):
-        self._start_time = time.perf_counter()
-        self._start_cpu = time.process_time()
-        with self._max_uss_lock:
-            self._max_uss = self._estimate_uss()
-
-    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
-        assert self._poll_interval_s is not None
-
-        stop_event = threading.Event()
-
-        def poll_uss():
-            while not stop_event.is_set():
-                with self._max_uss_lock:
-                    self._max_uss = max(self._max_uss, self._estimate_uss())
-                stop_event.wait(self._poll_interval_s)
-
-        thread = threading.Thread(target=poll_uss, daemon=True)
-        thread.start()
-
-        return thread, stop_event
-
-    def _stop_uss_poll_thread(self):
-        if self._stop_uss_poll_event is not None:
-            self._stop_uss_poll_event.set()
-            self._uss_poll_thread.join()
-
-    def _estimate_uss(self) -> int:
-        memory_info = self._process.memory_info()
-        # Estimate the USS (the amount of memory that'd be free if we killed the
-        # process right now) as the difference between the RSS (total physical memory)
-        # and amount of shared physical memory.
-        return memory_info.rss - memory_info.shared
 
 
 @DeveloperAPI
@@ -606,15 +534,15 @@ class BlockAccessor:
 
         if self.num_rows() == 0:
             return np.array([], dtype=np.int32)
-        elif keys:
-            # Convert key columns to Numpy (to perform vectorized
-            # ops on them)
-            projected_block = self.to_numpy(keys)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
 
-            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = self.to_numpy(keys)
 
-        # If no keys are specified, whole block is considered a single group
-        return np.array([0, self.num_rows()])
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
 
 @DeveloperAPI(stability="beta")
@@ -645,6 +573,21 @@ class BlockColumnAccessor:
         """Returns a mean of the values in the column"""
         raise NotImplementedError()
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        """Returns requested quantile of the given column"""
+        raise NotImplementedError()
+
+    def unique(self) -> BlockColumn:
+        """Returns new column holding only distinct values of the current one"""
+        raise NotImplementedError()
+
+    def flatten(self) -> BlockColumn:
+        """Flattens nested lists merging them into top-level container"""
+
+        raise NotImplementedError()
+
     def sum_of_squared_diffs_from_mean(
         self,
         *,
@@ -655,8 +598,12 @@ class BlockColumnAccessor:
         """Returns a sum of diffs (from mean) squared for the column"""
         raise NotImplementedError()
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
     @staticmethod

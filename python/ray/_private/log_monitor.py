@@ -516,7 +516,7 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is "
+        "log to stderr if set empty, default is "
         f'"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}"',
     )
     parser.add_argument(

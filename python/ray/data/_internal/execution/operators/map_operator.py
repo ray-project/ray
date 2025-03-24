@@ -44,14 +44,15 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
+from ray.data._internal.util import MemoryProfiler
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
+    BlockExecStats,
     BlockStats,
-    _BlockExecStatsBuilder,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -530,17 +531,20 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+    stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    with _BlockExecStatsBuilder(data_context.memory_poll_interval_s) as stats:
+    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
         for b_out in map_transformer.apply_transform(iter(blocks), ctx):
             # TODO(Clark): Add input file propagation from input blocks.
             m_out = BlockAccessor.for_block(b_out).get_metadata()
             m_out.exec_stats = stats.build()
             m_out.exec_stats.udf_time_s = map_transformer.udf_time()
             m_out.exec_stats.task_idx = ctx.task_idx
+            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
             yield b_out
             yield m_out
-            stats.reset()
+            stats = BlockExecStats.builder()
+            profiler.reset()
 
 
 class _BlockRefBundler:

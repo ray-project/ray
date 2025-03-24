@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/lease_policy.h"
 
+#include <utility>
+
 namespace ray {
 namespace core {
 

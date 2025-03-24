@@ -11,6 +11,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.utils import download_hf_model
 from ray.llm._internal.batch.stages import (
     vLLMEngineStage,
     ChatTemplateStage,
@@ -151,6 +152,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -165,6 +167,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -190,6 +193,7 @@ def build_vllm_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
+                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
@@ -206,11 +210,13 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
 
-    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
+    model_path = download_hf_model(config.model_source, tokenizer_only=True)
+    hf_config = transformers.AutoConfig.from_pretrained(model_path)
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
     telemetry_agent = get_or_create_telemetry_agent()

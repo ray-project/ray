@@ -1,6 +1,6 @@
 import sys
 import pytest
-from typing import List, Any, AsyncIterator, Dict
+from typing import List, Any, AsyncIterator, Dict, Optional
 from ray.llm._internal.batch.stages.base import (
     wrap_preprocess,
     wrap_postprocess,
@@ -42,9 +42,10 @@ class TestStatefulStageUDF:
         def __init__(
             self,
             data_column: str,
+            expected_input_keys: Optional[List[str]] = None,
             udf_output_missing_idx_in_batch_column: bool = False,
         ):
-            super().__init__(data_column)
+            super().__init__(data_column, expected_input_keys)
             self.udf_output_missing_idx_in_batch_column = (
                 udf_output_missing_idx_in_batch_column
             )
@@ -60,13 +61,9 @@ class TestStatefulStageUDF:
                     ret[self.IDX_IN_BATCH_COLUMN] = row[self.IDX_IN_BATCH_COLUMN]
                 yield ret
 
-        @property
-        def expected_input_keys(self) -> List[str]:
-            return ["value"]
-
     @pytest.mark.asyncio
     async def test_basic_processing(self):
-        udf = self.SimpleUDF(data_column="__data")
+        udf = self.SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {
             "__data": [{"value": 1, "extra": 10}, {"value": 2, "extra": 20}],
@@ -86,7 +83,7 @@ class TestStatefulStageUDF:
 
     @pytest.mark.asyncio
     async def test_missing_data_column(self):
-        udf = self.SimpleUDF(data_column="__data")
+        udf = self.SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {"extra": ["a"]}
 
@@ -96,7 +93,7 @@ class TestStatefulStageUDF:
 
     @pytest.mark.asyncio
     async def test_missing_required_key(self):
-        udf = self.SimpleUDF(data_column="__data")
+        udf = self.SimpleUDF(data_column="__data", expected_input_keys=["value"])
 
         batch = {"__data": [{"wrong_key": 1}]}
 
@@ -108,6 +105,7 @@ class TestStatefulStageUDF:
     async def test_missing_idx_in_batch_column(self):
         udf = self.SimpleUDF(
             data_column="__data",
+            expected_input_keys=["value"],
             udf_output_missing_idx_in_batch_column=True,
         )
 
