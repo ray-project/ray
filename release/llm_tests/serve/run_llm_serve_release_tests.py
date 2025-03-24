@@ -30,12 +30,14 @@ CLOUD = "serve_release_tests_cloud"
 @click.option("--run-probes", type=bool, default=True)
 @click.option("--run-perf-profiler", type=bool, default=True)
 @click.option("--skip-hf-token", type=bool, default=False)
+@click.option("--timeout", type=int, default=600)
 def main(
     image_uri: Optional[str],
     serve_config_file: str,
     run_probes: bool,
     run_perf_profiler: bool,
     skip_hf_token: bool,
+    timeout: int,
 ):
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
@@ -49,6 +51,7 @@ def main(
         working_dir=".",
         cloud=CLOUD,
         env_vars=env_vars,
+        timeout_s=timeout,
     ) as service_info:
         api_url = service_info["api_url"]
         api_token = service_info["api_token"]
