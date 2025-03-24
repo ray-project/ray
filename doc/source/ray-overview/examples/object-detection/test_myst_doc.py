@@ -81,4 +81,4 @@ if __name__ == "__main__":
     remainder.insert(0, sys.executable)
 
     # Run the notebook
-    subprocess.run(remainder, check=True) 
+    subprocess.run(remainder, check=True)
