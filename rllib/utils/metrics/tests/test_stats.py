@@ -402,3 +402,10 @@ def test_throughput_without_reduce():
     non_throughput_stats = Stats(reduce="sum")
     with pytest.raises(ValueError):
         non_throughput_stats.throughput  # noqa: B018
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

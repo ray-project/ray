@@ -520,3 +520,10 @@ def test_compile(logger):
     check(
         compiled["time_count_throughput"], approx_throughput, rtol=0.5
     )  # throughput with tolerance
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
