@@ -53,7 +53,7 @@ def get_fake_responses(*tokens: List[str]):
 
     for token in tokens:
         total += token
-        # For some reason VLLM appears to return the full text on each iteration
+        # For some reason vLLM appears to return the full text on each iteration
         # We should fix this in vllm
         output.append(
             SimpleNamespace(

@@ -1,5 +1,5 @@
-load("//bazel:python.bzl", "doctest")
-load("//bazel:python.bzl", "py_test_module_list")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 doctest(
     files = glob(
@@ -102,12 +102,12 @@ py_test(
 py_test_module_list(
     size = "medium",
     files = [
-        "tests/experimental/test_multi_node_dag.py",
-        "tests/experimental/test_mocked_nccl_dag.py",
-        "tests/experimental/test_torch_tensor_dag.py",
         "tests/experimental/test_collective_dag.py",
-        "tests/experimental/test_execution_schedule.py",
         "tests/experimental/test_dag_visualization.py",
+        "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_mocked_nccl_dag.py",
+        "tests/experimental/test_multi_node_dag.py",
+        "tests/experimental/test_torch_tensor_dag.py",
     ],
     tags = [
         "accelerated_dag",
@@ -140,6 +140,24 @@ py_test(
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_dag.py",
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_torch_tensor_transport_gpu",
+    size = "enormous",
+    srcs = [
+        "tests/experimental/test_torch_tensor_transport.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_torch_tensor_transport.py",
     tags = [
         "accelerated_dag",
         "exclusive",

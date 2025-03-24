@@ -467,14 +467,6 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncDrainNode(const NodeID &node_id,
-                          const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-
     Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                        int64_t timeout_ms,
                        std::optional<NodeID> node_id = std::nullopt) override {
