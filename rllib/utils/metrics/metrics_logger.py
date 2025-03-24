@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
-from ray.rllib.utils import force_tuple
+from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
@@ -240,7 +240,7 @@ class MetricsLogger:
 
             # Only, when we call `reduce` does the underlying structure get "cleaned
             # up". In this case, the list is shortened to 10 items (window size).
-            results = logger.reduce(return_stats_obj=False)
+            results = logger.get_results()
             check(results, {"loss": 0.05})
             check(len(logger.stats["loss"].values), 10)
 
@@ -262,7 +262,7 @@ class MetricsLogger:
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_more_items"), [-5.0, -6.0, -7.0])
             # Reducing everything (and return plain values, not `Stats` objects).
-            results = logger.reduce(return_stats_obj=False)
+            results = logger.get_results()
             check(results, {
                 "loss": 0.05,
                 "some": {
@@ -416,7 +416,7 @@ class MetricsLogger:
             check(logger.peek(("c", "d")), 5.0)
 
             # Reduced all stats.
-            results = logger.reduce(return_stats_obj=False)
+            results = logger.get_results()
             check(results, {
                 "a": 0.15,
                 "b": -0.15,
@@ -1178,6 +1178,26 @@ class MetricsLogger:
             tree.map_structure_with_path(_map, self.stats)
 
         return throughputs
+
+    def compile(self) -> Dict:
+        """Compiles all current values and throughputs into a single dictionary.
+
+        This method combines the results of `peek()` and `throughputs()` into a single
+        dictionary, with throughput values having "_throughput" suffix. This is useful
+        for getting a complete snapshot of all metrics and their throughputs in one call.
+
+        Returns:
+            A nested dictionary containing both the current values and throughputs for all
+            metrics. The structure matches self.stats, with throughput values having
+            "_throughput" suffix in their keys.
+        """
+        # Get all current values
+        values = self.peek()
+
+        # Get all throughputs
+        throughputs = self.throughputs()
+
+        return deep_update(values, throughputs, new_keys_allowed=True)
 
 
 class _DummyRLock:

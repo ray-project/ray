@@ -1141,9 +1141,7 @@ class Algorithm(Checkpointable, Trainable):
             eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
-            eval_results = self.metrics.reduce(
-                key=EVALUATION_RESULTS, return_stats_obj=False
-            )
+            eval_results = self.metrics.peek(key=EVALUATION_RESULTS)
         else:
             eval_results = {ENV_RUNNER_RESULTS: eval_results}
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
@@ -3250,25 +3248,7 @@ class Algorithm(Checkpointable, Trainable):
                 ),
             }
 
-        # Compile all throughput stats.
-        throughputs = {}
-
-        def _reduce(p, s):
-            if isinstance(s, Stats):
-                ret = s.peek()
-                if s.throughput is not None:
-                    _curr = throughputs
-                    for k in p[:-1]:
-                        _curr = _curr.setdefault(k, {})
-                    _curr[p[-1] + "_throughput"] = s.throughput
-            else:
-                ret = s
-            return ret
-
-        # Resolve all `Stats` leafs by peeking (get their reduced values).
-        all_results = tree.map_structure_with_path(_reduce, results)
-        deep_update(all_results, throughputs, new_keys_allowed=True)
-        return all_results
+        return results.compile()
 
     def __repr__(self):
         if self.config.enable_rl_module_and_learner:

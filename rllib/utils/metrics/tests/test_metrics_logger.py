@@ -474,3 +474,49 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
         logger.merge_and_log_n_dicts(
             [{"invalid": 1}], reduce="sum", window=10, with_throughput=True
         )
+
+
+def test_compile(logger):
+    """Test the compile method that combines values and throughputs."""
+    # Log some values with throughput tracking
+    logger.log_value("count", 1, reduce="sum", with_throughput=True)
+    logger.log_value("count", 2, reduce="sum", with_throughput=True)
+
+    # Log some nested values with throughput tracking
+    logger.log_value(["nested", "count"], 3, reduce="sum", with_throughput=True)
+    logger.log_value(["nested", "count"], 4, reduce="sum", with_throughput=True)
+
+    # Log some values without throughput tracking
+    logger.log_value("simple", 5.0)
+    logger.log_value("simple", 6.0)
+
+    # Get compiled results
+    compiled = logger.compile()
+
+    # Check that values and throughputs are correctly combined
+    check(compiled["count"], 3)  # sum of [1, 2]
+    check(compiled["count_throughput"], 0.0)  # initial throughput
+    check(compiled["nested"]["count"], 7)  # sum of [3, 4]
+    check(compiled["nested"]["count_throughput"], 0.0)  # initial throughput
+    check(compiled["simple"], 5.01)
+    assert (
+        "simple_throughput" not in compiled
+    )  # no throughput for non-throughput metric
+
+    # Test with time-based throughput
+    start_time = time.perf_counter()
+    num_iters = 100
+    for _ in range(num_iters):
+        time.sleep(0.1 / num_iters)  # Simulate some time passing
+        logger.log_value("time_count", 1, reduce="sum", with_throughput=True)
+    end_time = time.perf_counter()
+
+    # Get compiled results again
+    compiled = logger.compile()
+
+    # Check that throughput is now non-zero
+    approx_throughput = num_iters / (end_time - start_time)
+    check(compiled["time_count"], num_iters)  # sum of all values
+    check(
+        compiled["time_count_throughput"], approx_throughput, rtol=0.5
+    )  # throughput with tolerance
