@@ -157,7 +157,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_internal_folder_, "cgroup.procs");
 
   // Create the internal cgroup.
-  RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kCgroupFilePerm), 0);
+  RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm), 0);
 
   // TODO(hjiang): Move GCS and raylet into internal cgroup, so we need a way to know
   // internal components PID for raylet.
@@ -166,8 +166,10 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   RAY_CHECK(EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data()));
 
   // Setup application cgroup.
-  RAY_CHECK_EQ(mkdir(cgroup_v2_app_folder_.data(), kCgroupFilePerm), 0);
+  RAY_CHECK_EQ(mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm), 0);
   RAY_CHECK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
+
+  return Status::OK();
 }
 
 CgroupSetup::~CgroupSetup() { CleanupCgroups(); }

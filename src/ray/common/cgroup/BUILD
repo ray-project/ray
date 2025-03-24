@@ -2,7 +2,7 @@ load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
     name = "constants",
-    hdrs = "constants.h",
+    hdrs = ["constants.h"],
 )
 
 ray_cc_library(
