@@ -7,6 +7,7 @@ ray_cc_test(
     tags = [
         # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
         "manual",
+        "exclusive",
         "team:core",
     ],
     deps = [
@@ -35,7 +36,6 @@ ray_cc_test(
     name = "fake_cgroup_setup_test",
     srcs = ["fake_cgroup_setup_test.cc"],
     tags = [
-        "exclusive",
         "team:core",
     ],
     deps = [
