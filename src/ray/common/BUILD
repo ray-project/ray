@@ -329,3 +329,34 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "liba",
+    hdrs = ["liba.h"],
+    srcs = ["liba.cc"],
+)
+
+cc_library(
+    name = "libb",
+    hdrs = ["libb.h"],
+    srcs = ["libb.cc"],
+)
+
+cc_test(
+    name = "libtest",
+    srcs = ["libtest.cc"],
+    deps = [
+        ":liba",
+        ":libb",
+    ],
+)
+
+cc_test(
+    name = "libtest_static",
+    srcs = ["libtest.cc"],
+    linkstatic = True,
+    deps = [
+        ":liba",
+        ":libb",
+    ],
+)
