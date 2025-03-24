@@ -82,7 +82,7 @@ class LinuxContainer(Container):
             ]
         if self.privileged:
             extra_args += ["--privileged"]
-        if not self.privileged:
+        else:
             for cap in _DOCKER_CAP_ADD:
                 extra_args += ["--cap-add", cap]
         if gpu_ids:

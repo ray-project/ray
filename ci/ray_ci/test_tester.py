@@ -60,7 +60,10 @@ def test_linux_privileged() -> None:
             tmp_filesystem=None,
             privileged=True,
         )
-        assert container.privileged
+        assert (
+            container.privileged
+            and "--privileged" in container.get_run_command_extra_args()
+        )
 
 
 def test_get_container() -> None:

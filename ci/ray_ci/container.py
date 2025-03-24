@@ -58,7 +58,6 @@ class Container(abc.ABC):
         self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
-        self.privileged = False
 
     def run_script_with_output(self, script: List[str]) -> str:
         """
@@ -111,10 +110,10 @@ class Container(abc.ABC):
         :param gpu_ids: ids of gpus on the host machine
         """
         artifact_mount_host, artifact_mount_container = self.get_artifact_mount()
-        command = ["docker", "run", "-i"]
-        # if self.privileged:
-        #     command.append("--privileged")
-        command += [
+        command = [
+            "docker",
+            "run",
+            "-i",
             "--rm",
             "--volume",
             f"{artifact_mount_host}:{artifact_mount_container}",
