@@ -716,7 +716,7 @@
 #############################
 - name: example_object_detection_train
   group: ML Examples
-  working_dir: doc/source/ray-overview/examples/object-detection
+  working_dir: object_detection
   frequency: weekly
   team: ml
   cluster:
@@ -739,7 +739,7 @@
 
 - name: example_object_detection_batch_inference_eval
   group: ML Examples
-  working_dir: doc/source/ray-overview/examples/object-detection
+  working_dir: object_detection
   frequency: weekly
   team: ml
   cluster:
@@ -762,7 +762,7 @@
 
 - name: example_video_processing_batch_inference
   group: ML Examples
-  working_dir: doc/source/ray-overview/examples/object-detection
+  working_dir: object_detection
   frequency: weekly
   team: ml
   cluster:
@@ -785,7 +785,7 @@
 
 - name: example_object_detection_serve
   group: ML Examples
-  working_dir: doc/source/ray-overview/examples/object-detection
+  working_dir: object_detection
   frequency: weekly
   team: ml
   cluster:
