@@ -18,6 +18,9 @@ from ray.anyscale.data._internal.logical.rules import (
     PushdownCountFiles,
     RedundantMapTransformPruning,
 )
+from ray.anyscale.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryWithProfiling,
+)
 from ray.anyscale.data.api.context_mixin import DataContextMixin
 from ray.anyscale.data.api.dataset_mixin import DatasetMixin
 from ray.anyscale.data.planner import _register_anyscale_plan_logical_op_fns
@@ -26,9 +29,15 @@ from ray.data._internal.logical.optimizers import (
     get_logical_ruleset,
     get_physical_ruleset,
 )
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
+)
 
 ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED = env_bool(
     "ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED", False
+)
+ANYSCALE_MAP_TASK_MEMORY_CONFIGURATION_ENABLED = env_bool(
+    "ANYSCALE_MAP_TASK_MEMORY_CONFIGURATION_ENABLED", False
 )
 
 
@@ -96,5 +105,8 @@ def apply_anyscale_patches():
     physical_ruleset.add(InsertCheckpointingLayerRule)
     physical_ruleset.add(RedundantMapTransformPruning)
     physical_ruleset.add(FuseRepartitionOutputBlocks)
+    if ANYSCALE_MAP_TASK_MEMORY_CONFIGURATION_ENABLED:
+        physical_ruleset.remove(ConfigureMapTaskMemoryUsingOutputSize)
+        physical_ruleset.add(ConfigureMapTaskMemoryWithProfiling)
 
     configure_anyscale_logging()
