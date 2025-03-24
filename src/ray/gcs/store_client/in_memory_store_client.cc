@@ -69,12 +69,10 @@ Status InMemoryStoreClient::AsyncMultiGet(
   auto result = absl::flat_hash_map<std::string, std::string>();
   auto table = GetTable(table_name);
   if (table != nullptr) {
-    for (const auto &key : keys) {
-      auto value = table->Get(key);
-      if (value.has_value()) {
-        result.emplace(key, *value);
-      }
-    }
+    table->ReadVisit(absl::MakeSpan(keys),
+                     [&](std::string_view key, std::string_view value) {
+                       result.emplace(key, value);
+                     });
   }
   std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
   return Status::OK();
@@ -93,7 +91,7 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
                                              Postable<void(int64_t)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
-  int64_t num_erased = table.EraseKeys(keys);
+  int64_t num_erased = table.EraseKeys(absl::MakeSpan(keys));
   std::move(callback).Post("GcsInMemoryStore.BatchDelete", num_erased);
   return Status::OK();
 }

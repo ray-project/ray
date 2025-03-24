@@ -14,9 +14,11 @@
 
 #pragma once
 
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -53,41 +55,40 @@ class ConcurrentFlatMap {
     return result;
   }
 
-  // Returns true if key existed and visitor was called.
+  // Calls visit on all of the keys in the span.
   // Visitor is called under a write lock so should not be heavy, otherwise prefer Get
   // followed by InsertOrAssign.
-  template <typename KeyLike>
-  bool WriteVisit(const KeyLike &key, const std::function<void(ValueType &)> &visitor) {
+  template <typename KeyLike, typename Visitor>
+  void WriteVisit(const absl::Span<KeyLike> &keys, const Visitor &visitor) {
     auto write_lock = map_.LockForWrite();
     auto &map = write_lock.Get();
-    const auto it = map.find(key);
-    if (it != map.end()) {
-      visitor(it->second);
-      return true;
+    for (const auto &key : keys) {
+      auto it = map.find(key);
+      if (it != map.end()) {
+        visitor(it->second);
+      }
     }
-    return false;
   }
 
-  // Returns true if key existed and visitor was called.
+  // Calls visit on all of the keys in the span.
   // Calls function under read lock so should not be heavy, otherwise prefer Get to copy
   // out.
-  template <typename KeyLike>
-  bool ReadVisit(const KeyLike &key,
-                 const std::function<void(const ValueType &)> &visitor) const {
+  template <typename KeyLike, typename Visitor>
+  void ReadVisit(const absl::Span<KeyLike> &keys, const Visitor &visitor) const {
     auto read_lock = map_.LockForRead();
     const auto &map = read_lock.Get();
-    auto it = map.find(key);
-    if (it != map.end()) {
-      visitor(it->second);
-      return true;
+    for (const auto &key : keys) {
+      auto it = map.find(key);
+      if (it != map.end()) {
+        visitor(it->first, it->second);
+      }
     }
-    return false;
   }
 
   // Applies visitor to all values in the map.
   // Calls under read lock so should not be heavy, otherwise prefer GetMapClone to copy.
-  void ReadVisitAll(
-      const std::function<void(const KeyType &, const ValueType &)> &visitor) const {
+  template <typename Visitor>
+  void ReadVisitAll(const Visitor &visitor) const {
     auto read_lock = map_.LockForRead();
     const auto &map = read_lock.Get();
     for (const auto &[key, value] : map) {
@@ -101,8 +102,8 @@ class ConcurrentFlatMap {
     return read_lock.Get().contains(key);
   }
 
-  /// Will insert the key value pair if the key does not exist.
-  /// Will replace the value if the key already exists.
+  // Will insert the key value pair if the key does not exist.
+  // Will replace the value if the key already exists.
   template <typename KeyLike, typename... Args>
   void InsertOrAssign(KeyLike &&key, Args &&...args) {
     auto write_lock = map_.LockForWrite();
@@ -110,8 +111,8 @@ class ConcurrentFlatMap {
                                       ValueType(std::forward<Args>(args)...));
   }
 
-  /// Returns a bool for whether the key/value was emplaced.
-  /// Note: This will not overwrite an existing key.
+  // Returns a bool for whether the key/value was emplaced.
+  // Note: This will not overwrite an existing key.
   template <typename KeyLike, typename... Args>
   bool Emplace(KeyLike &&key, Args &&...args) {
     auto write_lock = map_.LockForWrite();
@@ -120,24 +121,26 @@ class ConcurrentFlatMap {
     return inserted;
   }
 
-  /// Returns a bool identifying whether the key was found and erased.
+  // Returns a bool identifying whether the key was found and erased.
   template <typename KeyLike>
   bool Erase(const KeyLike &key) {
     auto write_lock = map_.LockForWrite();
     return write_lock.Get().erase(key) > 0;
   }
 
-  /// Returns the number of keys erased.
-  int64_t EraseKeys(absl::Span<KeyType> keys) {
+  // Returns the number of keys erased.
+  template <typename KeyLike>
+  int64_t EraseKeys(absl::Span<const KeyLike> keys) {
     auto write_lock = map_.LockForWrite();
+    auto &map = write_lock.Get();
     int64_t num_erased = 0;
     for (const auto &key : keys) {
-      num_erased += write_lock.Get().erase(key);
+      num_erased += map.erase(key);
     }
     return num_erased;
   }
 
-  /// Returns a copy of the underlying flat_hash_map.
+  // Returns a copy of the underlying flat_hash_map.
   absl::flat_hash_map<KeyType, ValueType> GetMapClone() const {
     auto read_lock = map_.LockForRead();
     return read_lock.Get();
