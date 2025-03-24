@@ -227,10 +227,14 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
   return true;
 }
 
-TaskEventBufferImpl::TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client)
+TaskEventBufferImpl::TaskEventBufferImpl(
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::shared_ptr<EventAggregatorClientImpl> event_aggregator_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
-      gcs_client_(std::move(gcs_client)) {}
+      gcs_client_(std::move(gcs_client)),
+      event_aggregator_exporter_(
+          std::make_unique<EventAggregatorExporter>(event_aggregator_client)) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
@@ -528,14 +532,14 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
 
-  gcs::TaskInfoAccessor *task_accessor = nullptr;
-  {
-    // Sending the protobuf to GCS.
-    absl::MutexLock lock(&mutex_);
-    // The flag should be unset when on_complete is invoked.
-    task_accessor = &gcs_client_->Tasks();
-  }
+  // gcs::TaskInfoAccessor *task_accessor = nullptr;
+  // {
+  //   // Sending the protobuf to GCS.
+  //   absl::MutexLock lock(&mutex_);
+  //   task_accessor = &gcs_client_->Tasks();
+  // }
 
+  // The flag should be unset when on_complete is invoked.
   grpc_in_progress_ = true;
   auto num_task_attempts_to_send = data->events_by_task_size();
   auto num_dropped_task_attempts_to_send = data->dropped_task_attempts_size();
@@ -563,7 +567,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
-  auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
+  // auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
+  RAY_LOG(INFO) << "Sending task events to the Event Buffer...";
+  auto status =
+      event_aggregator_exporter_->AsyncAddTaskEventData(std::move(data), on_complete);
   RAY_CHECK_OK(status);
 }
 

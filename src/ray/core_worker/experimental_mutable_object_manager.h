@@ -181,7 +181,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \return The return status. The ReadAcquire can fail if there have already
   /// been `num_readers` for the current value.
   Status ReadAcquire(const ObjectID &object_id,
-                     std::shared_ptr<RayObject> &result,
+                     std::shared_ptr<ray::RayObject> &result,
                      int64_t timeout_ms = -1);
 
   /// Releases the object, allowing it to be written again. If the caller did

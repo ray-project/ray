@@ -203,7 +203,7 @@ std::string AbstractRayRuntime::CallActor(
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
         ray::ActorID::FromBinary(actor));
     auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
-    auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
     RemoteFunctionHolder func_holder = remote_function_holder;
     func_holder.module_name = typed_descriptor->ModuleName();
     func_holder.class_name = typed_descriptor->ClassName();
@@ -213,7 +213,7 @@ std::string AbstractRayRuntime::CallActor(
     const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
         ray::ActorID::FromBinary(actor));
     auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
-    auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
+    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
     RemoteFunctionHolder func_holder = remote_function_holder;
     func_holder.class_name = typed_descriptor->ClassName();
     invocation_spec = BuildInvocationSpec1(
@@ -332,7 +332,7 @@ PlacementGroup AbstractRayRuntime::GeneratePlacementGroup(const std::string &str
   for (auto &bundle : bundles) {
     options.bundles.emplace_back(bundle);
   }
-  options.strategy = PlacementStrategy(pg_table_data.strategy());
+  options.strategy = ray::PlacementStrategy(pg_table_data.strategy());
   PlacementGroup group(pg_table_data.placement_group_id(),
                        std::move(options),
                        PlacementGroupState(pg_table_data.state()));

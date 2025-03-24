@@ -18,6 +18,7 @@
 
 namespace ray {
 namespace core {
+using ray::RayObject;
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   if (object_id.TaskId().IsForActorCreationTask()) {

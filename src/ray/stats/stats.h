@@ -90,6 +90,7 @@ static inline void Init(
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
 
+  RAY_LOG(INFO) << "Initializing open census exporter with port=" << metrics_agent_port;
   OpenCensusProtoExporter::Register(metrics_agent_port,
                                     (*metrics_io_service),
                                     "127.0.0.1",

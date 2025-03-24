@@ -28,6 +28,8 @@
 namespace ray {
 namespace core {
 
+using ray::RayObject;
+
 struct MemoryStoreStats {
   int32_t num_in_plasma = 0;
   int32_t num_local_objects = 0;

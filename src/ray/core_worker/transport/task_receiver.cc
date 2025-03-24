@@ -27,6 +27,8 @@ using ray::rpc::ActorTableData;
 namespace ray {
 namespace core {
 
+using ray::RayObject;
+
 void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
                         DependencyWaiter *dependency_waiter) {

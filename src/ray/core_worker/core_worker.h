@@ -64,6 +64,9 @@
 
 namespace ray::core {
 
+using ray::RayObject;
+using ray::TaskArg;
+
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
 /// Tracks stats for inbound tasks (tasks this worker is executing).

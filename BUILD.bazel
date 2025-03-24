@@ -191,6 +191,17 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "event_aggregator_client",
+    hdrs = ["src/ray/rpc/event_aggregator_client.h"],
+    deps = [
+        ":grpc_client",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:event_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
     name = "grpc_server",
     srcs = ["src/ray/rpc/grpc_server.cc"],
     hdrs = ["src/ray/rpc/grpc_server.h"],
@@ -224,6 +235,7 @@ ray_cc_library(
         ":grpc_common_base",
         ":grpc_server",
         ":metrics_agent_client",
+        ":event_aggregator_client",
         ":retryable_grpc_client",
         ":rpc_chaos",
         ":rpc_server_call",
@@ -362,6 +374,32 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",
         ":reporter_cc_grpc",
+        "//src/ray/common:status",
+        "@boost//:asio",
+        "@boost//:thread",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# Event Aggregator gRPC lib.
+cc_grpc_library(
+    name = "event_rpc",
+    srcs = ["//src/ray/protobuf:event_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:event_cc_proto"],
+)
+
+# Event Aggregator client.
+ray_cc_library(
+    name = "event_aggregator_rpc",
+    hdrs = [
+        "src/ray/rpc/event_aggregator_client.h",
+    ],
+    deps = [
+        ":grpc_common_lib",
+        ":gcs_service_cc_grpc",
+        ":event_rpc",
+        ":ray_common",
         "//src/ray/common:status",
         "@boost//:asio",
         "@boost//:thread",
@@ -598,7 +636,7 @@ ray_cc_library(
     srcs = ["src/ray/gcs/gcs_server/state_util.cc"],
     deps = [
         "//src/ray/protobuf:gcs_cc_proto",
-         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1115,6 +1153,7 @@ ray_cc_library(
         "src/ray/core_worker/context.cc",
         "src/ray/core_worker/core_worker.cc",
         "src/ray/core_worker/core_worker_process.cc",
+        "src/ray/core_worker/event_aggregator_exporter.cc",
         "src/ray/core_worker/experimental_mutable_object_manager.cc",
         "src/ray/core_worker/experimental_mutable_object_provider.cc",
         "src/ray/core_worker/future_resolver.cc",
@@ -1147,6 +1186,7 @@ ray_cc_library(
         "src/ray/core_worker/core_worker.h",
         "src/ray/core_worker/core_worker_options.h",
         "src/ray/core_worker/core_worker_process.h",
+        "src/ray/core_worker/event_aggregator_exporter.h",
         "src/ray/core_worker/experimental_mutable_object_manager.h",
         "src/ray/core_worker/experimental_mutable_object_provider.h",
         "src/ray/core_worker/fiber.h",
@@ -1175,6 +1215,7 @@ ray_cc_library(
         "src/ray/core_worker/transport/task_receiver.h",
     ],
     deps = [
+        ":event_aggregator_rpc",
         ":gcs",
         ":gcs_client_lib",
         ":plasma_client",
@@ -2784,6 +2825,7 @@ ray_cc_library(
     hdrs = ["src/ray/gcs/callback.h"],
     deps = [
         "//src/ray/common:status",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

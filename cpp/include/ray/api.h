@@ -140,7 +140,7 @@ ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 /// \return An ActorHandle to the actor if the actor of specified name exists or an
 /// empty optional object.
 template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
+boost::optional<ray::ActorHandle<T>> GetActor(const std::string &actor_name);
 
 /// Get a handle to a named actor in the given namespace.
 /// The actor must have been created with name specified.
@@ -150,8 +150,8 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
 /// \return An ActorHandle to the actor if the actor of specified name exists in
 /// specifiled namespace or an empty optional object.
 template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
-                                         const std::string &ray_namespace);
+boost::optional<ray::ActorHandle<T>> GetActor(const std::string &actor_name,
+                                              const std::string &ray_namespace);
 
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
@@ -334,13 +334,13 @@ inline ray::internal::ActorCreator<F> Actor(F create_func) {
 
 // Get the cpp actor handle by name.
 template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+boost::optional<ray::ActorHandle<T>> GetActor(const std::string &actor_name) {
   return GetActor<T>(actor_name, "");
 }
 
 template <typename T>
-boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
-                                         const std::string &ray_namespace) {
+boost::optional<ray::ActorHandle<T>> GetActor(const std::string &actor_name,
+                                              const std::string &ray_namespace) {
   if (actor_name.empty()) {
     return {};
   }
@@ -350,7 +350,7 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
     return {};
   }
 
-  return ActorHandle<T>(actor_id);
+  return ray::ActorHandle<T>(actor_id);
 }
 
 // Get the cross-language actor handle by name.

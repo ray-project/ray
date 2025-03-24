@@ -30,7 +30,7 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
     int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups)
+    const std::vector<ray::ConcurrencyGroup> &concurrency_groups)
     : io_service_(main_io_service),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),

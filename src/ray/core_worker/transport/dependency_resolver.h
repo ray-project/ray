@@ -27,6 +27,7 @@
 
 namespace ray {
 namespace core {
+using ray::RayObject;
 
 // This class is thread-safe.
 class LocalDependencyResolver {

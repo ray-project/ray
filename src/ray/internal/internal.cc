@@ -47,18 +47,18 @@ std::vector<rpc::ObjectReference> SendInternal(
   auto meta = std::make_shared<LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(meta_data), 3, true);
 
-  std::vector<std::unique_ptr<TaskArg>> args;
+  std::vector<std::unique_ptr<ray::TaskArg>> args;
   if (function.GetLanguage() == Language::PYTHON) {
     auto dummy = "__RAY_DUMMY__";
     auto dummyBuffer = std::make_shared<LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(const_cast<char *>(dummy)), 13, true);
-    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+    args.emplace_back(new TaskArgByValue(std::make_shared<ray::RayObject>(
         std::move(dummyBuffer), meta, std::vector<rpc::ObjectReference>(), true)));
   }
-  args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+  args.emplace_back(new TaskArgByValue(std::make_shared<ray::RayObject>(
       std::move(buffer), meta, std::vector<rpc::ObjectReference>(), true)));
 
-  std::vector<std::shared_ptr<RayObject>> results;
+  std::vector<std::shared_ptr<ray::RayObject>> results;
   std::vector<rpc::ObjectReference> return_refs;
   auto result = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       peer_actor_id,

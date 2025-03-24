@@ -25,6 +25,8 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_client/raylet_client.h"
 
+using RayObject = ray::RayObject;
+
 namespace ray {
 namespace core {
 

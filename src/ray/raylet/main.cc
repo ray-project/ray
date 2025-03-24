@@ -189,6 +189,10 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  RAY_LOG(INFO) << "Object manager port: " << object_manager_port;
+  RAY_LOG(INFO) << "Node manager port: " << node_manager_port;
+  RAY_LOG(INFO) << "Metrics agent port: " << metrics_agent_port;
+  RAY_LOG(INFO) << "Runtime env agent port: " << runtime_env_agent_port;
   RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
   const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;

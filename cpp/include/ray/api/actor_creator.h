@@ -87,7 +87,8 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>, is_x_lang_v<F>> ActorCreator<F>::Remote(Args &&...args) {
+ray::ActorHandle<GetActorType<F>, is_x_lang_v<F>> ActorCreator<F>::Remote(
+    Args &&...args) {
   CheckTaskOptions(create_options_.resources);
 
   if constexpr (is_x_lang_v<F>) {
@@ -107,7 +108,7 @@ ActorHandle<GetActorType<F>, is_x_lang_v<F>> ActorCreator<F>::Remote(Args &&...a
 
   auto returned_actor_id =
       runtime_->CreateActor(remote_function_holder_, args_, create_options_);
-  return ActorHandle<GetActorType<F>, is_x_lang_v<F>>(returned_actor_id);
+  return ray::ActorHandle<GetActorType<F>, is_x_lang_v<F>>(returned_actor_id);
 }
 }  // namespace internal
 }  // namespace ray

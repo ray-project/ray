@@ -27,6 +27,8 @@
 namespace ray {
 namespace core {
 
+using ray::FunctionDescriptor;
+
 class ActorHandle {
  public:
   ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}

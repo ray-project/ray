@@ -39,6 +39,7 @@
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
+using RayObject = ray::RayObject;
 
 namespace ray::core {
 
@@ -402,7 +403,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_shared<gcs::GcsClient>(options_.gcs_options));
+      std::make_shared<gcs::GcsClient>(options_.gcs_options),
+      std::make_shared<EventAggregatorClientImpl>(
+          "127.0.0.1", options_.metrics_agent_port, *client_call_manager_));
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
