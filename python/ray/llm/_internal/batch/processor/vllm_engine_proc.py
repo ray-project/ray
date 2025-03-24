@@ -19,14 +19,26 @@ from ray.llm._internal.batch.stages import (
     DetokenizeStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    TelemetryAgent,
+    BatchModelTelemetry,
+)
+from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    get_or_create_telemetry_agent,
+)
+
+import transformers
+
+DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
 
 class vLLMEngineProcessorConfig(ProcessorConfig):
     """The configuration for the vLLM engine processor."""
 
     # vLLM stage configurations.
-    model: str = Field(
-        description="The model to use for the vLLM engine.",
+    model_source: str = Field(
+        description="The model source to use for the vLLM engine.",
     )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
@@ -91,6 +103,7 @@ def build_vllm_engine_processor(
     config: vLLMEngineProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
     Args:
@@ -122,7 +135,7 @@ def build_vllm_engine_processor(
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                     chat_template=config.chat_template,
                 ),
                 map_batches_kwargs=dict(
@@ -137,7 +150,7 @@ def build_vllm_engine_processor(
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -152,7 +165,7 @@ def build_vllm_engine_processor(
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
-                model=config.model,
+                model=config.model_source,
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
@@ -177,7 +190,7 @@ def build_vllm_engine_processor(
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -186,6 +199,25 @@ def build_vllm_engine_processor(
                 ),
             )
         )
+
+    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
+    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+
+    telemetry_agent = get_or_create_telemetry_agent()
+    telemetry_agent.push_telemetry_report(
+        BatchModelTelemetry(
+            processor_config_name=type(config).__name__,
+            model_architecture=architecture,
+            batch_size=config.batch_size,
+            accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
+            concurrency=config.concurrency,
+            task_type=vLLMTaskType(config.task_type),
+            pipeline_parallel_size=config.engine_kwargs.get(
+                "pipeline_parallel_size", 1
+            ),
+            tensor_parallel_size=config.engine_kwargs.get("tensor_parallel_size", 1),
+        )
+    )
 
     processor = Processor(
         config,

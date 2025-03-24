@@ -562,6 +562,19 @@ def setup(app):
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
 
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+
 
 redoc = [
     {
@@ -697,3 +710,5 @@ intersphinx_mapping = {
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"

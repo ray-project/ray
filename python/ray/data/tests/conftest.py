@@ -16,7 +16,7 @@ import ray.util.state
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import format_web_url, wait_until_server_available
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.cluster_utils import Cluster
@@ -28,11 +28,11 @@ from ray.job_submission import JobSubmissionClient
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import (
     _ray_start,
-    get_default_fixture_ray_kwargs,
-    pytest_runtest_makereport,  # noqa
     wait_for_condition,
+    get_default_fixture_ray_kwargs,
 )
 from ray.util.debug import reset_log_once
 
@@ -134,7 +134,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
@@ -407,9 +407,10 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.utils as utils
+    import ray._private.arrow_utils
 
-    utils._PYARROW_VERSION = None
+    ray._private.arrow_utils._PYARROW_INSTALLED = None
+    ray._private.arrow_utils._PYARROW_VERSION = None
     yield request.param
     pa.__version__ = orig_version
 
@@ -427,7 +428,7 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -448,7 +449,7 @@ def op_two_block():
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_exec_stats.rss_bytes = block_params["rss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
