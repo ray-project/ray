@@ -154,8 +154,8 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --aggregate --group-by "{{columns}}"
-      --shuffle-strategy "{{shuffle_strategy}}"
+      python groupby_benchmark.py --sf 10 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
 
 
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
@@ -174,8 +174,8 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --map-groups --group-by "{{columns}}"
-      --shuffle-strategy "{{shuffle_strategy}}"
+      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
 
 
 #######################
@@ -242,7 +242,7 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-      --iter-batches "{{format}}"
+      --iter-batches {{format}}
 
 - name: to_tf
 
@@ -304,8 +304,8 @@
   run:
     timeout: 5400
     script: >
-      python map_benchmark.py --api map_batches --batch-format "{{format}}"
-      --compute "{{compute}}" --sf 1000
+      python map_benchmark.py --api map_batches --batch-format {{format}}
+      --compute {{compute}} --sf 1000
 
 
 ########################
