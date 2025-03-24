@@ -4105,7 +4105,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_s3.yaml --run-perf-profiler false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_s3.yaml --run-perf-profiler false --skip-hf-token true
 
 
 ##############

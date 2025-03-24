@@ -29,15 +29,17 @@ CLOUD = "serve_release_tests_cloud"
 @click.option("--serve-config-file", type=str)
 @click.option("--run-probes", type=bool, default=True)
 @click.option("--run-perf-profiler", type=bool, default=True)
+@click.option("--skip-hf-token", type=bool, default=False)
 def main(
     image_uri: Optional[str],
     serve_config_file: str,
     run_probes: bool,
     run_perf_profiler: bool,
+    skip_hf_token: bool,
 ):
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
-    env_vars = get_hf_token_env_var()
+    env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     with start_service(
         service_name="llm_serving_release_test",
