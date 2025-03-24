@@ -53,9 +53,6 @@
       --iter-bundles
 
 - name: read_from_uris
-  # TODO: Re-enable this on RayTurbo once we've merged
-  # https://github.com/anyscale/rayturbo/pull/1310.
-  stable: False
   run:
     timeout: 5400
     script: python read_from_uris_benchmark.py
