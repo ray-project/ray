@@ -265,6 +265,9 @@ class RayParams:
         self.cluster_id = cluster_id
         self.node_id = node_id
         self.enable_physical_mode = enable_physical_mode
+        self.enable_head_ha = (
+            os.environ.get("RAY_ENABLE_HEAD_HA", "false").lower() == "true"
+        )
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:

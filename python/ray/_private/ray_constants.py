@@ -561,3 +561,16 @@ RAY_UNPACKABLE_FILE_SUFFIXS_STR = os.environ.get(
 )
 
 RAY_UNPACKABLE_FILE_SUFFIXS = RAY_UNPACKABLE_FILE_SUFFIXS_STR.split(",")
+# head high-availability feature
+STORAGE_NAMESPACE = (
+    "RAY" + os.environ.get("RAY_external_storage_namespace", "default") + "@"
+)
+HEAD_NODE_LEADER_ELECTION_KEY = STORAGE_NAMESPACE + "head_node_leader_election_key"
+HEAD_ROLE_ACTIVE = "active_head"
+HEAD_ROLE_STANDBY = "standby_head"
+GCS_ADDRESS_KEY = STORAGE_NAMESPACE + "GcsServerAddress"
+
+# Number of attempts to ping the Redis server. See
+# `services.py::wait_for_redis_to_start()` and
+# `services.py::create_redis_client()`
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)

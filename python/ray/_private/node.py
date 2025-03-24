@@ -27,6 +27,7 @@ from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
+from ray.ha import RedisBasedLeaderSelector
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -1401,6 +1402,8 @@ class Node:
         assert self._gcs_address is None
         assert self._gcs_client is None
 
+        self.start_head_ha_mode()
+
         self.start_gcs_server()
         assert self.get_gcs_client() is not None
         self._write_cluster_info_to_kv()
@@ -1849,3 +1852,27 @@ class Node:
             # so we truncate it to the first 50 characters
             # to avoid any issues.
             record_hardware_usage(cpu_model_name[:50])
+
+    def check_leadership_downgrade(self):
+        """[ha feature] Check if the role is downgraded from the active."""
+        if self._ray_params.enable_head_ha and hasattr(self, "leader_selector"):
+            if (
+                self.leader_selector is not None
+                and not self.leader_selector.is_leader()
+            ):
+                msg = (
+                    "This head node will be killed "
+                    "as it has changed from active to standby."
+                )
+                logger.error(msg)
+                return True
+        return False
+
+    def start_head_ha_mode(self):
+        if self._ray_params.enable_head_ha:
+            logger.info("The head high-availability mode is enabled.")
+            self.leader_selector = RedisBasedLeaderSelector(
+                self._ray_params, self._redis_address, self.node_ip_address
+            )
+            self.leader_selector.start()
+            self.leader_selector.node_wait_to_be_active()

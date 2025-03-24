@@ -804,7 +804,7 @@ def create_redis_client(redis_address, password=None, username=None):
             redis_ip_address, redis_port = extract_ip_port(
                 canonicalize_bootstrap_address_or_die(redis_address)
             )
-            cli = redis.StrictRedis(
+            cli = redis.Redis(
                 host=redis_ip_address,
                 port=int(redis_port),
                 username=username,
@@ -2289,3 +2289,77 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+
+
+def wait_for_redis_to_start(redis_ip_address, redis_port, username=None, password=None):
+    """Wait for a Redis server to be available.
+
+    This is accomplished by creating a Redis client and sending a random
+    command to the server until the command gets through.
+
+    Args:
+        redis_ip_address (str): The IP address of the redis server.
+        redis_port (int): The port of the redis server.
+        username (str): The username of the Redis server.
+        password (str): The password of the Redis server.
+
+    Raises:
+        Exception: An exception is raised if we could not connect with Redis.
+    """
+    import redis
+
+    redis_client = create_redis_client(
+        "%s:%s" % (redis_ip_address, redis_port), password=password, username=username
+    )
+    # Wait for the Redis server to start.
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
+    delay = 0.001
+    for i in range(num_retries):
+        try:
+            # Run some random command and see if it worked.
+            logger.debug(
+                "Waiting for redis server at {}:{} to respond...".format(
+                    redis_ip_address, redis_port
+                )
+            )
+            redis_client.ping()
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError(
+                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
+            ) from authEx
+        except redis.ConnectionError as connEx:
+            if i >= num_retries - 1:
+                raise RuntimeError(
+                    f"Unable to connect to Redis at {redis_ip_address}:"
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    "machine. If it is not, your firewall may be blocking "
+                    "this port. If the problem is a flaky connection, try "
+                    "setting the environment variable "
+                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
+                    " attempts to ping the Redis server."
+                ) from connEx
+            # Wait a little bit.
+            time.sleep(delay)
+            # Make sure the retry interval doesn't increase too large, which
+            # will affect the delivery time of the Ray cluster.
+            delay = min(1, delay * 2)
+        else:
+            break
+    else:
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server."
+        )

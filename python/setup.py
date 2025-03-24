@@ -403,6 +403,7 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
+        "redis >= 3.5.0, <= 4.5.5",
     ]
 
 
