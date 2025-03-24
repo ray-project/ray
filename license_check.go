@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/google/licensecheck"
@@ -33,46 +34,48 @@ func GetLicense(filepath string) {
 }
 
 func main() {
-	// Define the root directory
 	root := "/home/ubuntu/.cache/bazel/_bazel_ubuntu/2139a9ac91f0a6877cfd4920666e807a/external"
 
-	// Create a channel for communication between Goroutines
-	filePathChannel := make(chan string, 100)
-
-	// WaitGroup to wait for all Goroutines to complete
-	var wg sync.WaitGroup
-
-	// Goroutine-2: The listener Goroutine that processes the files
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for filePath := range filePathChannel {
-			GetLicense(filePath)
-		}
-	}()
-
-	// Goroutine-1: The directory walker that sends file paths to the channel
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error accessing path %q: %v\n", path, err)
-			return nil // Continue walking
-		}
-		if !d.IsDir() && d.Name() == "LICENSE" {
-			// Send the file path to the channel
-			filePathChannel <- path
-		}
-		return nil
-	})
-
-	// Close the channel when the walking is done
+	dirEntries, err := os.ReadDir(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error walking the path %q: %v\n", root, err)
+		fmt.Fprintf(os.Stderr, "Failed to read root dir: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Close the channel once all file paths have been sent
-	close(filePathChannel)
+	// Create channel and waitgroup
+	fileChan := make(chan string, 50)
+	var wg sync.WaitGroup
 
-	// Wait for the listener Goroutine to finish processing
+	// Worker goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for path := range fileChan {
+			GetLicense(path)
+		}
+	}()
+
+	// Producer: iterate subdirectories
+	for _, dirEntry := range dirEntries {
+		if !dirEntry.IsDir() {
+			continue
+		}
+		fileEntries, err := os.ReadDir(filepath.Join(root, dirEntry.Name()))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read dir: %v\n", err)
+			os.Exit(1)
+		}
+		for _, fileEntry := range fileEntries {
+			if fileEntry.IsDir() {
+				continue
+			}
+			if strings.Contains(fileEntry.Name(), "LICENSE") {
+				licensePath := filepath.Join(root, dirEntry.Name(), fileEntry.Name())
+				fileChan <- licensePath
+			}
+		}
+	}
+
+	close(fileChan)
 	wg.Wait()
 }
