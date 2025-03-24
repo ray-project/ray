@@ -19,7 +19,10 @@ from ray.anyscale.serve._private.constants import (
 from ray.anyscale.serve._private.tracing_utils import (
     TraceContextManager,
     extract_propagated_context,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
     set_span_attributes,
+    set_span_exception,
     setup_tracing,
 )
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
@@ -48,6 +51,7 @@ from ray.serve._private.replica import ReplicaBase, StatusCodeCallback
 from ray.serve._private.utils import generate_request_id
 from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -244,9 +248,12 @@ class AnyscaleReplica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        # TODO (abrar): for http requests on ASGI, request_metadata.call_method is __call__
+        #   this is not nice, figure out a better way to map this to method name.
+        call_method = request_metadata.call_method
         trace_context = extract_propagated_context(request_metadata.tracing_context)
         trace_manager = TraceContextManager(
-            trace_name=f"replica_handle_request {self._deployment_id.name}",
+            trace_name=f"replica_handle_request {self._deployment_id.name} {call_method}",
             trace_context=trace_context,
         )
         with trace_manager:
@@ -281,6 +288,40 @@ class AnyscaleReplica(ReplicaBase):
                 request_metadata, request_args
             ) as status_code_callback:
                 yield status_code_callback
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+    ):
+        super()._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata, request_args
+        )
+        http_method = self._maybe_get_http_method(request_metadata, request_args)
+        http_route = request_metadata.route
+        call_method = request_metadata.call_method
+        if request_metadata.is_http_request:
+            set_http_span_attributes(
+                method=http_method,
+                status_code=status_code,
+                route=http_route,
+            )
+        else:
+            # in this case we are either in grpc or undefined. I think
+            # undefined is the case where we call the user method as ray
+            # tasks. Treating it as grpc for now from POV of tracing.
+            set_rpc_span_attributes(
+                system=request_metadata._request_protocol,
+                method=call_method,
+                status_code=status_code,
+                service=self._deployment_id.name,
+            )
+
+        if user_exception is not None:
+            set_span_exception(user_exception, escaped=False)
 
     @_wrap_grpc_call
     async def HandleRequest(

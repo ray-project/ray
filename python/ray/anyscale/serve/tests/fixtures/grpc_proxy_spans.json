@@ -1,45 +1,45 @@
 [
-   {
-      "name":"proxy_route_to_replica",
-      "kind":"SpanKind.SERVER",
-      "status":{
-         "status_code":"OK"
+  {
+      "name": "route_to_replica grpc-deployment __call__",
+      "kind": "SpanKind.SERVER",
+      "status": {
+          "status_code": "UNSET"
       },
-      "attributes":{
-         "request_id":"",
-         "deployment":"grpc-deployment",
-         "app":"default",
-         "call_method":"__call__",
-         "route":"default",
-         "multiplexed_model_id":"",
-         "is_streaming":false,
-         "is_http_request":false,
-         "is_grpc_request":true
+      "attributes": {
+          "request_id": "",
+          "deployment": "grpc-deployment",
+          "app": "default",
+          "call_method": "__call__",
+          "route": "default",
+          "multiplexed_model_id": "",
+          "is_streaming": false,
+          "is_http_request": false,
+          "is_grpc_request": true,
+          "resource.name": "route_to_replica grpc-deployment __call__",
+          "rpc.system": "gRPC",
+          "rpc.method": "__call__",
+          "rpc.service": "grpc-deployment"
       },
-      "events":[
-
-      ],
-      "links":[
-
-      ]
-   },
-   {
-      "name":"proxy_grpc_request",
-      "kind":"SpanKind.SERVER",
-      "status":{
-         "status_code":"OK"
+      "events": [],
+      "links": []
+  },
+  {
+      "name": "proxy_grpc_request grpc-deployment /ray.serve.UserDefinedService/__call__",
+      "kind": "SpanKind.SERVER",
+      "status": {
+          "status_code": "OK"
       },
-      "attributes":{
-         "request_id":"",
-         "deployment":"grpc-deployment",
-         "app":"default",
-         "request_type":"grpc"
+      "attributes": {
+          "request_id": "",
+          "deployment": "grpc-deployment",
+          "app": "default",
+          "request_type": "grpc",
+          "resource.name": "proxy_grpc_request grpc-deployment /ray.serve.UserDefinedService/__call__",
+          "rpc.system": "grpc",
+          "rpc.method": "/ray.serve.UserDefinedService/__call__",
+          "rpc.grpc.status_code": "OK"
       },
-      "events":[
-
-      ],
-      "links":[
-
-      ]
-   }
+      "events": [],
+      "links": []
+  }
 ]

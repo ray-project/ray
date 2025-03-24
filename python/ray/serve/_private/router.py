@@ -16,7 +16,11 @@ import ray
 from ray.actor import ActorHandle
 from ray.anyscale.serve._private.tracing_utils import (
     create_propagated_context,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
     set_span_attributes,
+    set_span_exception,
+    set_span_name,
     tracing_decorator_factory,
 )
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -588,7 +592,7 @@ class AsyncioRouter:
             )
 
     @tracing_decorator_factory(
-        trace_name="proxy_route_to_replica",
+        trace_name="route_to_replica",
     )
     async def assign_request(
         self,
@@ -609,6 +613,9 @@ class AsyncioRouter:
             "is_grpc_request": request_meta.is_grpc_request,
         }
         set_span_attributes(trace_attributes)
+        set_span_name(
+            f"route_to_replica {self.deployment_id.name} {request_meta.call_method}"
+        )
         # Add context to request meta to link
         # traces collected in the replica.
         propagate_context = create_propagated_context()
@@ -637,6 +644,7 @@ class AsyncioRouter:
                 self._metrics_manager.push_autoscaling_metrics_to_controller()
 
             replica_result = None
+            exc = None
             try:
                 request_args, request_kwargs = await self._resolve_request_arguments(
                     request_meta, request_args, request_kwargs
@@ -665,7 +673,8 @@ class AsyncioRouter:
                     replica_result.add_done_callback(callback)
 
                 return replica_result
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:
+                exc = e
                 # NOTE(edoakes): this is not strictly necessary because
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
@@ -673,6 +682,20 @@ class AsyncioRouter:
                     replica_result.cancel()
 
                 raise
+            finally:
+                if request_meta.is_http_request:
+                    set_http_span_attributes(
+                        method=request_meta.call_method,
+                        route=request_meta.route,
+                    )
+                else:
+                    set_rpc_span_attributes(
+                        system=request_meta._request_protocol,
+                        method=request_meta.call_method,
+                        service=self.deployment_id.name,
+                    )
+                if exc:
+                    set_span_exception(exc, escaped=True)
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
