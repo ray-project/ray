@@ -1,11 +1,13 @@
 from typing import List
 
-from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
     PhysicalPlan,
     Rule,
+)
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
 )
 from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
@@ -18,6 +20,8 @@ from ray.data._internal.logical.rules.zero_copy_map_fusion import (
     EliminateBuildOutputBlocks,
 )
 from ray.util.annotations import DeveloperAPI
+
+from .ruleset import Ruleset
 
 _LOGICAL_RULESET = Ruleset(
     [
@@ -33,6 +37,7 @@ _PHYSICAL_RULESET = Ruleset(
         SetReadParallelismRule,
         OperatorFusionRule,
         EliminateBuildOutputBlocks,
+        ConfigureMapTaskMemoryUsingOutputSize,
     ]
 )
 

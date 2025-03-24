@@ -1,3 +1,4 @@
+import gc
 import logging
 import re
 import threading
@@ -7,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-
+import platform
 import numpy as np
 import pytest
 
@@ -31,9 +32,37 @@ from ray.data._internal.stats import (
 )
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
+from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_with_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    poll_interval_s = 0.01
+    with MemoryProfiler(poll_interval_s=poll_interval_s) as profiler:
+        array = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+        time.sleep(poll_interval_s * 2)
+
+        del array
+        gc.collect()
+
+        assert profiler.estimate_max_uss() > array_nbytes
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    with MemoryProfiler(poll_interval_s=None) as profiler:
+        _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+
+        assert profiler.estimate_max_uss() > array_nbytes
 
 
 def gen_expected_metrics(
@@ -51,7 +80,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
-            "'average_memory_usage_per_task': N",
+            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -209,6 +238,20 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     canonicalized_stats = re.sub(r"[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
+
+    # Ray might not be able to estimate the peak heap memory usage on some platforms.
+    # In those cases, the memory estimate could be 0 or None.
+    canonicalized_stats = re.sub(
+        r"Peak heap memory usage \(MiB\): (N|Z) min, (N|Z) max, (N|Z) mean",
+        "Peak heap memory usage (MiB): H min, H max, H mean",
+        canonicalized_stats,
+    )
+    canonicalized_stats = re.sub(
+        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
+        r"\g<1> H",
+        canonicalized_stats,
+    )
+
     if filter_global_stats:
         canonicalized_stats = canonicalized_stats.replace(CLUSTER_MEMORY_STATS, "")
         canonicalized_stats = canonicalized_stats.replace(DATASET_MEMORY_STATS, "")
@@ -269,7 +312,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -332,7 +375,7 @@ def test_large_args_scheduling_strategy(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -345,7 +388,7 @@ def test_large_args_scheduling_strategy(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -387,7 +430,7 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -412,7 +455,7 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -442,7 +485,7 @@ def test_dataset_stats_basic(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -455,7 +498,7 @@ def test_dataset_stats_basic(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -496,7 +539,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -546,7 +589,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
-        "      average_memory_usage_per_task: N,\n"
+        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -661,7 +704,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
-        "      average_memory_usage_per_task: N,\n"
+        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -731,7 +774,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
-        "            average_memory_usage_per_task: N,\n"
+        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
@@ -841,7 +884,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -854,7 +897,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -869,7 +912,7 @@ Operator N Repartition: executed in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -882,7 +925,7 @@ Operator N Repartition: executed in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -941,7 +984,7 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -970,7 +1013,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -983,7 +1026,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -996,7 +1039,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -1101,9 +1144,9 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     )
     assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["rss_bytes"]) / (1024 * 1024),
-            max(block_params["rss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["rss_bytes"]) / (1024 * 1024)),
+            min(block_params["uss_bytes"]) / (1024 * 1024),
+            max(block_params["uss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["uss_bytes"]) / (1024 * 1024)),
         )
         == summarized_lines[4]
     )
@@ -1196,7 +1239,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1233,7 +1276,7 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1264,7 +1307,7 @@ Dataset throughput:
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1277,7 +1320,7 @@ Operator N Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1458,7 +1501,7 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
