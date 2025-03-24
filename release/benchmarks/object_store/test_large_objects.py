@@ -28,7 +28,7 @@ def test_object_ingest():
 
     start = perf_counter()
     result_refs = []
-    for actor in tqdm(actors, desc="Broadcasting objects"):
+    for actor in tqdm(actors, desc="Broadcast tasks kickoff"):
         result_refs.append(actor.send_objects.remote())
 
     results = ray.get(result_refs)
@@ -59,7 +59,7 @@ def test_object_broadcast():
 
     start = perf_counter()
     result_refs = []
-    for actor in tqdm(actors, desc="Broadcasting objects"):
+    for actor in tqdm(actors, desc="Ingesting tasks kickoff"):
         result_refs.append(actor.data_len.remote(ref))
 
     results = ray.get(result_refs)

@@ -3,7 +3,7 @@ region: us-west-2
 
 head_node_type:
     name: head_node
-    instance_type: m6i.4xlarge
+    instance_type: m6i.16xlarge
     resources:
       CPU: 0
       GPU: 0
