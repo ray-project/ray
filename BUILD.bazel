@@ -574,7 +574,7 @@ ray_cc_binary(
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -811,7 +811,7 @@ ray_cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -1137,7 +1137,6 @@ ray_cc_library(
         "src/ray/core_worker/transport/scheduling_util.cc",
         "src/ray/core_worker/transport/sequential_actor_submit_queue.cc",
         "src/ray/core_worker/transport/task_receiver.cc",
-        "src/ray/core_worker/transport/thread_pool.cc",
     ],
     hdrs = [
         "src/ray/core_worker/actor_creator.h",
@@ -1174,7 +1173,6 @@ ray_cc_library(
         "src/ray/core_worker/transport/scheduling_util.h",
         "src/ray/core_worker/transport/sequential_actor_submit_queue.h",
         "src/ray/core_worker/transport/task_receiver.h",
-        "src/ray/core_worker/transport/thread_pool.h",
     ],
     deps = [
         ":gcs",
@@ -1183,6 +1181,7 @@ ray_cc_library(
         ":ray_common",
         ":raylet_client_lib",
         ":stats_lib",
+        ":thread_pool",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
@@ -1192,7 +1191,7 @@ ray_cc_library(
         "//src/ray/util:process",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -1201,6 +1200,18 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "thread_pool",
+    srcs = [
+        "src/ray/core_worker/transport/thread_pool.cc",
+    ],
+    hdrs = ["src/ray/core_worker/transport/thread_pool.h"],
+    deps = [
+        "//src/ray/util:logging",
+        "@boost//:asio",
     ],
 )
 
@@ -3070,7 +3081,7 @@ pyx_library(
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
     ],
 )
 
