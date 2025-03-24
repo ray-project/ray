@@ -22,7 +22,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 CLOUD = "serve_release_tests_cloud"
-SERVE_CONFIG_FILE = "serve_llama_3dot1_8b_tp1.yaml"
 
 
 @click.command()
