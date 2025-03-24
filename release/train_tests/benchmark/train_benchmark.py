@@ -16,7 +16,12 @@ import torch
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
-from image_classification.factory import ImageClassificationFactory
+from image_classification.image_classification_parquet.factory import (
+    ImageClassificationParquetFactory,
+)
+from image_classification.image_classification_jpeg.factory import (
+    ImageClassificationJpegFactory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +349,9 @@ def main():
     logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 
     if benchmark_config.task == "image_classification":
-        factory = ImageClassificationFactory(benchmark_config)
+        factory = ImageClassificationParquetFactory(benchmark_config)
+    elif benchmark_config.task == "image_classification_jpeg":
+        factory = ImageClassificationJpegFactory(benchmark_config)
     else:
         raise ValueError
 
