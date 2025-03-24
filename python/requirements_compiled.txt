@@ -1673,6 +1673,8 @@ pyjwt==2.8.0
     #   snowflake-connector-python
 pylance==0.22.0
     # via -r python/requirements/ml/data-test-requirements.txt
+hive-metastore-client==1.0.9
+    # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
