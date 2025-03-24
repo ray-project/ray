@@ -21,7 +21,7 @@ CLASS_TO_LABEL: Dict[str, int] = {
     "background": 0,
     "with_mask": 1,
     "without_mask": 2,
-    "mask_weared_incorrect": 3
+    "mask_weared_incorrect": 3,
 }
 
 # Create the reverse mapping (label integer to class name) from CLASS_TO_LABEL.
@@ -30,20 +30,20 @@ LABEL_TO_CLASS: Dict[int, str] = {value: key for key, value in CLASS_TO_LABEL.it
 LABEL_COLORS: Dict[str, str] = {
     "with_mask": "green",
     "without_mask": "red",
-    "mask_weared_incorrect": "yellow"
+    "mask_weared_incorrect": "yellow",
 }
 
 # Model paths can be overridden using environment variables.
 REMOTE_MODEL_PATH: str = os.getenv(
     "REMOTE_MODEL_PATH",
-    "s3://face-masks-data/finetuned-models/fasterrcnn_model_mask_detection.pth"
+    "s3://face-masks-data/finetuned-models/fasterrcnn_model_mask_detection.pth",
 )
 CLUSTER_MODEL_PATH: str = os.getenv(
-    "CLUSTER_MODEL_PATH",
-    "/mnt/cluster_storage/fasterrcnn_model_mask_detection.pth"
+    "CLUSTER_MODEL_PATH", "/mnt/cluster_storage/fasterrcnn_model_mask_detection.pth"
 )
 
 app = FastAPI()
+
 
 @serve.deployment(num_replicas=1)
 @serve.ingress(app)
@@ -64,7 +64,6 @@ class APIIngress:
         return Response(content=file_stream.getvalue(), media_type="image/jpeg")
 
 
-    
 @serve.deployment(
     ray_actor_options={"num_gpus": 1},
     autoscaling_config={"min_replicas": 1, "max_replicas": 10},
@@ -80,12 +79,14 @@ class ObjectDetection:
         """Loads the Faster R-CNN model from a remote source if not already available locally."""
         # Download model only once from the remote storage to the cluster path.
         if not os.path.exists(CLUSTER_MODEL_PATH):
-            with smart_open(REMOTE_MODEL_PATH, 'rb') as s3_file:
-                with open(CLUSTER_MODEL_PATH, 'wb') as local_file:
+            with smart_open(REMOTE_MODEL_PATH, "rb") as s3_file:
+                with open(CLUSTER_MODEL_PATH, "wb") as local_file:
                     local_file.write(s3_file.read())
 
         # Load the model with the correct number of classes and weights.
-        loaded_model = models.detection.fasterrcnn_resnet50_fpn(num_classes=len(LABEL_TO_CLASS))
+        loaded_model = models.detection.fasterrcnn_resnet50_fpn(
+            num_classes=len(LABEL_TO_CLASS)
+        )
         loaded_model.load_state_dict(torch.load(CLUSTER_MODEL_PATH, map_location="cpu"))
         loaded_model.eval()
         return loaded_model
@@ -93,7 +94,7 @@ class ObjectDetection:
     def _load_image_from_url(self, url: str) -> Image.Image:
         """
         Loads an image from the given URL and converts it to RGB format.
-        
+
         :param url: URL of the image.
         :return: PIL Image in RGB format.
         """
@@ -101,10 +102,12 @@ class ObjectDetection:
         response.raise_for_status()
         return Image.open(BytesIO(response.content)).convert("RGB")
 
-    def _predict_and_visualize(self, image: Image.Image, confidence_threshold: float = 0.5) -> Image.Image:
+    def _predict_and_visualize(
+        self, image: Image.Image, confidence_threshold: float = 0.5
+    ) -> Image.Image:
         """
         Runs the detection model on the provided image and draws bounding boxes with labels.
-        
+
         :param image: Input PIL Image.
         :param confidence_threshold: Score threshold to filter predictions.
         :return: PIL Image with visualized detections.
@@ -115,16 +118,18 @@ class ObjectDetection:
         # Convert image to tensor and move to GPU if available.
         image_np = np.array(image)
         image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
-        image_tensor = image_tensor.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
+        image_tensor = image_tensor.to(
+            torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        )
 
         with torch.no_grad():
             predictions = self.model([image_tensor])[0]
 
         # Filter predictions by confidence threshold.
-        keep = predictions['scores'] > confidence_threshold
-        boxes = predictions['boxes'][keep].cpu().numpy()
-        labels = predictions['labels'][keep].cpu().numpy()
-        scores = predictions['scores'][keep].cpu().numpy()
+        keep = predictions["scores"] > confidence_threshold
+        boxes = predictions["boxes"][keep].cpu().numpy()
+        labels = predictions["labels"][keep].cpu().numpy()
+        scores = predictions["scores"][keep].cpu().numpy()
 
         for box, label, score in zip(boxes, labels, scores):
             x1, y1, x2, y2 = box
@@ -138,18 +143,18 @@ class ObjectDetection:
             text = f"{class_name} {score:.2f}"
             text_bbox = draw.textbbox((0, 0), text, font=font)
             text_height = text_bbox[3] - text_bbox[1]
-            
+
             # Draw background for text.
             draw.rectangle(
                 [x1, y1 - text_height - 2, x1 + (text_bbox[2] - text_bbox[0]), y1],
-                fill=box_color
+                fill=box_color,
             )
             # Draw text on top of the background.
             draw.text(
                 (x1, y1 - text_height - 2),
                 text,
                 fill="black" if box_color == "yellow" else "white",
-                font=font
+                font=font,
             )
 
         return image
@@ -158,13 +163,14 @@ class ObjectDetection:
         """
         Orchestrates the detection process: loads an image from a URL, runs prediction and visualization,
         and returns the annotated image.
-        
+
         :param image_url: URL of the image to process.
         :return: Annotated PIL Image.
         """
         pil_image = self._load_image_from_url(image_url)
         result_image = self._predict_and_visualize(pil_image)
         return result_image
+
 
 # Bind the deployments.
 entrypoint = APIIngress.bind(ObjectDetection.bind())
