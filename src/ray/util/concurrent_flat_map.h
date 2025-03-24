@@ -59,7 +59,7 @@ class ConcurrentFlatMap {
   // Visitor is called under a write lock so should not be heavy, otherwise prefer Get
   // followed by InsertOrAssign.
   template <typename KeyLike, typename Visitor>
-  void WriteVisit(const absl::Span<KeyLike> &keys, const Visitor &visitor) {
+  void WriteVisit(absl::Span<KeyLike> keys, const Visitor &visitor) {
     auto write_lock = map_.LockForWrite();
     auto &map = write_lock.Get();
     for (const auto &key : keys) {
@@ -74,7 +74,7 @@ class ConcurrentFlatMap {
   // Calls function under read lock so should not be heavy, otherwise prefer Get to copy
   // out.
   template <typename KeyLike, typename Visitor>
-  void ReadVisit(const absl::Span<KeyLike> &keys, const Visitor &visitor) const {
+  void ReadVisit(absl::Span<KeyLike> keys, const Visitor &visitor) const {
     auto read_lock = map_.LockForRead();
     const auto &map = read_lock.Get();
     for (const auto &key : keys) {
@@ -116,8 +116,8 @@ class ConcurrentFlatMap {
   template <typename KeyLike, typename... Args>
   bool Emplace(KeyLike &&key, Args &&...args) {
     auto write_lock = map_.LockForWrite();
-    const auto [_, inserted] = write_lock.Get().emplace(
-        std::forward<KeyLike>(key), ValueType(std::forward<Args>(args)...));
+    const auto [_, inserted] =
+        write_lock.Get().emplace(std::forward<KeyLike>(key), std::forward<Args>(args)...);
     return inserted;
   }
 
