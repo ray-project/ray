@@ -34,7 +34,7 @@ func GetLicense(filepath string) {
 }
 
 func main() {
-	root := "/home/ubuntu/.cache/bazel/_bazel_ubuntu/2139a9ac91f0a6877cfd4920666e807a/external"
+	root := "/home/ubuntu/.cache/bazel/_bazel_ubuntu/2139a9ac91f0a6877cfd4920666e807a/external" // bazel info output_base
 
 	dirEntries, err := os.ReadDir(root)
 	if err != nil {
