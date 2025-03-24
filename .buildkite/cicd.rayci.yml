@@ -17,7 +17,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/ray_ci:test_privileged ci
-          --cache-test-results --parallelism-per-worker 2
+          --cache-test-results
           --build-name oss-ci-base_test
           --build-type cgroup
           --privileged
