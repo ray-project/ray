@@ -131,7 +131,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
@@ -1331,12 +1330,10 @@ class Algorithm(Checkpointable, Trainable):
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
                 _num = min(
-                    # Cap at 20k to not put too much memory strain on EnvRunners.
-                    20000,
+                    # Clamp number of steps to take between a max and a min.
+                    self.config.evaluation_auto_duration_max_env_steps_per_sample,
                     max(
-                        # Low-cap at 100 to avoid possibly negative rollouts or very
-                        # short ones.
-                        100,
+                        self.config.evaluation_auto_duration_min_env_steps_per_sample,
                         (
                             # How much time do we have left?
                             (train_mean_time - (time.time() - t0))
@@ -1346,8 +1343,9 @@ class Algorithm(Checkpointable, Trainable):
                                 (
                                     EVALUATION_RESULTS,
                                     ENV_RUNNER_RESULTS,
-                                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
+                                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
                                 ),
+                                throughput=True,
                                 default=0.0,
                             )
                             / num_healthy_workers
@@ -3088,22 +3086,6 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = self.evaluate(
                     parallel_train_future=parallel_train_future
                 )
-            # TODO (sven): Properly support throughput/sec measurements within
-            #  `self.metrics.log_time()` call.
-            self.metrics.log_value(
-                key=(
-                    EVALUATION_RESULTS,
-                    ENV_RUNNER_RESULTS,
-                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
-                ),
-                value=(
-                    eval_results.get(ENV_RUNNER_RESULTS, {}).get(
-                        NUM_ENV_STEPS_SAMPLED, 0
-                    )
-                    / self.metrics.peek((TIMERS, EVALUATION_ITERATION_TIMER))
-                ),
-            )
-
         else:
             with self._timers[EVALUATION_ITERATION_TIMER]:
                 eval_results = self.evaluate(

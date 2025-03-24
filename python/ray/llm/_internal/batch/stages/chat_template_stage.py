@@ -6,12 +6,14 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.utils import download_hf_model
 
 
 class ChatTemplateUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
         chat_template: Optional[str] = None,
     ):
@@ -20,6 +22,7 @@ class ChatTemplateUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
             chat_template: The chat template in Jinja template format. This is
             usually not needed if the model checkpoint already contains the
@@ -27,13 +30,16 @@ class ChatTemplateUDF(StatefulStageUDF):
         """
         from transformers import AutoProcessor
 
-        super().__init__(data_column)
+        super().__init__(data_column, expected_input_keys)
 
         # NOTE: We always use processor instead of tokenizer in this stage,
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
-        self.processor = AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        model_path = download_hf_model(model, tokenizer_only=True)
+        self.processor = AutoProcessor.from_pretrained(
+            model_path, trust_remote_code=True
+        )
         self.chat_template = chat_template
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -91,11 +97,6 @@ class ChatTemplateUDF(StatefulStageUDF):
         """
         return conversation[-1]["role"] == "user"
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["messages"]
-
 
 class ChatTemplateStage(StatefulStage):
     """
@@ -103,3 +104,11 @@ class ChatTemplateStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = ChatTemplateUDF
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {
+            "messages": "A list of messages in OpenAI chat format. "
+            "See https://platform.openai.com/docs/api-reference/chat/create "
+            "for details."
+        }

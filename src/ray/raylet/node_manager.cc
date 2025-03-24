@@ -14,6 +14,7 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <algorithm>
 #include <cctype>
 #include <csignal>
 #include <cstddef>
@@ -21,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1016,7 +1018,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
       scheduling::NodeID(node_id.Binary()), labels);
 
-  // TODO: Always use the message from ray syncer.
+  // TODO: Always use the message from ray syncer.  // NOLINT
   ResourceRequest resources;
   for (auto &resource_entry : node_info.resources_total()) {
     resources.Set(scheduling::ResourceID(resource_entry.first),
@@ -2445,7 +2447,7 @@ void NodeManager::AsyncResolveObjectsFinish(
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
-  // TODO (Alex): We should standardize to pass
+  // TODO(Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
@@ -3353,7 +3355,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
   // https://github.com/python/cpython/issues/83086
   int agent_id = 0;
   while (agent_id == 0) {
-    agent_id = rand();
+    agent_id = rand();  // NOLINT
   };
   std::string agent_id_str = std::to_string(agent_id);
   agent_command_line.push_back("--agent-id");

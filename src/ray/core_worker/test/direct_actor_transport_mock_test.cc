@@ -14,6 +14,9 @@
 
 // clang-format off
 #include "ray/core_worker/transport/task_receiver.h"
+
+#include <memory>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
@@ -26,7 +29,8 @@
 
 namespace ray {
 namespace core {
-using namespace ::testing;
+using ::testing::_;
+
 class DirectTaskTransportTest : public ::testing::Test {
  public:
   DirectTaskTransportTest() : io_work(io_context) {}
