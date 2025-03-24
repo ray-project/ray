@@ -1,5 +1,4 @@
 from collections import defaultdict, deque
-import copy
 import time
 import threading
 from typing import Any, Deque, Dict, List, Optional, Tuple, Union

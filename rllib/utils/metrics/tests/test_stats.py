@@ -1,5 +1,4 @@
 from collections import deque
-import numpy as np
 import pytest
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.test_utils import check
@@ -315,13 +314,13 @@ def test_reduce_history_with_clear_on_reduce():
     # Test that history is preserved when creating similar stats
     similar = Stats.similar_to(stats)
     assert similar.get_reduce_history() == [3, 7, 11]
-    assert similar._clear_on_reduce == True
+    assert similar._clear_on_reduce
 
     # Test that history is preserved when loading from state
     state = stats.get_state()
     loaded = Stats.from_state(state)
     assert loaded.get_reduce_history() == [3, 7, 11]
-    assert loaded._clear_on_reduce == True
+    assert loaded._clear_on_reduce
 
     # Push and reduce one more time
     loaded.push(7)
@@ -391,7 +390,6 @@ def test_throughput_without_reduce():
     assert loaded_stats.throughput == stats.throughput  # Throughput should be preserved
 
     # Test that throughput tracking works after loading
-    throughput_before = stats.throughput
     loaded_stats.reduce()
     loaded_stats.push(2)
     loaded_stats.reduce()
@@ -403,4 +401,4 @@ def test_throughput_without_reduce():
     # Test that accessing throughput on non-throughput stats raises error
     non_throughput_stats = Stats(reduce="sum")
     with pytest.raises(ValueError):
-        non_throughput_stats.throughput
+        non_throughput_stats.throughput  # noqa: B018
