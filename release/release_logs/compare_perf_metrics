@@ -26,6 +26,7 @@ def parse_args():
     return args
 
 
+
 def main(old_dir_name, new_dir_name):
 
     old_paths = paths_without_root_dir(walk(old_dir_name))
