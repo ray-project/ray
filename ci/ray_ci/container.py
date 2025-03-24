@@ -112,8 +112,8 @@ class Container(abc.ABC):
         """
         artifact_mount_host, artifact_mount_container = self.get_artifact_mount()
         command = ["docker", "run", "-i"]
-        if self.privileged:
-            command.append("--privileged")
+        # if self.privileged:
+        #     command.append("--privileged")
         command += [
             "--rm",
             "--volume",
