@@ -22,3 +22,4 @@ snowflake-connector-python
 pyiceberg[sql-sqlite]==0.7.0
 clickhouse-connect
 hudi==0.2.0
+boto3
