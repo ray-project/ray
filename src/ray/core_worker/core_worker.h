@@ -1888,6 +1888,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Whether the `Exit` function has been called, to avoid executing the exit
   /// process multiple times.
+  ///
+  /// TODO(kevin85421): Currently, there are two public functions, `Exit` and `Shutdown`,
+  /// to terminate the core worker gracefully. We should unify them into `Exit()` so we
+  /// don't need `is_shutdown_` in the future. See
+  /// https://github.com/ray-project/ray/issues/51642 for more details.
   std::atomic<bool> is_exit_ = false;
 
   int64_t max_direct_call_object_size_;
