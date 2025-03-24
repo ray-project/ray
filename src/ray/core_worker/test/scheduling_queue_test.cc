@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/transport/task_receiver.h"
 
-using namespace std::chrono_literals;
+// using namespace std::chrono_literals;
+using std::chrono_literals::operator""s;
 
 namespace ray {
 namespace core {

@@ -14,8 +14,15 @@
 
 #pragma once
 
+#include <deque>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
