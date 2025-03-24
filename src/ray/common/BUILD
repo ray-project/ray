@@ -342,12 +342,23 @@ cc_library(
     srcs = ["libb.cc"],
 )
 
+cc_library(
+    name = "call_a",
+    hdrs = ["call_a.h"],
+    deps = [":liba"],
+)
+
+cc_library(
+    name = "call_b",
+    hdrs = ["call_b.h"],
+    deps = [":libb"],
+)
 cc_test(
     name = "libtest",
     srcs = ["libtest.cc"],
     deps = [
-        ":liba",
-        ":libb",
+        ":call_a",
+        ":call_b",
     ],
 )
 

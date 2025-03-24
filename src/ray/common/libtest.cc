@@ -1,7 +1,8 @@
-#include "src/ray/common/libb.h"
-#include "src/ray/common/liba.h"
+#include "src/ray/common/call_a.h"
+#include "src/ray/common/call_b.h"
 
 int main() {
-    ray::CallFunc();
+    ray::CallA();
+    ray::CallB();
     return 0;
 }
