@@ -522,6 +522,22 @@ def test_compile(logger):
     )  # throughput with tolerance
 
 
+def test_peek_with_default(logger):
+    """Test peek method with default argument."""
+    # Test with non-existent key
+    check(logger.peek("non_existent", default=0.0), 0.0)
+
+    # Test with existing key
+    logger.log_value("existing", 1.0)
+    ret = logger.peek("existing", default=0.0)
+    check(ret, 1.0)  # Should return actual value, not default
+
+    # Test with nested key
+    check(logger.peek(("nested", "key"), default=0.0), 0.0)
+    logger.log_value(("nested", "key"), 2.0)
+    check(logger.peek(("nested", "key"), default=0.0), 2.0)
+
+
 if __name__ == "__main__":
     import pytest
     import sys

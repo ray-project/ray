@@ -129,7 +129,7 @@ class MetricsLogger:
         """
         return self._key_in_stats(key)
 
-    def peek(self, key: Union[str, Tuple[str, ...], None] = None) -> Any:
+    def peek(self, key: Union[str, Tuple[str, ...], None] = None, default=None) -> Any:
         """Returns the (reduced) value(s) found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
@@ -152,7 +152,7 @@ class MetricsLogger:
             expected_reduced = (1.0 - ema) * 2.0 + ema * 3.0
 
             # Peek at the (reduced) value under `key` using indexing.
-            check(logger[key].peek(), expected_reduced)
+            check(logger.peek(key), expected_reduced)
 
             # Peek at the (reduced) nested struct under ("some", "nested").
             check(
@@ -170,15 +170,27 @@ class MetricsLogger:
             the given key or key sequence.
         """
         # Create a reduced view of the entire stats structure.
+        def _nested_peek(stats):
+            return tree.map_structure(
+                lambda s: s.peek() if isinstance(s, Stats) else s,
+                stats.copy(),
+            )
+
         with self._threading_lock:
             if key is None:
-                ret = tree.map_structure(
-                    lambda s: s.peek() if isinstance(s, Stats) else s,
-                    self.stats.copy(),
-                )
+                return _nested_peek(self.stats)
             else:
-                ret = self._get_key(key).peek()
-            return ret
+                if default is None:
+                    stats = self._get_key(key, key_error=True)
+                else:
+                    stats = self._get_key(key, key_error=False)
+
+                if isinstance(stats, Stats):
+                    return stats.peek()
+                elif isinstance(stats, dict) and stats:
+                    return _nested_peek(stats)
+                else:
+                    return default
 
     @staticmethod
     def peek_results(results: Any) -> Any:
