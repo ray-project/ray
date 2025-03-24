@@ -477,7 +477,7 @@ For multimodal models that can process both text and images:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
 Using remote storage for model weights
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use remote storage (S3 and GCS) to store your model weights instead of
 downloading them from Hugging Face.
