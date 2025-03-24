@@ -182,11 +182,6 @@
   transition: fill 0.3s;
 }
 
-/* Method node styles in force layout */
-.method rect {
-  transition: fill 0.3s;
-}
-
 /* Node hover effects for force layout */
 .nodes g:hover rect {
   filter: brightness(1.1);
@@ -207,10 +202,6 @@
 /* Force layout specific styles */
 .nodes .actor {
   filter: drop-shadow(0px 3px 5px rgba(0, 0, 0, 0.2));
-}
-
-.nodes .method {
-  transition: transform 0.3s ease;
 }
 
 .nodes .actor rect {

@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { FlameGraphData } from "../../service/flame-graph";
 import { PhysicalViewData } from "../../service/physical-view";
 
@@ -58,11 +58,10 @@ type FlameVisualizationProps = {
   onElementClick: (data: any, skip_zoom?: boolean) => void;
   selectedElementId: string | null;
   jobId?: string;
-  updateKey?: number;
   onUpdate?: () => void;
   updating?: boolean;
   searchTerm?: string;
-  graphData?: GraphData;
+  graphData: GraphData;
   physicalViewData?: PhysicalViewData | null;
   colorMode?:
     | "warm"
@@ -338,7 +337,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
   onElementClick,
   selectedElementId,
   jobId,
-  updateKey,
   onUpdate,
   updating,
   searchTerm,
@@ -351,19 +349,26 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
   const detailsRef = useRef<HTMLDivElement | null>(null);
   const flameChartRef = useRef<any>(null);
   const chartRef = useRef<any>(null);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  const generatePathId = (node: d3.HierarchyNode<FlameNode>): string => {
+    const path: string[] = [];
+    let current: typeof node | null = node;
+    while (current) {
+      path.unshift(current.data.name);
+      current = current.parent;
+    }
+    return path.join("->");
+  };
+
   // Wrap createFlameGraph in useCallback
-  const createFlameGraph = useCallback(() => {
+  const createFlameGraph = () => {
     let width = containerRef.current ? containerRef.current.clientWidth : 960; // graph width
     let height: number | null = null; // graph height
     let cellHeight = 18; // cell height
     let selection: any = null; // selection
     let tooltip: any = null; // tooltip
     let title = ""; // graph title
-    let transitionDuration = 750;
-    let transitionEase = d3.easeCubic; // tooltip offset
     let sort:
       | boolean
       | ((a: PartitionHierarchyNode, b: PartitionHierarchyNode) => number) =
@@ -518,10 +523,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     };
 
     const zoom = (d: PartitionHierarchyNode) => {
-      if (tooltip) {
-        tooltip.hide();
-      }
-
       // Get the root node
       const root = d.ancestors().pop() || d;
 
@@ -534,6 +535,9 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       if (nodeHierarchy && d.data.fade === true) {
         resetNodes(root, nodeHierarchy);
         update();
+      }
+      if (d.data.name === "_main") {
+        return;
       }
 
       // Calculate the scale factor based on root width vs node width
@@ -841,25 +845,17 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
           .domain([0, maxDepth])
           .range([0, (height || totalHeight) - cellHeight]);
 
-        // Update existing nodes with correct positioning
-        g.transition()
-          .duration(transitionDuration)
-          .ease(transitionEase)
-          .attr(
-            "transform",
-            (d) =>
-              `translate(${d.x0},${
-                inverted
-                  ? yScale(d.depth)
-                  : (height || totalHeight) - yScale(d.depth) - cellHeight
-              })`,
-          );
+        g.attr(
+          "transform",
+          (d) =>
+            `translate(${d.x0},${
+              inverted
+                ? yScale(d.depth)
+                : (height || totalHeight) - yScale(d.depth) - cellHeight
+            })`,
+        );
 
-        g.select("rect")
-          .transition()
-          .duration(transitionDuration)
-          .ease(transitionEase)
-          .attr("width", frameWidth);
+        g.select("rect").attr("width", frameWidth);
 
         // Enter new nodes with correct positioning
         const node = g
@@ -877,16 +873,22 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
 
         node
           .append("svg:rect")
-          .transition()
-          .delay(transitionDuration / 2)
-          .attr("width", frameWidth);
+          .attr("width", frameWidth)
+          .attr("height", cellHeight)
+          .attr("fill", colorMapperWrapper);
 
         if (!tooltip) {
           node.append("svg:title");
         }
 
-        node.append("foreignObject").append("xhtml:div");
-
+        node
+          .append("foreignObject")
+          .attr("width", frameWidth)
+          .attr("height", cellHeight)
+          .append("xhtml:div")
+          .attr("class", "d3-flame-graph-label")
+          .style("display", "block")
+          .text(getName);
         // Re-select to see the new elements
         g = svg
           .selectAll<SVGGElement, PartitionHierarchyNode>("g")
@@ -924,8 +926,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
           .select("div")
           .attr("class", "d3-flame-graph-label")
           .style("display", "block")
-          .transition()
-          .delay(transitionDuration)
           .text(getName);
 
         g.on("click", (event, d) => {
@@ -1080,23 +1080,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     };
 
     // eslint-disable-next-line
-    chart.transitionDuration = function (_: number) {
-      if (!arguments.length) {
-        return transitionDuration;
-      }
-      transitionDuration = _;
-      return chart;
-    };
-
-    // eslint-disable-next-line
-    chart.transitionEase = function (_: any) {
-      if (!arguments.length) {
-        return transitionEase;
-      }
-      transitionEase = _;
-      return chart;
-    };
-
     // eslint-disable-next-line
     chart.sort = function (
       _:
@@ -1229,51 +1212,8 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     };
 
     // Add this helper function at the top level of createFlameGraph
-    const generatePathId = (node: d3.HierarchyNode<FlameNode>): string => {
-      const path: string[] = [];
-      let current: typeof node | null = node;
-      while (current) {
-        path.unshift(current.data.name);
-        current = current.parent;
-      }
-      return path.join("->");
-    };
-
     return chart as any;
-  }, [colorMode]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const handleResize = () => {
-      if (container && flameChartRef.current) {
-        // Update the chart width to match container width
-        const containerWidth = container.clientWidth;
-        flameChartRef.current.width(containerWidth);
-
-        // Update the SVG width
-        if (svgRef.current) {
-          d3.select(svgRef.current).attr("width", containerWidth);
-        }
-      }
-    };
-
-    // Create a ResizeObserver to handle container size changes
-    const resizeObserver = new ResizeObserver(handleResize);
-
-    if (container) {
-      resizeObserver.observe(container);
-    }
-
-    // Also listen for window resize events
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      if (container) {
-        resizeObserver.unobserve(container);
-      }
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1323,34 +1263,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       .style("display", "block");
 
     svgRef.current = svg.node() as SVGSVGElement;
-
-    const mainGroup = svg.append("g").attr("class", "flame-graph-group");
-
-    // Initialize zoom behavior
-    const zoom = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 10])
-      .on("zoom", (event) => {
-        mainGroup.attr("transform", event.transform);
-
-        // Update tooltip position if visible
-        if (
-          tooltipRef.current &&
-          tooltipRef.current.style.visibility === "visible"
-        ) {
-          const tooltipData = d3.select(tooltipRef.current).datum() as any;
-          if (tooltipData) {
-            const newX = event.transform.applyX(tooltipData.x);
-            const newY = event.transform.applyY(tooltipData.y);
-            tooltipRef.current.style.left = `${newX}px`;
-            tooltipRef.current.style.top = `${newY}px`;
-          }
-        }
-      });
-
-    zoomRef.current = zoom;
-    svg.call(zoom);
-
     // Transform data
     const transformedData = transformFlameData(flameData);
 
@@ -1363,8 +1275,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       .width(container.offsetWidth)
       .cellHeight(18)
       .minFrameSize(1)
-      .transitionDuration(750)
-      .transitionEase(d3.easeCubic)
       .inverted(false)
       .onClick((d: PartitionHierarchyNode) => {
         // Extract function/method name and actor information
@@ -1532,7 +1442,6 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
         if (!tooltipRef.current) {
           return;
         }
-
         const tooltip = d3.select(tooltipRef.current);
         const valueInSeconds = d.data.originalValue || 0;
         const formattedValue =
@@ -1576,12 +1485,16 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
             </div>
           `);
 
-        // Update tooltip position on mousemove
-        const updatePosition = (event: MouseEvent) => {
+        // Track mouse movements for all interactions
+        const handleMouseMove = (event: MouseEvent) => {
           const offset = { x: 15, y: 15 }; // Offset from cursor
           const screenRightEdge = window.innerWidth;
           const tooltipWidth =
-            tooltipRef.current!.getBoundingClientRect().width; // eslint-disable-line
+            // eslint-disable-next-line
+            tooltipRef.current!.getBoundingClientRect().width;
+          const tooltipHeight =
+            // eslint-disable-next-line
+            tooltipRef.current!.getBoundingClientRect().height;
 
           // Check if tooltip would be too close to right edge
           const wouldBeCloseToRightEdge =
@@ -1589,32 +1502,34 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
 
           // Position tooltip to the left of cursor if too close to right edge
           const left = wouldBeCloseToRightEdge
-            ? event.clientX + window.scrollX - tooltipWidth - offset.x
-            : event.clientX + window.scrollX + offset.x;
+            ? event.clientX - tooltipWidth - offset.x
+            : event.clientX + offset.x;
 
-          let top = event.clientY + window.scrollY + offset.y;
+          // Check if tooltip would be too close to bottom edge
+          const screenBottomEdge = window.innerHeight;
+          const wouldBeCloseToBottomEdge =
+            event.clientY + tooltipHeight + offset.y > screenBottomEdge - 400;
 
-          // Ensure tooltip stays within viewport
-          // eslint-disable-next-line
-          const tooltipRect = tooltipRef.current!.getBoundingClientRect();
-
-          // Adjust vertical position if too close to bottom
-          if (top + tooltipRect.height > window.innerHeight) {
-            top =
-              event.clientY + window.scrollY - tooltipRect.height - offset.y;
-          }
+          // Position tooltip above cursor if too close to bottom edge
+          const top = wouldBeCloseToBottomEdge
+            ? event.clientY - tooltipHeight - offset.y
+            : event.clientY + offset.y;
 
           tooltip.style("left", `${left}px`).style("top", `${top}px`);
 
+          // Store current position for future references
           tooltip.datum({ x: left, y: top });
         };
 
-        // Add mousemove listener
-        element.addEventListener("mousemove", updatePosition);
+        // Clean up existing event listener if any
+        document.removeEventListener("mousemove", handleMouseMove);
 
-        // Trigger initial position
+        // Add the new event listener to document instead of element for better tracking
+        document.addEventListener("mousemove", handleMouseMove);
+
+        // Position the tooltip at a reasonable initial position
         const rect = element.getBoundingClientRect();
-        updatePosition(
+        handleMouseMove(
           new MouseEvent("mousemove", {
             clientX: rect.left + rect.width / 2,
             clientY: rect.top + rect.height / 2,
@@ -1622,11 +1537,12 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
           }),
         );
 
-        // Remove listener when hiding tooltip
-        const originalHide = tooltipHandler.hide;
+        // Update hide method to remove document event listener
         tooltipHandler.hide = () => {
-          element.removeEventListener("mousemove", updatePosition);
-          originalHide();
+          document.removeEventListener("mousemove", handleMouseMove);
+          if (tooltipRef.current) {
+            d3.select(tooltipRef.current).style("visibility", "hidden");
+          }
         };
       },
       hide: () => {
@@ -1724,7 +1640,7 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       document.head.removeChild(style);
     };
     // eslint-disable-next-line
-  }, [flameData, onElementClick, graphData, colorMode, createFlameGraph]);
+  }, [flameData, colorMode]);
 
   useEffect(() => {
     if (searchTerm && searchTerm.trim() !== "") {
@@ -1732,7 +1648,7 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     } else {
       chartRef.current?.clear();
     }
-  }, [searchTerm]);
+  }, [searchTerm, flameData]);
 
   const transformFlameData = (data: FlameGraphData): FlameNode => {
     if (!data || !data.aggregated || !Array.isArray(data.aggregated)) {
@@ -1809,20 +1725,12 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     nodeMap.set("_main", mainNode);
 
     // Second pass: build the hierarchy
-    nodeMap.forEach((node) => {
-      const nodeName = node.name;
-      const nodeData = nodeMap.get(nodeName);
-
-      if (!nodeData) {
-        return;
-      }
-
-      // Look at totalInParent to find parent nodes
-      const parentData = node.totalInParent || [];
+    nodeMap.forEach((nodeData) => {
+      const parentData = nodeData.totalInParent || [];
 
       // If this node has parents, add it as a child to each parent
       parentData.forEach(({ callerNodeId, duration, count }) => {
-        addedAsChild.add(node.name);
+        addedAsChild.add(nodeData.name);
         const parentNode = nodeMap.get(callerNodeId);
         const nodeDataCopy: FlameNode = {
           name: nodeData.name,
@@ -1860,36 +1768,40 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       });
     });
 
-    nodeMap.forEach((node) => {
-      const updateChildren = (nodeData: FlameNode): FlameNode => {
-        const realnode = nodeMap.get(nodeData.name);
-        const children = [];
-        if (realnode) {
-          for (const child of realnode.children || []) {
-            children.push(updateChildren(child));
-          }
-        }
-        nodeData.children = children;
-        return {
-          name: nodeData.name,
-          customValue: nodeData.customValue,
-          originalValue: nodeData.originalValue,
-          count: nodeData.count,
-          children: nodeData.children ? [...nodeData.children] : [],
-          actorName: nodeData.actorName,
-          hide: nodeData.hide,
-          fade: nodeData.fade,
-          highlight: nodeData.highlight,
-          dimmed: nodeData.dimmed,
-          value: nodeData.value,
-          delta: nodeData.delta,
-          totalInParent: nodeData.totalInParent,
-          extras: nodeData.extras ? { ...nodeData.extras } : undefined,
+    while (true) {
+      let changed = false;
+      nodeMap.forEach((node) => {
+        const copyNode = (nodeData: FlameNode): FlameNode => {
+          return {
+            ...nodeData,
+          };
         };
-      };
-      updateChildren(node);
-    });
-
+        const fixChildren = (nodeData: FlameNode): boolean => {
+          let changed = false;
+          const realnode = nodeMap.get(nodeData.name);
+          // Create deep copies of children
+          const newChildren: FlameNode[] = [];
+          if (realnode && realnode.children) {
+            for (const child of realnode.children) {
+              changed = changed || fixChildren(child);
+              newChildren.push(copyNode(child));
+            }
+          }
+          if (
+            nodeData.children &&
+            nodeData.children.length !== newChildren.length
+          ) {
+            changed = true;
+          }
+          nodeData.children = newChildren;
+          return changed;
+        };
+        changed = changed || fixChildren(node);
+      });
+      if (!changed) {
+        break;
+      }
+    }
     const childrens = new Set<string>();
     if (mainNode.children) {
       for (const child of mainNode.children) {

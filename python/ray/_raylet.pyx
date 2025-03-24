@@ -1836,7 +1836,7 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    from ray.util.insight import record_object_arg_get, timeit
+    from ray.util.insight import record_object_arg_get
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -1900,8 +1900,7 @@ cdef void execute_task(
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
 
-                    with timeit():
-                        outputs = function_executor(*args, **kwargs)
+                    outputs = function_executor(*args, **kwargs)
                     
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
@@ -2307,8 +2306,15 @@ cdef CRayStatus task_execution_handler(
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
+        
+        from ray.util.insight import record_task_enter, record_task_duration
 
+        # directly use record_task_enter and record_task_duration here
+        # rather than timeit to prevent indent change
+        # to avoid diff conflict when merge new features
+        start_time = None
         try:
+            start_time = record_task_enter()
             try:
                 # Exceptions, including task cancellation, should be handled
                 # internal to this call. If it does raise an exception, that
@@ -2384,6 +2390,9 @@ cdef CRayStatus task_execution_handler(
                 if hasattr(e, "unexpected_error_traceback"):
                     msg += (f" {e.unexpected_error_traceback}")
                 return CRayStatus.UnexpectedSystemExit(msg)
+        finally:
+            if start_time is not None:
+                record_task_duration(time.time() - start_time)
 
     return CRayStatus.OK()
 

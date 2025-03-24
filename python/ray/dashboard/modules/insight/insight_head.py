@@ -1,6 +1,5 @@
 import logging
 import aiohttp.web
-import ray
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource
@@ -210,6 +209,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
         """Return the call graph data by reading from the InsightMonitor HTTP endpoint."""
         try:
             job_id = req.query.get("job_id", "default_job")
+            stack_mode = req.query.get("stack_mode", "0")
 
             # Get insight monitor address from KV store using gcs_aio_client
             address = await self.gcs_aio_client.internal_kv_get(
@@ -229,7 +229,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"http://{host}:{port}/get_call_graph_data",
-                    params={"job_id": job_id},
+                    params={"job_id": job_id, "stack_mode": stack_mode},
                 ) as response:
                     if response.status != 200:
                         return dashboard_optional_utils.rest_response(

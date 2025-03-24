@@ -447,7 +447,6 @@ type PhysicalVisualizationProps = {
   onElementClick: (data: any, skip_zoom: boolean) => void;
   selectedElementId: string | null;
   jobId?: string;
-  updateKey?: number;
   onUpdate?: () => void;
   updating?: boolean;
   searchTerm?: string;
@@ -706,7 +705,6 @@ const PhysicalVisualization = forwardRef<
       onElementClick,
       selectedElementId,
       jobId,
-      updateKey,
       onUpdate,
       updating = false,
       searchTerm = "",
@@ -1450,7 +1448,7 @@ const PhysicalVisualization = forwardRef<
     // Initial render and on data change
     useEffect(() => {
       renderPhysicalView();
-    }, [renderPhysicalView, physicalViewData, updateKey, contextValueFilter]);
+    }, [renderPhysicalView, physicalViewData, contextValueFilter]);
 
     return (
       <div
