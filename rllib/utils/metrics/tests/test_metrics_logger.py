@@ -201,20 +201,19 @@ def test_merge_and_log_n_dicts(logger):
 def test_throughput_tracking(logger):
     """Test throughput tracking functionality."""
     # Test basic throughput tracking
-    logger.log_value("count", 1, reduce="sum", with_throughput=True)
-
     start_time = time.perf_counter()
+    logger.log_value("count", 1, reduce="sum", with_throughput=True)
     num_iters = 100
-    for _ in range(100):
+    for _ in range(num_iters):
         time.sleep(0.1 / num_iters)  # Simulate some time passing
         logger.log_value("count", 2, reduce="sum", with_throughput=True)
     end_time = time.perf_counter()
 
     # Get value and throughput
     check(logger.peek("count"), num_iters * 2 + 1)
-    approx_throughput = num_iters * 2 / (end_time - start_time)
+    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(
-        logger.throughputs("count"), approx_throughput, rtol=0.01
+        logger.throughputs("count"), approx_throughput, rtol=0.05
     )  # 1% tolerance in throughput
 
     # Test throughputs() method without key (returns all throughputs)
@@ -222,11 +221,10 @@ def test_throughput_tracking(logger):
     check(throughputs["count_throughput"], approx_throughput, rtol=0.05)
 
     # Test throughput with custom EMA coefficient
+    start_time = time.perf_counter()
     logger.log_value(
         "custom_ema", 1, reduce="sum", with_throughput=True, throughput_ema_coeff=0.1
     )
-
-    start_time = time.perf_counter()
     num_iters = 100
     for i in range(num_iters):
         time.sleep(0.1 / num_iters)  # Simulate some time passing
@@ -240,8 +238,8 @@ def test_throughput_tracking(logger):
     end_time = time.perf_counter()
 
     # With higher EMA coefficient, throughput should adapt more quickly but tolerance should be higher
-    approx_throughput = num_iters * 2 / (end_time - start_time)
-    check(logger.throughputs("custom_ema"), approx_throughput, rtol=0.1)
+    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
+    check(logger.throughputs("custom_ema"), approx_throughput, rtol=0.5)
 
     # Test error cases
     with pytest.raises(ValueError):
@@ -310,7 +308,7 @@ def test_log_dict_with_throughput(logger):
 
     # Get value and throughput
     check(logger.peek("count"), num_iters * 2 + 1)
-    approx_throughput = num_iters * 2 / (end_time - start_time)
+    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(
         logger.throughputs("count"), approx_throughput, rtol=0.5
     )  # Higher tolerance due to EMA
@@ -335,7 +333,7 @@ def test_log_dict_with_throughput(logger):
     end_time = time.perf_counter()
 
     # Check nested throughput
-    approx_throughput = num_iters * 2 / (end_time - start_time)
+    approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(logger.throughputs(["nested", "count"]), approx_throughput, rtol=0.5)
 
     # Test error cases

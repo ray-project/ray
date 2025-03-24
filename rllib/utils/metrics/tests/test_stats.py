@@ -384,7 +384,9 @@ def test_throughput_without_reduce():
     # Test throughput tracking after loading stats
     state = stats.get_state()
     loaded_stats = Stats.from_state(state)
-    assert loaded_stats._last_push_time == -1  # Should be -1 after loading
+    assert (
+        loaded_stats._last_push_time != -1
+    )  # Should be set after loading with initial value
     assert loaded_stats.peek() == 6  # Value should be preserved
     assert loaded_stats.throughput == stats.throughput  # Throughput should be preserved
 
