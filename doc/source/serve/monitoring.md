@@ -98,10 +98,13 @@ deployments:
 * `message`: Provides context on the current status.
 * `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
 * `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
-    * `status`: A Serve deployment has three possible statuses:
+    * `status`: A Serve deployment has six possible statuses:
         * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
-        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
-        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+        * `"HEALTHY"`: The deployment is healthy and running at the target replica count.
+        * `"UNHEALTHY"`: The deployment has updated and has become unhealthy afterwards. This condition may be due to replicas failing to upscale, replicas failing health checks, or a general system or machine error.
+        * `"DEPLOY_FAILED"`: The deployment failed to start or update. This condition is likely due to an error in the deployment's constructor.
+        * `"UPSCALING"`: The deployment (with autoscaling enabled) is upscaling the number of replicas.
+        * `"DOWNSCALING"`: The deployment (with autoscaling enabled) is downscaling the number of replicas.
     * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
         * `STARTING`: The replica is starting and not yet ready to serve requests.
         * `UPDATING`: The replica is undergoing a `reconfigure` update.
