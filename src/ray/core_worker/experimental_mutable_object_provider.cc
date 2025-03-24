@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 namespace experimental {

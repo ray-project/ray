@@ -81,6 +81,15 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         # we leave the runtime environment unchanged
         return runtime_env
 
+    # First check that the "uv" and "pip" runtime environments are not used.
+    if "uv" in runtime_env or "pip" in runtime_env:
+        raise RuntimeError(
+            "You are using the 'pip' or 'uv' runtime environments together with "
+            "'uv run'. These are not compatible since 'uv run' will run the workers "
+            "in an isolated environment -- please add the 'pip' or 'uv' dependencies to your "
+            "'uv run' environment e.g. by including them in your pyproject.toml."
+        )
+
     # Extract the arguments of 'uv run' that are not arguments of the script.
     # First we get the arguments of this script (without the executable):
     script_args = psutil.Process().cmdline()[1:]
