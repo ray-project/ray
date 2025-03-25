@@ -10,6 +10,7 @@ import setproctitle
 import multiprocessing
 
 import ray
+from ray import ray_constants
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import configure_log_file
@@ -100,7 +101,9 @@ class SubprocessModule(abc.ABC):
         Start running the module.
         This method should be called first before the module starts receiving requests.
         """
-        app = aiohttp.web.Application()
+        app = aiohttp.web.Application(
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
+        )
         routes: list[aiohttp.web.RouteDef] = [
             aiohttp.web.get("/api/healthz", self._internal_module_health_check)
         ]
