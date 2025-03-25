@@ -18,7 +18,22 @@ Ray Data is one of the Ray AI Libraries.
 
 Ray Data uses the `Dataset` abstraction to map common data operations to Ray Core primitives. To learn about Ray Core primitives, see :ref:`Ray Core key concepts<core-key-concepts>`.
 
-Ray Data integrates with Ray Train for optimized data loading, preprocessing, and feature engineering. See :ref:`Ray Train overview<train-overview>`.
+Ray Data integrates with Ray Train and Ray Tune for optimized data loading, preprocessing, and feature engineering. See :ref:`Ray Train overview<train-overview>`.
+
+How does Ray Data distribute data?
+---------------------------------- 
+
+
+
+Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+
+.. image:: images/dataset-arch-with-blocks.svg
+   :alt: Ray Dataset with three blocks
+..
+  https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
+
 
 .. _dataset_conceptual:
 
@@ -61,13 +76,7 @@ If you're troubleshooting or optimizing Ray Data workloads, consider the followi
   * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See :ref:`Arrow and pandas type differences<https://arrow.apache.org/docs/python/pandas.html#type-differences>`.
   * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
 
-Overall 
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
-
-.. image:: images/dataset-arch-with-blocks.svg
-..
-  https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
 
 .. _plans:
 
@@ -128,8 +137,9 @@ Streaming execution model
 
 Ray Data uses a *streaming execution model* to efficiently process large datasets.
 
-Rather than materializing the entire dataset in memory at once,
-Ray Data can process data in a streaming fashion through a pipeline of operations.
+Rather than materializing the entire dataset in memory at once, Ray Data can process data in a streaming fashion through a pipeline of operations.
+
+
 
 This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
 
@@ -179,6 +189,6 @@ In particular, the pipeline architecture enables multiple stages to execute conc
 To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
 
 .. note::
-   Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
+   Operations including :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
 
 You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.
