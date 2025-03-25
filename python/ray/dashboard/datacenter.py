@@ -1,9 +1,11 @@
 import logging
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
+)
+from ray._private.utils import (
     parse_pg_formatted_resources_to_original,
 )
 from ray.dashboard.utils import (
@@ -26,9 +28,6 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = MutableNotificationDict()
-    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
-    # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
-    agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
     # {node id hex(str): worker list}
@@ -37,8 +36,6 @@ class DataSource:
     node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
-    # {job id hex(str): {event id(str): event dict}}
-    events = Dict()
 
 
 class DataOrganizer:
@@ -189,42 +186,6 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id, get_summary=True)
             for node_id in DataSource.nodes.keys()
         ]
-
-    @classmethod
-    async def get_agent_infos(
-        cls, target_node_ids: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, Any]]:
-        """Fetches running Agent (like HTTP/gRPC ports, IP, etc) running on every node
-
-        :param target_node_ids: Target node ids to fetch agent info for. If omitted will
-                                fetch the info for all agents
-        """
-
-        # Return all available agent infos in case no target node-ids were provided
-        target_node_ids = target_node_ids or DataSource.agents.keys()
-
-        missing_node_ids = [
-            node_id for node_id in target_node_ids if node_id not in DataSource.agents
-        ]
-        if missing_node_ids:
-            logger.warning(
-                f"Agent info was not found for {missing_node_ids}"
-                f" (having agent infos for {list(DataSource.agents.keys())})"
-            )
-            return {}
-
-        def _create_agent_info(node_id: str):
-            (http_port, grpc_port) = DataSource.agents[node_id]
-            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-
-            return dict(
-                ipAddress=node_ip,
-                httpPort=int(http_port or -1),
-                grpcPort=int(grpc_port or -1),
-                httpAddress=f"{node_ip}:{http_port}",
-            )
-
-        return {node_id: _create_agent_info(node_id) for node_id in target_node_ids}
 
     @classmethod
     async def get_actor_infos(cls, actor_ids: Optional[List[str]] = None):

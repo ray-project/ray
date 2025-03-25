@@ -44,8 +44,17 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
+from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+    BlockStats,
+    to_stats,
+)
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -59,10 +68,16 @@ class MapOperator(OneToOneOperator, ABC):
     and actor compute strategies.
     """
 
+    MAP_UDF_WARN_SIZE_THRESHOLD = 100 * 1024**2
+    """
+    Warn if the size of the map UDF exceeds this threshold.
+    """
+
     def __init__(
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
@@ -87,7 +102,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
         # Output metadata, added to on get_next().
-        self._output_metadata: List[BlockMetadata] = []
+        self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
@@ -95,13 +110,32 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, target_max_block_size)
+        super().__init__(name, input_op, data_context, target_max_block_size)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
+        # Callback functions that generate additional task kwargs
+        # for the map task.
+        self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
+        """Add a callback function that generates additional kwargs for the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def get_map_task_kwargs(self) -> Dict[str, Any]:
+        """Get the kwargs for the map task.
+        Subclasses should pass the returned kwargs to the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        kwargs = {}
+        for fn in self._map_task_kwargs_fns:
+            kwargs.update(fn())
+        return kwargs
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -123,6 +157,7 @@ class MapOperator(OneToOneOperator, ABC):
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -159,7 +194,7 @@ class MapOperator(OneToOneOperator, ABC):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+            ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
@@ -172,6 +207,7 @@ class MapOperator(OneToOneOperator, ABC):
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -188,6 +224,7 @@ class MapOperator(OneToOneOperator, ABC):
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 target_max_block_size=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,
@@ -241,6 +278,21 @@ class MapOperator(OneToOneOperator, ABC):
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(map_transformer)
+        self._warn_large_udf()
+
+    def _warn_large_udf(self):
+        """Print a warning if the UDF is too large."""
+        udf_size = ray.experimental.get_local_object_locations(
+            [self._map_transformer_ref]
+        )[self._map_transformer_ref]["object_size"]
+        if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
+            logger.warning(
+                f"The UDF of operator {self.name} is too large "
+                f"(size = {memory_string(udf_size)}). "
+                "Check if the UDF has accidentally captured large objects. "
+                "Load the large objects in the __init__ method "
+                "or pass them as ObjectRefs instead."
+            )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
@@ -275,7 +327,7 @@ class MapOperator(OneToOneOperator, ABC):
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
+            ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
                 ray_remote_args[
                     "scheduling_strategy"
@@ -405,7 +457,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        self._output_metadata.extend(bundle.metadata)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
 
     @abstractmethod
@@ -416,7 +468,7 @@ class MapOperator(OneToOneOperator, ABC):
         return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
-        return {self._name: self._output_metadata}
+        return {self._name: self._output_blocks_stats}
 
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
@@ -464,6 +516,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
 
@@ -477,17 +530,21 @@ def _map_task(
         as the last generator return.
     """
     DataContext._set_current(data_context)
+    ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-        # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata()
-        m_out.exec_stats = stats.build()
-        m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-        m_out.exec_stats.task_idx = ctx.task_idx
-        yield b_out
-        yield m_out
-        stats = BlockExecStats.builder()
+    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+            # TODO(Clark): Add input file propagation from input blocks.
+            m_out = BlockAccessor.for_block(b_out).get_metadata()
+            m_out.exec_stats = stats.build()
+            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
+            m_out.exec_stats.task_idx = ctx.task_idx
+            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            yield b_out
+            yield m_out
+            stats = BlockExecStats.builder()
+            profiler.reset()
 
 
 class _BlockRefBundler:

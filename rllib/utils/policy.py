@@ -19,6 +19,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import (
@@ -31,7 +32,6 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
-@PublicAPI
+@OldAPIStack
 def create_policy_for_framework(
     policy_id: str,
     policy_class: Type["Policy"],
@@ -108,7 +108,7 @@ def create_policy_for_framework(
         return policy_class(observation_space, action_space, merged_config)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def parse_policy_specs_from_checkpoint(
     path: str,
 ) -> Tuple[PartialAlgorithmConfigDict, Dict[str, PolicySpec], Dict[str, PolicyState]]:
@@ -137,7 +137,7 @@ def parse_policy_specs_from_checkpoint(
     return policy_config, policy_specs, policy_states
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def local_policy_inference(
     policy: "Policy",
     env_id: str,
@@ -242,7 +242,7 @@ def local_policy_inference(
     return outputs
 
 
-@PublicAPI
+@OldAPIStack
 def compute_log_likelihoods_from_input_dict(
     policy: "Policy", batch: Union[SampleBatch, Dict[str, TensorStructType]]
 ):

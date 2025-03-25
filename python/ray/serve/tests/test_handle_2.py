@@ -7,9 +7,8 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
 )
 from ray.serve.exceptions import RayServeException
@@ -412,10 +411,6 @@ def test_handle_eager_execution(serve_instance):
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't respect max_ongoing_requests",
 )
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
-    reason="Strict enforcement must be enabled",
-)
 @pytest.mark.asyncio
 async def test_max_ongoing_requests_enforced(serve_instance):
     """Handles should respect max_ongoing_requests enforcement."""
@@ -470,6 +465,31 @@ async def test_max_ongoing_requests_enforced(serve_instance):
         assert len(done) == 1
         assert len(pending) == len(tasks) - 1
         tasks = pending
+
+
+def test_shutdown(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert h.remote().result() == "hi"
+
+    h.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert await h.remote() == "hi"
+
+    await h.shutdown_async()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import torch
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import _dynamo_is_available
 

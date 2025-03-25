@@ -7,10 +7,9 @@ import pyarrow.fs
 
 import ray
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.tune import ResumeConfig
+from ray.tune import ResumeConfig, RunConfig
 from ray.tune.experimental.output import get_air_verbosity
 from ray.tune.impl.tuner_internal import _TUNER_PKL, TunerInternal
 from ray.tune.progress_reporter import (
@@ -46,70 +45,35 @@ class Tuner:
 
     Args:
         trainable: The trainable to be tuned.
-        param_space: Search space of the tuning job.
-            One thing to note is that both preprocessor and dataset can be tuned here.
-        tune_config: Tuning algorithm specific configs.
-            Refer to ray.tune.tune_config.TuneConfig for more info.
-        run_config: Runtime configuration that is specific to individual trials.
-            If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.train.RunConfig for more info.
+        param_space: Search space of the tuning job. See :ref:`tune-search-space-tutorial`.
+        tune_config: Tuning specific configs, such as setting custom
+            :ref:`search algorithms <tune-search-alg>` and
+            :ref:`trial scheduling algorithms <tune-schedulers>`.
+        run_config: Job-level run configuration, which includes configs for
+            persistent storage, checkpointing, fault tolerance, etc.
 
     Usage pattern:
 
     .. code-block:: python
 
-        from sklearn.datasets import load_breast_cancer
+        import ray.tune
 
-        from ray import tune
-        from ray.data import from_pandas
-        from ray.train import RunConfig, ScalingConfig
-        from ray.train.xgboost import XGBoostTrainer
-        from ray.tune.tuner import Tuner
+        def trainable(config):
+            # Your training logic here
+            ray.tune.report({"accuracy": 0.8})
 
-        def get_dataset():
-            data_raw = load_breast_cancer(as_frame=True)
-            dataset_df = data_raw["data"]
-            dataset_df["target"] = data_raw["target"]
-            dataset = from_pandas(dataset_df)
-            return dataset
-
-        trainer = XGBoostTrainer(
-            label_column="target",
-            params={},
-            datasets={"train": get_dataset()},
+        tuner = Tuner(
+            trainable=trainable,
+            param_space={"lr": ray.tune.grid_search([0.001, 0.01])},
+            run_config=ray.tune.RunConfig(name="my_tune_run"),
         )
-
-        param_space = {
-            "scaling_config": ScalingConfig(
-                num_workers=tune.grid_search([2, 4]),
-                resources_per_worker={
-                    "CPU": tune.grid_search([1, 2]),
-                },
-            ),
-            # You can even grid search various datasets in Tune.
-            # "datasets": {
-            #     "train": tune.grid_search(
-            #         [ds1, ds2]
-            #     ),
-            # },
-            "params": {
-                "objective": "binary:logistic",
-                "tree_method": "approx",
-                "eval_metric": ["logloss", "error"],
-                "eta": tune.loguniform(1e-4, 1e-1),
-                "subsample": tune.uniform(0.5, 1.0),
-                "max_depth": tune.randint(1, 9),
-            },
-        }
-        tuner = Tuner(trainable=trainer, param_space=param_space,
-            run_config=RunConfig(name="my_tune_run"))
         results = tuner.fit()
 
-    To retry a failed tune run, you can then do
+    To retry a failed Tune run, you can then do
 
     .. code-block:: python
 
-        tuner = Tuner.restore(results.experiment_path, trainable=trainer)
+        tuner = Tuner.restore(results.experiment_path, trainable=trainable)
         tuner.fit()
 
     ``results.experiment_path`` can be retrieved from the
@@ -295,8 +259,8 @@ class Tuner:
         .. code-block:: python
 
             import os
-            from ray.tune import Tuner
-            from ray.train import RunConfig
+
+            from ray.tune import Tuner, RunConfig
 
             def train_fn(config):
                 # Make sure to implement checkpointing so that progress gets
@@ -308,7 +272,11 @@ class Tuner:
             exp_dir = os.path.join(storage_path, name)
 
             if Tuner.can_restore(exp_dir):
-                tuner = Tuner.restore(exp_dir, trainable=train_fn, resume_errored=True)
+                tuner = Tuner.restore(
+                    exp_dir,
+                    trainable=train_fn,
+                    resume_errored=True,
+                )
             else:
                 tuner = Tuner(
                     train_fn,

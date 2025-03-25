@@ -6,6 +6,9 @@ import re
 import time
 from functools import partial, reduce
 
+import google_auth_httplib2
+import googleapiclient
+import httplib2
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -14,6 +17,7 @@ from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
 from ray._private.accelerators import TPUAcceleratorManager
+from ray._private.accelerators import tpu
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -48,11 +52,6 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
 
-# By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
-# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
-DEFAULT_TPU_CORES_PER_CHIP = 2
-
 
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     """Convert a provided accelerator_config to accelerator_type.
@@ -72,17 +71,14 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     # Reduce e.g. "2x2x2" to 8
     chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
     num_chips = reduce(lambda x, y: x * y, chip_dimensions)
-    num_cores = num_chips * DEFAULT_TPU_CORES_PER_CHIP
 
     # V5LitePod is rendered as "V5LITE_POD" in accelerator configuration but
     # accelerator type uses a format like "v5litepod-{cores}", so we need
     # to manually convert the string here.
     if generation == "v5lite_pod":
         generation = "v5litepod"
-        num_cores = num_chips
 
-    if generation == "v6e":
-        num_cores = num_chips
+    num_cores = tpu.get_tpu_cores_per_chip(generation) * num_chips
 
     return f"{generation}-{num_cores}"
 
@@ -133,39 +129,13 @@ def _validate_tpu_config(node: dict):
             )
 
 
-def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
-    if accelerator_type == "v5litepod-8":
-        return 8
-
-    # All V6e configurations have 8 chips per host
-    if accelerator_type.startswith("v6e"):
-        return 8
-
-    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
-
-
-def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
-    # accelerator_type  is in the form v{generateion}-{cores}
-    accelerator_type = accelerator_type.split("-")[0]
-
-    # V5Litepods have 1 core per chip
-    if accelerator_type == "v5litepod":
-        return 1
-
-    # V6es have 1 core per chip
-    if accelerator_type == "v6e":
-        return 1
-
-    return DEFAULT_TPU_CORES_PER_CHIP
-
-
 def _get_num_tpu_chips(node: dict) -> int:
     chips = 0
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
         # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / _get_tpu_cores_per_chip(accelerator_type)
+        chips = cores / tpu.get_tpu_cores_per_chip(accelerator_type)
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -182,7 +152,7 @@ def _is_single_host_tpu(node: dict) -> bool:
         accelerator_type = node["acceleratorType"]
     else:
         accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
-    return _get_num_tpu_chips(node) == _get_num_tpu_visible_chips_per_host(
+    return _get_num_tpu_chips(node) <= tpu.get_num_tpu_visible_chips_per_host(
         accelerator_type
     )
 
@@ -329,21 +299,40 @@ def _is_head_node_a_tpu(config: dict) -> bool:
     return get_node_type(node_configs[config["head_node_type"]]) == GCPNodeType.TPU
 
 
+def build_request(http, *args, **kwargs):
+    new_http = google_auth_httplib2.AuthorizedHttp(
+        http.credentials, http=httplib2.Http()
+    )
+    return googleapiclient.http.HttpRequest(new_http, *args, **kwargs)
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
-        "cloudresourcemanager", "v1", credentials=gcp_credentials, cache_discovery=False
+        "cloudresourcemanager",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_iam(gcp_credentials=None):
     return discovery.build(
-        "iam", "v1", credentials=gcp_credentials, cache_discovery=False
+        "iam",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
 def _create_compute(gcp_credentials=None):
     return discovery.build(
-        "compute", "v1", credentials=gcp_credentials, cache_discovery=False
+        "compute",
+        "v1",
+        credentials=gcp_credentials,
+        requestBuilder=build_request,
+        cache_discovery=False,
     )
 
 
@@ -352,6 +341,7 @@ def _create_tpu(gcp_credentials=None):
         "tpu",
         TPU_VERSION,
         credentials=gcp_credentials,
+        requestBuilder=build_request,
         cache_discovery=False,
         discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest",
     )

@@ -108,6 +108,83 @@ def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     assert ray.get(f.remote()) == "2.3.0"
 
 
+# Install different versions of the same package across different tasks, used to check
+# uv cache doesn't break runtime env requirement.
+def test_package_install_with_different_versions(shutdown_only):
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    def f():
+        import requests
+
+        assert requests.__version__ == "2.3.0"
+
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.2.0"]}})
+    def g():
+        import requests
+
+        assert requests.__version__ == "2.2.0"
+
+    ray.get(f.remote())
+    ray.get(g.remote())
+
+
+# Install packages with cache enabled.
+def test_package_install_with_cache_enabled(shutdown_only):
+    @ray.remote(
+        runtime_env={
+            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": []}
+        }
+    )
+    def f():
+        import requests
+
+        assert requests.__version__ == "2.3.0"
+
+    @ray.remote(
+        runtime_env={
+            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": []}
+        }
+    )
+    def g():
+        import requests
+
+        assert requests.__version__ == "2.2.0"
+
+    ray.get(f.remote())
+    ray.get(g.remote())
+
+
+# Testing senario: install packages with `uv` with multiple options.
+def test_package_install_with_multiple_options(shutdown_only):
+    @ray.remote(
+        runtime_env={
+            "uv": {
+                "packages": ["requests==2.3.0"],
+                "uv_pip_install_options": ["--no-cache", "--color=auto"],
+            }
+        }
+    )
+    def f():
+        import requests
+
+        assert requests.__version__ == "2.3.0"
+
+    @ray.remote(
+        runtime_env={
+            "uv": {
+                "packages": ["requests==2.2.0"],
+                "uv_pip_install_options": ["--no-cache", "--color=auto"],
+            }
+        }
+    )
+    def g():
+        import requests
+
+        assert requests.__version__ == "2.2.0"
+
+    ray.get(f.remote())
+    ray.get(g.remote())
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -14,9 +14,14 @@
 
 #pragma once
 
+#include <list>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
@@ -37,24 +42,36 @@ struct GcsServerMocker {
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
-      callbacks.push_back(callback);
+      absl::MutexLock lock(&mutex_);
+      callbacks_.push_back(callback);
     }
 
     bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
-      if (callbacks.size() == 0) {
-        return false;
+      rpc::ClientCallback<rpc::PushTaskReply> callback = nullptr;
+      {
+        absl::MutexLock lock(&mutex_);
+        if (callbacks_.size() == 0) {
+          return false;
+        }
+        callback = callbacks_.front();
+        callbacks_.pop_front();
       }
-      auto callback = callbacks.front();
+      // call the callback without the lock to avoid deadlock.
       auto reply = rpc::PushTaskReply();
       if (exit) {
         reply.set_worker_exiting(true);
       }
       callback(status, std::move(reply));
-      callbacks.pop_front();
       return true;
     }
 
-    std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+    size_t GetNumCallbacks() {
+      absl::MutexLock lock(&mutex_);
+      return callbacks_.size();
+    }
+
+    std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks_ ABSL_GUARDED_BY(mutex_);
+    absl::Mutex mutex_;
   };
 
   class MockRayletClient : public RayletClientInterface {
@@ -97,6 +114,12 @@ struct GcsServerMocker {
         const bool is_selected_based_on_locality) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
+    }
+
+    void PrestartWorkers(
+        const rpc::PrestartWorkersRequest &request,
+        const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+      RAY_LOG(FATAL) << "Not implemented";
     }
 
     /// WorkerLeaseInterface
@@ -162,7 +185,8 @@ struct GcsServerMocker {
         resources_data->set_node_id(raylet_id.Binary());
         resources_data->set_resources_normal_task_changed(true);
         auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-        normal_task_map[kMemory_ResourceLabel] = double(std::numeric_limits<int>::max());
+        normal_task_map[kMemory_ResourceLabel] =
+            static_cast<double>(std::numeric_limits<int>::max());
         resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
       }
 
@@ -321,6 +345,15 @@ struct GcsServerMocker {
       drain_raylet_callbacks.push_back(callback);
     };
 
+    void CancelTasksWithResourceShapes(
+        const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+        const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+        override{};
+
+    void IsLocalWorkerDead(
+        const WorkerID &worker_id,
+        const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
+
     void NotifyGCSRestart(
         const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
 
@@ -399,21 +432,21 @@ struct GcsServerMocker {
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
-    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+    // The store_client and io_context args are NOT used.
+    explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,
                const rpc::ActorTableData &value,
-               const gcs::StatusCallback &callback) override {
+               Postable<void(Status)> callback) override {
       auto status = Status::OK();
-      callback(status);
+      std::move(callback).Post("FakeGcsActorTable.Put", status);
       return status;
     }
 
    private:
-    instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
-        std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
+        std::make_shared<gcs::InMemoryStoreClient>();
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
@@ -438,16 +471,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncDrainNode(const NodeID &node_id,
-                          const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
-
     Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                       int64_t timeout_ms) override {
+                       int64_t timeout_ms,
+                       std::optional<NodeID> node_id = std::nullopt) override {
       if (callback) {
         callback(Status::OK(), {});
       }

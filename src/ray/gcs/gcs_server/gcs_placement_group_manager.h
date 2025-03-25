@@ -15,12 +15,14 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <deque>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
@@ -238,11 +240,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param get_ray_namespace A callback to get the ray namespace.
   GcsPlacementGroupManager(instrumented_io_context &io_context,
                            GcsPlacementGroupSchedulerInterface *scheduler,
-                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                           gcs::GcsTableStorage *gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
-  ~GcsPlacementGroupManager() = default;
+  ~GcsPlacementGroupManager() override = default;
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -305,7 +307,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff,
+                                      ExponentialBackoff backoff,
                                       bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
@@ -410,7 +412,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// it's not set. This will be used to generate the deferred time for this pg.
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
                          std::optional<int64_t> rank = std::nullopt,
-                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+                         std::optional<ExponentialBackoff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.
@@ -473,7 +475,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// need to post retry job to io context. And when schedule pending placement
   /// group, we always start with the one with the smallest key.
   absl::btree_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+                       std::pair<ExponentialBackoff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.
@@ -484,7 +486,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   gcs::GcsPlacementGroupSchedulerInterface *gcs_placement_group_scheduler_ = nullptr;
 
   /// Used to update placement group information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage *gcs_table_storage_ = nullptr;
 
   /// Counter of placement groups broken down by State.
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>

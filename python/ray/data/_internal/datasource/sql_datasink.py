@@ -6,7 +6,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
 
 
-class SQLDatasink(Datasink):
+class SQLDatasink(Datasink[None]):
 
     _MAX_ROWS_PER_WRITE = 128
 

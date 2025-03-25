@@ -15,6 +15,9 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <chrono>
 #include <future>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -27,9 +30,9 @@
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
-using namespace std::chrono_literals;
-using namespace ray;
-using namespace std::chrono;
+using namespace std::chrono_literals;  // NOLINT
+using namespace ray;                   // NOLINT
+using namespace std::chrono;           // NOLINT
 
 class GcsClientReconnectionTest : public ::testing::Test {
  public:
@@ -127,7 +130,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
 
  protected:
   unsigned short GetFreePort() {
-    using namespace boost::asio;
+    using namespace boost::asio;  // NOLINT
     io_service service;
     ip::tcp::acceptor acceptor(service, ip::tcp::endpoint(ip::tcp::v4(), 0));
     unsigned short port = acceptor.local_endpoint().port();
@@ -378,11 +381,15 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
 }
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

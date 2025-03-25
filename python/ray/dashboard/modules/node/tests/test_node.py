@@ -43,22 +43,10 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
             assert len(dump_data["nodes"]) == 1
-            assert len(dump_data["agents"]) == 1
-
-            response = requests.get(webui_url + "/test/notified_agents")
-            response.raise_for_status()
-            try:
-                notified_agents = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert notified_agents["result"] is True
-            notified_agents = notified_agents["data"]
-            assert len(notified_agents) == 1
-            assert notified_agents == dump_data["agents"]
             break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
+
+        except (AssertionError, requests.exceptions.ConnectionError):
+            logger.exception("Retry")
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
@@ -190,10 +178,6 @@ def test_multi_nodes_info(
                 else:
                     assert detail["raylet"]["state"] == "DEAD"
                     assert detail["raylet"].get("objectStoreAvailableMemory", 0) == 0
-            response = requests.get(webui_url + "/test/dump?key=agents")
-            response.raise_for_status()
-            agents = response.json()
-            assert len(agents["data"]["agents"]) == 3
             return True
         except Exception as ex:
             logger.info(ex)
@@ -250,6 +234,53 @@ def test_multi_node_churn(
             cluster.remove_node(node_to_remove)
 
     assert success
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="setproctitle does not change psutil.cmdline"
+)
+def test_node_physical_stats(enable_test_module, shutdown_only):
+    """
+    Tests NodeHead._update_node_physical_stats.
+    """
+    addresses = ray.init(include_dashboard=True, num_cpus=6)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    actors = [Actor.remote() for _ in range(6)]
+    actor_pids = ray.get([actor.getpid.remote() for actor in actors])
+    actor_pids = set(actor_pids)
+
+    webui_url = addresses["webui_url"]
+    assert wait_until_server_available(webui_url) is True
+    webui_url = format_web_url(webui_url)
+
+    def _check_workers():
+        try:
+            resp = requests.get(webui_url + "/test/dump?key=node_physical_stats")
+            resp.raise_for_status()
+            result = resp.json()
+            assert result["result"] is True
+            node_physical_stats = result["data"]["nodePhysicalStats"]
+            assert len(node_physical_stats) == 1
+            current_stats = node_physical_stats[addresses["node_id"]]
+            # Check Actor workers
+            current_actor_pids = set()
+            for worker in current_stats["workers"]:
+                if "ray::Actor" in worker["cmdline"][0]:
+                    current_actor_pids.add(worker["pid"])
+            assert current_actor_pids == actor_pids
+            # Check raylet cmdline
+            assert "raylet" in current_stats["cmdline"][0]
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_check_workers, timeout=10)
 
 
 if __name__ == "__main__":

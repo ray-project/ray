@@ -16,7 +16,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data import Schema
+from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -52,6 +52,50 @@ def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
 
+def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
+    num_partitions = 10
+    rows_per_partition = 10
+    num_rows = num_partitions * rows_per_partition
+
+    df = pd.DataFrame(
+        {
+            "a": list(range(num_partitions)) * rows_per_partition,
+            "b": list(range(num_partitions)) * rows_per_partition,
+            "c": list(range(num_rows)),
+            "d": list(range(num_rows)),
+            # Make sure algorithm does not fail for tensor types.
+            "e": list(np.random.random((num_rows, 128))),
+        }
+    )
+
+    ds = ray.data.from_pandas(df)
+    ds.write_parquet(tmp_path, partition_cols=["a", "b"])
+
+    # Test that files are written in partition style
+    for i in range(num_partitions):
+        partition = os.path.join(tmp_path, f"a={i}", f"b={i}")
+        ds_partition = ray.data.read_parquet(partition)
+        dsf_partition = ds_partition.to_pandas()
+        c_expected = [k * i for k in range(rows_per_partition)].sort()
+        d_expected = [k * i for k in range(rows_per_partition)].sort()
+        assert c_expected == dsf_partition["c"].tolist().sort()
+        assert d_expected == dsf_partition["d"].tolist().sort()
+        assert dsf_partition["e"].shape == (rows_per_partition,)
+
+    # Test that partition are read back properly into original dataset schema
+    ds1 = ray.data.read_parquet(tmp_path)
+    assert set(ds.schema().names) == set(ds1.schema().names)
+    assert ds.count() == ds1.count()
+
+    df = df.sort_values(by=["a", "b", "c", "d"])
+    df1 = ds1.to_pandas().sort_values(by=["a", "b", "c", "d"])
+    for (index1, row1), (index2, row2) in zip(df.iterrows(), df1.iterrows()):
+        row1_dict = row1.to_dict()
+        row2_dict = row2.to_dict()
+        assert row1_dict["c"] == row2_dict["c"]
+        assert row1_dict["d"] == row2_dict["d"]
+
+
 def test_include_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
@@ -84,7 +128,9 @@ def test_parquet_deserialize_fragments_with_retry(
 
     dataset_kwargs = {}
     pq_ds = pq.ParquetDataset(
-        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+        data_path,
+        **dataset_kwargs,
+        filesystem=fs,
     )
     serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
@@ -466,7 +512,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
         filesystem=fs,
-        use_legacy_dataset=False,
     )
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -503,7 +548,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
 
     # 2 partitions, 1 empty partition, 1 block/read task
@@ -551,7 +598,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -601,7 +647,6 @@ def test_parquet_read_partitioned_with_partition_filter(
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -636,7 +681,6 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         table,
         root_path=str(tmp_path),
         partition_cols=["one"],
-        use_legacy_dataset=False,
     )
 
     partitioning = Partitioning("hive", field_types={"one": int})
@@ -668,7 +712,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["two"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["two"],
     )
 
     def _block_udf(block: pa.Table):
@@ -861,6 +907,26 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+    )
+    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
+    )
+
+    parquet_output_path = os.path.join(tmp_path, "parquet")
+    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
 
 
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
@@ -1169,17 +1235,17 @@ def test_parquet_bulk_columns(ray_start_regular_shared):
     assert ds.columns() == ["variety"]
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     import pyarrow.parquet as pq
 
     ray.data.range(100, override_num_blocks=20).write_parquet(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
-        assert len(table) == num_rows_per_file
+        assert len(table) == min_rows_per_file
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
@@ -1352,7 +1418,76 @@ def test_write_auto_infer_nullable_fields(
     ctx.target_max_block_size = 1
     ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
     # So we force writing to a single file.
-    ds.write_parquet(tmp_path, num_rows_per_file=2)
+    ds.write_parquet(tmp_path, min_rows_per_file=2)
+
+
+def test_seed_file_shuffle(restore_data_context, tmp_path):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    # Verify deterministic behavior
+    assert ds1.take_all() == ds2.take_all()
+
+
+def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
+    # Typically, partition values are excluded from the Parquet file and are instead
+    # encoded in the directory structure. However, in some cases, partition values
+    # are also included in the Parquet file. This test verifies that case.
+    table = pa.Table.from_pydict({"data": [0], "year": [2024]})
+    os.makedirs(tmp_path / "year=2024")
+    pq.write_table(table, tmp_path / "year=2024" / "data.parquet")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    assert ds.take_all() == [{"data": 0, "year": 2024}]
+
+
+def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
+    # The `read_parquet` implementation might infer the schema from the first file.
+    # This test ensures that implementation handles the case where the first file has no
+    # data and the inferred type is `null`.
+    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
+    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    rows = sorted(ds.take_all(), key=lambda row: row["data"] or "")
+    assert rows == [
+        {"data": None},
+        {"data": None},
+        {"data": None},
+        {"data": "ham"},
+        {"data": "spam"},
+    ]
+
+
+def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
+    table = pa.Table.from_pydict({})
+    pq.write_table(table, tmp_path / "no_extension")
+
+    with pytest.warns(FutureWarning, match="file_extensions"):
+        ray.data.read_parquet(tmp_path)
 
 
 if __name__ == "__main__":

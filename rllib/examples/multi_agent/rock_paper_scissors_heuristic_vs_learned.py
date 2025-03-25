@@ -32,7 +32,7 @@ import random
 import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -71,7 +71,7 @@ parser.add_argument(
 
 
 register_env(
-    "RockPaperScissors",
+    "pettingzoo_rps",
     lambda _: ParallelPettingZooEnv(rps_v2.parallel_env()),
 )
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("RockPaperScissors")
+        .environment("pettingzoo_rps")
         .env_runners(
             env_to_module_connector=lambda env: (
                 # `agent_ids=...`: Only flatten obs for the learning RLModule.

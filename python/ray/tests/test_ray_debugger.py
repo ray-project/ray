@@ -1,18 +1,29 @@
 import json
 import os
-import platform
 import subprocess
 import sys
-from telnetlib import Telnet
 import unittest
+from telnetlib import Telnet
+from typing import Union
 
-import pexpect
 import pytest
+import pexpect
+from pexpect.popen_spawn import PopenSpawn
 
 import ray
 from ray._private import ray_constants, services
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
+
+
+def _pexpect_spawn(cmd: str) -> Union["pexpect.spawn", PopenSpawn]:
+    """Handles compatibility for pexpect on Windows."""
+    if sys.platform == "win32":
+        p = PopenSpawn(cmd, encoding="utf-8")
+    else:
+        p = pexpect.spawn(cmd)
+
+    return p
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -54,7 +65,6 @@ def test_ray_debugger_breakpoint(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_commands(shutdown_only):
     ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
@@ -77,7 +87,7 @@ def test_ray_debugger_commands(shutdown_only):
 
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
-    p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> ray.util.pdb.set_trace()")
@@ -94,7 +104,6 @@ def test_ray_debugger_commands(shutdown_only):
     ray.get([result1, result2])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
     os.environ["RAY_DEBUG"] = "legacy"
     ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
@@ -120,7 +129,7 @@ def test_ray_debugger_stepping(shutdown_only):
         > 0
     )
 
-    p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> x = g.remote()")
@@ -134,7 +143,6 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
     os.environ["RAY_DEBUG"] = "legacy"
     ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
@@ -158,7 +166,7 @@ def test_ray_debugger_recursive(shutdown_only):
         > 0
     )
 
-    p = pexpect.spawn("ray debug")
+    p = _pexpect_spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("(Pdb)")
@@ -177,7 +185,6 @@ def test_ray_debugger_recursive(shutdown_only):
     ray.get(result)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_job_exit_cleanup(ray_start_regular):
     address = ray_start_regular["address"]
 
@@ -217,7 +224,7 @@ time.sleep(5)
 
     # Start the debugger. This should clean up any existing sessions that
     # belong to dead jobs.
-    p = pexpect.spawn("ray debug")  # noqa:F841
+    _ = _pexpect_spawn("ray debug")
 
     def no_active_sessions():
         return not len(
@@ -229,7 +236,9 @@ time.sleep(5)
     wait_for_condition(no_active_sessions)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows does not print '--address' on init"
+)
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
     redis_substring_prefix = "--address='"

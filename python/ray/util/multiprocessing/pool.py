@@ -559,7 +559,7 @@ class Pool:
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
-            the pool.
+            the pool. See :func:`ray.remote` for details.
     """
 
     def __init__(

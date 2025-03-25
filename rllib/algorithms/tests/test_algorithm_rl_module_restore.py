@@ -84,9 +84,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -147,9 +145,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config = config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -210,9 +206,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             load_state_path=module_ckpt_path,
         )
 
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=module_to_load_spec,
-        )
+        config.rl_module(rl_module_spec=module_to_load_spec)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -286,9 +280,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 "policy_0",
             },
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule

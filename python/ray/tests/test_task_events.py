@@ -1,7 +1,6 @@
 from collections import defaultdict
 from typing import Dict
 
-import conda
 import os
 import pytest
 import sys
@@ -14,14 +13,12 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray
-from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.util.state import StateApiClient, list_tasks
+from ray.util.state import list_tasks
 
 from ray._private.worker import RayContext
 
@@ -274,6 +271,8 @@ def test_failed_task_unschedulable(shutdown_only):
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
+    import conda
+
     @ray.remote
     def f():
         pass
@@ -432,79 +431,6 @@ def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
     wait_for_condition(
         verify, actor_class_name="ThreadedActor", actor_method_name="threaded_thd_task"
     )
-
-
-def test_parent_task_id_tune_e2e(shutdown_only):
-    # Test a tune e2e workload should not have any task with parent_task_id that's
-    # not found.
-    ray.init(_system_config=_SYSTEM_CONFIG)
-    job_id = ray.get_runtime_context().get_job_id()
-    script = """
-import numpy as np
-import ray
-import ray.train
-from ray import tune
-import time
-
-ray.init("auto")
-
-@ray.remote
-def train_step_1():
-    time.sleep(0.5)
-    return 1
-
-def train_function(config):
-    for i in range(5):
-        loss = config["mean"] * np.random.randn() + ray.get(
-            train_step_1.remote())
-        ray.train.report(dict(loss=loss, nodes=ray.nodes()))
-
-
-def tune_function():
-    analysis = tune.run(
-        train_function,
-        metric="loss",
-        mode="min",
-        config={
-            "mean": tune.grid_search([1, 2, 3, 4, 5]),
-        },
-        resources_per_trial=tune.PlacementGroupFactory([{
-            'CPU': 1.0
-        }] + [{
-            'CPU': 1.0
-        }] * 3),
-    )
-    return analysis.best_config
-
-
-tune_function()
-    """
-
-    run_string_as_driver(script)
-    client = StateApiClient()
-
-    def list_tasks():
-        return client.list(
-            StateResource.TASKS,
-            # Filter out this driver
-            options=ListApiOptions(
-                exclude_driver=False, filters=[("job_id", "!=", job_id)], limit=1000
-            ),
-            raise_on_missing_output=True,
-        )
-
-    def verify():
-        tasks = list_tasks()
-
-        task_id_map = {task["task_id"]: task for task in tasks}
-        for task in tasks:
-            if task["type"] == "DRIVER_TASK":
-                continue
-            assert task_id_map.get(task["parent_task_id"], None) is not None, task
-
-        return True
-
-    wait_for_condition(verify)
 
 
 def test_is_debugger_paused(shutdown_only):

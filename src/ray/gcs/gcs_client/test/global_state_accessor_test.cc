@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
@@ -83,6 +87,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
+    // Make sure any pending work with pointers to gcs_server_ is not run after
+    // gcs_server_ is destroyed.
+    io_service_->stop();
+
     global_state_->Disconnect();
     global_state_.reset();
 
@@ -94,7 +102,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       TestSetupUtil::FlushAllRedisServers();
     }
 
-    io_service_->stop();
     thread_io_service_->join();
     gcs_server_.reset();
   }
@@ -339,11 +346,15 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
 
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];

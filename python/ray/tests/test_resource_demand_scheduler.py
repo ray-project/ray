@@ -69,6 +69,8 @@ from functools import partial
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
 EMPTY_AVAILABILITY_SUMMARY = NodeAvailabilitySummary({})
+DUMMY_IDLE_DURATION_S = 3
+
 utilization_scorer = partial(
     _default_utilization_scorer, node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
 )
@@ -195,6 +197,11 @@ def test_bin_pack():
     assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == (
         [{"GPU": 1}],
         [{"GPU": 2}],
+    )
+    arg = [{"GPU": 2}, {"GPU": 0.5}, {"GPU": 2}, {"GPU": 3}]
+    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == (
+        [],  # the below output order should not be changed.
+        [{"GPU": 1}, {"GPU": 0.5}, {"GPU": 1}, {"GPU": 3}],
     )
 
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
@@ -1653,6 +1660,7 @@ class LoadMetricsTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 2},
             {"CPU": 1},
+            0,
             waiting_bundles=[{"GPU": 1}],
             infeasible_bundles=[{"CPU": 16}],
         )
@@ -1677,6 +1685,7 @@ class LoadMetricsTest(unittest.TestCase):
             mock_raylet_id(),
             {},
             {},
+            DUMMY_IDLE_DURATION_S,
             pending_placement_groups=pending_placement_groups,
         )
         assert lm.get_pending_placement_groups() == pending_placement_groups
@@ -1709,6 +1718,7 @@ class LoadMetricsTest(unittest.TestCase):
                 "memory": 500 * 1024 * 1024,  # 500 MiB
                 "object_store_memory": 1000 * 1024 * 1024,
             },
+            0,
         )
         lm.update(
             "1.1.1.2",
@@ -1723,18 +1733,21 @@ class LoadMetricsTest(unittest.TestCase):
                 "GPU": 1,
                 "accelerator_type:V100": 1,
             },
+            0,
         )
         lm.update(
             "1.1.1.3",
             mock_raylet_id(),
             {"CPU": 64, "GPU": 8, "accelerator_type:V100": 1},
             {"CPU": 0, "GPU": 0, "accelerator_type:V100": 0.92},
+            0,
         )
         lm.update(
             "1.1.1.4",
             mock_raylet_id(),
             {"CPU": 2},
             {"CPU": 2},
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"GPU": 2}] * 10,
             infeasible_bundles=[{"CPU": 16}, {"GPU": 2}, {"CPU": 16, "GPU": 2}],
             pending_placement_groups=pending_placement_groups,
@@ -1946,9 +1959,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
-            lm.update(ip, mock_raylet_id(), {"CPU": 2}, {"CPU": 0})
+            lm.update(ip, mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, 0)
 
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 16}, {"CPU": 1})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, 0)
         autoscaler.update()
 
         while True:
@@ -1970,6 +1983,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 16},
             {"CPU": 1},
+            0,
             waiting_bundles=[{"GPU": 1}],
         )
 
@@ -2152,6 +2166,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 16},
             {"CPU": 16},
+            DUMMY_IDLE_DURATION_S,
             infeasible_bundles=placement_group_resource_demands,
             waiting_bundles=[{"GPU": 8}],
             pending_placement_groups=pending_placement_groups,
@@ -2216,7 +2231,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2226,7 +2240,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2234,7 +2247,7 @@ class AutoscalingTest(unittest.TestCase):
         # Make sure that after idle_timeout_minutes we don't kill idle
         # min workers.
         for node_id in self.provider.non_terminated_nodes({}):
-            lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
+            lm.ray_nodes_last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(3)
@@ -2267,7 +2280,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: "head",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_USER_NODE_TYPE: "p2.xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )
@@ -2285,7 +2297,7 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {}, 0)
         self.waitForNodes(1)
 
         lm.update(
@@ -2293,6 +2305,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 4, "GPU": 1},
             {"GPU": 0},
+            0,
             waiting_bundles=[{"GPU": 1}],
         )
         autoscaler.update()
@@ -2312,7 +2325,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: "head",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )
@@ -2473,6 +2485,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {},
             {},
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"GPU": 1}],
             infeasible_bundles=[{"CPU": 16}],
         )
@@ -2510,7 +2523,7 @@ class AutoscalingTest(unittest.TestCase):
             1,
         )
         lm = LoadMetrics()
-        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0})
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, 0)
         autoscaler = MockAutoscaler(
             config_path,
             lm,
@@ -2787,6 +2800,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}],
         )
         autoscaler.update()
@@ -2801,6 +2815,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
+            0,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}],
         )
         autoscaler.update()
@@ -2810,6 +2825,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}],
         )
         autoscaler.update()
@@ -2823,6 +2839,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}],
         )
         autoscaler.update()
@@ -2891,6 +2908,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}],
         )
         autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}] * 2)
@@ -2908,6 +2926,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
+            0,
             waiting_bundles=[{"CPU": 0.2, "WORKER": 1.0}] * 3,
         )
         autoscaler.update()
@@ -2919,18 +2938,21 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
         )
         lm.update(
             "172.0.0.3",
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"],
+            DUMMY_IDLE_DURATION_S,
         )
         lm.update(
             node_ip,
             mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             {},
+            0,
         )
         print("============ Should scale down from here =============", node_id)
         autoscaler.update()
@@ -3037,6 +3059,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 2, "GPU": 1},
             {"CPU": 2},
+            0,
             waiting_bundles=[{"CPU": 2}],
         )
         autoscaler.load_metrics.set_resource_requests([{"CPU": 2, "GPU": 1}] * 2)
@@ -3048,6 +3071,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 2, "GPU": 1},
             {"CPU": 2},
+            0,
             waiting_bundles=[{"CPU": 2}],
         )
         # make sure it stays consistent.

@@ -22,6 +22,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -519,7 +520,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
 };
 }  // namespace
 
-std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
+std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     instrumented_io_context &io_context,
     const std::string &address,
     int port,
@@ -528,7 +529,7 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
-  return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
+  return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,

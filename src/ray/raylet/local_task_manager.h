@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -76,7 +83,7 @@ class LocalTaskManager : public ILocalTaskManager {
   ///                                   cap. If it's a large number, the cap is hard.
   LocalTaskManager(
       const NodeID &self_node_id,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
       internal::NodeInfoGetter get_node_info,
@@ -87,7 +94,7 @@ class LocalTaskManager : public ILocalTaskManager {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
+          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -162,9 +169,9 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
-                        int64_t backlog_size);
+                        int64_t backlog_size) override;
 
-  void ClearWorkerBacklog(const WorkerID &worker_id);
+  void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const override {
@@ -264,9 +271,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
-
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
   // not enough memory available to dispatch the task, due to other executing
@@ -281,7 +285,7 @@ class LocalTaskManager : public ILocalTaskManager {
  private:
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
   /// Function to check if the owner is alive on a given node.
@@ -295,11 +299,13 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo(int64_t cap)
+    explicit SchedulingClassInfo(int64_t cap)
         : running_tasks(),
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
+    ///
+    /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     const uint64_t capacity;

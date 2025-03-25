@@ -47,11 +47,7 @@ class HudiDatasource(Datasource):
 
         schema = hudi_table.get_schema()
         read_tasks = []
-        for file_slices_split in hudi_table.split_file_slices(parallelism):
-            if len(file_slices_split) == 0:
-                # when the table is empty, this will be an empty split
-                continue
-
+        for file_slices_split in hudi_table.get_file_slices_splits(parallelism):
             num_rows = 0
             relative_paths = []
             input_files = []

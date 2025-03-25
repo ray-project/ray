@@ -341,7 +341,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     )
     def fn(*args):
         logger.info("user func")
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context._get_serve_request_context()
         return {
             "request_id": request_context.request_id,
             "route": request_context.route,
@@ -362,7 +362,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     class Model:
         def __call__(self, req: starlette.requests.Request):
             logger.info("user log message from class method")
-            request_context = ray.serve.context._serve_request_context.get()
+            request_context = ray.serve.context._get_serve_request_context()
             return {
                 "request_id": request_context.request_id,
                 "route": request_context.route,
@@ -429,7 +429,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -444,7 +445,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
         else:
             user_method_log_regex = f".*{resp['request_id']} -- user func.*"
@@ -595,11 +597,19 @@ class TestLoggingAPI:
         paths[-1] = "new_dir"
         new_log_dir = "/".join(paths)
 
-        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
+        serve.run(
+            Model.options(
+                logging_config={
+                    "logs_dir": new_log_dir,
+                    "additional_log_standard_attrs": ["name"],
+                }
+            ).bind()
+        )
         resp = requests.get("http://127.0.0.1:8000/").json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
+        check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -633,6 +643,35 @@ class TestLoggingAPI:
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
+        """Test additional log standard attrs"""
+        logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": True,
+            "encoding": encoding_type,
+            "additional_log_standard_attrs": ["name"],
+        }
+
+        @serve.deployment(logging_config=logging_config)
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                logger.info("model_not_show", extra={"serve_access_log": True})
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
+
+        serve.run(Model.bind())
+
+        resp = requests.get("http://127.0.0.1:8000/")
+        assert resp.status_code == 200
+        resp = resp.json()
+        if encoding_type == "JSON":
+            check_log_file(resp["logs_path"], ["name"], check_contains=True)
+        else:
+            check_log_file(resp["logs_path"], ["ray.serve"], check_contains=True)
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
         @serve.deployment
@@ -762,7 +801,6 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     env_encoding, log_config_encoding, expected_encoding = log_encoding
 
     with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
-
         # Clean up logger handlers
         logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.handlers.clear()
@@ -936,7 +974,7 @@ def test_stream_to_logger():
 
     # Calling non-existing attribute on the StreamToLogger should still raise error.
     with pytest.raises(AttributeError):
-        stream_to_logger.i_dont_exist
+        _ = stream_to_logger.i_dont_exist
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

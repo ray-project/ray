@@ -103,6 +103,34 @@
             "tagsQuery": "",
             "type": "query",
             "useTags": false
+          },
+          {
+            "current": {
+              "selected": false
+            },
+            "datasource": "${datasource}",
+            "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+            "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automaticaly with Prometheus PodMonitor.",
+            "error": null,
+            "hide": 0,
+            "includeAll": false,
+            "label": null,
+            "multi": false,
+            "name": "Cluster",
+            "options": [],
+            "query": {
+              "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 2,
+            "tagValuesQuery": "",
+            "tags": [],
+            "tagsQuery": "",
+            "type": "query",
+            "useTags": false
           }
       ]
     },
@@ -117,4 +145,3 @@
     "uid": "rayDataDashboard",
     "version": 1
   }
-  

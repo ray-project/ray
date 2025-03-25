@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
+#include <cstdlib>
 #include <iostream>
-
-#ifdef __linux__
-#include <stdlib.h>
-#endif
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -28,8 +31,11 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
+#include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -73,6 +79,8 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(stdout_filepath, "", "The filepath to dump raylet stdout.");
+DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -80,6 +88,10 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+DEFINE_bool(enable_physical_mode,
+            false,
+            "Whether physical mode is enaled, which applies constraint to tasks' "
+            "resource consumption.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -121,15 +133,47 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 }
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  if (!FLAGS_stdout_filepath.empty()) {
+    ray::StreamRedirectionOption stdout_redirection_options;
+    stdout_redirection_options.file_path = FLAGS_stdout_filepath;
+    stdout_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stdout_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
+  }
+
+  if (!FLAGS_stderr_filepath.empty()) {
+    ray::StreamRedirectionOption stderr_redirection_options;
+    stderr_redirection_options.file_path = FLAGS_stderr_filepath;
+    stderr_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stderr_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
+  }
+
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
-                                         argv[0],
+                                         /*app_name=*/argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_filepath=*/"",
+                                         /*err_log_filepath=*/"",
+                                         /*log_rotation_max_size=*/0,
+                                         /*log_rotation_file_num=*/1);
+
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
@@ -180,6 +224,12 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
+  // Setup cgroup preparation if specified.
+  // TODO(hjiang): Depends on
+  // - https://github.com/ray-project/ray/pull/48833, which checks cgroup V2 availability.
+  // - https://github.com/ray-project/ray/pull/48828, which sets up cgroup preparation for
+  // cgroup related operations.
+
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
@@ -211,7 +261,7 @@ int main(int argc, char *argv[]) {
     if (ray::SetThisProcessAsSubreaper()) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
                                 /*period_ms=*/10000,
                                 "Raylet.KillUnknownChildren");

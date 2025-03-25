@@ -5,6 +5,7 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 import heapq
 import itertools
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ray.data._internal.util import _check_import
@@ -15,10 +16,39 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
-    from pyiceberg.manifest import DataFile, DataFileContent
-    from pyiceberg.table import DataScan, FileScanTask, Schema
+    from pyiceberg.io import FileIO
+    from pyiceberg.manifest import DataFile
+    from pyiceberg.schema import Schema
+    from pyiceberg.table import DataScan, FileScanTask, Table
+    from pyiceberg.table.metadata import TableMetadata
 
 logger = logging.getLogger(__name__)
+
+
+def _get_read_task(
+    tasks: Iterable["FileScanTask"],
+    table_io: "FileIO",
+    table_metadata: "TableMetadata",
+    row_filter: "BooleanExpression",
+    case_sensitive: bool,
+    limit: Optional[int],
+    schema: "Schema",
+) -> Iterable[Block]:
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    # Use the PyIceberg API to read only a single task (specifically, a
+    # FileScanTask) - note that this is not as simple as reading a single
+    # parquet file, as there might be delete files, etc. associated, so we
+    # must use the PyIceberg API for the projection.
+    yield pyi_pa_io.project_table(
+        tasks=tasks,
+        table_metadata=table_metadata,
+        io=table_io,
+        row_filter=row_filter,
+        projected_schema=schema,
+        case_sensitive=case_sensitive,
+        limit=limit,
+    )
 
 
 @DeveloperAPI
@@ -74,11 +104,22 @@ class IcebergDatasource(Datasource):
             self._scan_kwargs["snapshot_id"] = snapshot_id
 
         self._plan_files = None
+        self._table = None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
+
+    @property
+    def table(self) -> "Table":
+        """
+        Return the table reference from the catalog
+        """
+        if self._table is None:
+            catalog = self._get_catalog()
+            self._table = catalog.load_table(self.table_identifier)
+        return self._table
 
     @property
     def plan_files(self) -> List["FileScanTask"]:
@@ -93,10 +134,8 @@ class IcebergDatasource(Datasource):
         return self._plan_files
 
     def _get_data_scan(self) -> "DataScan":
-        catalog = self._get_catalog()
-        table = catalog.load_table(self.table_identifier)
 
-        data_scan = table.scan(
+        data_scan = self.table.scan(
             row_filter=self._row_filter,
             selected_fields=self._selected_fields,
             **self._scan_kwargs,
@@ -142,33 +181,7 @@ class IcebergDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
-
-        def _get_read_task(
-            tasks: Iterable["FileScanTask"],
-            table_identifier: str,
-            schema: "Schema",
-        ) -> Iterable[Block]:
-            # Closure so we can pass this callable as an argument to ReadTask
-
-            # Both the catalog and tbl attributes cannot be pickled, which means they
-            # must be instantiated within this function (as opposed to being attributes
-            # of the IcebergDatasource class)
-            catalog = self._get_catalog()
-            tbl = catalog.load_table(table_identifier)
-
-            # Use the PyIceberg API to read only a single task (specifically, a
-            # FileScanTask) - note that this is not as simple as reading a single
-            # parquet file, as there might be delete files, etc. associated, so we
-            # must use the PyIceberg API for the projection.
-            yield pyi_pa_io.project_table(
-                tasks=tasks,
-                table_metadata=tbl.metadata,
-                io=tbl.io,
-                row_filter=self._row_filter,
-                projected_schema=schema,
-                case_sensitive=self._scan_kwargs.get("case_sensitive", True),
-                limit=self._scan_kwargs.get("limit"),
-            )
+        from pyiceberg.manifest import DataFileContent
 
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
@@ -189,6 +202,28 @@ class IcebergDatasource(Datasource):
                 f"Reducing the parallelism to {parallelism}, as that is the"
                 "number of files"
             )
+
+        # Get required properties for reading tasks - table IO, table metadata,
+        # row filter, case sensitivity,limit and projected schema to pass
+        # them directly to `_get_read_task` to avoid capture of `self` reference
+        # within the closure carrying substantial overhead invoking these tasks
+        #
+        # See https://github.com/ray-project/ray/issues/49107 for more context
+        table_io = self.table.io
+        table_metadata = self.table.metadata
+        row_filter = self._row_filter
+        case_sensitive = self._scan_kwargs.get("case_sensitive", True)
+        limit = self._scan_kwargs.get("limit")
+
+        get_read_task = partial(
+            _get_read_task,
+            table_io=table_io,
+            table_metadata=table_metadata,
+            row_filter=row_filter,
+            case_sensitive=case_sensitive,
+            limit=limit,
+            schema=projected_schema,
+        )
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
@@ -218,11 +253,7 @@ class IcebergDatasource(Datasource):
             )
             read_tasks.append(
                 ReadTask(
-                    read_fn=lambda tasks=chunk_tasks: _get_read_task(
-                        tasks=tasks,
-                        table_identifier=self.table_identifier,
-                        schema=projected_schema,
-                    ),
+                    read_fn=lambda tasks=chunk_tasks: get_read_task(tasks),
                     metadata=metadata,
                 )
             )

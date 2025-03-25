@@ -26,7 +26,12 @@ from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
-from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
+from ray._private.utils import (
+    open_log,
+    try_to_create_directory,
+    try_to_symlink,
+    validate_socket_filepath,
+)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -380,6 +385,7 @@ class Node:
         return get_session_key_from_storage(
             redis_ip_address,
             int(redis_port),
+            self._ray_params.redis_username,
             self._ray_params.redis_password,
             enable_redis_ssl,
             serialize_config(self._config),
@@ -494,6 +500,12 @@ class Node:
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
         try_to_create_directory(self._runtime_env_dir)
+        # Create a symlink to the libtpu tpu_logs directory if it exists.
+        user_temp_dir = ray._private.utils.get_user_temp_dir()
+        tpu_log_dir = f"{user_temp_dir}/tpu_logs"
+        if os.path.isdir(tpu_log_dir):
+            tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
+            try_to_symlink(tpu_logs_symlink, tpu_log_dir)
 
     def _get_node_labels(self):
         def merge_labels(env_override_labels, params_labels):
@@ -575,11 +587,12 @@ class Node:
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                self._ray_params.object_store_memory
-                if object_store_memory is None
-                else object_store_memory,
+                (
+                    self._ray_params.object_store_memory
+                    if object_store_memory is None
+                    else object_store_memory
+                ),
                 resources,
-                self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
@@ -623,8 +636,13 @@ class Node:
         return self._redis_address
 
     @property
+    def redis_username(self):
+        """Get the cluster Redis username."""
+        return self._ray_params.redis_username
+
+    @property
     def redis_password(self):
-        """Get the cluster Redis password"""
+        """Get the cluster Redis password."""
         return self._ray_params.redis_password
 
     @property
@@ -842,6 +860,41 @@ class Node:
             )
         return redirect_output
 
+    # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
+    def get_log_file_names(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Get filename to dump logs for stdout and stderr, with no files opened.
+        If output redirection has been disabled, no files will
+        be opened and `(None, None)` will be returned.
+
+        Args:
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
+                ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
+
+        Returns:
+            A tuple of two file handles for redirecting optional (stdout, stderr),
+            or `(None, None)` if output redirection is disabled.
+        """
+        if not self.should_redirect_logs():
+            return None, None
+
+        log_stdout = None
+        log_stderr = None
+
+        if create_out:
+            log_stdout = self._get_log_file_name(name, "out", unique=unique)
+        if create_err:
+            log_stderr = self._get_log_file_name(name, "err", unique=unique)
+        return log_stdout, log_stderr
+
     def get_log_file_handles(
         self,
         name: str,
@@ -864,16 +917,11 @@ class Node:
             A tuple of two file handles for redirecting optional (stdout, stderr),
             or `(None, None)` if output redirection is disabled.
         """
-        if not self.should_redirect_logs():
-            return None, None
-
-        log_stdout = None
-        log_stderr = None
-
-        if create_out:
-            log_stdout = open_log(self._get_log_file_name(name, "out", unique=unique))
-        if create_err:
-            log_stderr = open_log(self._get_log_file_name(name, "err", unique=unique))
+        log_stdout_fname, log_stderr_fname = self.get_log_file_names(
+            name, unique=unique, create_out=create_out, create_err=create_err
+        )
+        log_stdout = None if log_stdout_fname is None else open_log(log_stdout_fname)
+        log_stderr = None if log_stderr_fname is None else open_log(log_stderr_fname)
         return log_stdout, log_stderr
 
     def _get_log_file_name(
@@ -946,10 +994,9 @@ class Node:
             socket_path: the socket file to prepare.
         """
         result = socket_path
-        is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}" f":{self._get_unused_port()}"
+                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -958,12 +1005,7 @@ class Node:
             else:
                 try_to_create_directory(os.path.dirname(socket_path))
 
-            # Check socket path length to make sure it's short enough
-            maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
-            if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
-                raise OSError(
-                    f"AF_UNIX path length cannot exceed {maxlen} bytes: {result!r}"
-                )
+            validate_socket_filepath(result.split("://", 1)[-1])
         return result
 
     def _get_cached_port(
@@ -1154,14 +1196,17 @@ class Node:
         assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
-        # TODO(mwtian): append date time so restarted GCS uses different files.
-        stdout_file, stderr_file = self.get_log_file_handles("gcs_server", unique=True)
+
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "gcs_server", unique=True, create_out=True, create_err=True
+        )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
-            self._logs_dir,
-            self.session_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            log_dir=self._logs_dir,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
+            session_name=self.session_name,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
@@ -1185,6 +1230,7 @@ class Node:
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
+        enable_physical_mode: bool = False,
     ):
         """Start the raylet.
 
@@ -1194,7 +1240,9 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "raylet", unique=True, create_out=True, create_err=True
+        )
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1220,6 +1268,7 @@ class Node:
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
             object_manager_port=self._ray_params.object_manager_port,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
@@ -1227,9 +1276,8 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            config=self._config,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,
@@ -1240,13 +1288,10 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             labels=self._get_node_labels(),
+            enable_physical_mode=enable_physical_mode,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
-
-    def start_worker(self):
-        """Start a worker process."""
-        raise NotImplementedError
 
     def start_monitor(self):
         """Start the monitor.
@@ -1284,6 +1329,7 @@ class Node:
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             runtime_env_agent_address=self.runtime_env_agent_address,

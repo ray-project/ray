@@ -3,6 +3,12 @@
 Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
 ======================================================================================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-aws-trainium-llama3" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=aws-trainium-llama3">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
 
 This example demonstrates how to fine-tune the `Llama 3.1 8B <https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/>`__ model on `AWS
 Trainium <https://aws.amazon.com/ai/machine-learning/trainium/>`__ instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.
@@ -37,7 +43,7 @@ When the EKS cluster is ready, create an Amazon ECR repository for building and 
 
 ::
 
-   chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh 
+   chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh
    ./0-kuberay-trn1-llama3-finetune-build-image.sh
 
 4. Enter the zone your cluster is running in, for example: us-east-2.
@@ -61,7 +67,7 @@ Configuring Ray Cluster
 
 The ``llama3.1_8B_finetune_ray_ptl_neuron`` directory in the AWS Neuron samples repository simplifies the
 Ray configuration. KubeRay provides a manifest that you can apply
-to the cluster to set up the head and worker pods. 
+to the cluster to set up the head and worker pods.
 
 Run the following command to set up the Ray cluster:
 

@@ -14,21 +14,23 @@
 
 #include "ray/core_worker/transport/task_receiver.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/task/task.h"
-#include "ray/gcs/pb_util.h"
 
 using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
 
 void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
-                        std::shared_ptr<DependencyWaiter> dependency_waiter) {
-  waiter_ = std::move(dependency_waiter);
+                        DependencyWaiter *dependency_waiter) {
+  waiter_ = dependency_waiter;
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }
@@ -63,19 +65,20 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
-  std::shared_ptr<ResourceMappingType> resource_ids;
+  std::optional<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
-    resource_ids.reset(new ResourceMappingType());
+    resource_ids = ResourceMappingType{};
     for (const auto &mapping : request.resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
+      rids.reserve(mapping.resource_ids().size());
       for (const auto &ids : mapping.resource_ids()) {
-        rids.push_back(std::make_pair(ids.index(), ids.quantity()));
+        rids.emplace_back(ids.index(), ids.quantity());
       }
-      (*resource_ids)[mapping.name()] = rids;
+      (*resource_ids)[mapping.name()] = std::move(rids);
     }
   }
 
-  auto accept_callback = [this, reply, resource_ids](
+  auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &task_spec,
                              rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
@@ -97,7 +100,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
-                                resource_ids,
+                                std::move(resource_ids),
                                 &return_objects,
                                 &dynamic_return_objects,
                                 &streaming_generator_returns,
@@ -168,15 +171,19 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        /// The default max concurrency for creating PoolManager should
-        /// be 0 if this is an asyncio actor.
-        const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            task_spec.ConcurrencyGroups(), default_max_concurrency);
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+              task_spec.ConcurrencyGroups(),
+              fiber_max_concurrency_,
+              initialize_thread_callback_);
+        } else {
+          // If the actor is an asyncio actor, then this concurrency group manager
+          // for BoundedExecutor will never be used, so we don't need to initialize it.
+          const int default_max_concurrency = task_spec.MaxActorConcurrency();
+          pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+              task_spec.ConcurrencyGroups(),
+              default_max_concurrency,
+              initialize_thread_callback_);
         }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
