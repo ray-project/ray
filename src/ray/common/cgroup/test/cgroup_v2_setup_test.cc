@@ -45,13 +45,13 @@ TEST(Cgroupv2SetupTest, SetupTest) {
   std::error_code err_code;
   bool exists =
       std::filesystem::exists("/sys/fs/cgroup/ray_node_node_id/internal", err_code);
-  EXPECT_TRUE(err_code);
+  ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
 
   // Check application cgroup is created successfully.
   exists = std::filesystem::exists("/sys/fs/cgroup/ray_node_node_id/ray_application",
                                    err_code);
-  EXPECT_TRUE(err_code);
+  ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
 }
 #endif

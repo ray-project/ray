@@ -222,9 +222,11 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
   // Setup application cgroup.
-  if (mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm) != 0) {
-    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_app_folder_
-                               << " because " << strerror(errno);
+  ret_code = mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm);
+  if (ret_code != 0 && errno != EEXIST) {
+    RAY_SCHECK_OK_CGROUP(false)
+        << "Failed to make directory for " << cgroup_v2_app_folder_ << " because "
+        << strerror(errno);
   }
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
 
