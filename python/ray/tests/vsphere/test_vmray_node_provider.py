@@ -8,7 +8,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
 )
-from ray.autoscaler._private.vsphere.node_provider import VmRayNodeProvider
+from ray.autoscaler._private.vsphere.node_provider import VsphereWcpNodeProvider
 
 from ray.autoscaler.tags import STATUS_SETTING_UP
 
@@ -29,8 +29,8 @@ def mock_vmray_node_provider():
         self.vsphere_config = provider_config["vsphere_config"]
         self.client = MagicMock()
 
-    with patch.object(VmRayNodeProvider, "__init__", __init__):
-        node_provider = VmRayNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
+    with patch.object(VsphereWcpNodeProvider, "__init__", __init__):
+        node_provider = VsphereWcpNodeProvider(_PROVIDER_CONFIG, _CLUSTER_NAME)
     return copy.deepcopy(node_provider)
 
 
