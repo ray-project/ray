@@ -229,9 +229,6 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
 CgroupSetup::~CgroupSetup() { RAY_CHECK_OK(CleanupCgroups()); }
 
 Status CgroupSetup::CleanupCgroups() {
-  static InvokeOnceToken token;
-  token.CheckInvokeOnce();
-
   // Kill all dangling processes.
   RAY_RETURN_NOT_OK(KillAllProc(cgroup_v2_app_folder_));
 
