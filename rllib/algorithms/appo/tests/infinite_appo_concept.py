@@ -309,7 +309,7 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
 
             # Forward results to a Learner actor.
             batch_dispatch_actor = random.choice(self._batch_dispatchers)
-            batch_dispatch_actor.add_batch.remote(ma_batch)
+            batch_dispatch_actor.add_batch.remote({"batch": ray.put(ma_batch)})
 
             self._num_batches_produced += 1
 
@@ -328,7 +328,7 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
 class BatchDispatcher:
     def __init__(self):
         self._learners = []
-        self._batches = []
+        self._batch_refs = []
 
     def sync(self):
         return None
@@ -337,12 +337,13 @@ class BatchDispatcher:
         self._metrics_actor = metrics_actor
         self._learners = learners
 
-    def add_batch(self, batch):
-        self._batches.append(batch)
+    def add_batch(self, batch_ref):
+        assert isinstance(batch_ref["batch"], ray.ObjectRef)
+        self._batch_refs.append(batch_ref["batch"])
 
-        while len(self._batches) >= len(self._learners):
+        while len(self._batch_refs) >= len(self._learners):
             for learner in self._learners:
-                learner.update.remote(self._batches.pop(0))
+                learner.update.remote(self._batch_refs.pop(0))
 
 
 class InfiniteAPPOLearner(APPOTorchLearner):
@@ -413,7 +414,7 @@ if __name__ == "__main__":
     NUM_AGG_ACTORS = 192
     NUM_LEARNERS = 64
     NUM_WEIGHTS_SERVER_ACTORS = 16
-    NUM_BATCH_DISPATCHERS = 64
+    NUM_BATCH_DISPATCHERS = 4
     NUM_GPUS_PER_LEARNER = 1
 
     def _make_env_to_module_connector(env):
