@@ -68,7 +68,7 @@ namespace {
 #else
 #define __RAY_SCHECK_OK_CGROUP(expr, boolname) \
   auto boolname = (expr);                      \
-  if (!boolname) return Status::Invalid("")
+  if (!boolname) return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
 
 // Invoke the given [expr] which returns a boolean convertible type; and return error
 // status if fails. Cgroup operations on filesystem are not expected to fail after
@@ -198,10 +198,11 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_internal_folder_, kRootCgroupProcsFilename);
 
   // Create the internal cgroup.
-  if (mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm) != 0) {
-    return Status::Invalid("") << "Failed to make directory for "
-                               << cgroup_v2_internal_folder_ << " because "
-                               << strerror(errno);
+  int ret_code = mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm);
+  if (ret_code != 0 && errno != EEXIST) {
+    RAY_SCHECK_OK_CGROUP(false)
+        << "Failed to make directory for " << cgroup_v2_internal_folder_ << " because "
+        << strerror(errno);
   }
 
   // If the given cgroup is not root cgroup (i.e. container environment), we need to move
