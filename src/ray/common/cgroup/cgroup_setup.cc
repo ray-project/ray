@@ -238,8 +238,21 @@ Status CgroupSetup::CleanupCgroups() {
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
                                             /*to=*/root_cgroup_procs_filepath_.data()));
 
-  // Cleanup ray application cgroup folder.
+  // Cleanup all ray application cgroup folders.
   std::error_code err_code;
+  for (const auto &dentry :
+       std::filesystem::directory_iterator(cgroup_v2_app_folder_, err_code)) {
+    RAY_SCHECK_OK_CGROUP(err_code)
+        << "Fails to iterate through directory " << cgroup_v2_app_folder_ << " because "
+        << err_code.message();
+    if (!dentry.is_directory()) {
+      continue;
+    }
+    RAY_SCHECK_OK_CGROUP(std::filesystem::remove(dentry, err_code))
+        << "Failed to delete raylet application cgroup folder " << dentry << " because "
+        << err_code.message();
+  }
+
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_app_folder_, err_code))
       << "Failed to delete raylet application cgroup folder " << cgroup_v2_app_folder_
       << " because " << err_code.message();
