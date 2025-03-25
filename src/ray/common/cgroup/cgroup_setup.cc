@@ -168,6 +168,16 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
+// Use unix syscall `mkdir` instead of STL filesystem library because the former provides (1) ability to specify permission; (2) better error code and message.
+Status MakeDirectory(const std::string& directory) {
+  int ret_code = mkdir(directory.data(), kReadWritePerm);
+  if (ret_code != 0 && errno != EEXIST) {
+    RAY_SCHECK_OK_CGROUP(false) << "Failed to make directory for " << directory
+                                << " because " << strerror(errno);
+  }
+  return Status::OK();
+}
+
 }  // namespace internal
 
 CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
@@ -197,19 +207,10 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_internal_folder_, kRootCgroupProcsFilename);
 
   // Create subcgroup for current node.
-  int ret_code = mkdir(cgroup_v2_folder_.data(), kReadWritePerm);
-  if (ret_code != 0 && errno != EEXIST) {
-    RAY_SCHECK_OK_CGROUP(false) << "Failed to make directory for " << cgroup_v2_folder_
-                                << " because " << strerror(errno);
-  }
+  RAY_SCHECK_OK_CGROUP(internal::MakeDirectory(cgroup_v2_folder_));
 
   // Create the internal cgroup.
-  ret_code = mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm);
-  if (ret_code != 0 && errno != EEXIST) {
-    RAY_SCHECK_OK_CGROUP(false)
-        << "Failed to make directory for " << cgroup_v2_internal_folder_ << " because "
-        << strerror(errno);
-  }
+  RAY_SCHECK_OK_CGROUP(internal::MakeDirectory(cgroup_v2_internal_folder_));
 
   // If the given cgroup is not root cgroup (i.e. container environment), we need to move
   // all processes (including operating system processes) into internal cgroup, because
@@ -228,12 +229,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
   // Setup application cgroup.
-  ret_code = mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm);
-  if (ret_code != 0 && errno != EEXIST) {
-    RAY_SCHECK_OK_CGROUP(false)
-        << "Failed to make directory for " << cgroup_v2_app_folder_ << " because "
-        << strerror(errno);
-  }
+  RAY_SCHECK_OK_CGROUP(internal::MakeDirectory(cgroup_v2_app_folder_));
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
 
   return Status::OK();
