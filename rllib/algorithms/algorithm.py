@@ -3051,9 +3051,8 @@ class Algorithm(Checkpointable, Trainable):
                 key=AGGREGATOR_ACTOR_RESULTS,
             )
 
-        # Only here (at the end of the iteration), reduce the results into a single
-        # result dict.
-        return self.metrics.reduce(), train_iter_ctx
+        # Only here (at the end of the iteration), compile the results into a single result dict.
+        return self.metrics.compile(), train_iter_ctx
 
     def _run_one_evaluation(
         self,
@@ -3247,7 +3246,7 @@ class Algorithm(Checkpointable, Trainable):
                 ),
             }
 
-        return results.compile()
+        return results
 
     def __repr__(self):
         if self.config.enable_rl_module_and_learner:

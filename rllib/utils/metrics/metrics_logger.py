@@ -100,6 +100,14 @@ class MetricsLogger:
         # EMA should be ~1.1sec.
         assert 1.15 > results["my_block_to_be_timed"] > 1.05
 
+        # 5) Keeping track of throughputs and compiling all metrics
+        logger = MetricsLogger()
+        logger.log_value("samples", 1.0, with_throughput=True)
+        time.sleep(1.0)
+        logger.log_value("samples", 1.0, with_throughput=True)
+        results = logger.compile()
+        check(results["samples"], 2.0)
+        check(results["samples_throughput"], 1.0)
 
     """
 
@@ -252,7 +260,7 @@ class MetricsLogger:
 
             # Only, when we call `reduce` does the underlying structure get "cleaned
             # up". In this case, the list is shortened to 10 items (window size).
-            results = logger.get_results()
+            results = logger.reduce()
             check(results, {"loss": 0.05})
             check(len(logger.stats["loss"].values), 10)
 
@@ -274,7 +282,7 @@ class MetricsLogger:
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_more_items"), [-5.0, -6.0, -7.0])
             # Reducing everything (and return plain values, not `Stats` objects).
-            results = logger.get_results()
+            results = logger.reduce()
             check(results, {
                 "loss": 0.05,
                 "some": {
@@ -428,7 +436,7 @@ class MetricsLogger:
             check(logger.peek(("c", "d")), 5.0)
 
             # Reduced all stats.
-            results = logger.get_results()
+            results = logger.reduce()
             check(results, {
                 "a": 0.15,
                 "b": -0.15,
