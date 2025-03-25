@@ -8,18 +8,35 @@ This page provides a conceptual overview of the architecture and execution model
 
 To get started working with Ray Data, see :ref:`Ray Data basics<data_quickstart>`.
 
+For recommendations on optimizing Ray Data workloads, see :ref:`Performance tips and tuning<data_performance_tips>`.
+
 How does Ray Data relate to the rest of Ray?
 ============================================
 
-Ray Data is one of the Ray AI Libraries.
+Ray Data is one of the Ray AI Libraries. Ray AI libraries build on top of Ray Core primitives to provide developer-friendly APIs for completing common data, ML, and AI tasks. To learn about Ray Core primitives, see :ref:`Ray Core key concepts<core-key-concepts>`.
+
+The follow diagram provides a high-level view of the Ray framework:
 
 .. image:: ../ray-overview/images/map-of-ray.svg
    :align: center
-   :alt: Ray Framework Architecture
+   :alt: Ray framework architecture
 
-Ray Data uses the `Dataset` abstraction to map common data operations to Ray Core primitives. To learn about Ray Core primitives, see :ref:`Ray Core key concepts<core-key-concepts>`.
+Ray Data contains operators focused on the following key tasks:
 
-Ray Data integrates with Ray Train and Ray Tune for optimized data loading, preprocessing, and feature engineering. See :ref:`Ray Train overview<train-overview>`.
+- Loading data from storage.
+- Ingesting data from connected systems.
+- Exchanging data from other framework and data structures.
+- Transforming and preprocessing data.
+- Performing offline batch inference.
+- Persisting results to storage or integrated systems.
+- Pipelining data for Ray Train.
+
+The primary abstraction :class:`~ray.data.Dataset` the `Dataset` abstraction to map common data operations to Ray Core primitives. 
+
+
+
+Ray Train is optimized to work on Ray Datasets. See :ref:`Process large datasets as streams
+<streaming-execution>`.
 
 How does Ray Data distribute data?
 ---------------------------------- 
@@ -133,18 +150,31 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 
 .. _streaming-execution:
 
-Streaming execution model
--------------------------
+Process large datasets as streams
+---------------------------------
 
-Ray Data uses a *streaming execution model* to efficiently process large datasets.
+Ray Data uses a *streaming execution model* to efficiently process large datasets. With streaming execution, Ray processes data in a streaming fashion through a pipeline of operations rather than materializing the entire dataset in memory at once. 
 
-Rather than materializing the entire dataset in memory at once, Ray Data can process data in a streaming fashion through a pipeline of operations.
+* The physical plan represents each operator as a stage in a pipeline.
+* Each stage has an input queue of blocks of data to process.
+* Each stage writes results as blocks of data in an output queue.
+* Output queues become input queues for the next stage in the pipeline.
+* Each block of data is processed independently at each stage.
+* Any stage with data present in its input queue is eligible for scheduling.
+
+The streaming execution model  
 
 
+Because many frameworks supported by Ray Train also support this streaming execution model, Ray can optimize a physical plan for streaming execution from data loading and preprocessing steps all the way through model training. Offline batch inference also uses streaming execution, allowing for efficient model predictions on large datasets with reduced memory and compute requirements.
 
-This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
+.. note::
 
-Here is an example of how the streaming execution model works. The below code creates a dataset with 1K rows, applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
+   Models, frameworks, or algorithms that must materialize the entire dataset to calculate results are not optimized for streaming execution.
+   
+   Ray Train provides integrations with many common ML and AI frameworks to efficiently distribute training and support streaming execution for model training. See :ref:`Ray Train<train-docs>`.
+
+
+The following is a simple code example  demonstrate the streaming execution model. , applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
 
 .. testcode::
 
@@ -162,7 +192,7 @@ Here is an example of how the streaming execution model works. The below code cr
     # Data starts flowing when you call a method like show()
     ds.show(5)
 
-This creates a logical plan like the following:
+The following is a simplified view of the resultant logical plan:
 
 .. code-block::
 
@@ -173,7 +203,7 @@ This creates a logical plan like the following:
              +- Dataset(schema={...})
 
 
-The streaming topology looks like the following:
+This logical plan maps to the following streaming topology:
 
 .. https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit
 
@@ -190,6 +220,10 @@ In particular, the pipeline architecture enables multiple stages to execute conc
 To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
 
 .. note::
-   Operations including :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
+   Operations that need to evaluate, compare, or aggregate the entire dataset create processing bottlenecks for streaming execution. Examples include :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>`.
+   
+   Ray must materialize the entire dataset to complete these operations, which interupts stream pipeline processing and might lead to significant spill or out-of-memory errors.
 
+   Consider refactoring workloads to remove unnecessary operations that require full dataset materialization. For example, the distributed model used by Ray does not persist ordered results between stages or guarantee that sorting is preserved on write. For many workloads, removing a :meth:`ds.sort() <ray.data.Dataset.sort>` operation can eliminate significant overhead without impacting results in any way.
+   
 You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.

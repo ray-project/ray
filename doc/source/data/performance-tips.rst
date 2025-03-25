@@ -1,6 +1,6 @@
 .. _data_performance_tips:
 
-Advanced: Performance Tips and Tuning
+Advanced: Performance tips and tuning
 =====================================
 
 .. _block_size:
