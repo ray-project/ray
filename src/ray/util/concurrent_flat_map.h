@@ -106,18 +106,19 @@ class ConcurrentFlatMap {
   // Will replace the value if the key already exists.
   template <typename KeyLike, typename... Args>
   void InsertOrAssign(KeyLike &&key, Args &&...args) {
+    auto value = ValueType(std::forward<Args>(args)...);
     auto write_lock = map_.LockForWrite();
-    write_lock.Get().insert_or_assign(std::forward<KeyLike>(key),
-                                      ValueType(std::forward<Args>(args)...));
+    write_lock.Get().insert_or_assign(std::forward<KeyLike>(key), std::move(value));
   }
 
   // Returns a bool for whether the key/value was emplaced.
   // Note: This will not overwrite an existing key.
   template <typename KeyLike, typename... Args>
   bool Emplace(KeyLike &&key, Args &&...args) {
+    auto value = ValueType(std::forward<Args>(args)...);
     auto write_lock = map_.LockForWrite();
     const auto [_, inserted] =
-        write_lock.Get().emplace(std::forward<KeyLike>(key), std::forward<Args>(args)...);
+        write_lock.Get().emplace(std::forward<KeyLike>(key), std::move(value));
     return inserted;
   }
 
