@@ -42,7 +42,7 @@ namespace ray {
 
 #ifndef __linux__
 TEST(Cgroupv2SetupTest, NonLinuxCrashTest) {
-  EXPECT_EXIT(CgroupSetup{},
+  EXPECT_EXIT(CgroupSetup{"/sys/fs/cgroup", "node_id"},
               testing::ExitedWithCode(EXIT_FAILURE),
               "cgroupv2 doesn't work on non linux platform.");
 }
