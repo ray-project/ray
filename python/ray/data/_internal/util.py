@@ -918,64 +918,93 @@ def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
     num_workers: int = 1,
-    queue_buffer_size: Optional[int] = None,
+    queue_buffer_size: int = 0,
 ) -> Generator[U, None, None]:
+    """Returns a generator (iterator) mapping items from the provided iterator
+    applying provided ``fn`` in parallel (using a thread-pool).
+
+    Even though the mapping is performed in parallel across N
+    threads, this method provides crucial guarantee of preserving the
+    ordering of the source iterator, ie that
+
+        iterator = [A1, A2, ... An]
+        mapped iterator = [map(A1), map(A2), ..., map(An)]
+
+    Preserving ordering is a crucial aspect allowing to eliminate non-determinism,
+    upon retrying the task using ``make_async_gen``.
+
+    Args:
+        base_iterator: Iterator yielding elements to a mapping transformation
+        fn: Transformation to apply to each element
+        num_workers: Max number of threads to be used in the threadpool (defaults to 1)
+        queue_buffer_size: Number of objects to be buffered in each worker's queue
+                           (defaults to 0). Note that buffer of 0 entails that each
+                           worker could have at most 0 tasks in its output buffer, ie
+                           new task could be added to the queue only when previous one
+                           completes.
+    Returns:
+        An generator (iterator) of the elements corresponding to the source
+        elements mapped by provided transformation (with the ordering of the origina \
+        iterator being preserved)
+    """
 
     gen_id = random.randint(0, 2**31 - 1)
 
-    # TODO update
     # To apply transformations to elements in parallel while guaranteeing
     # deterministic ordering, following protocol is implemented:
-    #   - Filling worker traverses input iterator round-robin'ing elements across
-    #     the input queues (in order!)
-    #   - Transforming workers traverse respective input queue in-order: de-queueing
-    #     element, applying transformation and enqueuing the result into the output
-    #     queue
-    #   - Generator (returned from this method) traverses output queues (in the same
-    #     order as input queues) dequeues 1 mapped element at a time from each output
-    #     queue and yields it
     #
+    #   - Filling worker traverses input iterator and launches tasks
+    #     mapping individual elements in the ``ThreadPoolExecutor`` (max_workers set to
+    #     ``num_workers``)
+    #   - Futures for corresponding tasks added to the queue (capped at
+    #     ``queue_buffer_size + 1`` per worker)
+    #   - Generator (returned from this method) traverses the queue, retrieving
+    #     resulting sequence (from transformation) and yields from it
+    #
+
+    submitting_worker_name_prefix = f"async_gen_submitting_worker-{gen_id}"
+    tpe_worker_name_prefix = f"async_gen_tpe_worker-{gen_id}"
+
+    # Max size of the execution queue
+    max_queue_size: int = (queue_buffer_size + 1) * num_workers
     # Signal handler used to interrupt workers when terminating
     interrupted_event = threading.Event()
 
-    submitting_worker_name_prefix = f"map_tp_filling_worker-{gen_id}"
-    tpe_worker_name_prefix = f"map_tp_transforming_worker-{gen_id}"
-
-    # TODO elaborate
-    queue_buffer_size: int = (queue_buffer_size + 1) * num_workers
-
-    fut_queue = _InterruptibleQueue(
-        max_size=queue_buffer_size,
+    future_queue = _InterruptibleQueue(
+        max_size=max_queue_size,
         interrupted_event=interrupted_event,
     )
 
-    def _apply_fn_eager(it):
-        # TODO elaborate
-        result = list(fn(it))
-        return result
-
     def _run_submitting_worker():
-        with ThreadPoolExecutor(max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix) as e:
+        with ThreadPoolExecutor(max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix) as tpe:
+            def _apply_fn_eager(it):
+                # NOTE: We unroll returned iterator immediately to make sure that
+                #       iteration is fully performed inside the TPE
+                return list(fn(it))
+
             for item in base_iterator:
-                fut = e.submit(_apply_fn_eager, iter([item]))
-                fut_queue.put(fut)
+                # Fan out (eager) transformation of individual elements
+                future = tpe.submit(_apply_fn_eager, iter([item]))
+                # NOTE: This is a blocking call
+                future_queue.put(future)
 
-            fut_queue.put(SENTINEL)
+            # Append sentinel to signal EOL
+            future_queue.put(SENTINEL)
 
-    # Start launching threads
+    # Start submitting worker threads
     submitting_worker_thread = threading.Thread(
         target=_run_submitting_worker,
         name=submitting_worker_name_prefix,
         daemon=True,
     )
+
     submitting_worker_thread.start()
 
-    # Use main thread to yield output batches
+    # Use same thread to yield output results
     try:
-        fut_iter = iter(fut_queue.get, SENTINEL)
+        futures_iter = iter(future_queue.get, SENTINEL)
 
-        for fut in fut_iter:
-            # TODO handle exceptions
+        for fut in futures_iter:
             result: List[Any] = fut.result()
             yield from result
 
