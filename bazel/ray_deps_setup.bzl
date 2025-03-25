@@ -86,20 +86,16 @@ def auto_http_archive(
 def ray_deps_setup():
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
-    # This is copied from grpc's bazel/grpc_deps.bzl
-    #
-    # Pinned grpc version: v23.4
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
+        sha256 = "b2340aa47faf7ef10a0328190319d3f3bee1b24f426d4ce8f4253b6f27ce16db",
+        strip_prefix = "protobuf-28.2",
         urls = [
-            "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
+            "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v28.2.tar.gz",
         ],
         patches = [
-            "@com_github_grpc_grpc//third_party:protobuf.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:protobuf-windows-const-nan.patch",
         ],
-        patch_args = ["-p1"],
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -236,10 +232,10 @@ def ray_deps_setup():
     # TODO(owner): Upgrade abseil to latest version after protobuf updated, which requires to upgrade `rules_cc` first.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        strip_prefix = "abseil-cpp-20230802.1",
+        sha256 = "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3",
+        strip_prefix = "abseil-cpp-20240722.0",
         urls = [
-            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
         ],
     )
 
@@ -260,8 +256,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
-        sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.67.1.tar.gz",
+        sha256 = "d74f8e99a433982a12d7899f6773e285c9824e1d9a173ea1d1fb26c9bd089299",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
@@ -304,13 +300,13 @@ def ray_deps_setup():
     http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
+        # https://github.com/grpc/grpc/blob/v1.67.1/bazel/grpc_deps.bzl#L33
         name = "boringssl",
-        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
-        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
+        sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
+        strip_prefix = "boringssl-b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6",
         urls = [
-            "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
+            "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
         ],
     )
 
