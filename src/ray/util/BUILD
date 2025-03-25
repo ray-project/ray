@@ -370,8 +370,10 @@ ray_cc_library(
 
 ray_cc_library(
     name = "invoke_once_token",
+    srcs = ["invoke_once_token.cc"],
     hdrs = ["invoke_once_token.h"],
     deps = [
         ":logging",
+        "//src/ray/util:env",
     ],
 )

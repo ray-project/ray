@@ -12,31 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "ray/util/invoke_once_token.h"
 
-#include <atomic>
-
-#include "ray/util/logging.h"
+#include "ray/util/env.h"
 
 namespace ray {
 
-// A util class (a token) which guards again multiple invocations.
-// It's thread-safe.
-//
-// Example usage:
-// void SomeFunc() {
-//   static InvokeOnceToken token;
-//   token.CheckInvokeOnce();
-// }
-class InvokeOnceToken {
- public:
-  void CheckInvokeOnce();
-
- private:
-  std::atomic<bool> invoked_{false};
-};
-
-static_assert(std::is_trivially_destructible<InvokeOnceToken>::value,
-              "InvokeOnceToken must be trivially destructible");
+void InvokeOnceToken::CheckInvokeOnce() {
+  if (IsEnvTrue("RAY_DISABLE_INVOKE_ONCE_FOR_TEST")) {
+    return;
+  }
+  bool expected = false;
+  RAY_CHECK(invoked_.compare_exchange_strong(expected, /*desired=*/true))
+      << "Invoke once token has been visited before.";
+}
 
 }  // namespace ray

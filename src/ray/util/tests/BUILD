@@ -364,6 +364,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:invoke_once_token",
+        "//src/ray/util:scoped_env_setter",
         "@com_google_googletest//:gtest_main",
     ],
 )

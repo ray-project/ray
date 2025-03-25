@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include "ray/util/scoped_env_setter.h"
+
 namespace ray {
 
 TEST(InvokeOnceToken, InvokeOnce) {
@@ -29,5 +31,13 @@ TEST(InvokeOnceToken, InvokeTwice) {
   // Second invocation fails.
   EXPECT_DEATH(token.CheckInvokeOnce(), "Invoke once token has been visited before.");
 };
+
+TEST(InvokeOnceToken, DisableInvokeOnce) {
+  ScopedEnvSetter scoped_env_setter{/*env_name=*/"RAY_DISABLE_INVOKE_ONCE_FOR_TEST",
+                                    /*value=*/"true"};
+  InvokeOnceToken token;
+  token.CheckInvokeOnce();  // First invocation.
+  token.CheckInvokeOnce();  // Second invocation.
+}
 
 }  // namespace ray
