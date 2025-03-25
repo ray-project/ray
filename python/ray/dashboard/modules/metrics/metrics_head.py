@@ -397,8 +397,41 @@ class MetricsHead(SubprocessModule):
                 )
             )
 
-    async def run(self):
-        await super().run()
+    @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
+    async def record_dashboard_metrics(self):
+        labels = {
+            "ip": self.ip,
+            "pid": self._pid,
+            "Version": ray.__version__,
+            "Component": self._component,
+            "SessionName": self.session_name,
+        }
+        with self._dashboard_proc.oneshot():
+            self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+                float(self._dashboard_proc.cpu_percent())
+            )
+            memory_full_info = self._dashboard_proc.memory_full_info()
+            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+                float(memory_full_info.uss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+                float(memory_full_info.rss) / 1.0e6
+            )
+
+        loop = get_or_create_event_loop()
+
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
+            len(asyncio.all_tasks(loop))
+        )
+
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
+                float(self._event_loop_lag_s_max)
+            )
+            self._event_loop_lag_s_max = None
+
+    async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 
