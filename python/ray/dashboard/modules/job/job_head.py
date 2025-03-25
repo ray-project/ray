@@ -9,6 +9,7 @@ from typing import AsyncIterator, Dict, List, Optional, Tuple
 import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response, StreamResponse
+from aiohttp.web import Request, Response, StreamResponse
 
 import ray
 from ray import NodeID
@@ -46,7 +47,6 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.utils import ResponseType
-import time
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -147,6 +147,7 @@ class JobAgentSubmissionClient:
 
 
 class JobHead(SubprocessModule):
+class JobHead(SubprocessModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
 
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
@@ -166,7 +167,13 @@ class JobHead(SubprocessModule):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._job_info_client = None
+
+        # To make sure that the internal KV is initialized by getting the lazy property
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
         # To make sure that the internal KV is initialized by getting the lazy property
         assert self.gcs_client is not None
@@ -614,6 +621,10 @@ class JobHead(SubprocessModule):
         "/api/jobs/{job_or_submission_id}/logs/tail", resp_type=ResponseType.WEBSOCKET
     )
     async def tail_job_logs(self, req: Request) -> StreamResponse:
+    @routes.get(
+        "/api/jobs/{job_or_submission_id}/logs/tail", resp_type=ResponseType.WEBSOCKET
+    )
+    async def tail_job_logs(self, req: Request) -> StreamResponse:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self.gcs_aio_client,
@@ -671,6 +682,8 @@ class JobHead(SubprocessModule):
 
         return self._agents[driver_node_id]
 
+    async def run(self):
+        await super().run()
     async def run(self):
         await super().run()
         if not self._job_info_client:
