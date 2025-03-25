@@ -173,10 +173,6 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
-
-  root_cgroup_procs_filepath_ = absl::StrFormat("%s/%s", directory, kProcFilename);
-  root_cgroup_subtree_control_filepath_ =
-      absl::StrFormat("%s/%s", directory, kSubtreeControlFilename);
   RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
 }
 
@@ -185,9 +181,12 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // Check cgroup accessibility before setup.
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
-  // Cgroup folder for the current ray node.
-  const std::string cgroup_folder = absl::StrFormat("%s/ray_node_%s", directory, node_id);
-
+  // Cgroup folders for the current ray node.
+  cgroup_v2_folder_ = absl::StrFormat("%s/ray_node_%s", directory, node_id);
+  root_cgroup_procs_filepath_ =
+      absl::StrFormat("%s/%s", cgroup_v2_folder_, kProcFilename);
+  root_cgroup_subtree_control_filepath_ =
+      absl::StrFormat("%s/%s", cgroup_v2_folder_, kSubtreeControlFilename);
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   cgroup_v2_internal_proc_filepath_ =
@@ -197,8 +196,15 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   const std::string cgroup_v2_internal_procs =
       ray::JoinPaths(cgroup_v2_internal_folder_, kRootCgroupProcsFilename);
 
+  // Create subcgroup for current node.
+  int ret_code = mkdir(cgroup_v2_folder_.data(), kReadWritePerm);
+  if (ret_code != 0 && errno != EEXIST) {
+    RAY_SCHECK_OK_CGROUP(false) << "Failed to make directory for " << cgroup_v2_folder_
+                                << " because " << strerror(errno);
+  }
+
   // Create the internal cgroup.
-  int ret_code = mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm);
+  ret_code = mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm);
   if (ret_code != 0 && errno != EEXIST) {
     RAY_SCHECK_OK_CGROUP(false)
         << "Failed to make directory for " << cgroup_v2_internal_folder_ << " because "
