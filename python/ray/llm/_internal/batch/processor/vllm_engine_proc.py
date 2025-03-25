@@ -11,7 +11,6 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
     ProcessorBuilder,
 )
-from ray.llm._internal.batch.utils import download_hf_model
 from ray.llm._internal.batch.stages import (
     vLLMEngineStage,
     ChatTemplateStage,
@@ -25,6 +24,10 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    download_model_files,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
@@ -215,8 +218,16 @@ def build_vllm_engine_processor(
             )
         )
 
-    model_path = download_hf_model(config.model_source, tokenizer_only=True)
-    hf_config = transformers.AutoConfig.from_pretrained(model_path)
+    model_path = download_model_files(
+        model_id=config.model_source,
+        mirror_config=None,
+        download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+        download_extra_files=False,
+    )
+    hf_config = transformers.AutoConfig.from_pretrained(
+        model_path,
+        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+    )
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
     telemetry_agent = get_or_create_telemetry_agent()
