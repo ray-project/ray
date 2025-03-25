@@ -37,20 +37,27 @@ class Algo:
         observation_space,
         action_space,
         num_weights_server_actors=1,
+        num_aggregator_actors,
+        num_batch_dispatchers=1,
     ):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
         self.metrics = MetricsLogger()
 
-        # Create 1 weights server actor.
+        # Create weights server actors.
         self.weights_server_actors = [
             WeightsServerActor.remote() for _ in range(num_weights_server_actors)
         ]
         for aid, actor in enumerate(self.weights_server_actors):
             actor.add_peers.remote(
                 self.weights_server_actors[:aid] + self.weights_server_actors[aid + 1:])
+        # Create metrics actor.
         self.metrics_actor = MetricsActor.remote()
+        # Create batch dispatcher actors.
+        self.batch_dispatcher_actors = [
+            BatchDispatcher.remote() for _ in range(num_batch_dispatchers)
+        ]
 
         # Create the env runners.
         self.env_runners = [
@@ -73,9 +80,11 @@ class Algo:
                 config=self.config,
                 rl_module_spec=rl_module_spec,
                 sync_freq=10,
-            ) for _ in range(self.config.num_aggregator_actors_per_learner * self.config.num_learners)
+                batch_dispatchers=self.batch_dispatcher_actors,
+                metrics_actor=self.metrics_actor,
+            ) for _ in range(num_aggregator_actors)
         ]
-        print(f"Created {self.config.num_aggregator_actors_per_learner * self.config.num_learners} AggregatorActors.")
+        print(f"Created {num_aggregator_actors} AggregatorActors.")
 
         # Add agg. actors to env runners.
         for aid, er in enumerate(self.env_runners):
@@ -87,24 +96,41 @@ class Algo:
         #    spaces=spaces,
         #    rl_module_spec=rl_module_spec,
         #)
+        learner_config = config.copy()
+        learner_config.num_learners = 1
         self.learners = [ #list(self.learner_group._worker_manager.actors().values())
-            InfiniteAPPOLearner(config=self.config, module_spec=rl_module_spec)
+            ray.remote(
+                num_gpus=self.config.num_gpus_per_learner,
+                num_cpus=1 if self.config.num_cpus_per_learner == "auto" else self.config.num_cpus_per_learner,
+            )(InfiniteAPPOLearner).remote(
+                config=learner_config,
+                module_spec=rl_module_spec,
+            )
             for _ in range(self.config.num_learners)
         ]
+        for i in range(self.config.num_learners):
+            ray.get(self.learners[i].build.remote())
         # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
-        self.learners[0].set_other_actors.remote(
+        ray.get(self.learners[0].set_other_actors.remote(
             weights_server_actors=self.weights_server_actors,
             metrics_actor=self.metrics_actor,
-        )
+        ))
         for learner in self.learners[1:]:
-            learner.set_other_actors.remote(metrics_actor=self.metrics_actor)
+            ray.get(learner.set_other_actors.remote(metrics_actor=self.metrics_actor))
         print(f"Created {self.config.num_learners} Learners.")
 
+        for i in range(num_batch_dispatchers):
+            self.batch_dispatcher_actors[i].set_other_actors.remote(
+                metrics_actor=self.metrics_actor,
+                learners=self.learners,
+            )
+        print(f"Setup {num_batch_dispatchers} BatchDispatchers.")
+
         # Assign a Learner actor to each aggregator actor.
-        for aid, agg in enumerate(self.aggregator_actors):
-            idx = aid % len(self.learners)
-            learner = self.learners[idx]
-            agg.add_learner.remote(learner)
+        #for aid, agg in enumerate(self.aggregator_actors):
+        #    idx = aid % len(self.learners)
+        #    learner = self.learners[idx]
+        #    agg.add_learner.remote(learner)
 
         time.sleep(5.0)
 
@@ -149,28 +175,35 @@ class MetricsActor:
     def __init__(self):
         self.metrics = MetricsLogger()
 
-    def add(self, env_runner_metrics, aggregator_metrics, learner_metrics):
-        assert isinstance(env_runner_metrics, list)
-        self.metrics.merge_and_log_n_dicts(
-            env_runner_metrics,
-            key="env_runners",
-        )
-        assert isinstance(aggregator_metrics, list)
-        self.metrics.merge_and_log_n_dicts(
-            aggregator_metrics,
-            key="aggregator_actors",
-        )
-        assert isinstance(learner_metrics, dict)
-        self.metrics.merge_and_log_n_dicts(
-            [learner_metrics],
-            key="learners",
-        )
-        #print(learner_metrics)
+    def add(
+        self,
+        *,
+        env_runner_metrics=None,
+        aggregator_metrics=None,
+        learner_metrics=None,
+    ):
+        if env_runner_metrics is not None:
+            assert isinstance(env_runner_metrics, dict)
+            self.metrics.merge_and_log_n_dicts(
+                [env_runner_metrics],
+                key="env_runners",
+            )
+        if aggregator_metrics is not None:
+            assert isinstance(aggregator_metrics, dict)
+            self.metrics.merge_and_log_n_dicts(
+                [aggregator_metrics],
+                key="aggregator_actors",
+            )
+        if learner_metrics is not None:
+            assert isinstance(learner_metrics, dict)
+            self.metrics.merge_and_log_n_dicts(
+                [learner_metrics],
+                key="learners",
+            )
 
     def get(self):
-        #print(f"On MetricsActor: sampled={self.metrics.peek(('env_runners', 'num_env_steps_sampled_lifetime'), default=-1)}")
-        #print(f"On MetricsActor: trained={self.metrics.peek(('learners', ALL_MODULES, 'num_env_steps_trained_lifetime'), default=-1)}")
-        return self.metrics.reduce()
+        metrics = self.metrics.reduce()
+        return metrics
 
 
 class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
@@ -221,36 +254,33 @@ class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
 
 @ray.remote
 class InfiniteAPPOAggregatorActor(AggregatorActor):
-    def __init__(self, *, config, rl_module_spec, sync_freq):
+    def __init__(self, *, config, rl_module_spec, sync_freq, batch_dispatchers, metrics_actor):
         super().__init__(config=config, rl_module_spec=rl_module_spec)
         self.sync_freq = sync_freq
-        self._learner_ref = None
+        self._batch_dispatchers = batch_dispatchers
+        self._metrics_actor = metrics_actor
         self._num_batches_produced = 0
         self._ts = 0
         self._episodes = []
-        self._env_runner_metrics = []
+
+        self._env_runner_metrics = MetricsLogger()
 
     # Synchronization helper method.
     def sync(self):
         return None
 
-    def add_learner(self, learner_ref):
-        self._learner_ref = learner_ref
-
     def push_episodes(self, episodes, env_runner_metrics):
-        if not self._learner_ref:
-            return
-
         # Make sure we count how many timesteps we already have and only produce a
         # batch, once we have enough episode data.
         self._episodes.extend(episodes)
-        self._env_runner_metrics.append(env_runner_metrics)
+        self._env_runner_metrics.merge_and_log_n_dicts([env_runner_metrics])
+
         env_steps = sum(len(e) for e in episodes)
         self._ts += env_steps
 
         if self._ts >= self.config.train_batch_size_per_learner:
             # If we have enough episodes collected to create a single train batch, pass
-            # them at once through the connector to recieve a single train batch.
+            # them at once through the connector to receive a single train batch.
             batch = self._learner_connector(
                 episodes=self._episodes,
                 rl_module=self._module,
@@ -278,27 +308,47 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
             )
 
             # Forward results to a Learner actor.
-            self._learner_ref.update.remote(
-                ma_batch,
-                env_runner_metrics=self._env_runner_metrics,
-                aggregator_metrics=self.metrics.reduce(),
-            )
+            batch_dispatch_actor = random.choice(self._batch_dispatchers)
+            batch_dispatch_actor.add_batch.remote(ma_batch)
 
-            self._env_runner_metrics = []
             self._num_batches_produced += 1
 
-            # Sync with the Learner actor.
+            if self._num_batches_produced % 10 == 0:
+                self._metrics_actor.add.remote(
+                    env_runner_metrics=self._env_runner_metrics.reduce(),
+                    aggregator_metrics=self.metrics.reduce(),
+                )
+
+            # Sync with one of the dispatcher actors.
             if self._num_batches_produced % self.sync_freq == 0:
-                ray.get(self._learner_ref.sync.remote())
+                ray.get(batch_dispatch_actor.sync.remote())
+
+
+@ray.remote
+class BatchDispatcher:
+    def __init__(self):
+        self._learners = []
+        self._batches = []
+
+    def sync(self):
+        return None
+
+    def set_other_actors(self, *, metrics_actor, learners):
+        self._metrics_actor = metrics_actor
+        self._learners = learners
+
+    def add_batch(self, batch):
+        self._batches.append(batch)
+
+        while len(self._batches) >= len(self._learners):
+            for learner in self._learners:
+                learner.update.remote(self._batches.pop(0))
 
 
 class InfiniteAPPOLearner(APPOTorchLearner):
     def __init__(self, *, config, module_spec):
         super().__init__(config=config, module_spec=module_spec)
         self._num_updates = 0
-
-        self._env_runner_metrics = []
-        self._aggregator_metrics = []
 
     # Synchronization helper method.
     def sync(self):
@@ -308,16 +358,11 @@ class InfiniteAPPOLearner(APPOTorchLearner):
         self._metrics_actor = metrics_actor
         self._weights_server_actors = weights_server_actors
 
-    def update(self, batch, env_runner_metrics, aggregator_metrics):
-        self._env_runner_metrics.extend(env_runner_metrics)
-        self._aggregator_metrics.append(aggregator_metrics)
-
+    def update(self, batch):#, timesteps):
         global _CURRENT_GLOBAL_TIMESTEPS
         if _CURRENT_GLOBAL_TIMESTEPS is None:
             _CURRENT_GLOBAL_TIMESTEPS = 0
-        _CURRENT_GLOBAL_TIMESTEPS += sum(
-            m["num_env_steps_sampled"].peek() for m in env_runner_metrics
-        )
+        #_CURRENT_GLOBAL_TIMESTEPS += timesteps
 
         # Enqueue the batch, either directly into the learner thread's queue or to the
         # GPU loader threads.
@@ -354,23 +399,21 @@ class InfiniteAPPOLearner(APPOTorchLearner):
             )
 
         # Send metrics to metrics actor.
+        #print("SENDING learner metrics to metrics actor")
+        self._metrics_actor.add.remote(
+            learner_metrics=self.metrics.reduce(),
+        )
+
         self._num_updates += 1
-        if self._num_updates % 10 == 0:
-            self._metrics_actor.add.remote(
-                env_runner_metrics=self._env_runner_metrics,
-                aggregator_metrics=self._aggregator_metrics,
-                learner_metrics=self.metrics.reduce(),
-            )
-            self._env_runner_metrics = []
-            self._aggregator_metrics = []
 
 
 if __name__ == "__main__":
-    NUM_ENV_RUNNERS = 512
+    NUM_ENV_RUNNERS = 1024
     NUM_ENVS_PER_ENV_RUNNER = 1
-    NUM_AGG_ACTORS_PER_LEARNER = 4
+    NUM_AGG_ACTORS = 64
     NUM_LEARNERS = 16
-    NUM_WEIGHTS_SERVER_ACTORS=16
+    NUM_WEIGHTS_SERVER_ACTORS=8
+    NUM_BATCH_DISPATCHERS=4
     NUM_GPUS_PER_LEARNER=1
 
     def _make_env_to_module_connector(env):
@@ -424,7 +467,7 @@ if __name__ == "__main__":
         .learners(
             num_learners=NUM_LEARNERS,
             num_gpus_per_learner=NUM_GPUS_PER_LEARNER,
-            num_aggregator_actors_per_learner=NUM_AGG_ACTORS_PER_LEARNER,
+            #num_aggregator_actors_per_learner=NUM_AGG_ACTORS_PER_LEARNER,
         )
         .training(
             learner_class=InfiniteAPPOLearner,
@@ -462,6 +505,8 @@ if __name__ == "__main__":
         observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
         action_space=gym.spaces.Discrete(6),
         num_weights_server_actors=NUM_WEIGHTS_SERVER_ACTORS,
+        num_batch_dispatchers=NUM_BATCH_DISPATCHERS,
+        num_aggregator_actors=NUM_AGG_ACTORS,
     )
     time.sleep(1.0)
 
