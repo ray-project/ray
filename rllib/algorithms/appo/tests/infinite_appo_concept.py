@@ -110,13 +110,14 @@ class Algo:
         ]
         for i in range(self.config.num_learners):
             ray.get(self.learners[i].build.remote())
-        # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
-        ray.get(self.learners[0].set_other_actors.remote(
-            weights_server_actors=self.weights_server_actors,
-            metrics_actor=self.metrics_actor,
-        ))
-        for learner in self.learners[1:]:
-            ray.get(learner.set_other_actors.remote(metrics_actor=self.metrics_actor))
+        # Setup all Learners' knowledge of other important actors.
+        for learner in self.learners:
+            ray.get(
+                learner.set_other_actors.remote(
+                    metrics_actor=self.metrics_actor,
+                    weights_server_actors=self.weights_server_actors,
+                )
+            )
         print(f"Created {self.config.num_learners} Learners.")
 
         for i in range(num_batch_dispatchers):
@@ -329,6 +330,8 @@ class BatchDispatcher:
     def __init__(self):
         self._learners = []
         self._batch_refs = []
+        self._total_timesteps = 0
+        self._learner_idx = 0
 
     def sync(self):
         return None
@@ -342,28 +345,31 @@ class BatchDispatcher:
         self._batch_refs.append(batch_ref["batch"])
 
         while len(self._batch_refs) >= len(self._learners):
-            for learner in self._learners:
-                learner.update.remote(self._batch_refs.pop(0))
-
+            for idx, learner in enumerate(self._learners):
+                learner.update.remote(
+                    self._batch_refs.pop(0),
+                    self._total_timesteps,
+                    send_weights=(idx == self._learner_idx),
+                )
+            self._learner_idx += 1
+            self._learner_idx %= len(self._learners)
 
 class InfiniteAPPOLearner(APPOTorchLearner):
     def __init__(self, *, config, module_spec):
         super().__init__(config=config, module_spec=module_spec)
-        self._num_updates = 0
+        self._num_batches = 0
 
     # Synchronization helper method.
     def sync(self):
         return None
 
-    def set_other_actors(self, *, metrics_actor, weights_server_actors=None):
+    def set_other_actors(self, *, metrics_actor, weights_server_actors):
         self._metrics_actor = metrics_actor
         self._weights_server_actors = weights_server_actors
 
-    def update(self, batch):#, timesteps):
+    def update(self, batch, timesteps, send_weights=False):
         global _CURRENT_GLOBAL_TIMESTEPS
-        if _CURRENT_GLOBAL_TIMESTEPS is None:
-            _CURRENT_GLOBAL_TIMESTEPS = 0
-        #_CURRENT_GLOBAL_TIMESTEPS += timesteps
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps
 
         # Enqueue the batch, either directly into the learner thread's queue or to the
         # GPU loader threads.
@@ -382,7 +388,7 @@ class InfiniteAPPOLearner(APPOTorchLearner):
             )
 
         # Figure out, whether we need to send our weights to a weights server.
-        if self._weights_server_actors:
+        if send_weights and self._weights_server_actors:
             learner_state = self.get_state(
                 # Only return the state of those RLModules that are trainable.
                 components=[
@@ -400,12 +406,12 @@ class InfiniteAPPOLearner(APPOTorchLearner):
             )
 
         # Send metrics to metrics actor.
-        #print("SENDING learner metrics to metrics actor")
-        self._metrics_actor.add.remote(
-            learner_metrics=self.metrics.reduce(),
-        )
+        if self._num_batches % 10 == 0:
+            self._metrics_actor.add.remote(
+                learner_metrics=self.metrics.reduce(),
+            )
 
-        self._num_updates += 1
+        self._num_batches += 1
 
 
 if __name__ == "__main__":
