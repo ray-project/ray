@@ -33,8 +33,11 @@ TEST(ConcurrentFlatMap, TestConcurrentFlatMapBasic) {
   EXPECT_EQ(map.Get("key"), "value");
 
   // make sure we can replace value
-  map.InsertOrAssign("key", "correct value");
+  // replacing returns false
+  EXPECT_FALSE(map.InsertOrAssign("key", "correct value"));
   EXPECT_EQ(map.Get("key"), "correct value");
+  // inserting returns true
+  EXPECT_TRUE(map.InsertOrAssign("new key", "value"));
 
   // can clone
   auto value = map.GetMapClone().at("key");

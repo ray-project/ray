@@ -28,8 +28,7 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
   auto &table = GetOrCreateMutableTable(table_name);
   bool inserted = false;
   if (overwrite) {
-    table.InsertOrAssign(key, std::move(data));
-    inserted = true;
+    inserted = table.InsertOrAssign(key, std::move(data));
   } else {
     inserted = table.Emplace(key, std::move(data));
   }
