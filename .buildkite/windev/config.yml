@@ -1,5 +1,5 @@
 name: ray-windows-dev
-artifacts_bucket: ray-ci-artifactpr-public
+artifacts_bucket: ray-ci-artifact-pr-public
 ci_temp: s3://ray-ci-artifact-pr-public/ci-temp/
 ci_work_repo: 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp
 forge_prefix: cr.ray.io/rayproject/
