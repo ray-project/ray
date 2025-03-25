@@ -1002,10 +1002,12 @@ def make_async_gen(
 
     # Use same thread to yield output results
     try:
+        # Create an iterator to traverse the queue, until sentinel
         futures_iter = iter(future_queue.get, SENTINEL)
 
         for fut in futures_iter:
             result: List[Any] = fut.result()
+            # Yield from an eagerly collected list
             yield from result
 
     finally:
