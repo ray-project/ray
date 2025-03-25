@@ -56,9 +56,6 @@ def test_invalid_gcs_address():
         JobSubmissionClient("abc:abc")
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
-)
 def test_job_isolation(ray_start_regular):
     # Make sure two jobs with same module name
     # don't interfere with each other
