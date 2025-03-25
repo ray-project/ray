@@ -52,6 +52,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/macros.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
@@ -61,32 +62,51 @@ namespace ray {
 
 namespace {
 
+#if defined(RAY_SCHECK_OK_CGROUP)
+#error "RAY_SCHECK_OK_CGROUP is already defined."
+#else
+
+#define __RAY_SCHECK_OK_CGROUP(expr, statusname) \
+  auto statusname = (expr);                      \
+  if (!statusname.ok()) return Status::Invalid("")
+
+// Invoke the given [expr] which returns a boolean convertible type; and return error status if fails.
+// Cgroup operations on filesystem are not expected to fail after precondition checked, so we use INVALID as the status code.
+//
+// Example usage:
+// RAY_SCHECK_OK_CGROUP(DoSomething()) << "DoSomething fails";
+#define RAY_SCHECK_OK_CGROUP(expr) \
+  __RAY_SCHECK_OK_CGROUP(expr, RAY_UNIQUE_VARIABLE(cgroup_op))
+
 // Move all pids under [from] to [to].
-bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
+Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   std::ifstream in_file(from.data());
-  RAY_CHECK(in_file.good()) << "Failed to open cgroup file " << to;
+  RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << to;
   std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
-  RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << from;
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << from;
 
   pid_t pid = 0;
   while (in_file >> pid) {
     out_file << pid << std::endl;
   }
   out_file.flush();
-  return out_file.good();
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << to;
+
+  return Status::OK();
 }
 
 // Return whether cgroup control writes successfully.
 //
 // TODO(hjiang): Currently only memory resource is considered, should consider CPU
 // resource as well.
-bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
+Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
-  RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
   // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
   out_file.flush();
-  return out_file.good();
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << out_file;
+  return Status::OK();
 }
 
 // Kill all processes under the given [cgroup_folder].
@@ -161,17 +181,21 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_internal_folder_, kRootCgroupProcsFilename);
 
   // Create the internal cgroup.
-  RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm), 0);
+  if (mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm) != 0) {
+    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_internal_folder_ << " because " << strerror(errno);
+  }
 
   // TODO(hjiang): Here we move all processes into internal cgroup for docker environment,
   // will followup with another PR to handle BM/VM cases.
-  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
+  RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
                                     /*to=*/cgroup_v2_internal_folder_));
-  RAY_CHECK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
+  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
   // Setup application cgroup.
-  RAY_CHECK_EQ(mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm), 0);
-  RAY_CHECK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
+  if (mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm) != 0) {
+    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_app_folder_ << " because " << strerror(errno);
+  }
+  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
 
   return Status::OK();
 }
