@@ -245,9 +245,16 @@ Status CgroupSetup::CleanupCgroups() {
   // Move all internal processes into root cgroup and delete internal cgroup.
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
                                             /*to=*/root_cgroup_procs_filepath_.data()));
+
+  // Cleanup ray internal cgroup folder.
   std::error_code err_code;
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_internal_folder_, err_code))
       << "Failed to delete raylet internal cgroup folder " << cgroup_v2_internal_folder_
+      << " because " << err_code.message();
+
+  // Cleanup ray application cgroup folder.
+  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_app_folder_, err_code))
+      << "Failed to delete raylet application cgroup folder " << cgroup_v2_app_folder_
       << " because " << err_code.message();
 
   // Cleanup cgroup for current node.
