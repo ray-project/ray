@@ -38,9 +38,7 @@ py_test_run_all_subdirectory(
         "modules/node/tests/test_node.py",
         "tests/test_dashboard.py",
         "tests/test_state_head.py",
-        "modules/serve/tests/deploy_imperative_serve_apps.py",
-        "modules/serve/tests/test_serve_dashboard.py",
-        "modules/serve/tests/test_serve_dashboard_2.py",
+        "modules/serve/tests/**/*.py",
     ],
     extra_srcs = [],
     tags = [
