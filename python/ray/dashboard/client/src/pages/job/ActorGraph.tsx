@@ -94,7 +94,7 @@ const ActorGraph = () => {
   const [infoCardData, setInfoCardData] = useState<ElementData>({
     id: "default",
     type: "function",
-    name: "Job Actor Details",
+    name: "Component Details",
     language: "unknown",
   });
 

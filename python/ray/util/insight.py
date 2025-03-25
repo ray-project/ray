@@ -31,8 +31,11 @@ def get_monitor_actor():
 
 def _process_async_queue(_async_queue):
     """Worker function that processes coroutines from the queue."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    try:
+        loop = asyncio.get_event_loop()
+    except Exception:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     monitor_actor = get_monitor_actor()
 
     while True:
@@ -676,6 +679,16 @@ def is_flow_insight_enabled():
     return os.getenv(dashboard_consts.FLOW_INSIGHT_ENABLED_ENV_VAR, "0") == "1"
 
 
+def need_record(caller_class):
+    return not (
+        caller_class is not None
+        and (
+            caller_class.startswith(_inner_class_name)
+            or caller_class.startswith("JobSupervisor")
+        )
+    )
+
+
 def record_control_flow(callee_class, callee_func):
     """
     record the control flow between the caller and the callee
@@ -688,7 +701,7 @@ def record_control_flow(callee_class, callee_func):
     if not is_flow_insight_enabled():
         return
 
-    if callee_class is not None and callee_class.startswith(_inner_class_name):
+    if not need_record(callee_class):
         return
 
     try:
@@ -731,9 +744,7 @@ def record_object_arg_get(object_id):
     try:
         caller_class = _get_caller_class()
 
-        if caller_class is not None and caller_class.startswith(
-            "_ray_internal_insight_monitor"
-        ):
+        if not need_record(caller_class):
             return
 
         recv_func = _get_current_task_name()
@@ -773,6 +784,10 @@ def record_object_put(object_id, size):
     try:
         caller_class = _get_caller_class()
         caller_func = _get_current_task_name()
+
+        if not need_record(caller_class):
+            return
+
         # Create a record for this call
         job_id = ray.get_runtime_context().get_job_id()
         object_record = {
@@ -818,7 +833,7 @@ def record_object_arg_put(object_id, argpos, size, callee):
         elif len(callee_info) == 3:
             callee_class = callee_info[-2]
 
-        if callee_class is not None and callee_class.startswith(_inner_class_name):
+        if not need_record(callee_class):
             return
 
         caller_class = _get_caller_class()
@@ -865,7 +880,7 @@ def record_object_return_put(object_id, size):
 
         caller_class = _get_caller_class()
 
-        if caller_class is not None and caller_class.startswith(_inner_class_name):
+        if not need_record(caller_class):
             return
 
         # Get the task name from the runtime context
@@ -923,7 +938,7 @@ def record_object_get(object_id, task_id):
             "job_id": job_id,
         }
 
-        if caller_class is not None and caller_class.startswith(_inner_class_name):
+        if not need_record(caller_class):
             return
 
         async def _emit(monitor_actor):
@@ -951,6 +966,9 @@ def report_resource_usage(usage: dict):
             return
         actor_info = current_class.split(":")
         job_id = ray.get_runtime_context().get_job_id()
+
+        if not need_record(current_class):
+            return
 
         async def _emit(monitor_actor):
             await monitor_actor.emit_resource_usage.remote(
@@ -980,6 +998,9 @@ def register_current_context(context: dict):
         actor_info = current_class.split(":")
 
         job_id = ray.get_runtime_context().get_job_id()
+
+        if not need_record(current_class):
+            return
 
         async def _emit(monitor_actor):
             await monitor_actor.emit_context.remote(
@@ -1030,6 +1051,10 @@ def record_task_enter():
 
     try:
         caller_class = _get_caller_class()
+
+        if not need_record(caller_class):
+            return
+
         caller_func = _get_current_task_name()
         current_task_id = get_current_task_id()
         job_id = ray.get_runtime_context().get_job_id()
@@ -1067,7 +1092,7 @@ def record_task_duration(duration):
         caller_class = _get_caller_class()
         caller_func = _get_current_task_name()
 
-        if caller_class is not None and caller_class.startswith(_inner_class_name):
+        if not need_record(caller_class):
             return
 
         actor_name = None
@@ -1137,7 +1162,8 @@ def report_trace_info(caller_info):
     current_task_id = get_current_task_id()
 
     current_class = _get_caller_class()
-    if current_class is not None and current_class.startswith(_inner_class_name):
+
+    if not need_record(current_class):
         return
 
     job_id = ray.get_runtime_context().get_job_id()
