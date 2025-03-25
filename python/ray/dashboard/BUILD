@@ -38,12 +38,14 @@ py_test_run_all_subdirectory(
         "modules/node/tests/test_node.py",
         "tests/test_dashboard.py",
         "tests/test_state_head.py",
+        "modules/serve/tests/deploy_imperative_serve_apps.py",
         "modules/serve/tests/test_serve_dashboard.py",
+        "modules/serve/tests/test_serve_dashboard_2.py",
     ],
     extra_srcs = [],
     tags = [
         "exclusive",
-        "team:serve",
+        "team:core",
     ],
     deps = [":conftest"],
 )
@@ -54,7 +56,7 @@ py_test(
     srcs = ["modules/job/tests/test_cli_integration.py"],
     tags = [
         "exclusive",
-        "team:serve",
+        "team:core",
     ],
     deps = [":conftest"],
 )
@@ -73,7 +75,7 @@ py_test(
     ]),
     tags = [
         "exclusive",
-        "team:serve",
+        "team:core",
     ],
     deps = [":conftest"],
 )
@@ -84,7 +86,7 @@ py_test(
     srcs = ["modules/node/tests/test_node.py"],
     tags = [
         "exclusive",
-        "team:serve",
+        "team:core",
     ],
     deps = [":conftest"],
 )
@@ -96,7 +98,7 @@ py_test(
     tags = [
         "exclusive",
         "minimal",
-        "team:serve",
+        "team:core",
     ],
     deps = [":conftest"],
 )
