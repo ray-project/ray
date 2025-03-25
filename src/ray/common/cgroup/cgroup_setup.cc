@@ -193,6 +193,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   root_cgroup_subtree_control_filepath_ =
       absl::StrFormat("%s/%s", cgroup_v2_folder_, kSubtreeControlFilename);
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
+  cgroup_v2_default_app_folder_ = absl::StrFormat("%s/default", cgroup_v2_app_folder_);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   cgroup_v2_internal_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_internal_folder_, kProcFilename);
@@ -221,6 +222,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
 
   // Setup application cgroup.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_app_folder_));
+  RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_default_app_folder_));
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
 
   return Status::OK();
