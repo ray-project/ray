@@ -491,18 +491,6 @@ def is_proc_alive(pid):
         return False
 
 
-def get_capture_filepaths(log_dir):
-    """Get filepaths for the given [log_dir].
-    log_dir:
-        Logging directory to place output and error logs.
-    """
-    filename = "log_monitor"
-    return (
-        f"{log_dir}/{filename}.log",
-        f"{log_dir}/{filename}.err",
-    )
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=("Parse GCS server address for the log monitor to connect to.")
@@ -558,6 +546,18 @@ if __name__ == "__main__":
         type=int,
         help="Specify the backup count of rotated log file.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        help="The filepath to dump log monitor stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        help="The filepath to dump log monitor stderr.",
+    )
     args = parser.parse_args()
 
     # Disable log rotation for windows platform.
@@ -576,17 +576,17 @@ if __name__ == "__main__":
     logger = setup_component_logger(**logging_params)
 
     # Setup stdout/stderr redirect files if redirection enabled
-    if args.logging_filename:
-        out_filepath, err_filepath = get_capture_filepaths(args.logs_dir)
+    if args.stdout_filepath:
         StreamRedirector.redirect_stdout(
-            out_filepath,
+            args.stdout_filepath,
             logging_rotation_bytes,
             logging_rotation_backup_count,
             False,
             False,
         )
+    if args.stdout_filepath:
         StreamRedirector.redirect_stderr(
-            err_filepath,
+            args.stderr_filepath,
             logging_rotation_bytes,
             logging_rotation_backup_count,
             False,

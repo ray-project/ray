@@ -1099,9 +1099,8 @@ def start_log_monitor(
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
-    redirect_logging: bool = True,
-    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
-    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
 ):
     """Start a log monitor process.
 
@@ -1117,10 +1116,10 @@ def start_log_monitor(
             RotatingFileHandler's backupCount.
         redirect_logging: Whether we should redirect logging to
             the provided log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump log monitor stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump log monitor stderr.
+            If None, stderr is not redirected.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1136,9 +1135,18 @@ def start_log_monitor(
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
+        f"--logging-filename={logs_dir}/log_monitor.log",
     ]
 
-    if not redirect_logging:
+    if stdout_filepath:
+        command.append(f"--stdout_filepath={stdout_filepath}")
+    if stderr_filepath:
+        command.append(f"--stderr_filepath={stderr_filepath}")
+
+    stdout_file = None
+    stderr_file = None
+
+    if stdout_filepath is not None and stderr_filepath is not None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -1147,9 +1155,18 @@ def start_log_monitor(
             component=ray_constants.PROCESS_TYPE_LOG_MONITOR
         )
         command.append(f"--logging-format={logging_format}")
-        # Inherit stdout/stderr streams.
-        stdout_file = None
-        stderr_file = None
+
+    if stdout_filepath:
+        command.append(f"--stdout_filepath={stdout_filepath}")
+    if stderr_filepath:
+        command.append(f"--stderr_filepath={stderr_filepath}")
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
