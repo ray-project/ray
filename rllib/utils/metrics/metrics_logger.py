@@ -1159,6 +1159,7 @@ class MetricsLogger:
             If key is None: A nested dict with the same structure as self.stats but with "_throughput"
                 appended to leaf keys and throughput values as leaf values. Only includes entries for
                 Stats objects that have throughput tracking enabled.
+
             If key is provided: The throughput value for that specific key.
         """
         if key is not None:
