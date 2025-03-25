@@ -513,22 +513,17 @@ For example, if you have a model stored in S3 that looks like the below structur
 
 .. code-block:: bash
 
-    $ aws s3 ls s3://rob-general-test-bucket/meta-llama/
-                               PRE original/
-    2025-03-21 16:26:32       1519 .gitattributes
-    2025-03-21 16:28:02       7627 LICENSE
-    2025-03-21 16:29:35      44044 README.md
-    2025-03-21 16:28:46       4691 USE_POLICY.md
-    2025-03-21 16:27:32        855 config.json
-    2025-03-21 16:27:52        184 generation_config.json
-    2025-03-21 16:28:15 4976698672 model-00001-of-00004.safetensors
-    2025-03-21 16:30:48 4999802720 model-00002-of-00004.safetensors
-    2025-03-21 16:31:24 4915916176 model-00003-of-00004.safetensors
-    2025-03-21 16:30:32 1168138808 model-00004-of-00004.safetensors
-    2025-03-21 16:30:01      23950 model.safetensors.index.json
-    2025-03-21 16:29:24        296 special_tokens_map.json
-    2025-03-21 16:29:00    9085657 tokenizer.json
-    2025-03-21 16:29:13      55351 tokenizer_config.json
+    $ aws s3 ls s3://air-example-data/meta-Llama-3.2-1B-Instruct/
+    2025-03-25 11:15:15       1519 .gitattributes
+    2025-03-25 11:15:15       7712 LICENSE.txt
+    2025-03-25 11:15:15      41742 README.md
+    2025-03-25 11:15:15       6021 USE_POLICY.md
+    2025-03-25 11:15:15        877 config.json
+    2025-03-25 11:15:15        189 generation_config.json
+    2025-03-25 11:15:15 2471645608 model.safetensors
+    2025-03-25 11:15:32        296 special_tokens_map.json
+    2025-03-25 11:15:32    9085657 tokenizer.json
+    2025-03-25 11:15:32      54528 tokenizer_config.json
 
 You can then specify the `bucket_uri` in the `model_loading_config` to point to your S3 bucket.
 
@@ -538,16 +533,13 @@ You can then specify the `bucket_uri` in the `model_loading_config` to point to 
     applications:
     - args:
         llm_configs:
-            - accelerator_type: L40S
+            - accelerator_type: A10G
               engine_kwargs:
-                enable_chunked_prefill: true
                 max_model_len: 8192
-                max_num_batched_tokens: 2048
-                tensor_parallel_size: 1
               model_loading_config:
-                model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+                model_id: my_llama
                 model_source:
-                  bucket_uri: s3://rob-general-test-bucket/meta-llama
+                  bucket_uri: s3://air-example-data/meta-Llama-3.2-1B-Instruct
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"

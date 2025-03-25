@@ -156,6 +156,9 @@ class ModelLoadingConfig(BaseModelExtended):
     )
 
 
+EngineConfigType = Union[None, "VLLMEngineConfig"]  # noqa: F821
+
+
 class LLMConfig(BaseModelExtended):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
@@ -225,6 +228,7 @@ class LLMConfig(BaseModelExtended):
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
         default_factory=HuggingFacePromptFormat
     )
+    _engine_config: EngineConfigType = PrivateAttr(None)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -334,7 +338,7 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
-    def get_engine_config(self):
+    def get_engine_config(self) -> EngineConfigType:
         """Returns the engine config for the given LLM config.
 
         LLMConfig not only has engine config but also deployment config, etc.
@@ -345,7 +349,7 @@ class LLMConfig(BaseModelExtended):
         #  local path of the model. This is important for vLLM not going to Hugging
         #  Face to download the model again after it's already downloaded during node
         #  initialization step.
-        if hasattr(self, "_engine_config") and self._engine_config:
+        if self._engine_config:
             return self._engine_config
 
         if self.llm_engine == LLMEngine.vLLM:

@@ -1,9 +1,0 @@
-model_loading_config:
-  model_id: meta-llama/Llama-3.1-8B-Instruct
-  model_source:
-    bucket_uri: s3://rob-general-test-bucket/meta-llama
-
-accelerator_type: A10G
-
-engine_kwargs:
-  max_model_len: 8192

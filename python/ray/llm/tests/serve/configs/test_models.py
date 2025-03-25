@@ -234,9 +234,9 @@ class TestModelConfig:
             {"XPU": 1} for _ in range(6)
         ]
 
-        def test_engine_config_cached(self):
-            """Test that the engine config is cached and not recreated when calling
-            get_engine_config so the attributes on the engine will be persisted."""
+    def test_engine_config_cached(self):
+        """Test that the engine config is cached and not recreated when calling
+        get_engine_config so the attributes on the engine will be persisted."""
 
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
