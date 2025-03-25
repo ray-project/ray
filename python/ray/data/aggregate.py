@@ -5,14 +5,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Any
 import numpy as np
 
 from ray.data._internal.util import is_null
-from ray.data.block import (
-    AggType,
-    Block,
-    BlockAccessor,
-    KeyType,
-    T,
-    U,
-)
+from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI, Deprecated
 
 if TYPE_CHECKING:

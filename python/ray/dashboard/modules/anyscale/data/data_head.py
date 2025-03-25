@@ -80,7 +80,7 @@ PROMETHEUS_METRICS = [
 ]
 
 
-class DataHead(dashboard_utils.DashboardHeadModule):
+class AnyscaleDataHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
         self._job_info_client = None

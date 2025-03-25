@@ -17,6 +17,7 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -83,7 +84,8 @@ def aiohttp_cache(
                         response = task.result()
                     except Exception:
                         response = rest_response(
-                            success=False, message=traceback.format_exc()
+                            status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                            message=traceback.format_exc(),
                         )
                     data = {
                         "status": response.status,
