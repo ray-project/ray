@@ -1,0 +1,17 @@
+name: ray-windows-dev
+artifacts_bucket: ray-ci-artifactpr-public
+ci_temp: s3://ray-ci-artifact-pr-public/ci-temp/
+ci_work_repo: 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp
+forge_prefix: cr.ray.io/rayproject/
+builder_queues:
+  builder-windows: builder_queue_windows_dev_pr
+runner_queues:
+  windows: windows_queue_dev_pr
+buildkite_dirs:
+  - .buildkite/windev
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
+hook_env_keys:
+  - RAYCI_CHECKOUT_DIR
+skip_tags:
+  - disabled
