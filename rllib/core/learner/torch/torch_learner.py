@@ -504,7 +504,7 @@ class TorchLearner(Learner):
 
             self._possibly_compiled_update = self._uncompiled_update
 
-        self._make_modules_ddp_if_necessary()
+        #self._make_modules_ddp_if_necessary()
 
     @override(Learner)
     def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:
