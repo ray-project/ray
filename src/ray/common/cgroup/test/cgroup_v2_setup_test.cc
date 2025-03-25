@@ -33,6 +33,7 @@
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/test/testing.h"
 #include "ray/util/container_util.h"
 #include "ray/util/filesystem.h"
@@ -57,12 +58,14 @@ class Cgroupv2SetupTest : public ::testing::Test {
                            /*value=*/"true"},
         node_id_("node_id"),
         node_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id"),
+        internal_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/internal"),
         internal_cgroup_proc_filepath_(
-            "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs") {}
+            "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs"),
+        app_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/ray_application") {}
   void TearDown() override {
     // Check the node-wise subcgroup folder has been deleted.
     std::error_code err_code;
-    bool exists = std::filesystem::exists(node_cgroup_folder_, err_code);
+    bool exists = std::filesystem::exists(app_cgroup_folder_, err_code);
     ASSERT_FALSE(err_code);
     ASSERT_FALSE(exists);
   }
@@ -72,7 +75,9 @@ class Cgroupv2SetupTest : public ::testing::Test {
                                      /*value=*/"true"};
   const std::string node_id_;
   const std::string node_cgroup_folder_;
+  const std::string internal_cgroup_folder_;
   const std::string internal_cgroup_proc_filepath_;
+  const std::string app_cgroup_folder_;
 };
 
 TEST_F(Cgroupv2SetupTest, SetupTest) {
@@ -80,14 +85,12 @@ TEST_F(Cgroupv2SetupTest, SetupTest) {
 
   // Check internal cgroup is created successfully.
   std::error_code err_code;
-  bool exists =
-      std::filesystem::exists("/sys/fs/cgroup/ray_node_node_id/internal", err_code);
+  bool exists = std::filesystem::exists(internal_cgroup_folder_, err_code);
   ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
 
   // Check application cgroup is created successfully.
-  exists = std::filesystem::exists("/sys/fs/cgroup/ray_node_node_id/ray_application",
-                                   err_code);
+  exists = std::filesystem::exists(app_cgroup_folder_, err_code);
   ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
 }
@@ -120,6 +123,9 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
       << "All pids include "
       << DebugStringWrapper<std::unordered_set<std::string_view> >(pid_parts)
       << " and new pid is " << pid;
+
+  // Kill testing process.
+  RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
 }
 #endif
 

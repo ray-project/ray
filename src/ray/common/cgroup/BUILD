@@ -11,6 +11,7 @@ ray_cc_library(
     hdrs = ["cgroup_setup.h"],
     deps = [
         ":base_cgroup_setup",
+        ":cgroup_utils",
         ":constants",
         "//src/ray/common:macros",
         "//src/ray/util",
@@ -54,5 +55,15 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_utils",
+    srcs = ["cgroup_utils.cc"],
+    hdrs = ["cgroup_utils.h"],
+    deps = [
+        "//src/ray/common:status",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

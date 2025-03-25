@@ -52,6 +52,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/cgroup/constants.h"
 #include "ray/common/macros.h"
 #include "ray/util/filesystem.h"
@@ -110,17 +111,6 @@ Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
   out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to flush cgroup file " << subtree_control_path;
-  return Status::OK();
-}
-
-// Kill all processes under the given [cgroup_folder].
-Status KillAllProc(const std::string &cgroup_folder) {
-  const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
-  std::ofstream f{kill_proc_file, std::ios::app | std::ios::out};
-  f << "1";
-  f.flush();
-  RAY_SCHECK_OK_CGROUP(f.good())
-      << "Fails to kill all processes under the cgroup " << cgroup_folder;
   return Status::OK();
 }
 
@@ -245,20 +235,10 @@ Status CgroupSetup::CleanupCgroups() {
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
                                             /*to=*/root_cgroup_procs_filepath_.data()));
 
-  // Cleanup ray internal cgroup folder.
-  std::error_code err_code;
-  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_internal_folder_, err_code))
-      << "Failed to delete raylet internal cgroup folder " << cgroup_v2_internal_folder_
-      << " because " << err_code.message();
-
   // Cleanup ray application cgroup folder.
+  std::error_code err_code;
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_app_folder_, err_code))
       << "Failed to delete raylet application cgroup folder " << cgroup_v2_app_folder_
-      << " because " << err_code.message();
-
-  // Cleanup cgroup for current node.
-  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_folder_, err_code))
-      << "Failed to delete raylet internal cgroup folder " << cgroup_v2_folder_
       << " because " << err_code.message();
 
   return Status::OK();

@@ -55,6 +55,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
+        "//src/ray/common/cgroup:cgroup_utils",
         "//src/ray/common/test:testing",
         "//src/ray/util:container_util",
         "//src/ray/util:filesystem",
