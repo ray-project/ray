@@ -145,7 +145,7 @@
       scaling: [fixed_size, autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based]
       columns:
-        - "column08 column13 column 14"   # 84 groups
+        - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
 
   cluster:
@@ -165,7 +165,7 @@
       scaling: [fixed_size, autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based]
       columns:
-        - "column08 column13 column 14"   # 84 groups
+        - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
 
   cluster:
