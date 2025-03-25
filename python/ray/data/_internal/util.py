@@ -4,6 +4,8 @@ import os
 import pathlib
 import random
 import sys
+from concurrent.futures.thread import ThreadPoolExecutor
+
 import psutil
 import platform
 import threading
@@ -11,6 +13,7 @@ import time
 import functools
 import urllib.parse
 from queue import Empty, Full, Queue
+
 from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
@@ -912,6 +915,85 @@ class _InterruptibleQueue(Queue):
 
 
 def make_async_gen(
+    base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
+    queue_buffer_size: Optional[int] = None,
+) -> Generator[U, None, None]:
+
+    gen_id = random.randint(0, 2**31 - 1)
+
+    # TODO update
+    # To apply transformations to elements in parallel while guaranteeing
+    # deterministic ordering, following protocol is implemented:
+    #   - Filling worker traverses input iterator round-robin'ing elements across
+    #     the input queues (in order!)
+    #   - Transforming workers traverse respective input queue in-order: de-queueing
+    #     element, applying transformation and enqueuing the result into the output
+    #     queue
+    #   - Generator (returned from this method) traverses output queues (in the same
+    #     order as input queues) dequeues 1 mapped element at a time from each output
+    #     queue and yields it
+    #
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
+
+    submitting_worker_name_prefix = f"map_tp_filling_worker-{gen_id}"
+    tpe_worker_name_prefix = f"map_tp_transforming_worker-{gen_id}"
+
+    # TODO elaborate
+    queue_buffer_size: int = (queue_buffer_size + 1) * num_workers
+
+    fut_queue = _InterruptibleQueue(
+        max_size=queue_buffer_size,
+        interrupted_event=interrupted_event,
+    )
+
+    def _apply_fn_eager(it):
+        # TODO elaborate
+        result = list(fn(it))
+        return result
+
+    def _run_submitting_worker():
+        with ThreadPoolExecutor(max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix) as e:
+            for item in base_iterator:
+                fut = e.submit(_apply_fn_eager, iter([item]))
+                fut_queue.put(fut)
+
+            fut_queue.put(SENTINEL)
+
+    # Start launching threads
+    submitting_worker_thread = threading.Thread(
+        target=_run_submitting_worker,
+        name=submitting_worker_name_prefix,
+        daemon=True,
+    )
+    submitting_worker_thread.start()
+
+    # Use main thread to yield output batches
+    try:
+        fut_iter = iter(fut_queue.get, SENTINEL)
+
+        for fut in fut_iter:
+            # TODO handle exceptions
+            result: List[Any] = fut.result()
+            yield from result
+
+    finally:
+        # Set flag to interrupt workers (to make sure no dangling
+        # threads holding the objects are left behind)
+        #
+        # NOTE: Interrupted event is set to interrupt the running threads
+        #       that might be blocked otherwise waiting on inputs from respective
+        #       queues. However, even though we're interrupting the threads we can't
+        #       guarantee that threads will be interrupted in time (as this is
+        #       dependent on Python's GC finalizer to close the generator by raising
+        #       `GeneratorExit`) and hence we can't join on either filling or
+        #       transforming workers.
+        interrupted_event.set()
+
+
+def make_async_gen_x(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
     num_workers: int = 1,
