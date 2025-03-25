@@ -41,7 +41,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // and docker). It's expected to call from raylet to setup node level cgroup
   // configurations.
   //
-  // If error happens, error will be logged and return.
+  // If error happens, error will be logged and exit the process.
   // NOTICE: This function is expected to be called once for each raylet instance.
   //
   // TODO(hjiang): Docker and VM/BM take different handlings, here we only implement the
