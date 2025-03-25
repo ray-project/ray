@@ -31,12 +31,11 @@ Ray Data contains operators focused on the following key tasks:
 - Persisting results to storage or integrated systems.
 - Pipelining data for Ray Train.
 
-The primary abstraction :class:`~ray.data.Dataset` the `Dataset` abstraction to map common data operations to Ray Core primitives. 
+Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core primitives. 
 
 
 
-Ray Train is optimized to work on Ray Datasets. See :ref:`Process large datasets as streams
-<streaming-execution>`.
+Ray Train is optimized to work on Ray Datasets. See :ref:`Process large datasets as streams<streaming-execution>`. 
 
 How does Ray Data distribute data?
 ---------------------------------- 
