@@ -1,5 +1,7 @@
 import logging
+import random
 import time
+from os import urandom
 
 import numpy as np
 import pandas as pd
@@ -167,6 +169,46 @@ def test_make_async_gen_varying_seq_lengths(buffer_size: int):
         "worker_2:1",
         "worker_2:2",
     ] == seq
+
+
+def test_make_async_gen_deadlock():
+    """This test executes make_async_gen against a function generating variable
+    length sequences to stress test its concurrency control.
+    """
+
+    num_workers = 4
+
+    # Roll the dice 100 times
+    for i in range(100):
+        # Fetch 8b seed from urandom
+        seed = int.from_bytes(urandom(8))
+        r = random.Random(seed)
+
+        print(f">>> Seed: {seed}")
+
+        # NOTE: Number of seqs >> number of workers
+        #       to saturate the input queue
+        num_seqs = num_workers * 5
+
+        lens = list(range(num_seqs))
+
+        r.shuffle(lens)
+
+        source = [range(len_) for len_ in lens]
+
+        print("===" * 8)
+        print(source)
+        print("===" * 8)
+
+        def flatten(list_iter):
+            for l in list_iter:
+                print(f">>> Flattening: {l}")
+                yield from l
+
+        it = make_async_gen(iter(source), flatten, 4, queue_buffer_size=1)
+
+        for i in it:
+            print(i)
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
