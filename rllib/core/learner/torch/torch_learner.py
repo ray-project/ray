@@ -158,11 +158,11 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
 
         with contextlib.ExitStack() as stack:
-            #if self.config.num_learners > 1:
-            #    for mod in self.module.values():
-            #        # Skip non-torch modules, b/c they may not have the `no_sync` API.
-            #        if isinstance(mod, torch.nn.Module):
-            #            stack.enter_context(mod.no_sync())
+            if self.config.num_learners > 1:
+                for mod in self.module.values():
+                    # Skip non-torch modules, b/c they may not have the `no_sync` API.
+                    if isinstance(mod, torch.nn.Module):
+                        stack.enter_context(mod.no_sync())
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
@@ -504,7 +504,7 @@ class TorchLearner(Learner):
 
             self._possibly_compiled_update = self._uncompiled_update
 
-        #self._make_modules_ddp_if_necessary()
+        self._make_modules_ddp_if_necessary()
 
     @override(Learner)
     def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:
