@@ -218,11 +218,19 @@ def test_make_async_gen(buffer_size: int):
     num_items = 5
 
     def gen(base_iterator):
+        gen_start = time.perf_counter()
+
         for i in base_iterator:
             time.sleep(1)
             yield i
+            print(f">>> ({time.time()}) Generating {i}")
 
-    def sleep_udf(item):
+        gen_finish = time.perf_counter()
+
+        # 0.5s buffer
+        assert gen_finish - gen_start < 5.5
+
+    def sleepy_udf(item):
         time.sleep(2)
         return item
 
@@ -233,18 +241,26 @@ def test_make_async_gen(buffer_size: int):
         queue_buffer_size=buffer_size,
     )
 
-    start_time = time.time()
     outputs = []
+
+    iter_start = time.perf_counter()
     for item in iterator:
+        print(f">>> ({time.time()}) Iterating over {item}")
         print(item)
-        outputs.append(sleep_udf(item))
-    end_time = time.time()
+        outputs.append(sleepy_udf(item))
+    iter_finish = time.perf_counter()
+
+    dur_s = iter_finish - iter_start
+
+    print(f">>> Took {dur_s}")
+
+    # 1s to yield first element
+    # 10s to iterate t/h all 5
+    # 0.5s extra buffer
+    assert dur_s < num_items * 2 + 1.5
 
     # Assert ordering is preserved
     assert outputs == list(range(num_items))
-
-    # Three second buffer.
-    assert end_time - start_time < num_items * 2 + 3
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
