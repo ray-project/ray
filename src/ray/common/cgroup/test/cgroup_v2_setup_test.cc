@@ -33,6 +33,7 @@
 #include "ray/common/cgroup/cgroup_setup.h"
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/scoped_env_setter.h"
 
 namespace ray {
 
@@ -49,7 +50,9 @@ TEST(Cgroupv2SetupTest, NonLinuxCrashTest) {
 class Cgroupv2SetupTest : public ::testing::Test {
  public:
   Cgroupv2SetupTest()
-      : node_id_("node_id"),
+      : scoped_env_setter_{/*env_name=*/"RAY_DISABLE_INVOKE_ONCE_FOR_TEST",
+                           /*value=*/"true"},
+        node_id_("node_id"),
         node_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id"),
         internal_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs") {}
@@ -62,6 +65,8 @@ class Cgroupv2SetupTest : public ::testing::Test {
   }
 
  protected:
+  ScopedEnvSetter scoped_env_setter_{/*env_name=*/"RAY_DISABLE_INVOKE_ONCE_FOR_TEST",
+                                     /*value=*/"true"};
   const std::string node_id_;
   const std::string node_cgroup_folder_;
   const std::string internal_cgroup_proc_filepath_;

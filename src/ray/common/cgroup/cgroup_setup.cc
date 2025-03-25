@@ -267,7 +267,7 @@ Status CgroupSetup::CleanupCgroups() {
 Status CgroupSetup::AddInternalProcess(pid_t pid) {
   std::ofstream out_file(cgroup_v2_internal_proc_filepath_,
                          std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(!out_file.good())
+  RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to open file " << cgroup_v2_internal_proc_filepath_;
 
   out_file << pid;
