@@ -71,6 +71,7 @@ def start_service(
     add_unique_suffix: bool = True,
     cloud: Optional[str] = None,
     env_vars: Optional[Dict[str, str]] = None,
+    timeout_s: int = 600,  # seconds
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -88,6 +89,8 @@ def start_service(
             service name.
         cloud: The cloud to deploy the service to.
         env_vars: The environment variables to set in the service.
+        timeout_s: The maximum time to wait for the service to start
+            and terminate, in seconds.
     """
 
     if add_unique_suffix:
@@ -127,7 +130,7 @@ def start_service(
                 service_name=service_name,
                 expected_state=ServiceState.RUNNING,
                 retry_interval_ms=10000,  # 10s
-                timeout=600,
+                timeout=timeout_s,
                 cloud=cloud,
             )
 
@@ -147,7 +150,7 @@ def start_service(
             service_name=service_name,
             expected_state="TERMINATED",
             retry_interval_ms=10000,  # 10s
-            timeout=600,
+            timeout=timeout_s,
             cloud=cloud,
         )
         logger.info(f"Service '{service_name}' terminated successfully.")
