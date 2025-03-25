@@ -11,7 +11,7 @@ import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
@@ -26,11 +26,7 @@ from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-
-PYARROW_VERSION = _get_pyarrow_version()
-if PYARROW_VERSION is not None:
-    PYARROW_VERSION = parse_version(PYARROW_VERSION)
-
+PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
 MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
@@ -208,6 +204,13 @@ def _convert_to_pyarrow_native_array(
         if len(column_values) > 0 and isinstance(column_values[0], datetime):
             column_values = _convert_datetime_to_np_datetime(column_values)
 
+        # To avoid deserialization penalty of converting Arrow arrays (`Array` and `ChunkedArray`)
+        # to Python objects and then back to Arrow, we instead combine them into ListArray manually
+        if len(column_values) > 0 and isinstance(
+            column_values[0], (pa.Array, pa.ChunkedArray)
+        ):
+            return _combine_as_list_array(column_values)
+
         # NOTE: We explicitly infer PyArrow `DataType` so that
         #       we can perform upcasting to be able to accommodate
         #       blocks that are larger than 2Gb in size (limited
@@ -229,9 +232,38 @@ def _convert_to_pyarrow_native_array(
             f"Inferred dtype of '{pa_type}' for column '{column_name}'",
         )
 
+        # NOTE: Pyarrow 19.0 is not able to properly handle `ListScalar(None)` when
+        #       creating native array and hence we have to manually replace any such
+        #       cases w/ an explicit null value
+        #
+        # See for more details https://github.com/apache/arrow/issues/45682
+        if len(column_values) > 0 and isinstance(column_values[0], pa.ListScalar):
+            column_values = [v if v.is_valid else None for v in column_values]
+
         return pa.array(column_values, type=pa_type)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
+
+
+def _combine_as_list_array(column_values: List[Union[pa.Array, pa.ChunkedArray]]):
+    """Combines list of Arrow arrays into a single `ListArray`"""
+
+    # First, compute respective offsets in the resulting array
+    lens = [len(v) for v in column_values]
+    offsets = pa.array(np.concatenate([[0], np.cumsum(lens)]), type=pa.int32())
+
+    # Concat all the chunks into a single contiguous array
+    combined = pa.concat_arrays(
+        itertools.chain(
+            *[
+                v.chunks if isinstance(v, pa.ChunkedArray) else [v]
+                for v in column_values
+            ]
+        )
+    )
+
+    # TODO support null masking
+    return pa.ListArray.from_arrays(offsets, combined, pa.list_(combined.type))
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(

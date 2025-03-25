@@ -15,8 +15,12 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 #include <chrono>
+#include <memory>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"

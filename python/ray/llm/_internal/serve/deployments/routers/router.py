@@ -18,7 +18,7 @@ from typing import (
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 

@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <vector>
+
 #include "ray/util/process.h"
 
 // clang-format off
@@ -27,9 +30,9 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 // clang-format on
-using namespace ::testing;
-using namespace ray::gcs;
-using namespace ray;
+using namespace ::testing;  // NOLINT
+using namespace ray::gcs;   // NOLINT
+using namespace ray;        // NOLINT
 
 class GcsWorkerManagerTest : public Test {
  public:

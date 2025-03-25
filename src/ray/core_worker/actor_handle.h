@@ -16,6 +16,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
@@ -29,7 +33,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
+  explicit ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,

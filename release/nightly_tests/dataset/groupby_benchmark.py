@@ -6,8 +6,8 @@ import pyarrow.compute as pc
 import ray
 
 from benchmark import Benchmark
-from python.ray.data import DataContext
-from python.ray.data.context import ShuffleStrategy
+from ray.data import DataContext
+from ray.data.context import ShuffleStrategy
 
 
 def parse_args() -> argparse.Namespace:

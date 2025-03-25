@@ -11,7 +11,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
