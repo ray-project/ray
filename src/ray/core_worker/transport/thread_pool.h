@@ -16,18 +16,11 @@
 
 #include <boost/asio/post.hpp>
 #include <boost/asio/thread_pool.hpp>
-#include <boost/thread.hpp>
-#include <list>
+#include <functional>
 #include <memory>
-#include <queue>
-#include <set>
 #include <utility>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/synchronization/mutex.h"
-#include "ray/common/task/task_spec.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace core {

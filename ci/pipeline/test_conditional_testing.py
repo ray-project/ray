@@ -153,7 +153,7 @@ def test_conditional_testing_pull_request():
             )
             tags = output.split()
 
-            want = test_case.tags
+            want = set(list(test_case.tags) + ["always"])
             assert want == set(tags), f"file {test_case.file}, want {want}, got {tags}"
 
 
