@@ -219,6 +219,54 @@ def test_state_serialization():
     assert len(loaded_stats) == len(stats)
 
 
+def test_state_serialization():
+    """Test saving and loading Stats state with throughput tracking."""
+    # Create a Stats object with throughput tracking
+    stats = Stats(reduce="sum", window=None, throughput=True, throughput_ema_coeff=0.1)
+
+    # Push some values with time delays to generate throughput data
+    import time
+
+    stats.push(1)
+    time.sleep(0.1)  # 100ms delay
+    stats.push(2)
+    time.sleep(0.1)  # 100ms delay
+    stats.push(3)
+
+    # Get the current state
+    state = stats.get_state()
+
+    # Create a new Stats object from the state
+    loaded_stats = Stats.from_state(state)
+
+    # Verify that throughput tracking is preserved
+    assert loaded_stats._throughput_stats is not None
+    assert loaded_stats._throughput_ema_coeff == stats._throughput_ema_coeff
+    assert loaded_stats._last_push_time >= 0  # Should be set after loading
+
+    # Verify that the current throughput is preserved
+    assert abs(loaded_stats.throughput - stats.throughput) < 1e-6
+
+    # Verify that throughput tracking continues to work after loading
+    time.sleep(0.1)  # 100ms delay
+    loaded_stats.push(4)
+    assert loaded_stats.peek() == 10  # sum of all values
+    assert loaded_stats.throughput > 0  # Should have some throughput
+
+    # Test that throughput tracking is preserved even after multiple reduce calls
+    loaded_stats.reduce()
+    time.sleep(0.1)  # 100ms delay
+    loaded_stats.push(5)
+    loaded_stats.reduce()
+    assert loaded_stats.throughput > 0  # Should still have throughput tracking
+
+    # Test that throughput tracking is preserved when creating similar stats
+    similar_stats = Stats.similar_to(loaded_stats)
+    assert similar_stats._throughput_stats is not None
+    assert similar_stats._throughput_ema_coeff == loaded_stats._throughput_ema_coeff
+    assert similar_stats._last_push_time == -1  # Should be reset for new instance
+
+
 def test_similar_to():
     """Test creating similar Stats objects."""
     original = Stats(reduce="sum", window=3)
