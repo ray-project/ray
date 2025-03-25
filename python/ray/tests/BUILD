@@ -974,6 +974,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "vsphere/test_cluster_operator",
+    size = "small",
+    srcs = ["vsphere/test_cluster_operator.py"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "vsphere/test_vmray_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vmray_node_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
