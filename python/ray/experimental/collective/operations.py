@@ -55,8 +55,9 @@ def _bind(
     collective_op = _CollectiveOperation(input_nodes, op, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
 
+    actor_handle: Optional["ray.actor.ActorHandle"] = input_nodes[0]._get_actor_handle()
     if actor_handle is None:
-            raise ValueError("Expected an actor handle from the input node")
+        raise ValueError("Expected an actor handle from the input node")
     if isinstance(op, AllReduceOp):
         method_name = f"allreduce.{op.reduceOp}"
     elif isinstance(op, ReduceScatterOp):
