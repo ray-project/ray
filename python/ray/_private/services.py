@@ -1139,9 +1139,14 @@ def start_log_monitor(
     ]
 
     if stdout_filepath:
-        command.append(f"--stdout_filepath={stdout_filepath}")
+        command.append(f"--stdout-filepath={stdout_filepath}")
     if stderr_filepath:
-        command.append(f"--stderr_filepath={stderr_filepath}")
+        command.append(f"--stderr-filepath={stderr_filepath}")
+
+    with open("/tmp/debug_log_monitor.log", "a") as file:
+        file.write(f"in controller, log filename = {logs_dir}/log_monitor.log\n")
+        file.write(f"in controller, stdout redirected fname = {stdout_filepath}\n")
+        file.write(f"in controller, stderr redirected fname = {stderr_filepath}\n")
 
     stdout_file = None
     stderr_file = None
