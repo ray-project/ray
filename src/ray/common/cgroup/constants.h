@@ -28,6 +28,8 @@ inline constexpr std::string_view kProcFilename = "cgroup.procs";
 inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
 // Parent cgroup path.
 inline constexpr std::string_view kRootCgroupProcsFilename = "cgroup.procs";
+// Cgroup type filename.
+inline constexpr std::string_view kCgroupTypeFilename = "cgroup.type";
 // Cgroup subtree control path.
 // Owner can read and write.
 inline constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;

@@ -124,6 +124,19 @@ Status KillAllProc(const std::string &cgroup_folder) {
   return Status::OK();
 }
 
+// Return whether the given directory is mounted as the root cgroup in current
+// environment. For example, it returns true for BM/VM env, and false for container (since
+// the cgroup within container is a subcgroup in the host cgroup hierarchy).
+StatusOr<bool> IsRootCgroup(const std::string &directory) {
+  const std::string cgroup_type_filepath =
+      absl::StrFormat("%s/%s", directory, kCgroupTypeFilename);
+  std::error_code err_code;
+  bool exists = std::filesystem::exists(cgroup_type_filepath, err_code);
+  RAY_SCHECK_OK_CGROUP(err_code) << "Fails to check file " << cgroup_type_filepath
+                                 << " existense because " << err_code.message();
+  return exists;
+}
+
 }  // namespace
 
 namespace internal {
@@ -170,9 +183,7 @@ CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_i
 Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
                                                 const std::string &node_id) {
   // Check cgroup accessibility before setup.
-  if (Status s = internal::CheckCgroupV2MountedRW(directory); !s.ok()) {
-    return s;
-  }
+  RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
   // Cgroup folder for the current ray node.
   const std::string cgroup_folder = absl::StrFormat("%s/ray_node_%s", directory, node_id);
@@ -193,10 +204,19 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
                                << strerror(errno);
   }
 
-  // TODO(hjiang): Here we move all processes into internal cgroup for docker environment,
-  // will followup with another PR to handle BM/VM cases.
-  RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
-                                            /*to=*/cgroup_v2_internal_folder_));
+  // If the given cgroup is not root cgroup (i.e. container environment), we need to move
+  // all processes (including operating system processes) into internal cgroup, because
+  // only leaf cgroups can contain processes for cgroupv2. Otherwise we only move known
+  // known ray processes into internal cgroup.
+  //
+  // TODO(hjiang): Need to pass down ray process id from raylet.
+  if (IsRootCgroup(directory)) {
+    // TODO(hjiang): Here we move all processes into internal cgroup for docker
+    // environment, will followup with another PR to handle BM/VM cases.
+    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
+                                              /*to=*/cgroup_v2_internal_folder_));
+  }
+
   RAY_RETURN_NOT_OK(
       EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
