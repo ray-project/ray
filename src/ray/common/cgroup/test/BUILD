@@ -34,6 +34,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common/cgroup:fake_cgroup_setup",
+        "//src/ray/common/test:testing",
         "@com_google_googletest//:gtest_main",
     ],
 )

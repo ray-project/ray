@@ -153,7 +153,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
 
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
-  const std::string cgroup_v2_app_procs =
+  cgroup_v2_internal_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_app_folder_, kProcFilename);
   const std::string cgroup_v2_app_subtree_control =
       ray::JoinPaths(cgroup_v2_app_folder_, kSubtreeControlFilename);
@@ -207,14 +207,21 @@ Status CgroupSetup::CleanupCgroups() {
   return Status::OK();
 }
 
-void CgroupSetup::AddInternalProcess(pid_t pid) {
-  std::ofstream out_file(cgroup_v2_internal_folder_, std::ios::app | std::ios::out);
-  // Able to add memory constraint to the internal cgroup.
+Status CgroupSetup::AddInternalProcess(pid_t pid) {
+  std::ofstream out_file(cgroup_v2_internal_proc_filepath_,
+                         std::ios::app | std::ios::out);
+  if (!out_file.good()) {
+    return Status::Invalid("") << "Failed to open file "
+                               << cgroup_v2_internal_proc_filepath_;
+  }
+
   out_file << pid;
   out_file.flush();
-  // After setup completion which validate all prerequisites, cgroup operations are not
-  // expected to fail.
-  RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
+
+  if (!out_file.good()) {
+    return Status::Invalid("") << "Failed to add " << pid << " into cgroup.";
+  }
+  return Status::OK();
 }
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
