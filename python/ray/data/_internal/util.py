@@ -976,7 +976,10 @@ def make_async_gen(
     )
 
     def _run_submitting_worker():
-        with ThreadPoolExecutor(max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix) as tpe:
+        with ThreadPoolExecutor(
+            max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix
+        ) as tpe:
+
             def _apply_fn_eager(it):
                 # NOTE: We unroll returned iterator immediately to make sure that
                 #       iteration is fully performed inside the TPE
