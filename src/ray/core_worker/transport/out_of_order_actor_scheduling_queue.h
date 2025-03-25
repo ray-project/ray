@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -87,7 +88,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
 
   instrumented_io_context &io_service_;
   /// The id of the thread that constructed this scheduling queue.
-  boost::thread::id main_thread_id_;
+  std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;

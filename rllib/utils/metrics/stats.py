@@ -674,8 +674,8 @@ class Stats:
         return f"{float(self):{fmt}}"
 
     def get_state(self) -> Dict[str, Any]:
-        state = {
-            "values": convert_to_numpy(self.values),
+        return {
+            "values": self.values,
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,

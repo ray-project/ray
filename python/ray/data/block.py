@@ -534,15 +534,15 @@ class BlockAccessor:
 
         if self.num_rows() == 0:
             return np.array([], dtype=np.int32)
-        elif keys:
-            # Convert key columns to Numpy (to perform vectorized
-            # ops on them)
-            projected_block = self.to_numpy(keys)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
 
-            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = self.to_numpy(keys)
 
-        # If no keys are specified, whole block is considered a single group
-        return np.array([0, self.num_rows()])
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
 
 @DeveloperAPI(stability="beta")
@@ -573,6 +573,21 @@ class BlockColumnAccessor:
         """Returns a mean of the values in the column"""
         raise NotImplementedError()
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        """Returns requested quantile of the given column"""
+        raise NotImplementedError()
+
+    def unique(self) -> BlockColumn:
+        """Returns new column holding only distinct values of the current one"""
+        raise NotImplementedError()
+
+    def flatten(self) -> BlockColumn:
+        """Flattens nested lists merging them into top-level container"""
+
+        raise NotImplementedError()
+
     def sum_of_squared_diffs_from_mean(
         self,
         *,
@@ -583,8 +598,12 @@ class BlockColumnAccessor:
         """Returns a sum of diffs (from mean) squared for the column"""
         raise NotImplementedError()
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
     @staticmethod
