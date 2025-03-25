@@ -163,8 +163,8 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // Create the internal cgroup.
   RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm), 0);
 
-  // TODO(hjiang): Move GCS and raylet into internal cgroup, so we need a way to know
-  // internal components PID for raylet.
+  // TODO(hjiang): Here we move all processes into internal cgroup for docker environment,
+  // will followup with another PR to handle BM/VM cases.
   RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
                                     /*to=*/cgroup_v2_internal_folder_));
   RAY_CHECK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
@@ -202,6 +202,8 @@ void CgroupSetup::AddInternalProcess(pid_t pid) {
   // Able to add memory constraint to the internal cgroup.
   out_file << pid;
   out_file.flush();
+  // After setup completion which validate all prerequisites, cgroup operations are not
+  // expected to fail.
   RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
 }
 
