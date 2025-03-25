@@ -57,7 +57,6 @@ steps:
     key: trigger-kuberay
     depends_on: trigger-postmerge-nightly
     build:
-      commit: "HEAD"
       branch: "release-1.3"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
