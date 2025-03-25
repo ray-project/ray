@@ -26,7 +26,7 @@ steps:
     soft_fail: true
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
-  
+
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
