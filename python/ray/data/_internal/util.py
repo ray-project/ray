@@ -4,6 +4,7 @@ import os
 import pathlib
 import random
 import sys
+from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import psutil
@@ -970,7 +971,7 @@ def make_async_gen(
     # Signal handler used to interrupt workers when terminating
     interrupted_event = threading.Event()
 
-    future_queue = _InterruptibleQueue(
+    result_queue = _InterruptibleQueue(
         max_size=max_queue_size,
         interrupted_event=interrupted_event,
     )
@@ -998,18 +999,21 @@ def make_async_gen(
                     # Fan out (eager) transformation of individual elements
                     future = tpe.submit(_apply_fn_eager, iter([item]))
                     # NOTE: This is a blocking call
-                    future_queue.put(future)
+                    result_queue.put(future)
+
+                # Append sentinel to signal EOL
+                result_queue.put(SENTINEL)
 
             except InterruptedError:
                 pass
 
             except Exception as e:
                 logger.error("Encountered exception submitting tasks", exc_info=e)
-                raise e
-
-            finally:
-                # Append sentinel to signal EOL
-                future_queue.put(SENTINEL)
+                # In case of filling worker encountering an exception we have to propagate
+                # it back to the (main) iterating thread. To achieve that we're traversing
+                # output queues *backwards* relative to the order of iterator-thread such
+                # that they are more likely to meet w/in a single iteration.
+                result_queue.put(e)
 
     # Start submitting worker threads
     submitting_worker_thread = threading.Thread(
@@ -1023,12 +1027,17 @@ def make_async_gen(
     # Use same thread to yield output results
     try:
         # Create an iterator to traverse the queue, until sentinel
-        futures_iter = iter(future_queue.get, SENTINEL)
+        result_iter = iter(result_queue.get, SENTINEL)
 
-        for fut in futures_iter:
-            result: List[Any] = fut.result()
-            # Yield from an eagerly collected list
-            yield from result
+        for res in result_iter:
+            if isinstance(res, Exception):
+                raise res
+            else:
+                assert isinstance(res, Future), f"Expected concurrent.futures.Future, got {res.__class__}"
+
+                # Yield from an eagerly collected list
+                list_: List[Any] = res.result()
+                yield from list_
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
