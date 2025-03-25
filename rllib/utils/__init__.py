@@ -1,6 +1,8 @@
 from collections import deque
 import contextlib
 from functools import partial
+import tree
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -62,20 +64,22 @@ def add_mixins(base, mixins, reversed=False):
 
 
 @DeveloperAPI
-def force_list(elements=None, to_tuple=False):
+def force_list(
+    elements: Optional[Any] = None, to_tuple: bool = False
+) -> Union[List, Tuple]:
     """
     Makes sure `elements` is returned as a list, whether `elements` is a single
     item, already a list, or a tuple.
 
     Args:
-        elements (Optional[any]): The inputs as single item, list, or tuple to
-            be converted into a list/tuple. If None, returns empty list/tuple.
+        elements: The inputs as a single item, a list/tuple/deque of items, or None,
+            to be converted to a list/tuple. If None, returns empty list/tuple.
         to_tuple: Whether to use tuple (instead of list).
 
     Returns:
-        Union[list,tuple]: All given elements in a list/tuple depending on
-            `to_tuple`'s value. If elements is None,
-            returns an empty list/tuple.
+        The provided item in a list of size 1, or the provided items as a
+        list. If `elements` is None, returns an empty list. If `to_tuple` is True,
+        returns a tuple instead of a list.
     """
     ctor = list
     if to_tuple is True:
@@ -87,6 +91,65 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, set, tuple, deque]
         else ctor([elements])
     )
+
+
+@DeveloperAPI
+def flatten_dict(nested: Dict[str, Any], sep="/", env_steps=0) -> Dict[str, Any]:
+    """
+    Flattens a nested dict into a flat dict with joined keys.
+
+    Note, this is used for better serialization of nested dictionaries
+    in `OfflinePreLearner.__call__` when called inside
+    `ray.data.Dataset.map_batches`.
+
+    Note, this is used to return a `Dict[str, numpy.ndarray] from the
+    `__call__` method which is expected by Ray Data.
+
+    Args:
+        nested: A nested dictionary.
+        sep: Separator to use when joining keys.
+
+    Returns:
+        A flat dictionary where each key is a path of keys in the nested dict.
+    """
+    flat = {}
+    # `dm_tree.flatten_with_path`` returns a list of `(path, leaf)` tuples.
+    for path, leaf in tree.flatten_with_path(nested):
+        # Create a single string key from the path.
+        key = sep.join(map(str, path))
+        flat[key] = leaf
+
+    return flat
+
+
+@DeveloperAPI
+def unflatten_dict(flat: Dict[str, Any], sep="/") -> Dict[str, Any]:
+    """
+    Reconstructs a nested dict from a flat dict with joined keys.
+
+    Note, this is used for better deserialization ofr nested dictionaries
+    in `Learner.update' calls in which a `ray.data.DataIterator` is used.
+
+    Args:
+        flat: A flat dictionary with keys that are paths joined by `sep`.
+        sep: The separator used in the flat dictionary keys.
+
+    Returns:
+        A nested dictionary.
+    """
+    nested = {}
+    for compound_key, value in flat.items():
+        # Split all keys by the separator.
+        keys = compound_key.split(sep)
+        current = nested
+        # Nest by the separated keys.
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+        current[keys[-1]] = value
+
+    return nested
 
 
 @DeveloperAPI

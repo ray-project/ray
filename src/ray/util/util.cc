@@ -22,9 +22,11 @@
 
 #include <algorithm>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
@@ -208,12 +210,6 @@ bool IsRayletFailed(const std::string &raylet_pid) {
 void QuickExit() {
   ray::RayLog::ShutDownRayLog();
   _Exit(1);
-}
-
-std::string FormatFloat(float value, int32_t precision) {
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(precision) << value;
-  return ss.str();
 }
 
 std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms) {

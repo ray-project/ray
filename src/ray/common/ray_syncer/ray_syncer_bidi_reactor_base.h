@@ -225,7 +225,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       sending_buffer_;
 
   /// Keep track of the versions of components in the remote node.
-  /// This field will be udpated when messages are received or sent.
+  /// This field will be updated when messages are received or sent.
   /// We'll filter the received or sent messages when the message is stale.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;

@@ -16,12 +16,17 @@
 
 #include <boost/optional/optional_io.hpp>
 #include <chrono>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 namespace ray {
 
 namespace gcs {
@@ -393,7 +398,8 @@ TEST_F(RedisStoreClientTest, Random) {
     ops[idx](i);
   }
   EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 10000));
-  auto redis_store_client_raw_ptr = (RedisStoreClient *)store_client_.get();
+  auto redis_store_client_raw_ptr =
+      reinterpret_cast<RedisStoreClient *>(store_client_.get());
   absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
   ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
 }
@@ -409,6 +415,7 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);

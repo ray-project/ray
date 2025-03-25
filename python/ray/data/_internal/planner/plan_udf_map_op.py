@@ -11,7 +11,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -36,7 +36,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
 )
-from ray.data._internal.numpy_support import is_valid_udf_return
+from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -116,6 +116,28 @@ def plan_project_op(
         transform_fn,
     )
 
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
+def plan_streaming_repartition_op(
+    op: Project,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+    compute = get_compute(op._compute)
+    transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
+    transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
+    map_transformer = MapTransformer([transform_fn])
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -337,7 +359,7 @@ def _validate_batch_output(batch: Block) -> None:
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
-            if not is_valid_udf_return(value):
+            if not _is_valid_column_values(value):
                 raise ValueError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "The `fn` you passed to `map_batches` returned a "

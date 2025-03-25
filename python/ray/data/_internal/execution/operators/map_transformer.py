@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import Block, BlockAccessor, DataBatch
 
 # Allowed input/output data types for a MapTransformFn.
@@ -62,7 +62,7 @@ class MapTransformFn:
         self._input_type = input_type
         self._output_type = output_type
         self._category = category
-        self._target_max_block_size = None
+        self._output_block_size_option = None
         self._is_udf = is_udf
 
     @abstractmethod
@@ -85,8 +85,40 @@ class MapTransformFn:
     def category(self) -> MapTransformFnCategory:
         return self._category
 
+    @property
+    def output_block_size_option(self):
+        return self._output_block_size_option
+
     def set_target_max_block_size(self, target_max_block_size: int):
-        self._target_max_block_size = target_max_block_size
+        assert (
+            self._output_block_size_option is None and target_max_block_size is not None
+        )
+        self._output_block_size_option = OutputBlockSizeOption(
+            target_max_block_size=target_max_block_size
+        )
+
+    @property
+    def target_max_block_size(self):
+        if self._output_block_size_option is None:
+            return None
+        else:
+            return self._output_block_size_option.target_max_block_size
+
+    def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
+        assert (
+            self._output_block_size_option is None
+            and target_num_rows_per_block is not None
+        )
+        self._output_block_size_option = OutputBlockSizeOption(
+            target_num_rows_per_block=target_num_rows_per_block
+        )
+
+    @property
+    def target_num_rows_per_block(self):
+        if self._output_block_size_option is None:
+            return None
+        else:
+            return self._output_block_size_option.target_num_rows_per_block
 
 
 class MapTransformer:
@@ -113,7 +145,7 @@ class MapTransformer:
         self.set_transform_fns(transform_fns)
 
         self._init_fn = init_fn if init_fn is not None else lambda: None
-        self._target_max_block_size = None
+        self._output_block_size_option = None
         self._udf_time = 0
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
@@ -138,7 +170,35 @@ class MapTransformer:
         return self._transform_fns
 
     def set_target_max_block_size(self, target_max_block_size: int):
-        self._target_max_block_size = target_max_block_size
+        if target_max_block_size is not None:
+            self._output_block_size_option = OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size
+            )
+        elif self._output_block_size_option is not None:
+            self._output_block_size_option = None
+
+    @property
+    def target_max_block_size(self):
+        if self._output_block_size_option is None:
+            return None
+        else:
+            return self._output_block_size_option.target_max_block_size
+
+    def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
+        assert (
+            self._output_block_size_option is None
+            and target_num_rows_per_block is not None
+        )
+        self._output_block_size_option = OutputBlockSizeOption(
+            target_num_rows_per_block=target_num_rows_per_block
+        )
+
+    @property
+    def target_num_rows_per_block(self):
+        if self._output_block_size_option is None:
+            return None
+        else:
+            return self._output_block_size_option.target_num_rows_per_block
 
     def init(self) -> None:
         """Initialize the transformer.
@@ -166,10 +226,11 @@ class MapTransformer:
     ) -> Iterable[Block]:
         """Apply the transform functions to the input blocks."""
         assert (
-            self._target_max_block_size is not None
+            self.target_max_block_size is not None
         ), "target_max_block_size must be set before running"
         for transform_fn in self._transform_fns:
-            transform_fn.set_target_max_block_size(self._target_max_block_size)
+            if not transform_fn.output_block_size_option:
+                transform_fn.set_target_max_block_size(self.target_max_block_size)
 
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
@@ -181,11 +242,11 @@ class MapTransformer:
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
         """Fuse two `MapTransformer`s together."""
-        assert self._target_max_block_size == other._target_max_block_size or (
-            self._target_max_block_size is None or other._target_max_block_size is None
+        assert self.target_max_block_size == other.target_max_block_size or (
+            self.target_max_block_size is None or other.target_max_block_size is None
         )
         target_max_block_size = (
-            self._target_max_block_size or other._target_max_block_size
+            self.target_max_block_size or other.target_max_block_size
         )
 
         # Define them as standalone variables to avoid fused_init_fn capturing the
@@ -244,7 +305,11 @@ class RowMapTransformFn(MapTransformFn):
         return f"RowMapTransformFn({self._row_fn})"
 
     def __eq__(self, other):
-        return isinstance(other, RowMapTransformFn) and self._row_fn == other._row_fn
+        return (
+            isinstance(other, RowMapTransformFn)
+            and self._row_fn == other._row_fn
+            and self._is_udf == other._is_udf
+        )
 
 
 class BatchMapTransformFn(MapTransformFn):
@@ -271,7 +336,34 @@ class BatchMapTransformFn(MapTransformFn):
 
     def __eq__(self, other):
         return (
-            isinstance(other, BatchMapTransformFn) and self._batch_fn == other._batch_fn
+            isinstance(other, BatchMapTransformFn)
+            and self._batch_fn == other._batch_fn
+            and self._is_udf == other._is_udf
+        )
+
+
+class RowToBlockMapTransformFn(MapTransformFn):
+    """A Row-to-Batch MapTransformFn."""
+
+    def __init__(
+        self, transform_fn: MapTransformCallable[Row, Block], is_udf: bool = False
+    ):
+        self._transform_fn = transform_fn
+        super().__init__(
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.DataProcess,
+            is_udf=is_udf,
+        )
+
+    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Block]:
+        yield from self._transform_fn(input, ctx)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, RowToBlockMapTransformFn)
+            and self._transform_fn == other._transform_fn
+            and self._is_udf == other._is_udf
         )
 
 
@@ -434,10 +526,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             iter: the iterable of UDF-returned data, whose type
                 must match self._input_type.
         """
-        assert (
-            self._target_max_block_size is not None
-        ), "target_max_block_size must be set before running"
-        output_buffer = BlockOutputBuffer(self._target_max_block_size)
+        output_buffer = BlockOutputBuffer(self.output_block_size_option)
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
         elif self._input_type == MapTransformFnDataType.Batch:

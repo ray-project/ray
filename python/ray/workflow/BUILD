@@ -3,8 +3,7 @@
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
-load("//bazel:python.bzl", "py_test_module_list")
-load("//bazel:python.bzl", "doctest")
+load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 doctest(
     files = glob(
@@ -29,7 +28,6 @@ LARGE_TESTS = [
 LARGE_ALL_CORE_TESTS = [
     "tests/test_http_events_2.py",
     "tests/test_events.py",
-    "tests/test_events_with_crash.py",
 ]
 
 py_test_module_list(

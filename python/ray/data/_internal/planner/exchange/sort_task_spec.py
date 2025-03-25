@@ -145,7 +145,8 @@ class SortTaskSpec(ExchangeTaskSpec):
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
-            mapper_outputs, normalize_type=batch_format
+            mapper_outputs,
+            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
         return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
             normalized_blocks, sort_key

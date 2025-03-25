@@ -17,6 +17,9 @@
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/util/logging.h"
@@ -39,7 +42,7 @@ int dlmallopt(int param_number, int value);
 
 namespace {
 /* Copied from dlmalloc.c; make sure to keep in sync */
-size_t MAX_SIZE_T = (size_t)-1;
+size_t MAX_SIZE_T = static_cast<size_t>(-1);
 const int M_MMAP_THRESHOLD = -3;
 
 // We align the allocated region to a 64-byte boundary. This is not

@@ -14,6 +14,11 @@
 
 #include "ray/pubsub/publisher.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/ray_config.h"
 
 namespace ray {

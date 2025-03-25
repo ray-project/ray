@@ -134,12 +134,12 @@ def test_grpc_backpressure(serve_instance):
 
 
 def test_model_composition_backpressure(serve_instance):
-    signal = SignalActor.remote()
+    signal_actor = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
     class Child:
         async def __call__(self):
-            await signal.wait.remote()
+            await signal_actor.wait.remote()
             return "ok"
 
     @serve.deployment
@@ -155,17 +155,29 @@ def test_model_composition_backpressure(serve_instance):
 
     serve.run(Parent.bind(child=Child.bind()))
     with ThreadPoolExecutor(max_workers=3) as exc:
-        futures = [exc.submit(send_request) for _ in range(3)]
-        done, _ = wait(futures, return_when=FIRST_COMPLETED)
-        assert len(done) == 1
-        for f in done:
-            assert f.result().status_code == 503
-            assert "Request dropped due to backpressure" in f.result().text
-            print("Received 503 response.")
+        # Send first request, wait for it to be blocked while executing.
+        executing_fut = exc.submit(send_request)
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+        done, _ = wait([executing_fut], timeout=0.1, return_when=FIRST_COMPLETED)
+        assert len(done) == 0
 
-        print("Releasing signal.")
-        ray.get(signal.send.remote())
-        assert sorted([f.result().status_code for f in futures]) == [200, 200, 503]
+        # Send second request, it should get queued.
+        queued_fut = exc.submit(send_request)
+        done, _ = wait(
+            [executing_fut, queued_fut], timeout=0.1, return_when=FIRST_COMPLETED
+        )
+        assert len(done) == 0
+
+        # Send third request, it should get rejected.
+        rejected_fut = exc.submit(send_request)
+        assert rejected_fut.result().status_code == 503
+
+        # Send signal, check the two requests succeed.
+        ray.get(signal_actor.send.remote(clear=False))
+        assert executing_fut.result().status_code == 200
+        assert executing_fut.result().text == "ok"
+        assert queued_fut.result().status_code == 200
+        assert queued_fut.result().text == "ok"
 
 
 if __name__ == "__main__":

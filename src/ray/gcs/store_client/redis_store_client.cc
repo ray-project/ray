@@ -15,9 +15,13 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
+#include <memory>
+#include <queue>
 #include <regex>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"

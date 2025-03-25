@@ -4,9 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
+import os
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
     add_execution_callback,
@@ -26,19 +29,22 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
+    StreamingExecutor,
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.operators.map_operator import MapRows
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -47,8 +53,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 def mock_resource_manager(
     global_limits=None,
     global_usage=None,
-    downstream_fraction=0.0,
-    downstream_object_store_memory=0,
 ):
     empty_resource = ExecutionResources(0, 0, 0)
     global_limits = global_limits or empty_resource
@@ -56,11 +60,7 @@ def mock_resource_manager(
     return MagicMock(
         get_global_limits=MagicMock(return_value=global_limits),
         get_global_usage=MagicMock(return_value=global_usage),
-        get_downstream_fraction=MagicMock(return_value=downstream_fraction),
-        get_downstream_object_store_memory=MagicMock(
-            return_value=downstream_object_store_memory
-        ),
-        op_resource_allocator_enabled=MagicMock(return_value=False),
+        op_resource_allocator_enabled=MagicMock(return_value=True),
     )
 
 
@@ -208,34 +208,28 @@ def test_process_completed_tasks():
 
 def test_select_operator_to_run():
     opt = ExecutionOptions()
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o1, DataContext.get_current()
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o2, DataContext.get_current()
     )
     topo, _ = build_streaming_topology(o3, opt)
+
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
     )
-    memory_usage = {
-        o1: 0,
-        o2: 0,
-        o3: 0,
-    }
+    memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
     )
+    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+        return_value=True
+    )
 
     def _select_op_to_run():
-        nonlocal topo, resource_manager
-
         return select_operator_to_run(
             topo, resource_manager, [], mock_autoscaler(), True
         )
@@ -243,15 +237,17 @@ def test_select_operator_to_run():
     # Test empty.
     assert _select_op_to_run() is None
 
-    # Test backpressure based on memory_usage of each operator.
+    # `o2` is the only operator with at least one input.
     topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     memory_usage[o1] += 1
     assert _select_op_to_run() == o2
 
+    # `o2` is still the only operator with at least one input.
     topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     memory_usage[o1] += 1
     assert _select_op_to_run() == o2
 
+    # Both `o2` and `o3` have at least one input, but `o3` has less memory usage.
     topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     memory_usage[o2] += 1
     assert _select_op_to_run() == o3
@@ -335,137 +331,42 @@ def test_validate_dag():
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-def test_execution_allowed():
-    op = InputDataBuffer(DataContext.get_current(), [])
-
-    # CPU.
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=1),
-            global_limits=ExecutionResources.for_limits(cpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources.for_limits(cpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # GPU.
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=1)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # Test conversion to indicator (0/1).
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=100)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # Test conversion to indicator (0/1).
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=0.1)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o1, DataContext.get_current()
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o2, DataContext.get_current()
     )
     topo, _ = build_streaming_topology(o3, opt)
-    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
-    o1.num_active_tasks = MagicMock(return_value=2)
     resource_manager = mock_resource_manager(
         global_usage=ExecutionResources(cpu=1),
         global_limits=ExecutionResources.for_limits(cpu=1),
     )
+    resource_manager.get_op_usage = MagicMock(return_value=ExecutionResources(0, 0, 0))
 
     def _select_op_to_run(ensure_at_least_one_running):
-        nonlocal topo, resource_manager
-
         return select_operator_to_run(
             topo, resource_manager, [], mock_autoscaler(), ensure_at_least_one_running
         )
 
+    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
+    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+        return_value=False
+    )
+
+    # Because `o1` has an active task, `select_operator_to_run` returns `None`.
+    o1.num_active_tasks = MagicMock(return_value=1)
     assert _select_op_to_run(True) is None
+
+    # No operator can submit a new task, but because there are no active tasks, select
+    # from the operators that have at least one input.
     o1.num_active_tasks = MagicMock(return_value=0)
     assert _select_op_to_run(True) is o3
+
     assert _select_op_to_run(False) is None
 
 
@@ -513,78 +414,6 @@ def test_configure_output_locality():
     assert s2a.node_id == "node1"
     assert s2b.node_id == "node2"
     assert s2c.node_id == "node1"
-
-
-def test_execution_allowed_downstream_aware_memory_throttling():
-    op = InputDataBuffer(DataContext.get_current(), [])
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
-    # Below global.
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=1100),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-    # Above global.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-    # Above global, but below downstream quota of 50%.
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=0.5,
-            downstream_object_store_memory=400,
-        ),
-    )
-    # Above global, and above downstream quota of 50%.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=0.5,
-            downstream_object_store_memory=600,
-        ),
-    )
-
-
-def test_execution_allowed_nothrottle():
-    op = InputDataBuffer(DataContext.get_current(), [])
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
-    # Above global.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-
-    # Throttling disabled.
-    op.throttling_disabled = MagicMock(return_value=True)
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
 
 
 class OpBufferQueueTest(unittest.TestCase):
@@ -646,7 +475,7 @@ def test_time_scheduling():
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
-def test_executor_callbacks():
+def test_execution_callbacks():
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
@@ -654,14 +483,18 @@ def test_executor_callbacks():
             self._before_execution_starts_called = False
             self._after_execution_succeeds_called = False
             self._execution_error = None
+            self._on_execution_step_called = False
 
-        def before_execution_starts(self):
+        def before_execution_starts(self, executor: StreamingExecutor):
             self._before_execution_starts_called = True
 
-        def after_execution_succeeds(self):
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            self._on_execution_step_called = True
+
+        def after_execution_succeeds(self, executor: StreamingExecutor):
             self._after_execution_succeeds_called = True
 
-        def after_execution_fails(self, error: Exception):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
             self._execution_error = error
 
     # Test the success case.
@@ -669,16 +502,17 @@ def test_executor_callbacks():
     ctx = ds.context
     callback = CustomExecutionCallback()
     add_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == [callback]
+    assert callback in get_execution_callbacks(ctx)
 
     ds.take_all()
 
     assert callback._before_execution_starts_called
     assert callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     assert callback._execution_error is None
 
     remove_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == []
+    assert callback not in get_execution_callbacks(ctx)
 
     # Test the case where the dataset fails due to an error in the UDF.
     ds = ray.data.range(10)
@@ -695,6 +529,7 @@ def test_executor_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, ValueError), error
 
@@ -716,8 +551,59 @@ def test_executor_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
+
+
+def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
+    """Test the executor arg in ExecutionCallback."""
+
+    _executor = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal _executor
+            _executor = executor
+
+    input_path = tmp_path / "input"
+    os.makedirs(input_path)
+    output_path = tmp_path / "output"
+
+    ctx = DataContext.get_current()
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+    ds = ray.data.read_parquet(input_path)
+
+    def udf(row):
+        return row
+
+    ds = ds.map(udf)
+
+    ds = ds.write_parquet(output_path)
+
+    # Test inspecting the metadata of each operator.
+    # E.g., the original input and output paths and the UDF.
+    assert _executor is not None
+    assert len(_executor._topology) == 2
+    physical_ops = list(_executor._topology.keys())
+    assert isinstance(physical_ops[0], InputDataBuffer)
+    assert isinstance(physical_ops[1], MapOperator)
+    logical_ops = physical_ops[1]._logical_operators
+
+    assert len(logical_ops) == 3
+    assert isinstance(logical_ops[0], Read)
+    datasource = logical_ops[0]._datasource
+    assert isinstance(datasource, ParquetDatasource)
+    assert datasource._unresolved_paths == input_path
+
+    assert isinstance(logical_ops[1], MapRows)
+    assert logical_ops[1]._fn == udf
+
+    assert isinstance(logical_ops[2], Write)
+    datasink = logical_ops[2]._datasink_or_legacy_datasource
+    assert isinstance(datasink, ParquetDatasink)
+    assert datasink.unresolved_path == output_path
 
 
 if __name__ == "__main__":

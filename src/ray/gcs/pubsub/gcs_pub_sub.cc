@@ -14,6 +14,11 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {

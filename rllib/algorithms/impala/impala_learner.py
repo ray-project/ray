@@ -7,7 +7,9 @@ from typing import Any, Dict, Union
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
     override,
@@ -77,6 +79,11 @@ class IMPALALearner(Learner):
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
 
+        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+        #  metrics each 20 updates" logic right now.
+        # # Results queue for reduced Learner metrics.
+        # # self._learner_thread_out_queue = deque(maxlen=1)
+
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_threads = [
@@ -93,26 +100,48 @@ class IMPALALearner(Learner):
 
         # Create and start the Learner thread.
         self._learner_thread = _LearnerThread(
-            update_method=self._update_from_batch_or_episodes,
+            update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
-            metrics_logger=self.metrics,
+            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+            #  metrics each 20 updates" logic right now.
+            # out_queue=self._learner_thread_out_queue,
             learner=self,
         )
         self._learner_thread.start()
 
     @override(Learner)
-    def update_from_batch(
+    def update(
         self,
-        batch: Any,
+        training_data: TrainingData,
         *,
         timesteps: Dict[str, Any],
+        return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
+        """
+
+        Args:
+            batch:
+            timesteps:
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
+            **kwargs:
+
+        Returns:
+
+        """
         global _CURRENT_GLOBAL_TIMESTEPS
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
-        if isinstance(batch, ray.ObjectRef):
-            batch = ray.get(batch)
+        # Get the train batch from the object store.
+        training_data.solve_refs()
+
+        batch = self._make_batch_if_necessary(training_data=training_data)
+        assert batch is not None
 
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_in_queue.put(batch)
@@ -134,13 +163,56 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
+        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
+        #  metrics reduces.
         with self._num_updates_lock:
             count = self._num_updates
-        if count >= 100:
+        result = {}
+        if count >= 20:
             with self._num_updates_lock:
                 self._num_updates = 0
-            return self.metrics.reduce()
-        return {}
+            result = self.metrics.reduce()
+
+        if return_state:
+            learner_state = self.get_state(
+                # Only return the state of those RLModules that are trainable.
+                components=[
+                    COMPONENT_RL_MODULE + "/" + mid
+                    for mid in self.module.keys()
+                    if self.should_module_be_updated(mid)
+                ],
+                inference_only=True,
+            )
+            learner_state[COMPONENT_RL_MODULE] = ray.put(
+                learner_state[COMPONENT_RL_MODULE]
+            )
+            result["_rl_module_state_after_update"] = learner_state
+
+        return result
+
+        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+        #  metrics each 20 updates" logic right now.
+        # try:
+        #    result = self._learner_thread_out_queue.popleft()
+        # except IndexError:
+        #    result = {}
+
+        # if return_state:
+        #    learner_state = self.get_state(
+        #        # Only return the state of those RLModules that are trainable.
+        #        components=[
+        #            COMPONENT_RL_MODULE + "/" + mid
+        #            for mid in self.module.keys()
+        #            if self.should_module_be_updated(mid)
+        #        ],
+        #        inference_only=True,
+        #    )
+        #    learner_state[COMPONENT_RL_MODULE] = ray.put(
+        #        learner_state[COMPONENT_RL_MODULE]
+        #    )
+        #    result["_rl_module_state_after_update"] = learner_state
+
+        # return result
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -221,18 +293,22 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue: deque,
-        metrics_logger,
+        in_queue: Union[deque, CircularBuffer],
+        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+        #  metrics each 20 updates" logic right now.
+        # out_queue: deque,
         learner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
-        self.metrics: MetricsLogger = metrics_logger
         self.learner = learner
         self.stopped = False
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
+        # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+        #  metrics each 20 updates" logic right now.
+        # self._out_queue: deque = out_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -242,14 +318,16 @@ class _LearnerThread(threading.Thread):
         global _CURRENT_GLOBAL_TIMESTEPS
 
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+        with self.learner.metrics.log_time(
+            (ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)
+        ):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
             if isinstance(self._in_queue, CircularBuffer):
                 ma_batch_on_gpu = self._in_queue.sample()
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
                 while not self._in_queue:
-                    time.sleep(0.001)
+                    time.sleep(0.0001)
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of
                 # learning from newer batches (left side) most times, BUT sometimes
@@ -257,15 +335,20 @@ class _LearnerThread(threading.Thread):
                 ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
+        with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
             # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
             self._update_method(
-                batch=ma_batch_on_gpu,
+                self=self.learner,
+                training_data=TrainingData(batch=ma_batch_on_gpu),
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
+                _no_metrics_reduce=True,
             )
+            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+            #  metrics each 20 updates" logic right now.
+            # self._out_queue.append(results)
             with self.learner._num_updates_lock:
                 self.learner._num_updates += 1
 

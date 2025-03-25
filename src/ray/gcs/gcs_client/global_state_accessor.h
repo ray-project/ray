@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -229,7 +235,7 @@ class GlobalStateAccessor {
   template <class DATA>
   MultiItemCallback<DATA> TransformForMultiItemCallback(
       std::vector<std::string> &data_vec, std::promise<bool> &promise) {
-    return [&data_vec, &promise](const Status &status, std::vector<DATA> &&result) {
+    return [&data_vec, &promise](const Status &status, std::vector<DATA> result) {
       RAY_CHECK_OK(status);
       std::transform(result.begin(),
                      result.end(),

@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Tuple, List
 import anyscale
 from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
+    CreateProductionJobConfig,
     HaJobStates,
 )
 from ray_release.anyscale_util import get_cluster_name
@@ -71,20 +72,19 @@ class AnyscaleJobManager:
                 runtime_env["upload_path"] = upload_path
 
         try:
-            job_response = anyscale_client.create_job(
-                CreateProductionJob(
-                    name=self.cluster_manager.cluster_name,
-                    description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                    project_id=self.cluster_manager.project_id,
-                    config=dict(
-                        entrypoint=cmd_to_run,
-                        runtime_env=runtime_env,
-                        build_id=self.cluster_manager.cluster_env_build_id,
-                        compute_config_id=self.cluster_manager.cluster_compute_id,
-                        max_retries=0,
-                    ),
+            job_request = CreateProductionJob(
+                name=self.cluster_manager.cluster_name,
+                description=f"Smoke test: {self.cluster_manager.smoke_test}",
+                project_id=self.cluster_manager.project_id,
+                config=CreateProductionJobConfig(
+                    entrypoint=cmd_to_run,
+                    runtime_env=runtime_env,
+                    build_id=self.cluster_manager.cluster_env_build_id,
+                    compute_config_id=self.cluster_manager.cluster_compute_id,
+                    max_retries=0,
                 ),
             )
+            job_response = anyscale_client.create_job(job_request)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "

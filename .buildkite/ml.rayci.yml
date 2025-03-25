@@ -76,7 +76,6 @@ steps:
   - label: ":train: ml: {{matrix.python}} tests ({{matrix.worker_id}})"
     if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
     tags:
-      - python
       - train
       - tune
       - ml

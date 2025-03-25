@@ -34,7 +34,6 @@ ignore = [
     "B024",
     "B026",
     "B027",
-    "B035",
     "B904",
     "C419",
     # Below are auto-fixable rules

@@ -198,6 +198,11 @@ def test_bin_pack():
         [{"GPU": 1}],
         [{"GPU": 2}],
     )
+    arg = [{"GPU": 2}, {"GPU": 0.5}, {"GPU": 2}, {"GPU": 3}]
+    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == (
+        [],  # the below output order should not be changed.
+        [{"GPU": 1}, {"GPU": 0.5}, {"GPU": 1}, {"GPU": 3}],
+    )
 
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
     assert (
