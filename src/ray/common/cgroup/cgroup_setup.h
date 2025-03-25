@@ -16,26 +16,33 @@
 
 #include <string>
 
+#include "ray/common/status.h"
+
 namespace ray {
 
 namespace internal {
 
-// Return whether current user could write to cgroupv2.
-bool CanCurrenUserWriteCgroupV2();
-
-// Return whether cgroup V2 is mounted in read and write mode.
-bool IsCgroupV2MountedAsRw();
+// Checks whether cgroupv2 is properly mounted for read-write operations in the given
+// [directory]. Also checks that cgroupv1 is not mounted.
+// If not, InvalidArgument status is returned.
+//
+// This function is exposed in header file for unit test purpose.
+//
+// \param directory: user provided mounted cgroupv2 directory.
+Status CheckCgroupV2MountedRW(const std::string &directory);
 
 }  // namespace internal
 
-// Util function to setup cgroups preparation for resource constraints.
+// Util function to initialize cgroupv2 directory for the given [node_id].
 // It's expected to call from raylet to setup node level cgroup configurations.
 //
 // If error happens, error will be logged and return false.
 // Cgroup is not supported on non-linux platforms.
 //
-// NOTICE: This function is expected to be called once for eacy raylet instance.
-bool SetupCgroupsPreparation(const std::string &node_id);
+// \param node_id: node indicator, used to deduce cgroupv2 directory.
+//
+// NOTE: This function is expected to be called once for each raylet instance.
+Status InitializeCgroupv2Directory(const std::string &node_id);
 
 // Get folder name for application cgroup v2 for current raylet instance.
 const std::string &GetCgroupV2AppFolder();

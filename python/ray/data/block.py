@@ -545,6 +545,7 @@ class BlockAccessor:
         return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
 
+@DeveloperAPI(stability="beta")
 class BlockColumnAccessor:
     """Provides vendor-neutral interface to apply common operations
     to block's (Pandas/Arrow) columns"""
