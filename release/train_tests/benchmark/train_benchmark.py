@@ -31,6 +31,7 @@ class TrainLoopRunner:
         self.model = ray.train.torch.prepare_model(model)
 
         self.loss_fn = factory.get_loss_fn()
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # Training progress state.
@@ -45,6 +46,10 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+        logger.info(
+            f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
+            f"{ray.train.get_context().get_world_rank()}"
+        )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -60,6 +65,10 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
+        logger.info(
+            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
+            f"epochs for worker {ray.train.get_context().get_world_rank()}"
+        )
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
@@ -206,6 +215,7 @@ class TrainLoopRunner:
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
+
         ray.train.report(
             metrics,
             checkpoint=checkpoint,

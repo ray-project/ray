@@ -103,7 +103,7 @@ def test_default_parquet_metadata_provider(fs, data_path):
     pq.write_table(table, paths[1], filesystem=fs)
 
     meta_provider = ParquetMetadataProvider()
-    pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
+    pq_ds = pq.ParquetDataset(paths, filesystem=fs)
     fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
