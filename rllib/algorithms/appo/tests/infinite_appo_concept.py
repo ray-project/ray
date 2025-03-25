@@ -84,12 +84,15 @@ class Algo:
             er.add_aggregator_actors.remote(self.aggregator_actors)
 
         # Create the Learner actors.
-        self.learner_group = self.config.build_learner_group(
-            env=None,
-            spaces=spaces,
-            rl_module_spec=rl_module_spec,
-        )
-        self.learners = list(self.learner_group._worker_manager.actors().values())
+        #self.learner_group = self.config.build_learner_group(
+        #    env=None,
+        #    spaces=spaces,
+        #    rl_module_spec=rl_module_spec,
+        #)
+        self.learners = [ #list(self.learner_group._worker_manager.actors().values())
+            InfiniteAPPOLearner(config=self.config, module_spec=rl_module_spec)
+            for _ in range(self.config.num_learners)
+        ]
         # Let Learner w/ idx 0 know that it's responsible for pushing the weights.
         self.learners[0].set_other_actors.remote(
             weights_server_actors=self.weights_server_actors,
