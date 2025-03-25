@@ -38,3 +38,18 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "cgroup_v2_setup_test",
+    srcs = ["cgroup_v2_setup_test.cc"],
+    tags = [
+        # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
+        "manual",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common/cgroup:cgroup_setup",
+        "//src/ray/common/test:testing",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
