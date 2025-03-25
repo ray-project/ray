@@ -12,7 +12,7 @@ NUM_NODES = 9
 OBJECT_SIZE = 2**32
 
 
-def test_object_ingest():
+def test_object_many_to_one():
     @ray.remote(num_cpus=1, resources={"node": 1})
     class Actor:
         def foo(self):
@@ -28,7 +28,7 @@ def test_object_ingest():
 
     start = perf_counter()
     result_refs = []
-    for actor in tqdm(actors, desc="Broadcast tasks kickoff"):
+    for actor in tqdm(actors, desc="Tasks kickoff"):
         result_refs.append(actor.send_objects.remote())
 
     results = ray.get(result_refs)
@@ -40,7 +40,7 @@ def test_object_ingest():
     return end - start
 
 
-def test_object_broadcast():
+def test_object_one_to_many():
     @ray.remote(num_cpus=1, resources={"node": 1})
     class Actor:
         def foo(self):
@@ -59,7 +59,7 @@ def test_object_broadcast():
 
     start = perf_counter()
     result_refs = []
-    for actor in tqdm(actors, desc="Ingesting tasks kickoff"):
+    for actor in tqdm(actors, desc="Tasks kickoff"):
         result_refs.append(actor.data_len.remote(ref))
 
     results = ray.get(result_refs)
@@ -72,30 +72,30 @@ def test_object_broadcast():
 
 
 ray.init(address="auto")
-ingest_duration = test_object_ingest()
-print(f"Ingest time: {ingest_duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
-broadcast_duration = test_object_broadcast()
-print(f"Broadcast time: {broadcast_duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
+many_to_one_duration = test_object_many_to_one()
+print(f"many_to_one time: {many_to_one_duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
+one_to_many_duration = test_object_one_to_many()
+print(f"one_to_many time: {one_to_many_duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
 
 
 if "TEST_OUTPUT_JSON" in os.environ:
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
         results = {
-            "ingest_time": ingest_duration,
-            "broadcast_time": broadcast_duration,
+            "many_to_one_time": many_to_one_duration,
+            "one_to_many_time": one_to_many_duration,
             "object_size": OBJECT_SIZE,
             "num_nodes": NUM_NODES,
             "success": "1",
         }
         results["perf_metrics"] = [
             {
-                "perf_metric_name": f"time_to_ingest_{OBJECT_SIZE}_bytes_from_{NUM_NODES}_nodes",
-                "perf_metric_value": ingest_duration,
+                "perf_metric_name": f"time_many_to_one_{OBJECT_SIZE}_bytes_from_{NUM_NODES}_nodes",
+                "perf_metric_value": many_to_one_duration,
                 "perf_metric_type": "LATENCY",
             },
             {
-                "perf_metric_name": f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes",
-                "perf_metric_value": broadcast_duration,
+                "perf_metric_name": f"time_one_to_many_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes",
+                "perf_metric_value": one_to_many_duration,
                 "perf_metric_type": "LATENCY",
             },
         ]
