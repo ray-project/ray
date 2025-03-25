@@ -1,5 +1,3 @@
-import copy
-import queue
 import random
 import time
 import threading
@@ -368,7 +366,12 @@ class InfiniteAPPOLearner(APPOTorchLearner):
 
 
 if __name__ == "__main__":
-    NUM_LEARNERS = 1
+    NUM_ENV_RUNNERS = 512
+    NUM_ENVS_PER_ENV_RUNNER = 1
+    NUM_AGG_ACTORS_PER_LEARNER = 4
+    NUM_LEARNERS = 16
+    NUM_WEIGHTS_SERVER_ACTORS=16
+    NUM_GPUS_PER_LEARNER=1
 
     def _make_env_to_module_connector(env):
         return FrameStackingEnvToModule(num_frames=4, multi_agent=True)
@@ -387,7 +390,7 @@ if __name__ == "__main__":
 
 
     MultiAgentPong = make_multi_agent(_env_creator)
-    NUM_AGENTS = 2
+    NUM_AGENTS = 1
     NUM_POLICIES = 1
     main_spec = RLModuleSpec(
         model_config=DefaultModelConfig(
@@ -400,6 +403,7 @@ if __name__ == "__main__":
 
     config = (
         APPOConfig()
+        .framework(torch_skip_nan_gradients=True)
         .environment(
             MultiAgentPong,
             env_config={
@@ -413,13 +417,14 @@ if __name__ == "__main__":
         )
         .env_runners(
             env_to_module_connector=_make_env_to_module_connector,
-            num_env_runners=2,
+            num_env_runners=NUM_ENV_RUNNERS,
             rollout_fragment_length=50,
-            num_envs_per_env_runner=1,
+            num_envs_per_env_runner=NUM_ENVS_PER_ENV_RUNNER,
         )
         .learners(
             num_learners=NUM_LEARNERS,
-            num_aggregator_actors_per_learner=2,
+            num_gpus_per_learner=NUM_GPUS_PER_LEARNER,
+            num_aggregator_actors_per_learner=NUM_AGG_ACTORS_PER_LEARNER,
         )
         .training(
             learner_class=InfiniteAPPOLearner,
@@ -439,14 +444,14 @@ if __name__ == "__main__":
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs=(
                     {f"p{i}": main_spec for i in range(NUM_POLICIES)}
-                    | {"random": RLModuleSpec(module_class=RandomRLModule)}
+                    #| {"random": RLModuleSpec(module_class=RandomRLModule)}
                 ),
             ),
         )
         .multi_agent(
-            policies={f"p{i}" for i in range(NUM_POLICIES)} | {"random"},
+            policies={f"p{i}" for i in range(NUM_POLICIES)},# | {"random"},
             policy_mapping_fn=lambda aid, eps, **kw: (
-                random.choice([f"p{i}" for i in range(NUM_POLICIES)] + ["random"])
+                random.choice([f"p{i}" for i in range(NUM_POLICIES)]) # + ["random"]
             ),
             policies_to_train=[f"p{i}" for i in range(NUM_POLICIES)],
         )
@@ -456,7 +461,7 @@ if __name__ == "__main__":
         config=config,
         observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
         action_space=gym.spaces.Discrete(6),
-        num_weights_server_actors=1,
+        num_weights_server_actors=NUM_WEIGHTS_SERVER_ACTORS,
     )
     time.sleep(1.0)
 
@@ -484,7 +489,7 @@ if __name__ == "__main__":
                     f"trained={env_steps_trained.peek()} "
                     f"({env_steps_trained.peek(throughput=True):.0f}/sec) "
                 )
-            if "p0" in learner_results:
-                msg += f"grad-update-delta={learner_results['p0']['diff_num_grad_updates_vs_sampler_policy'].peek()} "
+            #if "p0" in learner_results:
+            #    msg += f"grad-update-delta={learner_results['p0']['diff_num_grad_updates_vs_sampler_policy'].peek()} "
 
         print(msg)
