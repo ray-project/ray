@@ -74,9 +74,6 @@ class CgroupSetup : public BaseCgroupSetup {
   // - Cgroup for the current node will be deleted.
   void CleanupCgroups();
 
-  // Apply cgroup context with new cgroup folder created.
-  ScopedCgroupHandler ApplyCgroupForIndividualAppCgroup(const AppProcCgroupMetadata &ctx);
-
   // Apply cgroup context which addes pid into default cgroup folder.
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 

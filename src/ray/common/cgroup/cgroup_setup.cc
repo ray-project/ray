@@ -205,29 +205,6 @@ void CgroupSetup::AddInternalProcess(pid_t pid) {
   RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
 }
 
-ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
-    const AppProcCgroupMetadata &ctx) {
-  RAY_CHECK_NE(ctx.max_memory, 0);  // Sanity check.
-
-  // Create a new cgroup folder for the given process.
-  const std::string cgroup_folder = ray::JoinPaths(cgroup_v2_app_folder_, ctx.id);
-  RAY_CHECK(std::filesystem::create_directory(cgroup_folder))
-      << "Failed to create cgroup " << cgroup_folder;
-
-  const std::string cgroup_proc_file =
-      ray::JoinPaths(cgroup_folder, kRootCgroupProcsFilename);
-  std::ofstream out_file(cgroup_proc_file, std::ios::app | std::ios::out);
-  out_file << ctx.pid;
-  out_file.flush();
-  RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
-                             << ctx.max_memory << " into cgroup folder";
-
-  auto delete_cgroup_folder = [folder = cgroup_folder]() {
-    RAY_CHECK(std::filesystem::remove(folder));  // Not expected to fail.
-  };
-  return ScopedCgroupHandler{std::move(delete_cgroup_folder)};
-}
-
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
     const AppProcCgroupMetadata &ctx) {
   RAY_CHECK_EQ(ctx.max_memory, 0);  // Sanity check.
@@ -249,10 +226,9 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
 }
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
-  if (ctx.max_memory == 0) {
-    return ApplyCgroupForDefaultAppCgroup(ctx);
-  }
-  return ApplyCgroupForIndividualAppCgroup(ctx);
+  // For milestone-1, there's no requested and limit set for each task.
+  RAY_CHECK_EQ(ctx.max_memory, 0);
+  return ApplyCgroupForDefaultAppCgroup(ctx);
 }
 
 }  // namespace ray
