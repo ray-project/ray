@@ -73,12 +73,12 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
     RAY_LOG(INFO).WithField(actor_id)
         << "Set actor max pending calls to " << max_pending_calls;
     inserted = client_queues_
-                   .emplace(actor_id,
-                            ClientQueue(actor_id,
-                                        execute_out_of_order,
-                                        max_pending_calls,
-                                        fail_if_actor_unreachable,
-                                        owned))
+                   .try_emplace(actor_id,
+                                actor_id,
+                                execute_out_of_order,
+                                max_pending_calls,
+                                fail_if_actor_unreachable,
+                                owned)
                    .second;
   }
   if (owned && inserted) {
@@ -458,7 +458,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                          << wait_for_death_info_tasks.size();
       for (auto &task : wait_for_death_info_tasks) {
         GetTaskFinisherWithoutMu().FailPendingTask(
-            task->task_spec.TaskId(), error_type, &task->status, &error_info);
+            task->task_id, error_type, &task->status, &error_info);
       }
     }
   }
@@ -477,7 +477,7 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     auto actor_death_cause = error_info.mutable_actor_died_error();
     auto actor_died_error_context = actor_death_cause->mutable_actor_died_error_context();
     actor_died_error_context->set_reason(rpc::ActorDiedErrorContext::NODE_DIED);
-    actor_died_error_context->set_actor_id(task.task_spec.ActorId().Binary());
+    actor_died_error_context->set_actor_id(task.actor_id.Binary());
     auto node_death_info = actor_died_error_context->mutable_node_death_info();
     node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
     node_death_info->set_reason_message(
@@ -486,7 +486,7 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     error_info.set_error_message("Actor died by preemption.");
   }
   GetTaskFinisherWithoutMu().FailPendingTask(
-      task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
+      task.task_id, error_info.error_type(), &task.status, &error_info);
 }
 
 void ActorTaskSubmitter::CheckTimeoutTasks() {
@@ -538,13 +538,20 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
         if (!task.has_value()) {
           break;
         }
-
+        bool has_out_of_order_queue = client_queue.execute_out_of_order;
         io_service_.post(
-            [this, task_spec = std::move(task.value().first)] {
+            [this, has_out_of_order_queue, task_spec = std::move(task.value().first)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
-              HandlePushTaskReply(
-                  Status::IOError("The actor is restarting."), reply, addr, task_spec);
+              HandlePushTaskReply(Status::IOError("The actor is restarting."),
+                                  reply,
+                                  addr,
+                                  task_spec.TaskId(),
+                                  task_spec.ActorId(),
+                                  task_spec.ActorCounter(),
+                                  task_spec.GetMessage().skip_execution(),
+                                  has_out_of_order_queue,
+                                  task_spec);
             },
             "ActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
@@ -559,7 +566,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
       break;
     }
     RAY_CHECK(!client_queue.worker_id.empty());
-    PushActorTask(client_queue, task.value().first, task.value().second);
+    PushActorTask(client_queue, std::move(task->first), task->second);
   }
 }
 
@@ -574,17 +581,17 @@ void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id)
   auto out_of_order_completed_tasks =
       client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
 
-  for (const auto &completed_task : out_of_order_completed_tasks) {
+  for (auto &completed_task : out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
     // const.
-    auto task_spec = completed_task.second;
+    auto &task_spec = completed_task.second;
     task_spec.GetMutableMessage().set_skip_execution(true);
-    PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
+    PushActorTask(client_queue, std::move(task_spec), /*skip_queue=*/true);
   }
 }
 
 void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
-                                       const TaskSpecification &task_spec,
+                                       TaskSpecification task_spec,
                                        bool skip_queue) {
   const auto task_id = task_spec.TaskId();
 
@@ -592,7 +599,6 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
-  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
   request->set_sequence_number(queue.actor_submit_queue->GetSequenceNumber(task_spec));
@@ -610,9 +616,31 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   }
 
   rpc::Address addr(queue.rpc_client->Addr());
+  bool task_skipped = task_spec.GetMessage().skip_execution();
+  std::optional<TaskSpecification> task_spec_opt;
+  bool has_out_of_order_queue = queue.execute_out_of_order;
+  if (has_out_of_order_queue) {
+    task_spec_opt.emplace(task_spec);
+  }
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
-      [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
-        HandlePushTaskReply(status, reply, addr, task_spec);
+      [this,
+       addr,
+       task_id,
+       actor_id,
+       actor_counter,
+       task_skipped,
+       has_out_of_order_queue,
+       task_spec_opt = std::move(task_spec_opt)](const Status &status,
+                                                 const rpc::PushTaskReply &reply) {
+        HandlePushTaskReply(status,
+                            reply,
+                            addr,
+                            task_id,
+                            actor_id,
+                            actor_counter,
+                            task_skipped,
+                            has_out_of_order_queue,
+                            task_spec_opt);
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
@@ -639,18 +667,26 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   task_finisher_.MarkTaskWaitingForExecution(task_id,
                                              NodeID::FromBinary(addr.raylet_id()),
                                              WorkerID::FromBinary(addr.worker_id()));
+  if (has_out_of_order_queue) {
+    *request->mutable_task_spec() = task_spec.GetMessage();
+  } else {
+    *request->mutable_task_spec() = std::move(task_spec.GetMutableMessage());
+  }
+
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue, std::move(wrapped_callback));
 }
 
-void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
-                                             const rpc::PushTaskReply &reply,
-                                             const rpc::Address &addr,
-                                             const TaskSpecification &task_spec) {
-  const auto task_id = task_spec.TaskId();
-  const auto actor_id = task_spec.ActorId();
-  const auto actor_counter = task_spec.ActorCounter();
-  const auto task_skipped = task_spec.GetMessage().skip_execution();
+void ActorTaskSubmitter::HandlePushTaskReply(
+    const Status &status,
+    const rpc::PushTaskReply &reply,
+    const rpc::Address &addr,
+    const TaskID &task_id,
+    const ActorID &actor_id,
+    uint64_t actor_counter,
+    bool task_skipped,
+    bool has_out_of_order_queue,
+    const std::optional<TaskSpecification> &task_spec) {
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
@@ -674,7 +710,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     rpc::RayErrorInfo error_info;
     error_info.set_error_message(msg);
     error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+    GetTaskFinisherWithoutMu().FailPendingTask(task_id,
                                                rpc::ErrorType::TASK_CANCELLED,
                                                /*status*/ nullptr,
                                                &error_info);
@@ -752,8 +788,8 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
         auto &queue = queue_pair->second;
         queue.wait_for_death_info_tasks.push_back(
             std::make_shared<PendingTaskWaitingForDeathInfo>(
-                death_info_grace_period_ms, task_spec, status, error_info));
-        RAY_LOG(INFO).WithField(task_spec.TaskId())
+                death_info_grace_period_ms, task_id, actor_id, status, error_info));
+        RAY_LOG(INFO).WithField(task_id)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS"
                ", wait_queue_size="
@@ -766,7 +802,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
           RAY_CHECK(queue_pair != client_queues_.end());
         }
         GetTaskFinisherWithoutMu().FailPendingTask(
-            task_spec.TaskId(), error_info.error_type(), &status, &error_info);
+            task_id, error_info.error_type(), &status, &error_info);
       }
     }
   }
@@ -778,8 +814,10 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
     // On exception-retry we update the seqno so we need to call;
     // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
-      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
+    // Only out of order submit queue implements this.
+    if (((!will_retry) || is_retryable_exception) && has_out_of_order_queue) {
+      RAY_CHECK(task_spec.has_value());
+      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, *task_spec);
     }
     queue.cur_pending_calls--;
   }
