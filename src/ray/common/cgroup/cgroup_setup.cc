@@ -201,7 +201,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   cgroup_v2_internal_proc_filepath_ =
-      ray::JoinPaths(cgroup_v2_app_folder_, kProcFilename);
+      ray::JoinPaths(cgroup_v2_internal_folder_, kProcFilename);
   const std::string cgroup_v2_app_subtree_control =
       ray::JoinPaths(cgroup_v2_app_folder_, kSubtreeControlFilename);
   const std::string cgroup_v2_internal_procs =
@@ -273,7 +273,9 @@ Status CgroupSetup::AddInternalProcess(pid_t pid) {
   out_file << pid;
   out_file.flush();
 
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to add " << pid << " into cgroup.";
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to add " << pid << " into cgroup process file "
+      << cgroup_v2_internal_proc_filepath_;
   return Status::OK();
 }
 

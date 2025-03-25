@@ -25,13 +25,16 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <csignal>
 #include <filesystem>
 #include <string_view>
 #include <unordered_set>
 
 #include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "ray/common/cgroup/cgroup_setup.h"
 #include "ray/common/test/testing.h"
+#include "ray/util/container_util.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/scoped_env_setter.h"
 
@@ -98,7 +101,8 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
   // Child process.
   if (pid == 0) {
     // Spawn a process running long enough, so it could be added into internal cgroup.
-    execlp("sleep", "sleep", "5", nullptr);
+    // It won't affect test runtime, because it will be killed later.
+    execlp("sleep", "sleep", "3600", nullptr);
     perror("execlp");
   }
 
@@ -108,12 +112,14 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
   // Check process id exists in cgroup.
   auto pids = ReadEntireFile(internal_cgroup_proc_filepath_);
   RAY_ASSERT_OK(pids);
-  std::unordered_set<std::string_view> pid_parts = absl::StrSplit(*pids, ' ');
-  EXPECT_TRUE(pid_parts.find(std::to_string(pid)) != pid_parts.end());
+  std::string_view pids_sv = *pids;
+  absl::ConsumeSuffix(&pids_sv, "\n");
 
-  // Block wait until child processes complete.
-  int status = 0;
-  waitpid(pid, &status, 0);
+  const std::unordered_set<std::string_view> pid_parts = absl::StrSplit(pids_sv, ' ');
+  EXPECT_TRUE(pid_parts.find(std::to_string(pid)) != pid_parts.end())
+      << "All pids include "
+      << DebugStringWrapper<std::unordered_set<std::string_view> >(pid_parts)
+      << " and new pid is " << pid;
 }
 #endif
 
