@@ -16,13 +16,14 @@
 
 #ifndef __linux__
 namespace ray {
-CgroupSetup::CgroupSetup() = default;
-void CgroupSetup::AddInternalProcess(pid_t pid) {}
+CgroupSetup::CgroupSetup() {
+  RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
+}
+Status CgroupSetup::AddInternalProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   return {};
 }
-void CgroupSetup::CleanupCgroupContext(const AppProcCgroupMetadata &ctx) {}
-void CgroupSetup::CleanupCgroups() {}
+Status CgroupSetup::CleanupCgroups() { return Status::OK(); }
 namespace internal {
 Status CheckCgroupV2MountedRW(const std::string &directory) {
   return Status::Invalid("cgroupv2 operations only support linux platform.");
