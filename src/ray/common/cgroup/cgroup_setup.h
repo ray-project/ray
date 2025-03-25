@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <string>
 
 #include "ray/common/cgroup/base_cgroup_setup.h"
@@ -53,7 +55,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // - Existing operating system processes and ray components will be placed under
   // internal cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
-  CgroupSetup(const std::string &cgroup_directory, const std::string &node_id);
+  CgroupSetup(const std::string &directory, const std::string &node_id);
 
   // On destruction, all processes (including spawned child processes) in the managed
   // cgroup will be killed recursively via SIGKILL.
@@ -65,6 +67,14 @@ class CgroupSetup : public BaseCgroupSetup {
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  private:
+  struct Tag {};
+  // Constructor made for unit tests, which allows [CgroupSetup] to be created for
+  // multiple times in a process.
+  CgroupSetup(const std::string &directory, const std::string &node_id, Tag);
+
+  FRIEND_TEST(Cgroupv2SetupTest, SetupTest);
+  FRIEND_TEST(Cgroupv2SetupTest, AddInternalProcessTest);
+
   // Setup cgroup folders for the given [node_id].
   Status InitializeCgroupV2Directory(const std::string &directory,
                                      const std::string &node_id);

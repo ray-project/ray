@@ -177,6 +177,10 @@ CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_i
   RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
 }
 
+CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id, Tag) {
+  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
+}
+
 Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
                                                 const std::string &node_id) {
   // Check cgroup accessibility before setup.

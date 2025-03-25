@@ -37,11 +37,8 @@
 #include "ray/common/test/testing.h"
 #include "ray/util/container_util.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/scoped_env_setter.h"
 
 namespace ray {
-
-namespace {
 
 #ifndef __linux__
 TEST(Cgroupv2SetupTest, NonLinuxCrashTest) {
@@ -54,9 +51,7 @@ TEST(Cgroupv2SetupTest, NonLinuxCrashTest) {
 class Cgroupv2SetupTest : public ::testing::Test {
  public:
   Cgroupv2SetupTest()
-      : scoped_env_setter_{/*env_name=*/"RAY_DISABLE_INVOKE_ONCE_FOR_TEST",
-                           /*value=*/"true"},
-        node_id_("node_id"),
+      : node_id_("node_id"),
         node_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id"),
         internal_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/internal"),
         internal_cgroup_proc_filepath_(
@@ -71,8 +66,6 @@ class Cgroupv2SetupTest : public ::testing::Test {
   }
 
  protected:
-  ScopedEnvSetter scoped_env_setter_{/*env_name=*/"RAY_DISABLE_INVOKE_ONCE_FOR_TEST",
-                                     /*value=*/"true"};
   const std::string node_id_;
   const std::string node_cgroup_folder_;
   const std::string internal_cgroup_folder_;
@@ -81,7 +74,7 @@ class Cgroupv2SetupTest : public ::testing::Test {
 };
 
 TEST_F(Cgroupv2SetupTest, SetupTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id"};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
 
   // Check internal cgroup is created successfully.
   std::error_code err_code;
@@ -96,7 +89,7 @@ TEST_F(Cgroupv2SetupTest, SetupTest) {
 }
 
 TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id"};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
 
   pid_t pid = fork();
   ASSERT_NE(pid, -1);
@@ -128,7 +121,5 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
   RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
 }
 #endif
-
-}  // namespace
 
 }  // namespace ray

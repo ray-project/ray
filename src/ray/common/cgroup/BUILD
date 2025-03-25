@@ -65,5 +65,6 @@ ray_cc_library(
     deps = [
         "//src/ray/common:status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_prod",
     ],
 )

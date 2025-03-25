@@ -14,9 +14,9 @@
 
 #include "ray/common/cgroup/cgroup_utils.h"
 
-#include "absl/strings/str_format.h"
-
 #include <fstream>
+
+#include "absl/strings/str_format.h"
 
 namespace ray {
 
@@ -27,7 +27,7 @@ Status KillAllProc(const std::string &cgroup_folder) {
   f.flush();
   if (!f.good()) {
     return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-      << "Fails to kill all processes under the cgroup " << cgroup_folder;
+           << "Fails to kill all processes under the cgroup " << cgroup_folder;
   }
   return Status::OK();
 }
