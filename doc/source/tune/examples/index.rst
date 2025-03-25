@@ -16,6 +16,8 @@ Below are examples for using Ray Tune for a variety use cases and sorted by cate
 * `Others`_
 * `Exercises`_
 
+.. _ml-frameworks:
+
 ML frameworks
 -------------
 
@@ -46,6 +48,7 @@ Ray Tune integrates with many popular machine learning frameworks. Here you find
   * - :doc:`End-to-end example for tuning a TensorFlow model <../../train/examples/tf/tune_tensorflow_mnist_example>`
   * - :doc:`End-to-end example for tuning a PyTorch model with PBT <../../train/examples/pytorch/tune_cifar_torch_pbt_example>`  
 
+.. _experiment-tracking-tools:
 
 Experiment tracking tools
 -------------------------
@@ -59,8 +62,8 @@ Experiment tracking tools
     Comet Example <tune-comet>
 
 Ray Tune integrates with some popular Experiment tracking and management tools,
-such as CometML, or Weights & Biases. If you're interested in learning how
-to use Ray Tune with Tensorboard, you can find more information in our
+such as CometML, or Weights & Biases. For how
+to use Ray Tune with Tensorboard, see
 :ref:`Guide to logging and outputs <tune-logging>`.
 
 .. list-table::
@@ -70,6 +73,7 @@ to use Ray Tune with Tensorboard, you can find more information in our
   * - :doc:`Tracking your experiment process Weights & Biases <tune-wandb>`
   * - :doc:`Using MLflow tracking and auto logging with Tune <tune-mlflow>`
 
+.. _hyperparameter-optimization-frameworks:
 
 Hyperparameter optimization frameworks
 --------------------------------------
@@ -97,6 +101,7 @@ for each integration:
   * - :doc:`nevergrad_example`
   * - :doc:`optuna_example`
 
+.. _tune-examples-others:
 
 Others
 ------
@@ -111,6 +116,7 @@ Others
   * - :doc:`includes/pb2_example`
   * - :doc:`includes/logging_example`
 
+.. _tune-examples-exercises:
 
 Exercises
 ---------
