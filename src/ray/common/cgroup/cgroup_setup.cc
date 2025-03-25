@@ -173,11 +173,11 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
-  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
 
   root_cgroup_procs_filepath_ = absl::StrFormat("%s/%s", directory, kProcFilename);
   root_cgroup_subtree_control_filepath_ =
       absl::StrFormat("%s/%s", directory, kSubtreeControlFilename);
+  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
 }
 
 Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
