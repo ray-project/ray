@@ -74,6 +74,7 @@ class CgroupSetup : public BaseCgroupSetup {
 
   FRIEND_TEST(Cgroupv2SetupTest, SetupTest);
   FRIEND_TEST(Cgroupv2SetupTest, AddInternalProcessTest);
+  FRIEND_TEST(Cgroupv2SetupTest, AddAppProcessTest);
 
   // Setup cgroup folders for the given [node_id].
   Status InitializeCgroupV2Directory(const std::string &directory,

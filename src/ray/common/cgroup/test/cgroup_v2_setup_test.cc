@@ -30,13 +30,10 @@
 #include <string_view>
 #include <unordered_set>
 
-#include "absl/strings/str_split.h"
-#include "absl/strings/strip.h"
 #include "ray/common/cgroup/cgroup_setup.h"
 #include "ray/common/cgroup/cgroup_utils.h"
+#include "ray/common/cgroup/test/cgroup_test_utils.h"
 #include "ray/common/test/testing.h"
-#include "ray/util/container_util.h"
-#include "ray/util/filesystem.h"
 
 namespace ray {
 
@@ -102,24 +99,34 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
     perror("execlp");
   }
 
-  // Parent process.
   RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
-
-  // Check process id exists in cgroup.
-  auto pids = ReadEntireFile(internal_cgroup_proc_filepath_);
-  RAY_ASSERT_OK(pids);
-  std::string_view pids_sv = *pids;
-  absl::ConsumeSuffix(&pids_sv, "\n");
-
-  const std::unordered_set<std::string_view> pid_parts = absl::StrSplit(pids_sv, ' ');
-  EXPECT_TRUE(pid_parts.find(std::to_string(pid)) != pid_parts.end())
-      << "All pids include "
-      << DebugStringWrapper<std::unordered_set<std::string_view> >(pid_parts)
-      << " and new pid is " << pid;
+  AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
 
   // Kill testing process.
   RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
 }
+
+TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
+
+  pid_t pid = fork();
+  ASSERT_NE(pid, -1);
+
+  // Child process.
+  if (pid == 0) {
+    // Spawn a process running long enough, so it could be added into internal cgroup.
+    // It won't affect test runtime, because it will be killed later.
+    execlp("sleep", "sleep", "3600", nullptr);
+    perror("execlp");
+  }
+
+  RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
+  AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
+
+  // Kill testing process.
+  RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
+}
+
 #endif
 
 }  // namespace ray
