@@ -404,6 +404,87 @@ def test_throughput_without_reduce():
         non_throughput_stats.throughput  # noqa: B018
 
 
+def test_reduce_history_without_new_values():
+    """Test that multiple reduce calls without new values maintain consistent history."""
+    # Test with sum reduction
+    stats = Stats(reduce="sum")
+
+    # Push some initial values
+    stats.push(1)
+    stats.push(2)
+
+    # First reduce call
+    first_reduce = stats.reduce()
+    first_history = stats.get_reduce_history()
+    assert first_reduce == 3  # sum of [1, 2]
+    assert first_history == [0, 0, 3]
+
+    # Second reduce call without new values
+    second_reduce = stats.reduce()
+    second_history = stats.get_reduce_history()
+    assert second_reduce == 3  # should still be 3
+    assert second_history == [0, 0, 3]  # history should not change
+
+    # Third reduce call without new values
+    third_reduce = stats.reduce()
+    third_history = stats.get_reduce_history()
+    assert third_reduce == 3  # should still be 3
+    assert third_history == [0, 0, 3]  # history should not change
+
+    # Test with window-based reduction
+    stats = Stats(reduce="mean", window=2)
+    stats.push(1.0)
+    stats.push(2.0)
+
+    # First reduce call
+    first_reduce = stats.reduce()
+    first_history = stats.get_reduce_history()
+    assert first_reduce == 1.5  # mean of [1.0, 2.0]
+    assert first_history == [0, 0, 1.5]
+
+    # Second reduce call without new values
+    second_reduce = stats.reduce()
+    second_history = stats.get_reduce_history()
+    assert second_reduce == 1.5  # should still be 1.5
+    assert second_history == [0, 0, 1.5]  # history should not change
+
+    # Test with EMA reduction
+    stats = Stats(reduce="mean", ema_coeff=0.1)
+    stats.push(1.0)
+    stats.push(2.0)
+
+    # First reduce call
+    first_reduce = stats.reduce()
+    first_history = stats.get_reduce_history()
+    assert abs(first_reduce - 1.1) < 1e-6  # (1.0 - 0.1) * 1.0 + 0.1 * 2.0
+    assert first_history == [0, 0, 1.1]
+
+    # Second reduce call without new values
+    second_reduce = stats.reduce()
+    second_history = stats.get_reduce_history()
+    assert abs(second_reduce - 1.1) < 1e-6  # should still be 1.1
+    assert second_history == [0, 0, 1.1]  # history should not change
+
+    # Test with clear_on_reduce=True
+    stats = Stats(reduce="sum", clear_on_reduce=True)
+    stats.push(1)
+    stats.push(2)
+
+    # First reduce call
+    first_reduce = stats.reduce()
+    first_history = stats.get_reduce_history()
+    assert first_reduce == 3  # sum of [1, 2]
+    assert first_history == [0, 0, 3]
+    assert len(stats) == 0  # values should be cleared
+
+    # Second reduce call without new values
+    second_reduce = stats.reduce()
+    second_history = stats.get_reduce_history()
+    assert second_reduce == 0  # should be 0 as values are cleared
+    assert second_history == [0, 0, 3]  # history should not change
+    assert len(stats) == 0  # values should still be cleared
+
+
 if __name__ == "__main__":
     import pytest
     import sys

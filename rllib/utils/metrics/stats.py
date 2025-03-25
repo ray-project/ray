@@ -270,6 +270,9 @@ class Stats:
         self.values: Union[List, Deque] = None
         self._set_values(force_list(init_value))
 
+        # Track if new values were pushed since last reduce
+        self._has_new_values = False
+
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
@@ -301,6 +304,9 @@ class Stats:
                 self.values.append(value)
                 reduced, values = self._reduced_values()
                 self._set_values(values)
+
+        # Mark that we have new values
+        self._has_new_values = True
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -386,15 +392,20 @@ class Stats:
         """
         reduced, values = self._reduced_values()
 
-        # `clear_on_reduce` -> Clear the values list.
-        if self._clear_on_reduce:
-            self._set_values([])
-        else:
-            # Reduce everything to a single (init) value.
-            self._set_values(values)
+        # Only update history if there were new values pushed since last reduce
+        if self._has_new_values:
+            # `clear_on_reduce` -> Clear the values list.
+            if self._clear_on_reduce:
+                self._set_values([])
+            else:
+                # Reduce everything to a single (init) value.
+                self._set_values(values)
 
-        # Shift historic reduced valued by one in our reduce_history-tuple.
-        self._reduce_history.append(reduced)
+            # Shift historic reduced valued by one in our reduce_history-tuple.
+            self._reduce_history.append(reduced)
+
+            # Reset the flag
+            self._has_new_values = False
 
         return reduced
 
