@@ -272,8 +272,13 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
   export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
-  export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
-                                                  task_spec_.get()->labels().end());
+
+  // Add data operator id if it exists.
+  auto task_spec_labels = task_spec_.get()->labels();
+  auto data_operator_label = task_spec_labels.find("__data_operator_id");
+  if (data_operator_label != task_spec_labels.end()) {
+    export_actor_data_ptr->set_ray_data_operator_id(data_operator_label->second);
+  }
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }
