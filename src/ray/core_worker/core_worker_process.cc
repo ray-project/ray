@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/core_worker_process.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/compat.h"
@@ -358,7 +364,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
   if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
-    // TODO (scv119): A better solution could be returning error code
+    // TODO(scv119): A better solution could be returning error code
     // and handling it at language frontend.
     if (options_.worker_type == WorkerType::DRIVER) {
       RAY_LOG(ERROR) << "The core worker has already been shutdown. This happens when "
