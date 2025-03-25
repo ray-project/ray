@@ -164,8 +164,8 @@ def test_make_async_gen_varying_seq_lengths(buffer_size: int):
     assert [
         "worker_0:0",
         "worker_1:0",
-        "worker_2:0",
         "worker_1:1",
+        "worker_2:0",
         "worker_2:1",
         "worker_2:2",
     ] == seq
