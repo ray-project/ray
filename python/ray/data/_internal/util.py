@@ -981,18 +981,35 @@ def make_async_gen(
         ) as tpe:
 
             def _apply_fn_eager(it):
-                # NOTE: We unroll returned iterator immediately to make sure that
-                #       iteration is fully performed inside the TPE
-                return list(fn(it))
+                try:
+                    # NOTE: We unroll returned iterator immediately to make sure that
+                    #       iteration is fully performed inside the TPE
+                    return list(fn(it))
+                except Exception as e:
+                    logger.error(
+                        "Encountered exception while applying transformation",
+                        exc_info=e
+                    )
 
-            for item in base_iterator:
-                # Fan out (eager) transformation of individual elements
-                future = tpe.submit(_apply_fn_eager, iter([item]))
-                # NOTE: This is a blocking call
-                future_queue.put(future)
+                    raise e
 
-            # Append sentinel to signal EOL
-            future_queue.put(SENTINEL)
+            try:
+                for item in base_iterator:
+                    # Fan out (eager) transformation of individual elements
+                    future = tpe.submit(_apply_fn_eager, iter([item]))
+                    # NOTE: This is a blocking call
+                    future_queue.put(future)
+
+            except InterruptedError:
+                pass
+
+            except Exception as e:
+                logger.error("Encountered exception submitting tasks", exc_info=e)
+                raise e
+
+            finally:
+                # Append sentinel to signal EOL
+                future_queue.put(SENTINEL)
 
     # Start submitting worker threads
     submitting_worker_thread = threading.Thread(
