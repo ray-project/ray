@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
@@ -19,4 +19,9 @@ class IssueDetector(ABC):
 
     @abstractmethod
     def detect(self) -> List[Issue]:
+        pass
+
+    @abstractmethod
+    def detection_time_interval_s(self) -> float:
+        """Time interval between detections, or -1 if not enabled."""
         pass

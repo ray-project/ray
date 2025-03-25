@@ -1,19 +1,20 @@
-from collections import defaultdict
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from ray.anyscale.data.issue_detection.issue_detector import Issue, IssueDetector
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data.context import DataContext
 
 # Default minimum count of tasks before using adaptive thresholds
 DEFAULT_OP_TASK_STATS_MIN_COUNT = 10
 # Default multiple of standard deviations to use as hanging threshold
 DEFAULT_OP_TASK_STATS_STD_FACTOR = 10
-
-if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.context import DataContext
+# Default detection time interval.
+DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 
 
 @dataclass
@@ -28,16 +29,19 @@ class HangingExecutionState:
 class HangingExecutionIssueDetectorConfig:
     op_task_stats_min_count: int = field(default=DEFAULT_OP_TASK_STATS_MIN_COUNT)
     op_task_stats_std_factor: float = field(default=DEFAULT_OP_TASK_STATS_STD_FACTOR)
+    detection_time_interval_s: float = DEFAULT_DETECTION_TIME_INTERVAL_S
 
 
 class HangingExecutionIssueDetector(IssueDetector):
     def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
         super().__init__(executor, ctx)
-        detector_cfg: HangingExecutionIssueDetectorConfig = (
+        self._detector_cfg: HangingExecutionIssueDetectorConfig = (
             ctx.issue_detectors_config.hanging_detector_config
         )
-        self._op_task_stats_min_count = detector_cfg.op_task_stats_min_count
-        self._op_task_stats_std_factor_threshold = detector_cfg.op_task_stats_std_factor
+        self._op_task_stats_min_count = self._detector_cfg.op_task_stats_min_count
+        self._op_task_stats_std_factor_threshold = (
+            self._detector_cfg.op_task_stats_std_factor
+        )
 
         # Map of operator name to dict of task_idx to hanging execution info (bytes read and
         # start time for hanging time calculation)
@@ -129,3 +133,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         issues = self._create_issues(hanging_op_tasks=hanging_op_tasks)
 
         return issues
+
+    def detection_time_interval_s(self) -> float:
+        return self._detector_cfg.detection_time_interval_s
