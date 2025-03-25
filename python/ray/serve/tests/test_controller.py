@@ -196,6 +196,8 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "state": "RUNNING",
                                     "pid": replica.pid,
                                     "start_time_s": replica.start_time_s,
+                                    "http_port": 8000,
+                                    "grpc_port": 9000,
                                 }
                             ],
                         }

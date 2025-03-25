@@ -937,6 +937,8 @@ class ReplicaDetails(ServeActorDetails, frozen=True):
             "state from the running replica actor."
         )
     )
+    http_port: Optional[int] = Field(description="Port for the HTTP server.")
+    grpc_port: Optional[int] = Field(description="Port for the gRPC server.")
 
 
 @PublicAPI(stability="stable")

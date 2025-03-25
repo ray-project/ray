@@ -911,6 +911,9 @@ class DeploymentReplica:
             replica_id=self._replica_id.unique_id,
             state=ReplicaState.STARTING,
             start_time_s=0,
+            # TODO(abrar): ports will be populated by the controller the server.
+            http_port=8000,
+            grpc_port=9000,
         )
         self._multiplexed_model_ids: List = []
 

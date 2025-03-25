@@ -463,6 +463,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                 assert deployment.name in replica.actor_name
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
+                assert replica.http_port == 8000
+                assert replica.grpc_port == 9000
                 file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
                 assert os.path.exists(file_path)
 
@@ -560,6 +562,8 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
                 assert deployment.name in replica.actor_name
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
+                assert replica.http_port == 8000
+                assert replica.grpc_port == 9000
                 file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
                 assert os.path.exists(file_path)
 
