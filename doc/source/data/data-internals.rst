@@ -155,19 +155,7 @@ placement group. To use current placement group resources specifically for Ray D
 
 Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
-.. _datasets_tune:
 
-Ray Data and Tune
------------------
-
-When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it's important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune tries to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
-
-To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials with the ``max_concurrent_trials`` Tune option.
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_1_begin__
-  :end-before: __resource_allocation_1_end__
 
 Memory Management
 =================

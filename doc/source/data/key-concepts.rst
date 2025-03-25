@@ -1,5 +1,6 @@
 .. _data_key_concepts:
 
+=======================
 How does Ray Data work?
 =======================
 
@@ -8,7 +9,7 @@ This page provides a conceptual overview of the architecture and execution model
 To get started working with Ray Data, see :ref:`Ray Data basics<data_quickstart>`.
 
 How does Ray Data relate to the rest of Ray?
---------------------------------------------
+============================================
 
 Ray Data is one of the Ray AI Libraries.
 
