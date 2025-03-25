@@ -1373,12 +1373,6 @@ class Dataset:
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
 
-        When `target_num_rows_per_block` is set, it repartitions :class:`Dataset`
-        to honor target number of rows per :ref:`blocks <dataset_concept>`. Note
-        that the system will internally figure out the number of rows per
-        :ref:`blocks <dataset_concept>` for optimal execution, based on the
-        `target_num_rows_per_block`.
-
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
 
@@ -1408,9 +1402,16 @@ class Dataset:
 
         Args:
             num_blocks: Number of blocks after repartitioning.
-            target_num_rows_per_block: The target number of rows per block to
+            target_num_rows_per_block: [Experimental] The target number of rows per block to
                 repartition. Note that either `num_blocks` or
-                `target_num_rows_per_block` must be set, but not both.
+                `target_num_rows_per_block` must be set, but not both. When
+                `target_num_rows_per_block` is set, it only repartitions
+                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
+                `target_num_rows_per_block`. Note that the system will internally
+                figure out the number of rows per :ref:`blocks <dataset_concept>` for
+                optimal execution, based on the `target_num_rows_per_block`. This is
+                the current behavior because of the implementation and may change in
+                the future.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which

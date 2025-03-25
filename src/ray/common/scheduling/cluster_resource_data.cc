@@ -63,21 +63,19 @@ NodeResources ResourceMapToNodeResources(
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
   for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
-    const auto &total = this->total.Get(ResourceID(i));
-    if (total == 0) {
+    const auto &cur_total = this->total.Get(ResourceID(i));
+    if (cur_total == 0) {
       continue;
     }
-    auto available = this->available.Get(ResourceID(i)).Double();
+    auto cur_available = this->available.Get(ResourceID(i)).Double();
     // Gcs scheduler handles the `normal_task_resources` specifically. So when calculating
     // the available resources, we have to take one more step to take that into account.
     // For raylet scheduling, the `normal_task_resources` is always empty.
     if (this->normal_task_resources.Has(ResourceID(i))) {
-      available -= this->normal_task_resources.Get(ResourceID(i)).Double();
-      if (available < 0) {
-        available = 0;
-      }
+      cur_available -= this->normal_task_resources.Get(ResourceID(i)).Double();
+      cur_available = std::max<float>(0, cur_available);
     }
-    float utilization = 1 - (available / total.Double());
+    float utilization = 1 - (cur_available / cur_total.Double());
     if (utilization > highest) {
       highest = utilization;
     }
