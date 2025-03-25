@@ -539,7 +539,7 @@ You can then specify the `bucket_uri` in the `model_loading_config` to point to 
               model_loading_config:
                 model_id: my_llama
                 model_source:
-                  bucket_uri: s3://air-example-data/meta-Llama-3.2-1B-Instruct
+                  bucket_uri: s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct
       import_path: ray.serve.llm:build_openai_app
       name: llm_app
       route_prefix: "/"
