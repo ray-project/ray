@@ -65,18 +65,19 @@ namespace {
 #if defined(RAY_SCHECK_OK_CGROUP)
 #error "RAY_SCHECK_OK_CGROUP is already defined."
 #else
+#define __RAY_SCHECK_OK_CGROUP(expr, boolname) \
+  auto boolname = (expr);                      \
+  if (!boolname) return Status::Invalid("")
 
-#define __RAY_SCHECK_OK_CGROUP(expr, statusname) \
-  auto statusname = (expr);                      \
-  if (!statusname.ok()) return Status::Invalid("")
-
-// Invoke the given [expr] which returns a boolean convertible type; and return error status if fails.
-// Cgroup operations on filesystem are not expected to fail after precondition checked, so we use INVALID as the status code.
+// Invoke the given [expr] which returns a boolean convertible type; and return error
+// status if fails. Cgroup operations on filesystem are not expected to fail after
+// precondition checked, so we use INVALID as the status code.
 //
 // Example usage:
 // RAY_SCHECK_OK_CGROUP(DoSomething()) << "DoSomething fails";
 #define RAY_SCHECK_OK_CGROUP(expr) \
   __RAY_SCHECK_OK_CGROUP(expr, RAY_UNIQUE_VARIABLE(cgroup_op))
+#endif
 
 // Move all pids under [from] to [to].
 Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
@@ -101,21 +102,25 @@ Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
 // resource as well.
 Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to open cgroup file " << subtree_control_path;
   // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
   out_file.flush();
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << out_file;
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to flush cgroup file " << subtree_control_path;
   return Status::OK();
 }
 
 // Kill all processes under the given [cgroup_folder].
-void KillAllProc(const std::string &cgroup_folder) {
+Status KillAllProc(const std::string &cgroup_folder) {
   const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
   std::ofstream f{kill_proc_file, std::ios::app | std::ios::out};
   f << "1";
   f.flush();
-  RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup " << cgroup_folder;
+  RAY_SCHECK_OK_CGROUP(f.good())
+      << "Fails to kill all processes under the cgroup " << cgroup_folder;
+  return Status::OK();
 }
 
 }  // namespace
@@ -182,18 +187,22 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
 
   // Create the internal cgroup.
   if (mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm) != 0) {
-    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_internal_folder_ << " because " << strerror(errno);
+    return Status::Invalid("") << "Failed to make directory for "
+                               << cgroup_v2_internal_folder_ << " because "
+                               << strerror(errno);
   }
 
   // TODO(hjiang): Here we move all processes into internal cgroup for docker environment,
   // will followup with another PR to handle BM/VM cases.
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
-                                    /*to=*/cgroup_v2_internal_folder_));
-  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
+                                            /*to=*/cgroup_v2_internal_folder_));
+  RAY_RETURN_NOT_OK(
+      EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
   // Setup application cgroup.
   if (mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm) != 0) {
-    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_app_folder_ << " because " << strerror(errno);
+    return Status::Invalid("") << "Failed to make directory for " << cgroup_v2_app_folder_
+                               << " because " << strerror(errno);
   }
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
 
@@ -207,26 +216,18 @@ Status CgroupSetup::CleanupCgroups() {
   token.CheckInvokeOnce();
 
   // Kill all dangling processes.
-  KillAllProc(cgroup_v2_app_folder_);
+  RAY_RETURN_NOT_OK(KillAllProc(cgroup_v2_app_folder_));
 
   // Move all internal processes into root cgroup and delete internal cgroup.
-  if (!MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
-                               /*to=*/root_cgroup_procs_filepath_.data())) {
-    return Status::Invalid("") << "Failed to move internal processes back to root cgroup";
-  }
+  RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
+                                            /*to=*/root_cgroup_procs_filepath_.data()));
   std::error_code err_code;
-  if (!std::filesystem::remove(cgroup_v2_internal_folder_, err_code)) {
-    return Status::Invalid("")
-           << "Failed to delete raylet internal cgroup folder because "
-           << err_code.message();
-  }
+  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_internal_folder_, err_code))
+      << "Failed to delete raylet internal cgroup folder because " << err_code.message();
 
   // Cleanup cgroup for current node.
-  if (!std::filesystem::remove(cgroup_v2_folder_, err_code)) {
-    return Status::Invalid("")
-           << "Failed to delete raylet internal cgroup folder because "
-           << err_code.message();
-  }
+  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_folder_, err_code))
+      << "Failed to delete raylet internal cgroup folder because " << err_code.message();
 
   return Status::OK();
 }
@@ -234,23 +235,19 @@ Status CgroupSetup::CleanupCgroups() {
 Status CgroupSetup::AddInternalProcess(pid_t pid) {
   std::ofstream out_file(cgroup_v2_internal_proc_filepath_,
                          std::ios::app | std::ios::out);
-  if (!out_file.good()) {
-    return Status::Invalid("") << "Failed to open file "
-                               << cgroup_v2_internal_proc_filepath_;
-  }
+  RAY_SCHECK_OK_CGROUP(!out_file.good())
+      << "Failed to open file " << cgroup_v2_internal_proc_filepath_;
 
   out_file << pid;
   out_file.flush();
 
-  if (!out_file.good()) {
-    return Status::Invalid("") << "Failed to add " << pid << " into cgroup.";
-  }
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to add " << pid << " into cgroup.";
   return Status::OK();
 }
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
     const AppProcCgroupMetadata &ctx) {
-  RAY_CHECK_EQ(ctx.max_memory, 0);  // Sanity check.
+  RAY_CHECK_EQ(ctx.max_memory, 0) << "Ray doesn't support per-task resource constraint.";
 
   const std::string default_cgroup_folder =
       ray::JoinPaths(cgroup_v2_app_folder_, "default");

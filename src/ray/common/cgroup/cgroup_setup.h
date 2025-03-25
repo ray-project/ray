@@ -77,6 +77,9 @@ class CgroupSetup : public BaseCgroupSetup {
   Status CleanupCgroups();
 
   // Apply cgroup context which addes pid into default cgroup folder.
+  //
+  // TODO(hjiang): As of now there's a bug for returning StatusOr<> at windows, switch
+  // after the issue resolved.
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 
   // See README under the current folder for details.
