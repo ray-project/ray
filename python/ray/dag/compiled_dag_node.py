@@ -1328,6 +1328,7 @@ class CompiledDAG:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
+            # using tuple to preserve the order of actors for collective operations
             actors = tuple(collective_op.actor_handles)
             if actors in self._actors_to_created_communicator_id:
                 communicator_id = self._actors_to_created_communicator_id[actors]
