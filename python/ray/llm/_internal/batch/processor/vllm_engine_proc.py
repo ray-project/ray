@@ -11,7 +11,6 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
     ProcessorBuilder,
 )
-from ray.llm._internal.batch.utils import download_hf_model
 from ray.llm._internal.batch.stages import (
     vLLMEngineStage,
     ChatTemplateStage,
@@ -25,6 +24,10 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    download_model_files,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
@@ -193,6 +196,7 @@ def build_vllm_engine_processor(
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
                 max_concurrency=config.max_concurrent_batches,
+                resources=config.resources_per_bundle,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
@@ -214,7 +218,12 @@ def build_vllm_engine_processor(
             )
         )
 
-    model_path = download_hf_model(config.model_source, tokenizer_only=True)
+    model_path = download_model_files(
+        model_id=config.model_source,
+        mirror_config=None,
+        download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+        download_extra_files=False,
+    )
     hf_config = transformers.AutoConfig.from_pretrained(model_path)
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
