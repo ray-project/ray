@@ -59,11 +59,16 @@ def headers():
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client(headers) -> JobSubmissionClient:
+def ray_start_context():
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        address = ctx.address_info["webui_url"]
-        assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address), headers=headers)
+        yield ctx
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers, ray_start_context) -> JobSubmissionClient:
+    address = ray_start_context.address_info["webui_url"]
+    assert wait_until_server_available(address)
+    yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 @pytest.fixture
@@ -942,10 +947,10 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_upload_package(ray_start_with_dashboard, tmp_path):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    gcs_aio_client = GcsAioClient(address=ray_start_with_dashboard["gcs_address"])
+async def test_get_upload_package(ray_start_context, tmp_path):
+    assert wait_until_server_available(ray_start_context["webui_url"])
+    webui_url = format_web_url(ray_start_context["webui_url"])
+    gcs_aio_client = GcsAioClient(address=ray_start_context["gcs_address"])
     url = webui_url + "/api/packages/{protocol}/{package_name}"
 
     pkg_dir = tmp_path / "pkg"
