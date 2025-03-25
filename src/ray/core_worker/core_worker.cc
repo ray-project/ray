@@ -14,7 +14,14 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <algorithm>
 #include <future>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -1003,7 +1010,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   } else {
     ConnectToRayletInternal();
   }
-}
+}  // NOLINT(readability/fn_size)
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
@@ -1155,7 +1162,7 @@ void CoreWorker::KillChildProcs() {
     auto error_code = *maybe_error_code;
 
     RAY_LOG(INFO) << "Kill result for child pid " << child_pid << ": "
-                  << error_code.message() << ", bool " << (bool)error_code;
+                  << error_code.message() << ", bool " << static_cast<bool>(error_code);
     if (error_code) {
       RAY_LOG(WARNING) << "Unable to kill potentially leaked process " << child_pid
                        << ": " << error_code.message();
@@ -1200,7 +1207,7 @@ void CoreWorker::Exit(
           KillChildProcs();
           // Disconnect should be put close to Shutdown
           // https://github.com/ray-project/ray/pull/34883
-          // TODO (iycheng) Improve the Process.h and make it able to monitor
+          // TODO(iycheng): Improve the Process.h and make it able to monitor
           // process liveness
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
@@ -1257,7 +1264,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   KillChildProcs();
   // Disconnect should be put close to Exit
   // https://github.com/ray-project/ray/pull/34883
-  // TODO (iycheng) Improve the Process.h and make it able to monitor
+  // TODO(iycheng): Improve the Process.h and make it able to monitor
   // process liveness
   Disconnect(exit_type, detail);
 
@@ -2829,7 +2836,7 @@ Status CoreWorker::SubmitActorTask(
     std::string err_msg = absl::StrFormat(
         "Can't find actor %s. It might be dead or it's from a different cluster",
         actor_id.Hex());
-    // TODO (dayshah): make status take by value
+    // TODO(dayshah): make status take by value
     return Status::NotFound(err_msg);
   }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
