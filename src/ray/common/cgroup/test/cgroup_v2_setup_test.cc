@@ -22,10 +22,17 @@
 // sudo bazel-bin/src/ray/common/cgroup/test/cgroup_v2_setup_test
 
 #include <gtest/gtest.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <filesystem>
+#include <string_view>
+#include <unordered_set>
 
+#include "absl/strings/str_split.h"
 #include "ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/test/testing.h"
+#include "ray/util/filesystem.h"
 
 namespace ray {
 
@@ -38,7 +45,29 @@ TEST(Cgroupv2SetupTest, NonLinuxCrashTest) {
               "cgroupv2 doesn't work on non linux platform.");
 }
 #else
-TEST(Cgroupv2SetupTest, SetupTest) {
+
+class Cgroupv2SetupTest : public ::testing::Test {
+ public:
+  Cgroupv2SetupTest()
+      : node_id_("node_id"),
+        node_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id"),
+        internal_cgroup_proc_filepath_(
+            "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs") {}
+  void TearDown() override {
+    // Check the node-wise subcgroup folder has been deleted.
+    std::error_code err_code;
+    bool exists = std::filesystem::exists(node_cgroup_folder_, err_code);
+    ASSERT_FALSE(err_code);
+    ASSERT_FALSE(exists);
+  }
+
+ protected:
+  const std::string node_id_;
+  const std::string node_cgroup_folder_;
+  const std::string internal_cgroup_proc_filepath_;
+};
+
+TEST_F(Cgroupv2SetupTest, SetupTest) {
   CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id"};
 
   // Check internal cgroup is created successfully.
@@ -53,6 +82,33 @@ TEST(Cgroupv2SetupTest, SetupTest) {
                                    err_code);
   ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
+}
+
+TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id"};
+
+  pid_t pid = fork();
+  ASSERT_NE(pid, -1);
+
+  // Child process.
+  if (pid == 0) {
+    // Spawn a process running long enough, so it could be added into internal cgroup.
+    execlp("sleep", "sleep", "5", nullptr);
+    perror("execlp");
+  }
+
+  // Parent process.
+  RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
+
+  // Check process id exists in cgroup.
+  auto pids = ReadEntireFile(internal_cgroup_proc_filepath_);
+  RAY_ASSERT_OK(pids);
+  std::unordered_set<std::string_view> pid_parts = absl::StrSplit(*pids, ' ');
+  EXPECT_TRUE(pid_parts.find(std::to_string(pid)) != pid_parts.end());
+
+  // Block wait until child processes complete.
+  int status = 0;
+  waitpid(pid, &status, 0);
 }
 #endif
 

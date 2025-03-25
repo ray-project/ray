@@ -50,6 +50,8 @@ ray_cc_test(
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/test:testing",
+        "//src/ray/util:filesystem",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
