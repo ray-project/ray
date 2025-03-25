@@ -48,15 +48,16 @@ class CgroupSetup : public BaseCgroupSetup {
   // docker env. Impact:
   // - Application cgroup will be created, where later worker process will be placed
   // under;
-  // - Existing operating internal processes and internal components will be placed under
+  // - Existing operating system processes and ray components will be placed under
   // internal cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
   CgroupSetup(const std::string &cgroup_directory, const std::string &node_id);
 
-  // On destruction, all processes in the managed cgroup will be killed via SIGKILL.
+  // On destruction, all processes (including spawned child processes) in the managed
+  // cgroup will be killed recursively via SIGKILL.
   ~CgroupSetup() override;
 
-  // Add ray system processes into "internal" cgroup.
+  // Add ray system processes into the internal cgroup.
   void AddInternalProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
@@ -73,7 +74,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // Impact:
   // - All dangling processes will be killed;
   // - Cgroup for the current node will be deleted.
-  void CleanupCgroups();
+  Status CleanupCgroups();
 
   // Apply cgroup context which addes pid into default cgroup folder.
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);

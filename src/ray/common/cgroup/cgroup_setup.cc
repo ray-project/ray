@@ -16,7 +16,7 @@
 
 #ifndef __linux__
 namespace ray {
-CgroupSetup::CgroupSetup() {}
+CgroupSetup::CgroupSetup() = default;
 void CgroupSetup::AddInternalProcess(pid_t pid) {}
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   return {};
@@ -176,9 +176,9 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   return Status::OK();
 }
 
-CgroupSetup::~CgroupSetup() { CleanupCgroups(); }
+CgroupSetup::~CgroupSetup() { RAY_CHECK_OK(CleanupCgroups()); }
 
-void CgroupSetup::CleanupCgroups() {
+Status CgroupSetup::CleanupCgroups() {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
 
@@ -186,15 +186,25 @@ void CgroupSetup::CleanupCgroups() {
   KillAllProc(cgroup_v2_app_folder_);
 
   // Move all internal processes into root cgroup and delete internal cgroup.
-  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
-                                    /*to=*/root_cgroup_procs_filepath_.data()))
-      << "Failed to move internal processes back to root cgroup";
-  RAY_CHECK(std::filesystem::remove(cgroup_v2_internal_folder_))
-      << "Failed to delete raylet internal cgroup folder";
+  if (!MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
+                               /*to=*/root_cgroup_procs_filepath_.data())) {
+    return Status::Invalid("") << "Failed to move internal processes back to root cgroup";
+  }
+  std::error_code err_code;
+  if (!std::filesystem::remove(cgroup_v2_internal_folder_, err_code)) {
+    return Status::Invalid("")
+           << "Failed to delete raylet internal cgroup folder because "
+           << err_code.message();
+  }
 
   // Cleanup cgroup for current node.
-  RAY_CHECK(std::filesystem::remove(cgroup_v2_folder_))
-      << "Failed to delete raylet internal cgroup folder";
+  if (!std::filesystem::remove(cgroup_v2_folder_, err_code)) {
+    return Status::Invalid("")
+           << "Failed to delete raylet internal cgroup folder because "
+           << err_code.message();
+  }
+
+  return Status::OK();
 }
 
 void CgroupSetup::AddInternalProcess(pid_t pid) {
