@@ -472,7 +472,7 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
 
 void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO).WithField(node_id)
-      << "Node failed, mark all jobs from this node as finished";
+      << "Node is dead, mark all jobs from this node as finished";
 
   auto on_done = [this,
                   node_id](const absl::flat_hash_map<JobID, rpc::JobTableData> &result) {
