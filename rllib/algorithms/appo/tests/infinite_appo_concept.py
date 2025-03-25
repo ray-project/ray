@@ -409,11 +409,11 @@ class InfiniteAPPOLearner(APPOTorchLearner):
 
 if __name__ == "__main__":
     NUM_ENV_RUNNERS = 1024
-    NUM_ENVS_PER_ENV_RUNNER = 1
+    NUM_ENVS_PER_ENV_RUNNER = 5
     NUM_AGG_ACTORS = 64
     NUM_LEARNERS = 16
     NUM_WEIGHTS_SERVER_ACTORS=8
-    NUM_BATCH_DISPATCHERS=4
+    NUM_BATCH_DISPATCHERS=8
     NUM_GPUS_PER_LEARNER=1
 
     def _make_env_to_module_connector(env):
