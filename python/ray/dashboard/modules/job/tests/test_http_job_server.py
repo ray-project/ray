@@ -17,6 +17,7 @@ import yaml
 
 import ray
 from ray import NodeID
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.test_utils import (
     chdir,
     format_web_url,
