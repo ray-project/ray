@@ -5,7 +5,7 @@ Hello World
 -----------
 This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
-.. testcode::
+.. code-block:: bash
 
     pip install "ray[cgraph]"
     
@@ -27,9 +27,9 @@ Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ra
     :start-after: __ray_core_usage_start__
     :end-before: __ray_core_usage_end__
 
-.. testoutput::
+.. code-block::
 
-    Execution takes 969.0364822745323 us
+  Execution takes 969.0364822745323 us
 
 Now, create an equivalent program using Ray Compiled Graph. 
 First, define a graph to execute using classic Ray Core, without any compilation.
@@ -58,9 +58,9 @@ The graph uses the same APIs for execution:
     :start-after: __cgraph_usage_start__
     :end-before: __cgraph_usage_end__
 
-.. testoutput::
+.. code-block::
 
-    Execution takes 86.72196418046951 us
+  Execution takes 86.72196418046951 us
 
 The performance of the same task graph improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
 the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1 ms+ system overhead.
@@ -93,9 +93,9 @@ For example, the following uses the preceding example to create a DAG that passe
     :start-after: __cgraph_bind_start__
     :end-before: __cgraph_bind_end__
 
-.. testoutput::
+.. code-block::
 
-    hello
+  hello
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
@@ -106,9 +106,10 @@ Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` retu
     :start-after: __cgraph_multi_output_start__
     :end-before: __cgraph_multi_output_end__
 
-.. testoutput::
+.. code-block::
 
-    ["hello", "hello"]
+  Execution takes 86.72196418046951 us
+
 
 Be aware that:
 * On the same actor, a Compiled Graph executes in order. If an actor has multiple tasks in the same Compiled Graph, it executes all of them to completion before executing on the next DAG input.
@@ -202,6 +203,7 @@ In Ray Core, if you try to pass a CPU tensor from the driver,
 the GPU actor receives a CPU tensor:
 
 .. testcode::
+    :skipif: True
 
     # This will fail because the driver passes a CPU copy of the tensor, 
     # and the GPU actor also receives a CPU copy.

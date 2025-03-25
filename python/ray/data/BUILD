@@ -269,20 +269,6 @@ py_test(
 )
 
 py_test(
-    name = "test_aggregate",
-    size = "small",
-    srcs = ["tests/test_aggregate.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -878,6 +864,20 @@ py_test(
     srcs = ["tests/test_raydp.py"],
     tags = [
         "data_integration",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ruleset",
+    size = "small",
+    srcs = ["tests/test_ruleset.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],

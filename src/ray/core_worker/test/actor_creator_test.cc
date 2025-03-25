@@ -13,6 +13,8 @@
 // limitations under the License.
 
 // clang-format off
+#include <memory>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"

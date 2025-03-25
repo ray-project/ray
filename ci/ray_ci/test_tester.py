@@ -44,6 +44,28 @@ def test_get_tag_matcher() -> None:
     )
 
 
+def test_linux_privileged() -> None:
+    with mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ):
+        container = _get_container(
+            team="core",
+            operating_system="linux",
+            workers=3,
+            worker_id=1,
+            parallelism_per_worker=2,
+            network=None,
+            gpus=0,
+            tmp_filesystem=None,
+            privileged=True,
+        )
+        assert (
+            container.privileged
+            and "--privileged" in container.get_run_command_extra_args()
+        )
+
+
 def test_get_container() -> None:
     with mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
@@ -123,6 +145,7 @@ def test_get_test_targets() -> None:
             "//python/ray/tests:good_test_02",
             "//python/ray/tests:good_test_03",
             "//python/ray/tests:flaky_test_01",
+            "//python/ray/tests:flaky_test_02",
         ]
         test_objects = [
             _stub_test(
@@ -136,6 +159,14 @@ def test_get_test_targets() -> None:
             _stub_test(
                 {
                     "name": "linux://python/ray/tests:flaky_test_01",
+                    "team": "core",
+                    "state": TestState.FLAKY,
+                    Test.KEY_IS_HIGH_IMPACT: "true",
+                }
+            ),
+            _stub_test(
+                {
+                    "name": "linux://python/ray/tests:flaky_test_02",
                     "team": "core",
                     "state": TestState.FLAKY,
                     Test.KEY_IS_HIGH_IMPACT: "true",
@@ -173,6 +204,23 @@ def test_get_test_targets() -> None:
                 "//python/ray/tests:good_test_03",
             }
 
+            assert set(
+                _get_test_targets(
+                    LinuxTesterContainer("core"),
+                    "targets",
+                    "core",
+                    operating_system="linux",
+                    yaml_dir=tmp,
+                    lookup_test_database=False,
+                )
+            ) == {
+                "//python/ray/tests:high_impact_test_01",
+                "//python/ray/tests:good_test_01",
+                "//python/ray/tests:good_test_02",
+                "//python/ray/tests:good_test_03",
+                "//python/ray/tests:flaky_test_02",
+            }
+
             assert _get_test_targets(
                 LinuxTesterContainer("core"),
                 "targets",
@@ -182,6 +230,7 @@ def test_get_test_targets() -> None:
                 get_flaky_tests=True,
             ) == [
                 "//python/ray/tests:flaky_test_01",
+                "//python/ray/tests:flaky_test_02",
             ]
 
             assert _get_test_targets(
@@ -206,6 +255,7 @@ def test_get_test_targets() -> None:
                 get_high_impact_tests=True,
             ) == [
                 "//python/ray/tests:flaky_test_01",
+                "//python/ray/tests:flaky_test_02",
             ]
 
 
@@ -354,7 +404,12 @@ def test_get_flaky_test_targets() -> None:
                 f.write(test["input"]["core_test_yaml"])
             for os_name in ["linux", "windows"]:
                 assert (
-                    _get_flaky_test_targets("core", os_name, yaml_dir=tmp)
+                    _get_flaky_test_targets(
+                        "core",
+                        os_name,
+                        yaml_dir=tmp,
+                        lookup_test_database=True,
+                    )
                     == test["output"][os_name]
                 )
 

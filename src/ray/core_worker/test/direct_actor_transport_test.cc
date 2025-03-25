@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <vector>
+
 // clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -25,10 +29,6 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/core_worker/reference_count.h"
-// clang-format on
-
-// clang-format off
-#include "mock/ray/core_worker/task_manager.h"
 // clang-format on
 
 namespace ray {
