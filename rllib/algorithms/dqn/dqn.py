@@ -722,9 +722,7 @@ class DQN(Algorithm):
                         for module_id, module_results in res.items():
                             if TD_ERROR_KEY in module_results:
                                 td_errors[module_id].extend(
-                                    convert_to_numpy(
-                                        module_results.pop(TD_ERROR_KEY).peek()
-                                    )
+                                    convert_to_numpy(module_results.pop(TD_ERROR_KEY))
                                 )
                     td_errors = {
                         module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}

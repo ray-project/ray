@@ -1140,7 +1140,11 @@ class Algorithm(Checkpointable, Trainable):
             eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
-            eval_results = self.metrics.peek(key=EVALUATION_RESULTS)
+            eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
+            if not eval_results:
+                logger.warning(
+                    "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
+                )
         else:
             eval_results = {ENV_RUNNER_RESULTS: eval_results}
             eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
@@ -1525,7 +1529,7 @@ class Algorithm(Checkpointable, Trainable):
                     agent_steps += ag_s
                     all_metrics.append(met)
                     num_units_done += (
-                        (met[NUM_EPISODES].peek() if NUM_EPISODES in met else 0)
+                        met.get(NUM_EPISODES, 0)
                         if unit == "episodes"
                         else (
                             env_s if self.config.count_steps_by == "env_steps" else ag_s

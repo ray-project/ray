@@ -250,6 +250,29 @@ def test_throughput_tracking(logger):
         # Can't enable throughput with window
         logger.log_value("invalid", 1, reduce="sum", window=10, with_throughput=True)
 
+    # Test nested throughput tracking
+    logger.log_value(["nested", "count1"], 1, reduce="sum", with_throughput=True)
+    logger.log_value(["nested", "count2"], 2, reduce="sum", with_throughput=True)
+
+    # Test getting throughput for nested structure
+    nested_throughputs = logger.throughputs("nested")
+    assert isinstance(nested_throughputs, dict)
+    assert "count1_throughput" in nested_throughputs
+    assert "count2_throughput" in nested_throughputs
+
+    # Test getting throughput for specific nested key
+    count1_throughput = logger.throughputs(["nested", "count1"])
+    assert isinstance(count1_throughput, float)
+
+    # Test error for non-existent nested key
+    with pytest.raises(KeyError):
+        logger.throughputs(["nested", "non_existent"])
+
+    # Test error for non-throughput nested key
+    logger.log_value(["nested", "no_throughput"], 1, reduce="sum")
+    with pytest.raises(ValueError):
+        logger.throughputs(["nested", "no_throughput"])
+
 
 def test_has_throughput_property(logger):
     """Test the has_throughput property functionality."""

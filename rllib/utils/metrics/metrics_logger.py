@@ -937,7 +937,11 @@ class MetricsLogger:
         return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
-        """Converts all previously logged and returned tensors back to numpy values."""
+        """Converts all previously logged and returned tensors back to numpy values.
+
+        Args:
+            tensor_metrics: Dictionary containing tensor metrics to be converted to numpy.
+        """
         for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
             self._get_key(key).set_to_numpy_values(values)
@@ -1147,58 +1151,88 @@ class MetricsLogger:
                 if key_error:
                     raise e
 
-    def throughputs(self, key: Optional[str] = None) -> Union[Dict, float]:
+    def throughputs(
+        self, key: Optional[Union[str, Tuple[str, ...]]] = None
+    ) -> Union[Dict, float]:
         """Returns throughput values for Stats that have throughput tracking enabled.
 
         If no key is provided, returns a nested dict containing throughput values for all Stats
         that have throughput tracking enabled. If a key is provided, returns the throughput value
-        for that specific key.
+        for that specific key or nested structure.
 
         The throughput values represent the rate of change of the corresponding metrics per second.
         For example, if a metric represents the number of steps taken, its throughput value would
         represent steps per second.
 
         Args:
-            key: Optional key to get throughput for a specific metric. If provided, returns just
-                the throughput value for that key. If None, returns a nested dict with throughputs
-                for all metrics.
+            key: Optional key or nested key path to get throughput for. If provided, returns just
+                the throughput value for that key or nested structure. If None, returns a nested dict
+                with throughputs for all metrics.
 
         Returns:
             If key is None: A nested dict with the same structure as self.stats but with "_throughput"
                 appended to leaf keys and throughput values as leaf values. Only includes entries for
                 Stats objects that have throughput tracking enabled.
 
-            If key is provided: The throughput value for that specific key.
+            If key is provided: The throughput value for that specific key or nested structure.
         """
-        if key is not None:
-            # Get the Stats object for the key
-            stats = self._get_key(key)
-            if not isinstance(stats, Stats) or not stats.has_throughput:
-                raise ValueError(
-                    f"Key '{key}' does not have throughput tracking enabled"
-                )
-            return stats.throughput
 
-        throughputs = {}
+        def _nested_throughputs(stats):
+            """Helper function to calculate throughputs for a nested structure."""
 
-        def _map(path, stats):
-            if isinstance(stats, Stats) and stats.has_throughput:
-                # Convert path to tuple for consistent key handling
-                key = force_tuple(path)
-                # Add "_throughput" to the last key in the path
-                key = key[:-1] + (key[-1] + "_throughput",)
-                # Set the throughput value in the nested structure
-                _dict = throughputs
-                for k in key[:-1]:
-                    if k not in _dict:
-                        _dict[k] = {}
-                    _dict = _dict[k]
-                _dict[key[-1]] = stats.throughput
+            def _transform(path, value):
+                if isinstance(value, Stats) and value.has_throughput:
+                    # Convert path to tuple for consistent key handling
+                    key = force_tuple(path)
+                    # Add "_throughput" to the last key in the path
+                    return key[:-1] + (key[-1] + "_throughput",), value.throughput
+                return path, value
+
+            result = {}
+            for path, value in tree.flatten_with_path(stats):
+                new_path, new_value = _transform(path, value)
+                if isinstance(new_value, float):  # Only include throughput values
+                    _dict = result
+                    for k in new_path[:-1]:
+                        if k not in _dict:
+                            _dict[k] = {}
+                        _dict = _dict[k]
+                    _dict[new_path[-1]] = new_value
+            return result
 
         with self._threading_lock:
+            if key is not None:
+                # Get the Stats object or nested structure for the key
+                stats = self._get_key(key)
+                if isinstance(stats, Stats):
+                    if not stats.has_throughput:
+                        raise ValueError(
+                            f"Key '{key}' does not have throughput tracking enabled"
+                        )
+                    return stats.throughput
+                else:
+                    # stats is a non-empty dictionary
+                    return _nested_throughputs(stats)
+
+            throughputs = {}
+
+            def _map(path, stats):
+                if isinstance(stats, Stats) and stats.has_throughput:
+                    # Convert path to tuple for consistent key handling
+                    key = force_tuple(path)
+                    # Add "_throughput" to the last key in the path
+                    key = key[:-1] + (key[-1] + "_throughput",)
+                    # Set the throughput value in the nested structure
+                    _dict = throughputs
+                    for k in key[:-1]:
+                        if k not in _dict:
+                            _dict[k] = {}
+                        _dict = _dict[k]
+                    _dict[key[-1]] = stats.throughput
+
             tree.map_structure_with_path(_map, self.stats)
 
-        return throughputs
+            return throughputs
 
     def compile(self) -> Dict:
         """Compiles all current values and throughputs into a single dictionary.
