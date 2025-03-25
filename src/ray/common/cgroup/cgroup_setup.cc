@@ -247,11 +247,13 @@ Status CgroupSetup::CleanupCgroups() {
                                             /*to=*/root_cgroup_procs_filepath_.data()));
   std::error_code err_code;
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_internal_folder_, err_code))
-      << "Failed to delete raylet internal cgroup folder because " << err_code.message();
+      << "Failed to delete raylet internal cgroup folder " << cgroup_v2_internal_folder_
+      << " because " << err_code.message();
 
   // Cleanup cgroup for current node.
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_folder_, err_code))
-      << "Failed to delete raylet internal cgroup folder because " << err_code.message();
+      << "Failed to delete raylet internal cgroup folder " << cgroup_v2_folder_
+      << " because " << err_code.message();
 
   return Status::OK();
 }
