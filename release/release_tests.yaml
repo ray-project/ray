@@ -723,7 +723,7 @@
     byod:
       type: gpu
       post_build_script: byod_object_detection.sh
-    cluster_compute: object_detection/compute_aws.yaml
+    cluster_compute: compute_aws.yaml
 
   run:
     timeout: 3600
@@ -735,7 +735,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: object_detection/compute_gce.yaml
+        cluster_compute: compute_gce.yaml
 
 - name: example_object_detection_batch_inference_eval
   group: ML Examples
@@ -746,7 +746,7 @@
     byod:
       type: gpu
       post_build_script: byod_object_detection.sh
-    cluster_compute: object_detection/compute_aws.yaml
+    cluster_compute: compute_aws.yaml
 
   run:
     timeout: 1800
@@ -758,7 +758,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: object_detection/compute_gce.yaml
+        cluster_compute: compute_gce.yaml
 
 - name: example_video_processing_batch_inference
   group: ML Examples
@@ -769,7 +769,7 @@
     byod:
       type: gpu
       post_build_script: byod_object_detection.sh
-    cluster_compute: object_detection/compute_aws.yaml
+    cluster_compute: compute_aws.yaml
 
   run:
     timeout: 2400
@@ -781,7 +781,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: object_detection/compute_gce.yaml
+        cluster_compute: compute_gce.yaml
 
 - name: example_object_detection_serve
   group: ML Examples
@@ -792,7 +792,7 @@
     byod:
       type: gpu
       post_build_script: byod_object_detection.sh
-    cluster_compute: object_detection/compute_aws.yaml
+    cluster_compute: compute_aws.yaml
 
   run:
     timeout: 1800
@@ -804,7 +804,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: object_detection/compute_gce.yaml
+        cluster_compute: compute_gce.yaml
 
 #######################
 # ML user tests
