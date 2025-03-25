@@ -53,7 +53,9 @@ class Cgroupv2SetupTest : public ::testing::Test {
         internal_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/internal"),
         internal_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs"),
-        app_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/ray_application") {}
+        app_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/ray_application"),
+        app_cgroup_proc_filepath_(
+            "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
   void TearDown() override {
     // Check the node-wise subcgroup folder has been deleted.
     std::error_code err_code;
@@ -68,6 +70,7 @@ class Cgroupv2SetupTest : public ::testing::Test {
   const std::string internal_cgroup_folder_;
   const std::string internal_cgroup_proc_filepath_;
   const std::string app_cgroup_folder_;
+  const std::string app_cgroup_proc_filepath_;
 };
 
 TEST_F(Cgroupv2SetupTest, SetupTest) {
@@ -120,8 +123,11 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
     perror("execlp");
   }
 
+  AppProcCgroupMetadata app_metadata;
+  app_metadata.pid = pid;
+  app_metadata.max_memory = 0;  // No limit specified.
   RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
-  AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
+  AssertPidInCgroup(pid, app_cgroup_proc_filepath_);
 
   // Kill testing process.
   RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
