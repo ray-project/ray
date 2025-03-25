@@ -65,7 +65,7 @@ class ConcurrentFlatMap {
     for (const auto &key : keys) {
       auto it = map.find(key);
       if (it != map.end()) {
-        visitor(it->second);
+        visitor(it->first, it->second);
       }
     }
   }
@@ -130,7 +130,7 @@ class ConcurrentFlatMap {
 
   // Returns the number of keys erased.
   template <typename KeyLike>
-  int64_t EraseKeys(absl::Span<const KeyLike> keys) {
+  int64_t EraseKeys(absl::Span<KeyLike> keys) {
     auto write_lock = map_.LockForWrite();
     auto &map = write_lock.Get();
     int64_t num_erased = 0;

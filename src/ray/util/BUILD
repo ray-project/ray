@@ -381,5 +381,6 @@ ray_cc_library(
     hdrs = ["concurrent_flat_map.h"],
     deps = [
         ":mutex_protected",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
