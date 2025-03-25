@@ -1,5 +1,5 @@
-Configure scale and resources (CPU, GPU, and other accelerators)
-----------------------------------------------------------------
+Configure scale and resources
+-----------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
