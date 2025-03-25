@@ -21,17 +21,15 @@
 namespace ray {
 
 // Default cgroup directory.
-constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
+inline constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
 // Process filename within a cgroup.
-constexpr std::string_view kProcFilename = "cgroup.procs";
+inline constexpr std::string_view kProcFilename = "cgroup.procs";
 // Subtree filename within a cgroup.
-constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
+inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
 // Parent cgroup path.
-constexpr std::string_view kRootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
+inline constexpr std::string_view kRootCgroupProcsFilename = "cgroup.procs";
 // Cgroup subtree control path.
-constexpr std::string_view kRootCgroupSubtreeControl =
-    "/sys/fs/cgroup/cgroup.subtree_control";
 // Owner can read and write.
-constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;
+inline constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;
 
 }  // namespace ray

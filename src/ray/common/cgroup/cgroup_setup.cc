@@ -135,6 +135,10 @@ CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_i
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
   RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
+
+  root_cgroup_procs_filepath_ = absl::StrFormat("%s/%s", directory, kProcFilename);
+  root_cgroup_subtree_control_filepath_ =
+      absl::StrFormat("%s/%s", directory, kSubtreeControlFilename);
 }
 
 Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
@@ -154,16 +158,16 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   const std::string cgroup_v2_app_subtree_control =
       ray::JoinPaths(cgroup_v2_app_folder_, kSubtreeControlFilename);
   const std::string cgroup_v2_internal_procs =
-      ray::JoinPaths(cgroup_v2_internal_folder_, "cgroup.procs");
+      ray::JoinPaths(cgroup_v2_internal_folder_, kRootCgroupProcsFilename);
 
   // Create the internal cgroup.
   RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kReadWritePerm), 0);
 
   // TODO(hjiang): Move GCS and raylet into internal cgroup, so we need a way to know
   // internal components PID for raylet.
-  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/kRootCgroupProcs.data(),
+  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
                                     /*to=*/cgroup_v2_internal_folder_));
-  RAY_CHECK(EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data()));
+  RAY_CHECK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_.data()));
 
   // Setup application cgroup.
   RAY_CHECK_EQ(mkdir(cgroup_v2_app_folder_.data(), kReadWritePerm), 0);
@@ -183,7 +187,7 @@ void CgroupSetup::CleanupCgroups() {
 
   // Move all internal processes into root cgroup and delete internal cgroup.
   RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
-                                    /*to=*/kRootCgroupProcs.data()))
+                                    /*to=*/root_cgroup_procs_filepath_.data()))
       << "Failed to move internal processes back to root cgroup";
   RAY_CHECK(std::filesystem::remove(cgroup_v2_internal_folder_))
       << "Failed to delete raylet internal cgroup folder";
@@ -210,7 +214,8 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
   RAY_CHECK(std::filesystem::create_directory(cgroup_folder))
       << "Failed to create cgroup " << cgroup_folder;
 
-  const std::string cgroup_proc_file = ray::JoinPaths(cgroup_folder, "cgroup.procs");
+  const std::string cgroup_proc_file =
+      ray::JoinPaths(cgroup_folder, kRootCgroupProcsFilename);
   std::ofstream out_file(cgroup_proc_file, std::ios::app | std::ios::out);
   out_file << ctx.pid;
   out_file.flush();
@@ -230,7 +235,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
   const std::string default_cgroup_folder =
       ray::JoinPaths(cgroup_v2_app_folder_, "default");
   const std::string default_cgroup_proc_file =
-      ray::JoinPaths(default_cgroup_folder, "cgroup.procs");
+      ray::JoinPaths(default_cgroup_folder, kRootCgroupProcsFilename);
 
   std::ofstream out_file(default_cgroup_proc_file, std::ios::app | std::ios::out);
   out_file << ctx.pid;

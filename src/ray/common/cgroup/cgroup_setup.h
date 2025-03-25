@@ -82,6 +82,10 @@ class CgroupSetup : public BaseCgroupSetup {
 
   // See README under the current folder for details.
   //
+  // File path of PIDs for root cgroup.
+  [[maybe_unused]] std::string root_cgroup_procs_filepath_;
+  // File path for subtree control for root cgroup.
+  [[maybe_unused]] std::string root_cgroup_subtree_control_filepath_;
   // Folder for cgroup v2 application processes of the current raylet instance.
   [[maybe_unused]] std::string cgroup_v2_app_folder_;
   // Folder for cgroup v2 internal processes of the current raylet instance.
