@@ -137,20 +137,21 @@ StatusCode Status::StringToCode(const std::string &str) {
 }
 
 std::string Status::ToString() const {
-  std::string result(CodeAsString());
   if (state_ == nullptr) {
-    return result;
+    return CodeAsString();
+  }
+
+  // Starts with source location if available.
+  std::string result;
+  if (IsValidSourceLoc(state_->loc)) {
+    std::stringstream ss;
+    ss << state_->loc;
+    result = std::move(ss).str();
   }
 
   result += ": ";
   result += state_->msg;
 
-  if (IsValidSourceLoc(state_->loc)) {
-    std::stringstream ss;
-    ss << state_->loc;
-    result += " at ";
-    result += ss.str();
-  }
   return result;
 }
 

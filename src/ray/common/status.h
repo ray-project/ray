@@ -129,129 +129,163 @@ class RAY_EXPORT Status {
   // Return a success status.
   static Status OK() { return Status(); }
 
+  // TODO(hjiang): Use macros to propagate error status so we don't need to hard code an
+  // invalid source location.
+  // Example usage: RAY_SCHECK(OUT_OF_MEMORY) << ...;
+  //
   // Return error status of an appropriate type.
-  static Status OutOfMemory(const std::string &msg) {
-    return Status(StatusCode::OutOfMemory, msg);
+  static Status OutOfMemory(const std::string &msg,
+                            SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::OutOfMemory, msg, source_loc);
   }
 
-  static Status KeyError(const std::string &msg) {
-    return Status(StatusCode::KeyError, msg);
+  static Status KeyError(const std::string &msg,
+                         SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::KeyError, msg, source_loc);
   }
 
-  static Status ObjectRefEndOfStream(const std::string &msg) {
-    return Status(StatusCode::ObjectRefEndOfStream, msg);
+  static Status ObjectRefEndOfStream(const std::string &msg,
+                                     SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectRefEndOfStream, msg, source_loc);
   }
 
-  static Status TypeError(const std::string &msg) {
-    return Status(StatusCode::TypeError, msg);
+  static Status TypeError(const std::string &msg,
+                          SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::TypeError, msg, source_loc);
   }
 
-  static Status UnknownError(const std::string &msg) {
-    return Status(StatusCode::UnknownError, msg);
+  static Status UnknownError(const std::string &msg,
+                             SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::UnknownError, msg, source_loc);
   }
 
-  static Status NotImplemented(const std::string &msg) {
-    return Status(StatusCode::NotImplemented, msg);
+  static Status NotImplemented(const std::string &msg,
+                               SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::NotImplemented, msg, source_loc);
   }
 
-  static Status Invalid(const std::string &msg) {
-    return Status(StatusCode::Invalid, msg);
+  static Status Invalid(const std::string &msg,
+                        SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::Invalid, msg, source_loc);
   }
 
-  static Status IOError(const std::string &msg) {
-    return Status(StatusCode::IOError, msg);
+  static Status IOError(const std::string &msg,
+                        SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::IOError, msg, source_loc);
   }
 
-  static Status InvalidArgument(const std::string &msg) {
-    return Status(StatusCode::InvalidArgument, msg);
+  static Status InvalidArgument(const std::string &msg,
+                                SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::InvalidArgument, msg, source_loc);
   }
 
-  static Status RedisError(const std::string &msg) {
-    return Status(StatusCode::RedisError, msg);
+  static Status RedisError(const std::string &msg,
+                           SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::RedisError, msg, source_loc);
   }
 
-  static Status TimedOut(const std::string &msg) {
-    return Status(StatusCode::TimedOut, msg);
+  static Status TimedOut(const std::string &msg,
+                         SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::TimedOut, msg, source_loc);
   }
 
-  static Status Interrupted(const std::string &msg) {
-    return Status(StatusCode::Interrupted, msg);
+  static Status Interrupted(const std::string &msg,
+                            SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::Interrupted, msg, source_loc);
   }
 
-  static Status IntentionalSystemExit(const std::string &msg) {
-    return Status(StatusCode::IntentionalSystemExit, msg);
+  static Status IntentionalSystemExit(const std::string &msg,
+                                      SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::IntentionalSystemExit, msg, source_loc);
   }
 
-  static Status UnexpectedSystemExit(const std::string &msg) {
-    return Status(StatusCode::UnexpectedSystemExit, msg);
+  static Status UnexpectedSystemExit(const std::string &msg,
+                                     SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::UnexpectedSystemExit, msg, source_loc);
   }
 
-  static Status CreationTaskError(const std::string &msg) {
-    return Status(StatusCode::CreationTaskError, msg);
+  static Status CreationTaskError(const std::string &msg,
+                                  SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::CreationTaskError, msg, source_loc);
   }
 
-  static Status NotFound(const std::string &msg) {
-    return Status(StatusCode::NotFound, msg);
+  static Status NotFound(const std::string &msg,
+                         SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::NotFound, msg, source_loc);
   }
 
-  static Status Disconnected(const std::string &msg) {
-    return Status(StatusCode::Disconnected, msg);
+  static Status Disconnected(const std::string &msg,
+                             SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::Disconnected, msg, source_loc);
   }
 
-  static Status SchedulingCancelled(const std::string &msg) {
-    return Status(StatusCode::SchedulingCancelled, msg);
+  static Status SchedulingCancelled(const std::string &msg,
+                                    SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::SchedulingCancelled, msg, source_loc);
   }
 
-  static Status AlreadyExists(const std::string &msg) {
-    return Status(StatusCode::AlreadyExists, msg);
+  static Status AlreadyExists(const std::string &msg,
+                              SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::AlreadyExists, msg, source_loc);
   }
 
-  static Status ObjectExists(const std::string &msg) {
-    return Status(StatusCode::ObjectExists, msg);
+  static Status ObjectExists(const std::string &msg,
+                             SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectExists, msg, source_loc);
   }
 
-  static Status ObjectNotFound(const std::string &msg) {
-    return Status(StatusCode::ObjectNotFound, msg);
+  static Status ObjectNotFound(const std::string &msg,
+                               SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectNotFound, msg, source_loc);
   }
 
-  static Status ObjectUnknownOwner(const std::string &msg) {
-    return Status(StatusCode::ObjectUnknownOwner, msg);
+  static Status ObjectUnknownOwner(const std::string &msg,
+                                   SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectUnknownOwner, msg, source_loc);
   }
 
-  static Status ObjectAlreadySealed(const std::string &msg) {
-    return Status(StatusCode::ObjectAlreadySealed, msg);
+  static Status ObjectAlreadySealed(const std::string &msg,
+                                    SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectAlreadySealed, msg, source_loc);
   }
 
-  static Status ObjectStoreFull(const std::string &msg) {
-    return Status(StatusCode::ObjectStoreFull, msg);
+  static Status ObjectStoreFull(const std::string &msg,
+                                SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ObjectStoreFull, msg, source_loc);
   }
 
-  static Status TransientObjectStoreFull(const std::string &msg) {
-    return Status(StatusCode::TransientObjectStoreFull, msg);
+  static Status TransientObjectStoreFull(const std::string &msg,
+                                         SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::TransientObjectStoreFull, msg, source_loc);
   }
 
-  static Status OutOfDisk(const std::string &msg) {
-    return Status(StatusCode::OutOfDisk, msg);
+  static Status OutOfDisk(const std::string &msg,
+                          SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::OutOfDisk, msg, source_loc);
   }
 
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
 
-  static Status OutOfResource(const std::string &msg) {
-    return Status(StatusCode::OutOfResource, msg);
+  static Status OutOfResource(const std::string &msg,
+                              SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::OutOfResource, msg, source_loc);
   }
 
-  static Status AuthError(const std::string &msg) {
-    return Status(StatusCode::AuthError, msg);
+  static Status AuthError(const std::string &msg,
+                          SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::AuthError, msg, source_loc);
   }
 
-  static Status ChannelError(const std::string &msg) {
-    return Status(StatusCode::ChannelError, msg);
+  static Status ChannelError(const std::string &msg,
+                             SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ChannelError, msg, source_loc);
   }
 
-  static Status ChannelTimeoutError(const std::string &msg) {
-    return Status(StatusCode::ChannelTimeoutError, msg);
+  static Status ChannelTimeoutError(const std::string &msg,
+                                    SourceLocation source_loc = SourceLocation{}) {
+    return Status(StatusCode::ChannelTimeoutError, msg, source_loc);
   }
 
   static StatusCode StringToCode(const std::string &str);
@@ -337,6 +371,7 @@ class RAY_EXPORT Status {
   struct State {
     StatusCode code;
     std::string msg;
+    // TODO(hjiang): Should record call chain for error status propagation.
     SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;

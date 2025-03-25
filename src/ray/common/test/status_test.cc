@@ -14,10 +14,26 @@
 
 #include "ray/common/status.h"
 
-#include "gtest/gtest.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include <sstream>
+
 #include "ray/common/grpc_util.h"
 
 namespace ray {
+
+namespace {
+
+Status GetErrorStatusInternal() {
+  return Status::Invalid("", RAY_LOC()) << "Invalid status";
+}
+
+Status GetErrorStatus() {
+  RAY_RETURN_NOT_OK(GetErrorStatusInternal());
+  return Status::OK();
+}
+
 class StatusTest : public ::testing::Test {};
 
 TEST_F(StatusTest, CopyAndMoveForOkStatus) {
@@ -121,5 +137,14 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
   ray_status = GrpcStatusToRayStatus(grpc_status);
   ASSERT_TRUE(ray_status.IsIOError());
 }
+
+// Check filename and line number is included in stringified error status.
+TEST_F(StatusTest, OStreamTest) {
+  std::stringstream ss;
+  ss << GetErrorStatus();
+  EXPECT_THAT(ss.str(), testing::HasSubstr("status_test.cc:28"));
+}
+
+}  // namespace
 
 }  // namespace ray
