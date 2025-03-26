@@ -548,15 +548,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--stdout-filepath",
-        required=False,
-        default="",
+        required=True,
         type=str,
         help="The filepath to dump log monitor stdout.",
     )
     parser.add_argument(
         "--stderr-filepath",
-        required=False,
-        default="",
+        required=True,
         type=str,
         help="The filepath to dump log monitor stderr.",
     )
@@ -576,7 +574,6 @@ if __name__ == "__main__":
         max_bytes=logging_rotation_bytes,
         backup_count=logging_rotation_backup_count,
     )
-
 
     with open("/tmp/debug-monitor-log.debug", "a+") as file:
         file.write(f"logging params = {logging_params}\n")

@@ -1156,7 +1156,7 @@ def start_log_monitor(
     stdout_file = None
     if stdout_filepath:
         stdout_file = open(os.devnull, "w")
-    
+
     stderr_file = None
     if stderr_filepath:
         stderr_file = open(os.devnull, "w")
