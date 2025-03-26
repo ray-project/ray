@@ -105,10 +105,17 @@ Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to open cgroup file " << subtree_control_path;
+
   out_file << "+memory";
   out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to flush cgroup file " << subtree_control_path;
+
+  out_file << "+cpu";
+  out_file.flush();
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to flush cgroup file " << subtree_control_path;
+
   return Status::OK();
 }
 
