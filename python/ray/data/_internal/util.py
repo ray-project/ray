@@ -952,21 +952,32 @@ def make_async_gen(
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
 
-    # To apply transformations to elements in parallel *and* preserve the ordering
-    # following invariants are established:
-    #   - Every worker is handled by standalone thread
-    #   - Every worker is assigned an input and an output queue
+    # To apply transformations to elements in parallel *and* guarantee deterministic
+    # ordering of the resulting sequence following protocol is implemented:
     #
-    # And following protocol is implemented:
-    #   - Filling worker traverses input iterator round-robin'ing elements across
-    #     the input queues (in order!)
-    #   - Transforming workers traverse respective input queue in-order: de-queueing
-    #     element, applying transformation and enqueuing the result into the output
-    #     queue
+    #   - Filling worker traverses input iterator adding elements to the (capped
+    #     and shared) input queue
+    #   - Transforming workers create an iterator fetching the elements from the shared
+    #     input queue, apply transformation to it and iterate over returned iterator
+    #     adding resulting elements into the output queue
     #   - Generator (returned from this method) traverses output queues (in the same
     #     order as input queues) dequeues 1 mapped element at a time from each output
-    #     queue and yields it
+    #     queue and yielding it
     #
+    # To guarantee deterministic ordering as well as liveness of this algorithm
+    # following invariants are established:
+    #
+    #   - Every worker is handled by standalone thread
+    #   - Every worker is assigned standalone output queue
+    #   - Input queue is capped at ``num_workers`` elements (ie 1 element per worker)
+    #   - All output queues are capped at *1 element* (ie once element is added to it,
+    #     producing thread will be blocked until it's dequeued from the output queue)
+    #   - Consumer traverses output queues *in the same order*, dequeueing 1 element
+    #     or blocking (in case of empty queue) until there's at least 1 element
+    #
+    # These invariants allow us to
+
+
     # Signal handler used to interrupt workers when terminating
     interrupted_event = threading.Event()
 
@@ -1012,7 +1023,8 @@ def make_async_gen(
         output_queue = output_queues[worker_id]
 
         try:
-            # Create iterator draining the queue, until it receives sentinel
+            # Create an iterator traversing the queue (until reaching sentinel
+            # value)
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
