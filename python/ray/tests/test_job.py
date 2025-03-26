@@ -34,7 +34,7 @@ def execute_driver(commands: List[str], input: bytes = None):
         if isinstance(input, str):
             input = input.encode()
 
-        stdout, stderr = p.communicate(input=input)
+        stdout, _ = p.communicate(input=input)
         outs = stdout.decode().split("\n")
         return outs
     finally:

@@ -184,14 +184,14 @@ class DashboardAgent:
         if self.http_server:
             try:
                 await self.http_server.start(modules)
-            except Exception:
+            except Exception as e:
                 # TODO(SongGuyang): Catch the exception here because there is
                 # port conflict issue which brought from static port. We should
                 # remove this after we find better port resolution.
                 logger.exception(
-                    "Failed to start http server. Agent will stay alive but "
-                    "disable the http service."
+                    "Failed to start HTTP server. Exiting immediately."
                 )
+                raise e
 
         # Writes agent address to kv.
         # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
