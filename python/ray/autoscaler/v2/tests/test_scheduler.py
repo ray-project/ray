@@ -1290,7 +1290,7 @@ def test_idle_termination(
     gang_resource_requests = []
     if has_gang_resource_requests:
         gang_resource_requests = [
-            [
+            [  # This is a strict spread placement group that requires 2 nodes.
                 ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
                 ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
             ]
