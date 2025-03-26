@@ -988,6 +988,10 @@ def make_async_gen(
 
             # Enqueue sentinel objects to signal EOL (end of the line)
             # for every worker
+            #
+            # NOTE: We have to put a sentinel for every worker. Putting
+            #       ``num_workers`` sentinels is sufficient since every worker
+            #       won't be ingesting more than 1 of them.
             for _ in range(num_workers):
                 input_queue.put(SENTINEL)
 
