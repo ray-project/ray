@@ -171,6 +171,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
         self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        self._cached_datasets = None
 
     def calculate_rows_per_worker(
         self, total_rows: Optional[int], num_workers: int
@@ -199,6 +200,9 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         Returns:
             A dictionary containing the train and validation datasets.
         """
+        if self._cached_datasets is not None:
+            return self._cached_datasets
+
         # Calculate row limits per worker for validation
         dataloader_config = self.get_dataloader_config()
         num_workers = max(1, dataloader_config.num_torch_workers)
@@ -225,7 +229,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         )
 
         # Get file URLs for training and validation
-        train_file_urls = self._get_file_urls(self.train_url)
+        train_file_urls = val_file_urls = self._get_file_urls(self.train_url)
         train_ds = S3JpegImageIterableDataset(
             file_urls=train_file_urls,
             random_transforms=True,
@@ -246,7 +250,6 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         )
 
         # TODO: IMAGENET_JPEG_SPLIT_S3_DIRS["val"] does not have partitioning as "train" does. So we use "train" for validation.
-        val_file_urls = train_file_urls
         val_ds = S3JpegImageIterableDataset(
             file_urls=val_file_urls,
             random_transforms=False,
@@ -266,7 +269,8 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             }
         )
 
-        return {"train": train_ds, "val": val_ds}
+        self._cached_datasets = {"train": train_ds, "val": val_ds}
+        return self._cached_datasets
 
     def create_batch_iterator(
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
