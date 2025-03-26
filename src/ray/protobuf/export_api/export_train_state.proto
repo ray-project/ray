@@ -23,6 +23,9 @@ message ExportTrainRunEventData {
   // Version of the message schema
   uint32 schema_version = 1;
 
+  // Version of Ray Train
+  uint32 ray_train_version = 11;
+
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
     // Default value required by proto3
@@ -60,12 +63,16 @@ message ExportTrainRunEventData {
   optional uint64 end_time_ns = 9;
   // The path to the log file for the Train run controller.
   string controller_log_file_path = 10;
+  // WARNING: 11 is reserved for ray_train_version
 }
 
 // Metadata for an individual attempt to execute a Train run
 message ExportTrainRunAttemptEventData {
   // Version of the message schema
   uint32 schema_version = 1;
+
+  // Version of Ray Train
+  uint32 ray_train_version = 10;
 
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
@@ -143,4 +150,5 @@ message ExportTrainRunAttemptEventData {
   repeated TrainResources resources = 8;
   // List of Train workers participating in this attempt, sorted by global ranks
   repeated TrainWorker workers = 9;
+  // WARNING: 10 is reserved for ray_train_version
 }
