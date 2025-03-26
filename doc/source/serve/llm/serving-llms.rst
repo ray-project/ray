@@ -503,6 +503,48 @@ For multimodal models that can process both text and images:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
+Using remote storage for model weights
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use remote storage (S3 and GCS) to store your model weights instead of
+downloading them from Hugging Face.
+
+For example, if you have a model stored in S3 that looks like the below structure:
+
+.. code-block:: bash
+
+    $ aws s3 ls air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/
+    2025-03-25 11:37:48       1519 .gitattributes
+    2025-03-25 11:37:48       7712 LICENSE.txt
+    2025-03-25 11:37:48      41742 README.md
+    2025-03-25 11:37:48       6021 USE_POLICY.md
+    2025-03-25 11:37:48        877 config.json
+    2025-03-25 11:37:48        189 generation_config.json
+    2025-03-25 11:37:48 2471645608 model.safetensors
+    2025-03-25 11:37:53        296 special_tokens_map.json
+    2025-03-25 11:37:53    9085657 tokenizer.json
+    2025-03-25 11:37:53      54528 tokenizer_config.json
+
+You can then specify the `bucket_uri` in the `model_loading_config` to point to your S3 bucket.
+
+.. code-block:: yaml
+
+    # config.yaml
+    applications:
+    - args:
+        llm_configs:
+            - accelerator_type: A10G
+              engine_kwargs:
+                max_model_len: 8192
+              model_loading_config:
+                model_id: my_llama
+                model_source:
+                  bucket_uri: s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct
+      import_path: ray.serve.llm:build_openai_app
+      name: llm_app
+      route_prefix: "/"
+
+
 Frequently Asked Questions
 --------------------------
 
