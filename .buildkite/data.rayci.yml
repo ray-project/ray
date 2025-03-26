@@ -257,5 +257,5 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name datalbuild
         --only-tags needs_credentials
-        --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_PASSWORD --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA
+        --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_PASSWORD --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA --test-env=SNOWFLAKE_PRIVATE_KEY
     depends_on: datalbuild
