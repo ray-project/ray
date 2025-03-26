@@ -105,7 +105,6 @@ Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to open cgroup file " << subtree_control_path;
-  // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
   out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good())
@@ -114,8 +113,9 @@ Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
 }
 
 // Return whether the given directory is mounted as the root cgroup in current
-// environment. For example, it returns true for BM/VM env, and false for container (since
-// the cgroup within container is a subcgroup in the host cgroup hierarchy).
+// environment.
+// It returns true for BM/VM env, and false for container (since the cgroup within
+// container is a subcgroup in the host cgroup hierarchy).
 StatusOr<bool> IsRootCgroup(const std::string &directory) {
   const std::string cgroup_type_filepath =
       absl::StrFormat("%s/%s", directory, kCgroupTypeFilename);
