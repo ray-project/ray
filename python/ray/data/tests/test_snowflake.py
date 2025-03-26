@@ -1,13 +1,11 @@
-import json
 import random
+import os
 import string
 from decimal import Decimal
 from typing import Any, Dict, List, Tuple
 from unittest.mock import MagicMock, patch
 
-import boto3
 import pytest
-from botocore.exceptions import ClientError
 from snowflake.connector import connect
 
 import ray
