@@ -102,8 +102,9 @@ def test_parse_node_labels_from_string():
 def test_parse_node_labels_from_json():
     # Empty/invalid json
     labels_json = ""
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
-    assert labels_dict == {}
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_json(labels_json, cli_logger, cf)
+    assert "is not a valid JSON string" in str(e)
 
     # Valid label key with empty value
     labels_json = '{"ray.io/accelerator-type": ""}'
