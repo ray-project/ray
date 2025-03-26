@@ -34,7 +34,7 @@ namespace ray {
 namespace {
 
 void GetAllPidsForCgroup(const std::string &cgroup_directory, std::vector<pid_t> *pids) {
-  std::ifstream cgroup_proc_file(absl::StrFormat("%s/cgroup.procs", cgroup_directory));
+  std::ifstream cgroup_proc_file(ray::JoinPaths(cgroup_directory, "cgroup.procs"));
   RAY_CHECK(cgroup_proc_file.good());  // Sanity check.
 
   std::string pid_str;

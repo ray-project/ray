@@ -117,8 +117,7 @@ Status EnableCgroupSubtreeControl(const char *subtree_control_path) {
 // It returns true for BM/VM env, and false for container (since the cgroup within
 // container is a subcgroup in the host cgroup hierarchy).
 StatusOr<bool> IsRootCgroup(const std::string &directory) {
-  const std::string cgroup_type_filepath =
-      absl::StrFormat("%s/%s", directory, kCgroupTypeFilename);
+  const std::string cgroup_type_filepath = ray::JoinPaths(directory, kCgroupTypeFilename);
   std::error_code err_code;
   bool exists = std::filesystem::exists(cgroup_type_filepath, err_code);
   RAY_SCHECK_OK_CGROUP(err_code.value() == 0)
@@ -187,16 +186,15 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
   // Cgroup folders for the current ray node.
-  cgroup_v2_folder_ = absl::StrFormat("%s/ray_node_%s", directory, node_id);
-  root_cgroup_procs_filepath_ =
-      absl::StrFormat("%s/%s", cgroup_v2_folder_, kProcFilename);
+  cgroup_v2_folder_ = ray::JoinPaths(directory, absl::StrFormat("ray_node_%s", node_id));
+  root_cgroup_procs_filepath_ = ray::JoinPaths(cgroup_v2_folder_, kProcFilename);
   root_cgroup_subtree_control_filepath_ =
-      absl::StrFormat("%s/%s", cgroup_v2_folder_, kSubtreeControlFilename);
-  cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
-  cgroup_v2_default_app_folder_ = absl::StrFormat("%s/default", cgroup_v2_app_folder_);
+      ray::JoinPaths(cgroup_v2_folder_, kSubtreeControlFilename);
+  cgroup_v2_app_folder_ = ray::JoinPaths(cgroup_v2_folder_, "ray_application");
+  cgroup_v2_default_app_folder_ = ray::JoinPaths(cgroup_v2_app_folder_, "default");
   cgroup_v2_default_app_proc_filepath_ =
-      absl::StrFormat("%s/%s", cgroup_v2_default_app_folder_, kRootCgroupProcsFilename);
-  cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
+      ray::JoinPaths(cgroup_v2_default_app_folder_, kRootCgroupProcsFilename);
+  cgroup_v2_internal_folder_ = ray::JoinPaths(cgroup_v2_folder_, "internal");
   cgroup_v2_internal_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_internal_folder_, kProcFilename);
   const std::string cgroup_v2_app_subtree_control =
