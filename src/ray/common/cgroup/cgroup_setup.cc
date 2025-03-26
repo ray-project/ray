@@ -81,7 +81,6 @@ namespace {
   __RAY_SCHECK_OK_CGROUP(expr, RAY_UNIQUE_VARIABLE(cgroup_op))
 #endif
 
-// Move all pids under [from] to [to].
 Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   std::ifstream in_file(from.data());
   RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << to;
@@ -122,8 +121,9 @@ StatusOr<bool> IsRootCgroup(const std::string &directory) {
       absl::StrFormat("%s/%s", directory, kCgroupTypeFilename);
   std::error_code err_code;
   bool exists = std::filesystem::exists(cgroup_type_filepath, err_code);
-  RAY_SCHECK_OK_CGROUP(err_code) << "Fails to check file " << cgroup_type_filepath
-                                 << " existense because " << err_code.message();
+  RAY_SCHECK_OK_CGROUP(err_code.value() == 0)
+      << "Fails to check file " << cgroup_type_filepath << " existense because "
+      << err_code.message();
   return exists;
 }
 
@@ -242,15 +242,15 @@ Status CgroupSetup::CleanupCgroups() {
   std::error_code err_code;
   for (const auto &dentry :
        std::filesystem::directory_iterator(cgroup_v2_app_folder_, err_code)) {
-    RAY_SCHECK_OK_CGROUP(err_code)
+    RAY_SCHECK_OK_CGROUP(err_code.value() == 0)
         << "Fails to iterate through directory " << cgroup_v2_app_folder_ << " because "
         << err_code.message();
     if (!dentry.is_directory()) {
       continue;
     }
     RAY_SCHECK_OK_CGROUP(std::filesystem::remove(dentry, err_code))
-        << "Failed to delete raylet application cgroup folder " << dentry << " because "
-        << err_code.message();
+        << "Failed to delete raylet application cgroup folder " << dentry.path().string()
+        << " because " << err_code.message();
   }
 
   RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_app_folder_, err_code))
