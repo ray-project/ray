@@ -77,11 +77,10 @@ def test_parse_pg_formatted_resources():
 
 
 def test_parse_node_labels_from_string():
-    # Empty/invalid label argument passed
+    # Empty label argument passed
     labels_string = ""
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_string(labels_string, cli_logger, cf)
-    assert "is not a valid string of key-value pairs" in str(e)
+    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    assert labels_dict == {}
 
     # Valid label key with empty value
     labels_string = "region="
@@ -103,9 +102,8 @@ def test_parse_node_labels_from_string():
 def test_parse_node_labels_from_json():
     # Empty/invalid json
     labels_json = ""
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    assert labels_dict == {}
 
     # Valid label key with empty value
     labels_json = '{"ray.io/accelerator-type": ""}'

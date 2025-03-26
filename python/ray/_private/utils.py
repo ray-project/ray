@@ -1816,6 +1816,8 @@ def parse_node_labels_string(
 ) -> Dict[str, str]:
     try:
         labels = {}
+        if labels_str == "":
+            return labels
         # Labels argument should consist of a string of key=value pairs
         # separated by commas. Labels follow Kubernetes label syntax.
         label_pairs = labels_str.split(",")
