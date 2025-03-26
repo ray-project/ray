@@ -211,6 +211,47 @@ def test_make_async_gen_deadlock():
             print(i)
 
 
+def test_make_async_gen_non_reentrant():
+    """This test is asserting that make_async_gen iterating over the
+    sequence as a whole and not re-entering provided transformation,
+    as this might have substantial performance impact in extreme case
+    of re-entering for every element of the sequence
+    """
+
+    logs = []
+    finished = False
+
+    def _transform_a(it):
+        nonlocal finished
+
+        assert not finished
+
+        logs.append(">>> Entering A")
+
+        for i in it:
+            logs.append(f">>> B: {i}")
+            yield i
+
+        logs.append(">>> Leaving A")
+
+        # Once this transform finishes
+        finished = True
+
+    def _transform_b(it):
+        logs.append(">>> Entering B")
+
+        for i in _transform_a(it):
+            logs.append(f">>> B: {i}")
+            yield i
+
+        logs.append(">>> Leaving B")
+
+    for _ in make_async_gen(iter(range(3)), _transform_b, ):
+        pass
+
+    assert [] == logs
+
+
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
 def test_make_async_gen(buffer_size: int):
     """Tests that make_async_gen overlaps compute."""
