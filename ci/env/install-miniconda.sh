@@ -85,6 +85,10 @@ install_miniconda() {
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      if [[ "${PYTHON-}" == "3.13" ]]; then
+        # Use free threading Python build
+        "${WORKSPACE_DIR}"/ci/suppress_output conda install --override-channels -c conda-forge python-freethreading
+      fi
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
