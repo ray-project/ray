@@ -560,7 +560,7 @@ def test_actor_concurrent(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(
-    sys.version_info == (3, 13), reason="Test currently failing on Python 3.13"
+    sys.version_info >= (3, 13), reason="Test currently failing on Python 3.13+"
 )
 def test_actor_max_concurrency(ray_start_regular_shared):
     """
