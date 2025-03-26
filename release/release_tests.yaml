@@ -4166,3 +4166,22 @@
     script: >
       python run_vision_language_model.py
       --tp-size 1 --concurrency 1 --vllm-use-v1
+
+- name: llm_batch_vllm_v1_pixtral_tp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_vision_language_model.py
+      --model-source mistral-community/pixtral-12b
+      --tp-size 2 --concurrency 2 --vllm-use-v1
