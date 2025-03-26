@@ -115,7 +115,7 @@ py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/test_snowflake.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "needs_credentials"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
