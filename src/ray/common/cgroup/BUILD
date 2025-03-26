@@ -45,6 +45,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "cgroup_manager",
+    srcs = ["cgroup_manager.cc"],
+    hdrs = ["cgroup_manager.h"],
+    deps = [
+        ":base_cgroup_setup",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)
+
+ray_cc_library(
     name = "fake_cgroup_setup",
     testonly = True,
     srcs = ["fake_cgroup_setup.cc"],

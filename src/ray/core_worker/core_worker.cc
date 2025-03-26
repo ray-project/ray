@@ -32,6 +32,8 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
@@ -379,6 +381,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  // Place current application process into the corresponding cgroup right after process
+  // starts.
+  AppProcCgroupMetadata app_cgroup_metadata;
+  app_cgroup_metadata.pid = pid_;
+  app_cgroup_metadata.max_memory = 0;  // which means no limitation nor reservation
+  GetCgroupSetup().ApplyCgroupContext(app_cgroup_metadata);
+
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options_.debug_source;
 
   // Notify that core worker is initialized.
