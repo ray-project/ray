@@ -588,6 +588,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
+  /// To register lazy subscribe callback (this should always be called before use)
+  void RegisterNodeSubscriber(std::function<void()> subscribe_to_node_changes);
+
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {
@@ -1097,6 +1100,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  // To lazily subscribe to node changes once this worker owns an object
+  std::function<void()> subscribe_to_node_changes_;
 };
 
 }  // namespace core

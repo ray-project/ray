@@ -1705,7 +1705,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
-  // Fallback for when GetAsync cannot directly get the requested object.
+  /// Fallback for when GetAsync cannot directly get the requested object.
   void PlasmaCallback(const SetResultCallback &success,
                       const std::shared_ptr<RayObject> &ray_object,
                       ObjectID object_id,
@@ -1931,6 +1931,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  // To track lazily subscribing to node changes if reference_counter_ or
+  // lease_request_rate_limiter_ need to.
+  std::atomic_bool subscribed_to_node_changes_ = false;
 };
 
 // Lease request rate-limiter based on cluster node size.

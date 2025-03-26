@@ -31,6 +31,10 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
+  // To lazily subscribe to node changes once this worker actually submits a task.
+  RAY_CHECK(subscribe_to_node_changes_ != nullptr);
+  subscribe_to_node_changes_();
+
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
@@ -819,6 +823,11 @@ Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
   request.set_remote_object_id(object_id.Binary());
   client->RemoteCancelTask(request, nullptr);
   return Status::OK();
+}
+
+void NormalTaskSubmitter::RegisterNodeSubscriber(
+    std::function<void()> subscribe_to_node_changes) {
+  subscribe_to_node_changes_ = std::move(subscribe_to_node_changes);
 }
 
 }  // namespace core

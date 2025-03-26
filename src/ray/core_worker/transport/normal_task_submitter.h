@@ -147,6 +147,9 @@ class NormalTaskSubmitter {
   /// we avoid double counting backlogs in autoscaler.
   void ReportWorkerBacklog();
 
+  // To register the lazy subscribe function (should always be called before use)
+  void RegisterNodeSubscriber(std::function<void()> subscribe_to_node_changes);
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -282,6 +285,9 @@ class NormalTaskSubmitter {
 
   /// The ID of the job.
   const JobID job_id_;
+
+  // To lazily subscribe to node changes.
+  std::function<void()> subscribe_to_node_changes_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
