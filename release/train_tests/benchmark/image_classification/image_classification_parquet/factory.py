@@ -117,6 +117,7 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         )  # Initialize S3ParquetReader to set up _s3_client
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+        self._cached_datasets = None
 
     def calculate_rows_per_worker(
         self, total_rows: Optional[int], num_workers: int
@@ -145,6 +146,9 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         Returns:
             A dictionary containing the train and validation datasets.
         """
+        if self._cached_datasets is not None:
+            return self._cached_datasets
+
         # Calculate row limits per worker for validation
         dataloader_config = self.get_dataloader_config()
         num_workers = max(1, dataloader_config.num_torch_workers)
@@ -210,7 +214,8 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             }
         )
 
-        return {"train": train_ds, "val": val_ds}
+        self._cached_datasets = {"train": train_ds, "val": val_ds}
+        return self._cached_datasets
 
     def create_batch_iterator(
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
