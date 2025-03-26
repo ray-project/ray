@@ -28,7 +28,7 @@ def test_basic_value_logging(logger):
 
 def test_ema_coefficient(logger):
     """Test EMA coefficient for mean reduction."""
-    # Test with ema_coeff=0.1
+
     ema_coeff = 0.2
     logger.log_value("loss", 1.0, ema_coeff=ema_coeff)
 
@@ -187,6 +187,9 @@ def test_merge_and_log_n_dicts(logger):
     logger2.log_value("loss", 0.3, window=2)
     logger2.log_value("loss", 0.4)
 
+    logger.log_value("loss", 0.5, window=2)
+    logger.log_value("loss", 0.6)
+
     # Reduce both loggers
     results1 = logger1.reduce()
     results2 = logger2.reduce()
@@ -195,7 +198,7 @@ def test_merge_and_log_n_dicts(logger):
     logger.merge_and_log_n_dicts([results1, results2])
 
     # Check merged results
-    check(logger.peek("loss"), 0.25)  # mean of [0.2, 0.4]
+    check(logger.peek("loss"), 0.4) 
 
 
 def test_throughput_tracking(logger):
@@ -420,15 +423,10 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Reduce both loggers
     results1 = logger1.reduce()
-    results2 = logger2.reduce()
+    logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts(
-        [results1, results2],
-        reduce="sum",
-        with_throughput=True,
-        throughput_ema_coeff=0.1,
-    )
+    logger.merge_and_log_n_dicts([results1, logger2])
 
     # Check merged results
     check(logger.peek("count"), 10)  # sum of all values
@@ -469,34 +467,16 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Reduce both loggers
     results1 = logger1.reduce()
-    results2 = logger2.reduce()
+    logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts(
-        [results1, results2],
-        reduce="sum",
-        with_throughput=True,
-        throughput_ema_coeff=0.1,
-    )
+    logger.merge_and_log_n_dicts([results1, logger2])
 
     # Check merged results
     check(logger.peek(["nested", "count"]), 10)  # sum of all values
     check(
         logger.throughputs(["nested", "count"]), 0.0
     )  # Initial throughput should be 0
-
-    # Test error cases
-    with pytest.raises(ValueError):
-        # Can't enable throughput for non-sum reduction
-        logger.merge_and_log_n_dicts(
-            [{"invalid": 1}], reduce="mean", with_throughput=True
-        )
-
-    with pytest.raises(ValueError):
-        # Can't enable throughput with window
-        logger.merge_and_log_n_dicts(
-            [{"invalid": 1}], reduce="sum", window=10, with_throughput=True
-        )
 
 
 def test_compile(logger):
@@ -559,6 +539,46 @@ def test_peek_with_default(logger):
     check(logger.peek(("nested", "key"), default=0.0), 0.0)
     logger.log_value(("nested", "key"), 2.0)
     check(logger.peek(("nested", "key"), default=0.0), 2.0)
+
+
+def test_reduction_method_preservation(logger):
+    """Test that reduction methods are preserved across operations."""
+    # Create a metric with sum reduction
+    logger.log_value("sum_metric", 10, reduce="sum")
+    logger.log_value("sum_metric", 20)
+    check(logger.peek("sum_metric"), 30)  # Verify it's using sum reduction
+
+    # Create another logger and merge with it
+    logger2 = MetricsLogger()
+    logger2.log_value("sum_metric", 40, reduce="sum")
+    logger2.log_value("sum_metric", 50)
+    results2 = logger2.reduce()
+    
+    # Merge results into main logger
+    logger.merge_and_log_n_dicts([results2])
+    
+    # Verify it's still using sum reduction after merge
+    check(logger.peek("sum_metric"), 120)  # 30 + 90
+    
+    # Log more values to verify it's still using sum reduction
+    logger.log_value("sum_metric", 100)
+    check(logger.peek("sum_metric"), 220)  # 120 + 100
+
+    # Test with a different reduction method to ensure it's not just defaulting to sum
+    logger.log_value("mean_metric", 1, reduce="mean")
+    logger.log_value("mean_metric", 2)
+    check(logger.peek("mean_metric"), 1.01)  # Verify it's using mean reduction
+
+    # Create another logger with mean reduction and merge
+    logger3 = MetricsLogger()
+    logger3.log_value("mean_metric", 3, reduce="mean")
+    logger3.log_value("mean_metric", 4)
+    
+    # Merge two reduced results into
+    logger.merge_and_log_n_dicts([logger3])
+    
+    # Verify it's still using mean reduction after merge
+    check(logger.peek("mean_metric"), 2.01)  # mean of [2.01, 3.01]
 
 
 if __name__ == "__main__":

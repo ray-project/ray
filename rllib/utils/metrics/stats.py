@@ -143,26 +143,25 @@ class Stats:
 
     def __init__(
         self,
-        init_value: Optional[Any] = None,
-        reduce: Optional[str] = "mean",
-        window: Optional[Union[int, float]] = None,
-        ema_coeff: Optional[float] = None,
-        clear_on_reduce: bool = False,
-        throughput: Union[bool, float] = False,
-        throughput_ema_coeff: Optional[float] = 0.05,
+        init_value,
+        reduce,
+        window,
+        ema_coeff,
+        clear_on_reduce,
+        throughput,
+        throughput_ema_coeff,
     ):
         """Initializes a Stats instance.
 
         Args:
-            init_value: Optional initial value to be placed into `self.values`. If None,
-                `self.values` will start empty.
+            init_value: Initial value to be placed into `self.values`.
             reduce: The name of the reduce method to be used. Allowed are "mean", "min",
                 "max", and "sum". Use None to apply no reduction method (leave
                 `self.values` as-is when reducing, except for shortening it to
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
-            window: An optional window size to reduce over.
+            window: Window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
                 is shortened to hold at most `window` items (the most recent ones).
@@ -174,7 +173,7 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            ema_coeff: An optional EMA coefficient to use if reduce is "mean"
+            ema_coeff: EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
                 `reduce` must be "mean".
@@ -197,7 +196,7 @@ class Stats:
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
-                Only used if throughput=True. Defaults to 0.05.
+                Only used if throughput=True.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -258,6 +257,10 @@ class Stats:
                 else 0.0,
                 reduce="mean",
                 ema_coeff=throughput_ema_coeff,
+                window=None,
+                clear_on_reduce=False,
+                throughput=False,
+                throughput_ema_coeff=None,
             )
             if init_value is not None:
                 self._last_push_time = time.perf_counter()
@@ -410,6 +413,11 @@ class Stats:
         return reduced
 
     def merge_on_time_axis(self, other: "Stats") -> None:
+        """Merges another Stats object's values into this one along the time axis.
+
+        Args:
+            other: The other Stats object to merge values from.
+        """
         # Make sure `others` have same reduction settings.
         assert self._reduce_method == other._reduce_method, (
             self._reduce_method,
@@ -715,6 +723,8 @@ class Stats:
                 window=state["window"],
                 ema_coeff=state["ema_coeff"],
                 clear_on_reduce=state["clear_on_reduce"],
+                throughput=False,
+                throughput_ema_coeff=None,
             )
         stats._reduce_history = deque(
             state["_reduce_history"], maxlen=stats._reduce_history.maxlen
@@ -726,7 +736,7 @@ class Stats:
     @staticmethod
     def similar_to(
         other: "Stats",
-        init_value: Optional[Any] = None,
+        init_value: Any,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 
@@ -736,8 +746,7 @@ class Stats:
 
         Args:
             other: The other Stats object to return a similar new Stats equivalent for.
-            init_value: The initial value to already push into the returned Stats. If
-                None (default), the returned Stats object will have no values in it.
+            init_value: The initial value to already push into the returned Stats.
 
         Returns:
             A new Stats object similar to `other`, with the exact same settings and
