@@ -214,5 +214,4 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
-
         return self.create_batch_iterator(dataloader, device)
