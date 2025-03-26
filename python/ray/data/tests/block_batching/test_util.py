@@ -221,35 +221,35 @@ def test_make_async_gen_non_reentrant():
     logs = []
     finished = False
 
-    def _transform_a(it):
+    def _transform_inner(it):
         nonlocal finished
 
         assert not finished
 
-        logs.append(">>> Entering A")
+        logs.append(">>> Entering Inner")
 
         for i in it:
-            logs.append(f">>> B: {i}")
+            logs.append(f">>> Inner: {i}")
             yield i
 
-        logs.append(">>> Leaving A")
+        logs.append(">>> Leaving Inner")
 
         # Once this transform finishes
         finished = True
 
     def _transform_b(it):
-        logs.append(">>> Entering B")
+        logs.append(">>> Entering Outer")
 
-        for i in _transform_a(it):
-            logs.append(f">>> B: {i}")
+        for i in _transform_inner(it):
+            logs.append(f">>> Outer: {i}")
             yield i
 
-        logs.append(">>> Leaving B")
+        logs.append(">>> Leaving Outer")
 
     for _ in make_async_gen(iter(range(3)), _transform_b, ):
         pass
 
-    assert [] == logs
+    assert ['>>> Entering Outer', '>>> Entering Inner', '>>> Inner: 0', '>>> Outer: 0', '>>> Inner: 1', '>>> Outer: 1', '>>> Inner: 2', '>>> Outer: 2', '>>> Leaving Inner', '>>> Leaving Outer'] == logs
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
