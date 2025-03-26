@@ -197,6 +197,11 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
 
         # Log important loss stats.
+        self.metrics.log_value(
+            key=POLICY_LOSS_KEY,
+            value=mean_pi_loss.detach().cpu(),
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
+        )
         #self.metrics.log_dict(
         #    {
         #        POLICY_LOSS_KEY: mean_pi_loss.detach().cpu(),
