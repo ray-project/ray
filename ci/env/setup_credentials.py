@@ -30,6 +30,7 @@ SERVICES = {
     "snowflake_user": "SNOWFLAKE_USER",
     "snowflake_password": "SNOWFLAKE_PASSWORD",
     "snowflake_account": "SNOWFLAKE_ACCOUNT",
+    "snowflake_private_key": "SNOWFLAKE_PRIVATE_KEY",
 }
 
 

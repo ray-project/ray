@@ -4,6 +4,7 @@ import string
 from decimal import Decimal
 from typing import Any, Dict, List, Tuple
 from unittest.mock import MagicMock, patch
+import base64
 
 import pytest
 from snowflake.connector import connect
@@ -16,12 +17,15 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture
 def connection_parameters():
+    private_key_b64 = os.getenv("SNOWFLAKE_PRIVATE_KEY")
+    private_key_bytes = base64.b64decode(private_key_b64)
     parameters = {
         "user": os.getenv("SNOWFLAKE_USER"),
         "account": os.getenv("SNOWFLAKE_ACCOUNT"),
         "password": os.getenv("SNOWFLAKE_PASSWORD"),
         "database": os.getenv("SNOWFLAKE_DATABASE"),
         "schema": os.getenv("SNOWFLAKE_SCHEMA"),
+        "private_key": private_key_bytes,
     }
 
     yield parameters
