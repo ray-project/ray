@@ -1143,15 +1143,10 @@ def start_log_monitor(
     if stderr_filepath:
         command.append(f"--stderr-filepath={stderr_filepath}")
 
-    with open("/tmp/debug_log_monitor.log", "a") as file:
-        file.write(f"in controller, log filename = {logs_dir}/log_monitor.log\n")
-        file.write(f"in controller, stdout redirected fname = {stdout_filepath}\n")
-        file.write(f"in controller, stderr redirected fname = {stderr_filepath}\n")
-
     stdout_file = None
     stderr_file = None
 
-    if stdout_filepath is not None and stderr_filepath is not None:
+    if stdout_filepath is None and stderr_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -1160,11 +1155,6 @@ def start_log_monitor(
             component=ray_constants.PROCESS_TYPE_LOG_MONITOR
         )
         command.append(f"--logging-format={logging_format}")
-
-    if stdout_filepath:
-        command.append(f"--stdout_filepath={stdout_filepath}")
-    if stderr_filepath:
-        command.append(f"--stderr_filepath={stderr_filepath}")
 
     stdout_file = None
     if stdout_filepath:

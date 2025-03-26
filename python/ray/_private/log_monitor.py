@@ -492,9 +492,6 @@ def is_proc_alive(pid):
 
 
 if __name__ == "__main__":
-    with open("/tmp/debug_log_monitor.log", "a") as file:
-        file.write("into log monitor main\n")
-
     parser = argparse.ArgumentParser(
         description=("Parse GCS server address for the log monitor to connect to.")
     )
@@ -551,30 +548,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--stdout-filepath",
-        required=True,
+        required=False,
+        default="",
         type=str,
         help="The filepath to dump log monitor stdout.",
     )
     parser.add_argument(
         "--stderr-filepath",
-        required=True,
+        required=False,
+        default="",
         type=str,
         help="The filepath to dump log monitor stderr.",
     )
 
-    with open("/tmp/debug_log_monitor.log", "a") as file:
-        file.write("before parser\n")
-
-    try:
-        args = parser.parse_args()
-    except Exception as e:
-        with open("/tmp/debug_log_monitor.log", "a") as file:
-            file.write(f"parse args failure {str(e)}\n")
-
-    with open("/tmp/debug_log_monitor.log", "a") as file:
-        file.write(f"log filename = {args.logging_filename}\n")
-        file.write(f"stdout redirected fname = {args.stdout_filepath}\n")
-        file.write(f"stderr redirected fname = {args.stderr_filepath}\n")
+    args = parser.parse_args()
 
     # Disable log rotation for windows platform.
     logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
