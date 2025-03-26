@@ -1270,6 +1270,12 @@ py_test(
     name = "test_daft",
     size = "small",
     srcs = ["tests/test_daft.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
