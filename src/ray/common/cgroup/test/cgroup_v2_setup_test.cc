@@ -126,11 +126,11 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
   AppProcCgroupMetadata app_metadata;
   app_metadata.pid = pid;
   app_metadata.max_memory = 0;  // No limit specified.
-  RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
+  auto handle = cgroup_setup.ApplyCgroupContext(app_metadata);
   AssertPidInCgroup(pid, app_cgroup_proc_filepath_);
 
   // Kill testing process.
-  RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
+  RAY_ASSERT_OK(KillAllProc(app_cgroup_folder_));
 }
 
 #endif

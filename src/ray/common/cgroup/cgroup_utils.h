@@ -22,7 +22,8 @@
 
 namespace ray {
 
-// Kill all processes under the given [cgroup_folder].
+// Kill all processes under the given [cgroup_folder] and wait for all processes
+// termination synchronously.
 //
 // \param cgroup_folder: cgroup folder which contains processes to kill.
 Status KillAllProc(const std::string &cgroup_folder);

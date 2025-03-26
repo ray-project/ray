@@ -194,6 +194,8 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       absl::StrFormat("%s/%s", cgroup_v2_folder_, kSubtreeControlFilename);
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_default_app_folder_ = absl::StrFormat("%s/default", cgroup_v2_app_folder_);
+  cgroup_v2_default_app_proc_filepath_ =
+      absl::StrFormat("%s/%s", cgroup_v2_default_app_folder_, kRootCgroupProcsFilename);
   cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   cgroup_v2_internal_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_internal_folder_, kProcFilename);
@@ -279,12 +281,8 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
     const AppProcCgroupMetadata &ctx) {
   RAY_CHECK_EQ(ctx.max_memory, 0) << "Ray doesn't support per-task resource constraint.";
 
-  const std::string default_cgroup_folder =
-      ray::JoinPaths(cgroup_v2_app_folder_, "default");
-  const std::string default_cgroup_proc_file =
-      ray::JoinPaths(default_cgroup_folder, kRootCgroupProcsFilename);
-
-  std::ofstream out_file(default_cgroup_proc_file, std::ios::app | std::ios::out);
+  std::ofstream out_file(cgroup_v2_default_app_proc_filepath_,
+                         std::ios::app | std::ios::out);
   out_file << ctx.pid;
   out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "

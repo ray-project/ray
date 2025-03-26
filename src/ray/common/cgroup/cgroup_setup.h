@@ -105,6 +105,8 @@ class CgroupSetup : public BaseCgroupSetup {
   [[maybe_unused]] std::string cgroup_v2_app_folder_;
   // Folder for cgroup v2 default application cgroup of the current raylet instance.
   [[maybe_unused]] std::string cgroup_v2_default_app_folder_;
+  // Process id file for default application cgroup.
+  [[maybe_unused]] std::string cgroup_v2_default_app_proc_filepath_;
   // Folder for cgroup v2 internal processes of the current raylet instance.
   [[maybe_unused]] std::string cgroup_v2_internal_folder_;
   // File path for cgroup v2 internal process pids.
