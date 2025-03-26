@@ -576,6 +576,12 @@ if __name__ == "__main__":
         max_bytes=logging_rotation_bytes,
         backup_count=logging_rotation_backup_count,
     )
+
+
+    with open("/tmp/debug-monitor-log.debug", "a+") as file:
+        file.write(f"logging params = {logging_params}\n")
+        file.flush()
+
     logger = setup_component_logger(**logging_params)
 
     # Setup stdout/stderr redirect files if redirection enabled

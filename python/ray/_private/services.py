@@ -1143,9 +1143,6 @@ def start_log_monitor(
     if stderr_filepath:
         command.append(f"--stderr-filepath={stderr_filepath}")
 
-    stdout_file = None
-    stderr_file = None
-
     if stdout_filepath is None and stderr_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
@@ -1159,6 +1156,8 @@ def start_log_monitor(
     stdout_file = None
     if stdout_filepath:
         stdout_file = open(os.devnull, "w")
+    
+    stderr_file = None
     if stderr_filepath:
         stderr_file = open(os.devnull, "w")
 
