@@ -979,14 +979,14 @@ py_test(
     size = "small",
     srcs = ["vsphere/test_cluster_operator.py"],
     tags = [
-      "exclusive",
-      "no_windows",
-      "small_size_python_tests",
-      "team:serverless",
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
     ],
     deps = [
-      "//:ray_lib",
-      ":conftest"
+        ":conftest",
+        "//:ray_lib",
     ],
 )
 
@@ -997,14 +997,14 @@ py_test(
     size = "small",
     srcs = ["vsphere/test_vmray_node_provider.py"],
     tags = [
-      "exclusive",
-      "small_size_python_tests",
-      "no_windows",
-      "team:serverless"
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
     ],
     deps = [
-      "//:ray_lib",
-      ":conftest"
+        ":conftest",
+        "//:ray_lib",
     ],
 )
 
