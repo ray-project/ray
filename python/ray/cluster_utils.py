@@ -224,6 +224,7 @@ class Cluster:
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
+        ray_params.update_if_absent(accelerator_cpu_mask="")
         with disable_client_hook():
             if self.head_node is None:
                 node = ray._private.node.Node(
