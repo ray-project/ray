@@ -123,6 +123,7 @@ async def _main(
     run_throughput: bool,
     run_streaming: bool,
 ):
+    print(run_http, run_grpc, run_handle, run_latency, run_throughput, run_streaming)
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
     payload_10mb = generate_payload(10000000)
@@ -322,22 +323,22 @@ async def _main(
             serve.shutdown()
 
             # Microbenchmark: Handle throughput at max_ongoing_requests=100
-            h: DeploymentHandle = serve.run(
-                Benchmarker.options(max_ongoing_requests=100).bind(
-                    Noop.options(max_ongoing_requests=100).bind()
-                )
-            )
-            mean, std, _ = await h.run_throughput_benchmark.remote(
-                batch_size=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
-            )
-            perf_metrics.extend(
-                convert_throughput_to_perf_metrics(
-                    "handle_100_max_ongoing_requests", mean, std
-                )
-            )
-            serve.shutdown()
+            # h: DeploymentHandle = serve.run(
+            #    Benchmarker.options(max_ongoing_requests=100).bind(
+            #        Noop.options(max_ongoing_requests=100).bind()
+            #    )
+            # )
+            # mean, std, _ = await h.run_throughput_benchmark.remote(
+            #    batch_size=BATCH_SIZE,
+            #    num_trials=NUM_TRIALS,
+            #    trial_runtime=TRIAL_RUNTIME_S,
+            # )
+            # perf_metrics.extend(
+            #    convert_throughput_to_perf_metrics(
+            #        "handle_100_max_ongoing_requests", mean, std
+            #    )
+            # )
+            # serve.shutdown()
 
         if run_streaming:
             h: DeploymentHandle = serve.run(
