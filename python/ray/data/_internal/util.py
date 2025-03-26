@@ -1,13 +1,9 @@
-import heapq
 import importlib
 import logging
 import os
 import pathlib
 import random
 import sys
-from concurrent.futures import Future
-from concurrent.futures.thread import ThreadPoolExecutor
-
 import psutil
 import platform
 import threading
@@ -15,7 +11,6 @@ import time
 import functools
 import urllib.parse
 from queue import Empty, Full, Queue
-
 from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
@@ -915,321 +910,186 @@ class _InterruptibleQueue(Queue):
             except Full:
                 pass
 
-class _MinHeap:
-    def __init__(self, items: List[Any], priority: Callable[[Any], int]):
-        self._priority_fn = priority
-        self._heap = [(self._priority_fn(item), idx, item) for idx, item in enumerate(items)]
-
-        heapq.heapify(self._heap)
-
-    def pop_min(self, item: Any):
-        size, idx, item = heapq.heappop(self._heap)
-        return item
-
-    def push(self, item: Any):
-        # Push the updated queue back into the heap.
-        heapq.heappush(self._heap, (self._priority_fn, idx, item))
-
-    def get_queues(self):
-        # Returns the list of queues.
-        return self.queues
-
 
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
     num_workers: int = 1,
-    queue_buffer_size: int = 0,
+    queue_buffer_size: int = 2,
 ) -> Generator[U, None, None]:
-    """Returns a generator (iterator) mapping items from the provided iterator
-    applying provided ``fn`` in parallel (using a thread-pool).
-
-    Even though the mapping is performed in parallel across N
-    threads, this method provides crucial guarantee of preserving the
-    ordering of the source iterator, ie that
-
-        iterator = [A1, A2, ... An]
-        mapped iterator = [map(A1), map(A2), ..., map(An)]
-
-    Preserving ordering is a crucial aspect allowing to eliminate non-determinism,
-    upon retrying the task using ``make_async_gen``.
-
-    Args:
-        base_iterator: Iterator yielding elements to a mapping transformation
-        fn: Transformation to apply to each element
-        num_workers: Max number of threads to be used in the threadpool (defaults to 1)
-        queue_buffer_size: Number of objects to be buffered in each worker's queue
-                           (defaults to 0). Note that buffer of 0 entails that each
-                           worker could have at most 0 tasks in its output buffer, ie
-                           new task could be added to the queue only when previous one
-                           completes.
-    Returns:
-        An generator (iterator) of the elements corresponding to the source
-        elements mapped by provided transformation (with the ordering of the origina \
-        iterator being preserved)
-    """
 
     gen_id = random.randint(0, 2**31 - 1)
 
-    # To apply transformations to elements in parallel while guaranteeing
-    # deterministic ordering, following protocol is implemented:
-    #
-    #   - Filling worker traverses input iterator and launches tasks
-    #     mapping individual elements in the ``ThreadPoolExecutor`` (max_workers set to
-    #     ``num_workers``)
-    #   - Futures for corresponding tasks added to the queue (capped at
-    #     ``queue_buffer_size + 1`` per worker)
-    #   - Generator (returned from this method) traverses the queue, retrieving
-    #     resulting sequence (from transformation) and yields from it
-    #
+    """Returns a generator (iterator) mapping items from the
+    provided iterator applying provided transformation in parallel (using a
+    thread-pool).
 
-    tpe_worker_name_prefix = f"async_gen_tpe_worker-{gen_id}"
+    NOTE: Even though the mapping is performed in parallel across N
+          threads, this method provides crucial guarantee of preserving the
+          ordering of the source iterator, ie that
 
+            iterator = [A1, A2, ... An]
+            mapped iterator = [map(A1), map(A2), ..., map(An)]
+
+          Preserving ordering is crucial to eliminate non-determinism in producing
+          content of the blocks.
+
+    Args:
+        base_iterator: Iterator yielding elements to map
+        fn: Transformation to apply to each element
+        num_workers: The number of threads to use in the threadpool (defaults to 1)
+        buffer_size: Number of objects to be buffered in its input/output
+                     queues (per queue; defaults to 2). Total number of objects held
+                     in memory could be calculated as:
+
+                        num_workers * buffer_size * 2 (input and output)
+
+    Returns:
+        An generator (iterator) of the elements corresponding to the source
+        elements mapped by provided transformation (while *preserving the ordering*)
+    """
+
+    if num_workers < 1:
+        raise ValueError("Size of threadpool must be at least 1.")
+
+    # To apply transformations to elements in parallel *and* preserve the ordering
+    # following invariants are established:
+    #   - Every worker is handled by standalone thread
+    #   - Every worker is assigned an input and an output queue
+    #
+    # And following protocol is implemented:
+    #   - Filling worker traverses input iterator round-robin'ing elements across
+    #     the input queues (in order!)
+    #   - Transforming workers traverse respective input queue in-order: de-queueing
+    #     element, applying transformation and enqueuing the result into the output
+    #     queue
+    #   - Generator (returned from this method) traverses output queues (in the same
+    #     order as input queues) dequeues 1 mapped element at a time from each output
+    #     queue and yields it
+    #
     # Signal handler used to interrupt workers when terminating
     interrupted_event = threading.Event()
-    # Input queues for individual workers
+
     input_queues = [
-        _InterruptibleQueue(
-            max_size=queue_buffer_size,
-            interrupted_event=interrupted_event,
-        ) for _ in range(num_workers)
+        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        for _ in range(num_workers)
+    ]
+    output_queues = [
+        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        for _ in range(num_workers)
     ]
 
-    def _run_submitting_worker():
-        def _pick_smallest_leftmost_queue(qs: List[Queue]):
-            # TODO replace w/ heap
-            min = float("+inf")
-            smallest = None
-            idx = -1
-            for i, q in enumerate(qs):
-                if q.qsize() < min:
-                    min = q.qsize()
-                    smallest = q
-                    idx = i
-
-            print(f">>> Smallest: {idx}")
-
-            return smallest
-
+    # Filling worker
+    def _run_filling_worker():
         try:
-            for i, item in enumerate(base_iterator):
-                print(">>> Lengths: ", [q.qsize() for q in input_queues])
-                # TODO always put into the smallest queue
-                smallest_queue = _pick_smallest_leftmost_queue(input_queues)
-                smallest_queue.put(item)
+            # First, round-robin elements from the iterator into
+            # corresponding input queues (one by one)
+            for idx, item in enumerate(base_iterator):
+                input_queues[idx % num_workers].put(item)
 
-            # Append sentinel to signal EOL
-            for i in range(num_workers):
-                input_queues[i].put(SENTINEL)
+            # Enqueue sentinel objects to signal end of the line
+            for idx in range(num_workers):
+                input_queues[idx].put(SENTINEL)
 
         except InterruptedError:
             pass
 
         except Exception as e:
-            logger.error("Encountered exception submitting tasks", exc_info=e)
-            # TODO elaborate
-            for i in range(num_workers):
-                input_queues[i].put(e)
+            logger.warning("Caught exception in filling worker!", exc_info=e)
+            # In case of filling worker encountering an exception we have to propagate
+            # it back to the (main) iterating thread. To achieve that we're traversing
+            # output queues *backwards* relative to the order of iterator-thread such
+            # that they are more likely to meet w/in a single iteration.
+            for output_queue in reversed(output_queues):
+                output_queue.put(e)
 
-
-
-    def _run_transforming_worker(worker_id):
-        assert worker_id < num_workers
-
+    # Transforming worker
+    def _run_transforming_worker(worker_id: int):
         input_queue = input_queues[worker_id]
+        output_queue = output_queues[worker_id]
 
         try:
-            input_iter = iter(input_queue.get, SENTINEL)
+            # Create iterator draining the queue, until it receives sentinel
+            #
+            # NOTE: `queue.get` is blocking!
+            input_queue_iter = iter(input_queue.get, SENTINEL)
 
-            for item in fn(input_iter):
-                yield item
+            mapped_iter = fn(input_queue_iter)
+            for result in mapped_iter:
+                # Enqueue result of the transformation
+                output_queue.put(result)
+
+            # Enqueue sentinel (to signal that transformations are completed)
+            output_queue.put(SENTINEL)
 
         except InterruptedError:
             pass
 
         except Exception as e:
-            logger.error("Encountered exception in a transforming task", exc_info=e)
-            # TODO elaborate
-            yield e
+            logger.warning("Caught exception in transforming worker!", exc_info=e)
+            # NOTE: In this case we simply enqueue the exception rather than
+            #       interrupting
+            output_queue.put(e)
 
-    with ThreadPoolExecutor(
-        max_workers=num_workers + 1,
-        thread_name_prefix=tpe_worker_name_prefix
-    ) as tpe:
-        submitting_worker_future: Future = tpe.submit(_run_submitting_worker)
-
-        transforming_workers_futures: List[Future] = [
-            tpe.submit(_run_transforming_worker, wid) for wid in range(num_workers)
-        ]
-
-        # Use same thread to yield output results
-        try:
-            # TODO elaborate
-            iters: List[Iterator[Any]] = [
-                fut.result() for fut in transforming_workers_futures
-            ]
-
-            empty_iters_idx = []
-
-            while iters:
-                # Traverse all non-empty iters in order
-                for i in range(len(iters)):
-                    try:
-                        iter_ = iters[i]
-                        res = next(iter_)
-
-                        if isinstance(res, Exception):
-                            raise res
-
-                        yield res
-                    except StopIteration:
-                        empty_iters_idx.append(i)
-
-                # Filter out any empty iterators, reset index of the empty ones
-                if empty_iters_idx:
-                    iters = [iters[i] for i in range(len(iters)) if i not in empty_iters_idx]
-                    empty_iters_idx = []
-
-        finally:
-            # Set flag to interrupt workers (to make sure no dangling
-            # threads holding the objects are left behind)
-            #
-            # NOTE: Interrupted event is set to interrupt the running threads
-            #       that might be blocked otherwise waiting on inputs from respective
-            #       queues. However, even though we're interrupting the threads we can't
-            #       guarantee that threads will be interrupted in time (as this is
-            #       dependent on Python's GC finalizer to close the generator by raising
-            #       `GeneratorExit`) and hence we can't join on either filling or
-            #       transforming workers.
-            interrupted_event.set()
-
-            # TODO remove
-            assert submitting_worker_future.done()
-
-
-def make_async_gen_x(
-    base_iterator: Iterator[T],
-    fn: Callable[[Iterator[T]], Iterator[U]],
-    num_workers: int = 1,
-    queue_buffer_size: int = 0,
-) -> Generator[U, None, None]:
-    """Returns a generator (iterator) mapping items from the provided iterator
-    applying provided ``fn`` in parallel (using a thread-pool).
-
-    Even though the mapping is performed in parallel across N
-    threads, this method provides crucial guarantee of preserving the
-    ordering of the source iterator, ie that
-
-        iterator = [A1, A2, ... An]
-        mapped iterator = [map(A1), map(A2), ..., map(An)]
-
-    Preserving ordering is a crucial aspect allowing to eliminate non-determinism,
-    upon retrying the task using ``make_async_gen``.
-
-    Args:
-        base_iterator: Iterator yielding elements to a mapping transformation
-        fn: Transformation to apply to each element
-        num_workers: Max number of threads to be used in the threadpool (defaults to 1)
-        queue_buffer_size: Number of objects to be buffered in each worker's queue
-                           (defaults to 0). Note that buffer of 0 entails that each
-                           worker could have at most 0 tasks in its output buffer, ie
-                           new task could be added to the queue only when previous one
-                           completes.
-    Returns:
-        An generator (iterator) of the elements corresponding to the source
-        elements mapped by provided transformation (with the ordering of the origina \
-        iterator being preserved)
-    """
-
-    gen_id = random.randint(0, 2**31 - 1)
-
-    # To apply transformations to elements in parallel while guaranteeing
-    # deterministic ordering, following protocol is implemented:
-    #
-    #   - Filling worker traverses input iterator and launches tasks
-    #     mapping individual elements in the ``ThreadPoolExecutor`` (max_workers set to
-    #     ``num_workers``)
-    #   - Futures for corresponding tasks added to the queue (capped at
-    #     ``queue_buffer_size + 1`` per worker)
-    #   - Generator (returned from this method) traverses the queue, retrieving
-    #     resulting sequence (from transformation) and yields from it
-    #
-
-    submitting_worker_name_prefix = f"async_gen_submitting_worker-{gen_id}"
-    tpe_worker_name_prefix = f"async_gen_tpe_worker-{gen_id}"
-
-    # Max size of the execution queue
-    max_queue_size: int = (queue_buffer_size + 1) * num_workers
-    # Signal handler used to interrupt workers when terminating
-    interrupted_event = threading.Event()
-
-    result_queue = _InterruptibleQueue(
-        max_size=max_queue_size,
-        interrupted_event=interrupted_event,
-    )
-
-    def _run_submitting_worker():
-        with ThreadPoolExecutor(
-            max_workers=num_workers, thread_name_prefix=tpe_worker_name_prefix
-        ) as tpe:
-
-            def _apply_fn_eager(it):
-                try:
-                    # NOTE: We unroll returned iterator immediately to make sure that
-                    #       iteration is fully performed inside the TPE
-                    return list(fn(it))
-                except Exception as e:
-                    logger.error(
-                        "Encountered exception while applying transformation",
-                        exc_info=e
-                    )
-
-                    raise e
-
-            try:
-                for item in base_iterator:
-                    # Fan out (eager) transformation of individual elements
-                    future = tpe.submit(_apply_fn_eager, iter([item]))
-                    # NOTE: This is a blocking call
-                    result_queue.put(future)
-
-                # Append sentinel to signal EOL
-                result_queue.put(SENTINEL)
-
-            except InterruptedError:
-                pass
-
-            except Exception as e:
-                logger.error("Encountered exception submitting tasks", exc_info=e)
-                # In case of filling worker encountering an exception we have to propagate
-                # it back to the (main) iterating thread. To achieve that we're traversing
-                # output queues *backwards* relative to the order of iterator-thread such
-                # that they are more likely to meet w/in a single iteration.
-                failed_fut = Future()
-                failed_fut.set_exception(e)
-
-                result_queue.put(failed_fut)
-
-    # Start submitting worker threads
-    submitting_worker_thread = threading.Thread(
-        target=_run_submitting_worker,
-        name=submitting_worker_name_prefix,
+    # Start workers threads
+    filling_worker_thread = threading.Thread(
+        target=_run_filling_worker,
+        name=f"map_tp_filling_worker-{gen_id}",
         daemon=True,
     )
+    filling_worker_thread.start()
 
-    submitting_worker_thread.start()
+    transforming_worker_threads = [
+        threading.Thread(
+            target=_run_transforming_worker,
+            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
+            args=(worker_idx,),
+            daemon=True,
+        )
+        for worker_idx in range(num_workers)
+    ]
 
-    # Use same thread to yield output results
+    for t in transforming_worker_threads:
+        t.start()
+
+    # Use main thread to yield output batches
     try:
-        # Create an iterator to traverse the queue, until sentinel
-        result_iter = iter(result_queue.get, SENTINEL)
+        # Keep track of remaining non-empty output queues
+        remaining_output_queues = output_queues
 
-        for res in result_iter:
-            assert isinstance(res, Future), f"Expected concurrent.futures.Future, got {res.__class__}"
+        while len(remaining_output_queues) > 0:
+            # To provide deterministic ordering of the produced iterator we rely
+            # on the following invariants:
+            #
+            #   - Elements from the original iterator are round-robin'd into
+            #     input queues (in order)
+            #   - Individual workers drain their respective input queues populating
+            #     output queues with the results of applying transformation to the
+            #     original item (and hence preserving original ordering of the input
+            #     queue)
+            #   - To yield from the generator output queues are traversed in the same
+            #     order and one single element is dequeued (in a blocking way!) at a
+            #     time from every individual output queue
+            #
+            non_empty_queues = []
+            empty_queues = []
 
-            # Yield from an eagerly collected list
-            list_: List[Any] = res.result()
-            yield from list_
+            # At every iteration only remaining non-empty queues
+            # are traversed (to prevent blocking on exhausted queue)
+            for output_queue in remaining_output_queues:
+                # NOTE: This is blocking!
+                item = output_queue.get()
+
+                if isinstance(item, Exception):
+                    raise item
+
+                if item is SENTINEL:
+                    empty_queues.append(output_queue)
+                else:
+                    non_empty_queues.append(output_queue)
+                    yield item
+
+            remaining_output_queues = non_empty_queues
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
