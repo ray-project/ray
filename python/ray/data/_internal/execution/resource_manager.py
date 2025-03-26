@@ -250,7 +250,11 @@ class ResourceManager:
                 budget = self._op_resource_allocator._op_budgets[op]
                 usage_str += f", budget=(cpu={budget.cpu:.1f}"
                 usage_str += f",gpu={budget.gpu:.1f}"
-                usage_str += f",object store={budget.object_store_memory_str()})"
+                usage_str += f",object store={budget.object_store_memory_str()}"
+                reserved_for_output = memory_string(
+                    self._op_resource_allocator._reserved_for_op_outputs[op]
+                )
+                usage_str += f", out={reserved_for_output})"
         return usage_str
 
     def op_resource_allocator_enabled(self) -> bool:
