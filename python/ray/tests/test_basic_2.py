@@ -559,9 +559,6 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 13), reason="Test currently failing on Python 3.13+"
-)
 def test_actor_max_concurrency(ray_start_regular_shared):
     """
     Test that an actor of max_concurrency=N should only run
@@ -576,7 +573,7 @@ def test_actor_max_concurrency(ray_start_regular_shared):
 
         def call(self):
             # Record the current thread that runs this function.
-            self.threads.add(threading.current_thread())
+            self.threads.add(threading.get_ident())
 
         def get_num_threads(self):
             return len(self.threads)
