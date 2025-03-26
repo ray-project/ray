@@ -1,138 +1,168 @@
+# Standard library imports
 from typing import Iterator, List, Optional, Tuple
 import time
 import logging
 import io
+import numpy as np
+
+# Third-party imports
 import boto3
 from botocore.exceptions import NoCredentialsError
-from PIL import Image
-
+from PIL import Image as PILImage
 import torch
 from torch.utils.data import IterableDataset
 
-import ray.train
+# Ray imports
 import ray
+import ray.train
 
-from image_classification_jpeg.imagenet import get_preprocess_map_fn
+# Local imports
+from s3_reader import S3Reader
+from .imagenet import get_preprocess_map_fn
 
 logger = logging.getLogger(__name__)
 
-# AWS configuration
-AWS_REGION = "us-west-2"
 
 # TODO Look into https://github.com/webdataset/webdataset for more canonical way to do data
 # distribution between Ray Train and Torch Dataloader workers.
 
 
 @ray.remote(num_cpus=0.25)
-def _fetch_file_size(bucket: str, key: str, file_url: str) -> Tuple[str, int]:
-    """Standalone Ray task to fetch file size from S3 using head_object.
+def _list_s3_batch(
+    bucket: str,
+    prefix: str,
+    continuation_token: Optional[str] = None,
+    batch_size: int = 1000,
+) -> Tuple[List[Tuple[str, int]], Optional[str]]:
+    """List a batch of files from S3 in parallel.
+
+    This function is used to efficiently list files from S3 in batches:
+    1. Makes a paginated request to S3's list_objects_v2 API
+    2. Processes the response to extract file URLs and sizes
+    3. Returns both the current batch and a token for the next batch
 
     Args:
-        bucket: S3 bucket name
-        key: S3 object key
-        file_url: Full S3 URL for logging.
+        bucket: S3 bucket name to list files from
+        prefix: S3 prefix to filter files (e.g., "path/to/directory/")
+        continuation_token: Token from previous request for pagination
+        batch_size: Maximum number of files to return in one request (default: 1000)
 
     Returns:
-        Tuple of (file_url, file_size in bytes)
+        Tuple containing:
+            - List of (file_url, size) tuples, where:
+                - file_url: Full S3 URL (e.g., "s3://bucket/path/to/file")
+                - size: File size in bytes
+            - Optional[str]: Token for the next batch (None if no more files)
     """
-    logger = logging.getLogger(__name__)
-    s3_client = boto3.client("s3", region_name=AWS_REGION)
+    # Create S3 client for this task
+    s3_client = boto3.client("s3")
 
-    try:
-        head_response = s3_client.head_object(Bucket=bucket, Key=key)
-        file_size = head_response["ContentLength"]  # File size in bytes
-        logger.info(f"[DataLoader] File {file_url} has size {file_size} bytes")
-        return file_url, file_size
-    except Exception as e:
-        logger.error(f"[DataLoader] Error fetching size for {file_url}: {str(e)}")
-        return file_url, -1  # Indicating failure
+    # Prepare request parameters
+    list_params = {"Bucket": bucket, "Prefix": prefix, "MaxKeys": batch_size}
+    if continuation_token:
+        list_params["ContinuationToken"] = continuation_token
+
+    # Make the request to S3
+    response = s3_client.list_objects_v2(**list_params)
+
+    # Handle case where no files are found
+    if "Contents" not in response:
+        return [], None
+
+    # Process the batch of files
+    batch_files = response["Contents"]
+    results = [(f"s3://{bucket}/{f['Key']}", f["Size"]) for f in batch_files]
+
+    # Get token for next batch if there are more files
+    next_token = (
+        response.get("NextContinuationToken") if response.get("IsTruncated") else None
+    )
+
+    return results, next_token
 
 
-class S3Reader:
-    """Base class for reading files from S3."""
+class S3JpegReader(S3Reader):
+    """Extended S3Reader class for JPEG-specific functionality.
 
-    class S3Error(Exception):
-        """Base exception for S3-related errors."""
-
-        pass
-
-    class S3CredentialsError(S3Error):
-        """Raised when AWS credentials are not found or invalid."""
-
-        pass
-
-    class S3FileError(S3Error):
-        """Raised when there's an error reading a file from S3."""
-
-        pass
-
-    def __init__(self):
-        """Initialize the S3Reader."""
-        self._s3_client = None
-
-    @property
-    def s3_client(self):
-        """Lazy initialization of S3 client to avoid serialization issues."""
-        if self._s3_client is None:
-            self._s3_client = boto3.client("s3", region_name=AWS_REGION)
-        return self._s3_client
-
-    def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
-        """Parse an S3 URL into bucket and key.
-
-        Args:
-            s3_url: The S3 URL to parse
-
-        Returns:
-            Tuple[str, str]: The bucket and key
-
-        Raises:
-            ValueError: If the S3 URL is invalid
-        """
-        if s3_url.startswith("s3://"):
-            s3_parts = s3_url.replace("s3://", "").split("/", 1)
-            return s3_parts[0], s3_parts[1]
-        else:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+    This class provides methods for:
+    1. Collecting metadata about JPEG files (sizes)
+    2. Distributing files among workers based on file sizes
+    3. Managing parallel S3 operations with Ray tasks
+    """
 
     def _collect_file_info(
-        self, bucket: str, prefix: str
+        self,
+        bucket: str,
+        prefix: str,
+        batch_size: int = 1000,
+        max_concurrent_tasks: int = 10,
     ) -> Tuple[List[str], List[int]]:
-        """Collect file URLs and their sizes in parallel using Ray tasks.
+        """Collect file URLs and their sizes using parallel Ray tasks.
+
+        This method:
+        1. Starts a parallel task to list files from S3
+        2. Manages concurrent tasks for pagination
+        3. Aggregates results from all tasks
 
         Args:
-            bucket: S3 bucket name
-            prefix: S3 prefix to list
+            bucket: S3 bucket name to list files from
+            prefix: S3 prefix to filter files
+            batch_size: Number of files to process in each request
+            max_concurrent_tasks: Maximum number of concurrent Ray tasks
 
         Returns:
             Tuple of (file_urls, file_sizes_in_bytes)
         """
-        response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-        if "Contents" not in response:
-            return [], []
-
-        # Launch parallel tasks for each file
-        tasks = []
-        for file in response["Contents"]:
-            file_url = f"s3://{bucket}/{file['Key']}"
-            task = _fetch_file_size.remote(bucket, file["Key"], file_url)
-            tasks.append(task)
-
-        # Wait for all tasks to complete
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(
-            f"[DataLoader] Worker {worker_rank}: Waiting for metadata from {len(tasks)} files..."
-        )
-        results = ray.get(tasks)
+        all_files = []
+        all_sizes = []
+        total_files = 0
 
-        # Unzip results
-        file_urls, file_size_bytes = zip(*results) if results else ([], [])
+        # Start first task
+        active_tasks = {}  # Dict of task_id -> (task, token)
+        first_task = _list_s3_batch.remote(bucket, prefix, None, batch_size)
+        active_tasks[first_task] = (first_task, None)
+
+        while active_tasks:
+            # Wait for the next task to complete
+            ready_tasks, _ = ray.wait(list(active_tasks.keys()), num_returns=1)
+            completed_task = ready_tasks[0]
+            original_token = active_tasks[completed_task][1]
+            del active_tasks[completed_task]
+
+            # Get results from completed task
+            results, next_token = ray.get(completed_task)
+
+            # Process results
+            if results:
+                file_urls, file_sizes = zip(*results)
+                all_files.extend(file_urls)
+                all_sizes.extend(file_sizes)
+                total_files += len(results)
+
+                # Log progress
+                logger.info(
+                    f"[S3JpegReader] Worker {worker_rank}: Listed {total_files} files "
+                    f"from s3://{bucket}/{prefix}"
+                    + (f" (token: {original_token})" if original_token else "")
+                )
+
+            # Start next task if there are more pages and we're under the limit
+            if next_token and len(active_tasks) < max_concurrent_tasks:
+                next_task = _list_s3_batch.remote(
+                    bucket, prefix, next_token, batch_size
+                )
+                active_tasks[next_task] = (next_task, next_token)
+                logger.debug(
+                    f"[S3JpegReader] Worker {worker_rank}: Starting task with token "
+                    f"{next_token}"
+                )
 
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Collected metadata for {len(file_urls)} files"
+            f"[S3JpegReader] Worker {worker_rank}: Collected metadata for "
+            f"{len(all_files)} files"
         )
-        return list(file_urls), list(file_size_bytes)
+        return all_files, all_sizes
 
     def _distribute_files(
         self,
@@ -143,10 +173,15 @@ class S3Reader:
     ) -> List[str]:
         """Distribute files among workers based on file sizes.
 
+        This method:
+        1. Sorts files by size for optimal distribution
+        2. Calculates target size per worker
+        3. Assigns files to minimize size differences between workers
+
         Args:
-            file_urls: List of file URLs
+            file_urls: List of file URLs to distribute
             file_rows: List of file sizes in bytes
-            worker_rank: Current worker rank
+            worker_rank: Current worker's rank
             num_workers: Total number of workers
 
         Returns:
@@ -162,8 +197,8 @@ class S3Reader:
         # If no workers or files, return all files
         if num_workers <= 1 or not file_urls:
             logger.info(
-                f"[DataLoader] Worker {worker_rank}: Single worker or no files, returning all {len(file_urls)} files "
-                f"with total {sum(file_rows)} bytes"
+                f"[S3JpegReader] Worker {worker_rank}: Single worker or no files, "
+                f"returning all {len(file_urls)} files with total {sum(file_rows)} bytes"
             )
             return file_urls
 
@@ -171,7 +206,8 @@ class S3Reader:
         total_size = sum(file_rows)
         target_size_per_worker = total_size / num_workers
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Total size: {total_size} bytes, Target size per worker: {target_size_per_worker:.0f} bytes"
+            f"[S3JpegReader] Worker {worker_rank}: Total size: {total_size} bytes, "
+            f"Target per worker: {target_size_per_worker:.0f} bytes"
         )
 
         # Distribute files to minimize size differences between workers
@@ -190,61 +226,46 @@ class S3Reader:
         my_size = worker_sizes[worker_rank]
 
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Assigned {len(my_files)}/{len(file_urls)} files "
-            f"with {my_size}/{total_size} bytes "
-            f"({my_size/total_size*100:.1f}% of total)"
+            f"[S3JpegImageIterableDataset] Worker {worker_rank}: Assigned {len(my_files)}/"
+            f"{len(file_urls)} files with {my_size}/{total_size} bytes "
+            f"({my_size/total_size*100:.1f}%)"
         )
         return my_files
 
-    def _list_s3_files(self, bucket: str, prefix: str) -> List[str]:
-        """List files in an S3 bucket with the given prefix.
-
-        Args:
-            bucket: S3 bucket name
-            prefix: S3 prefix to list
-
-        Returns:
-            List of S3 URLs for the files
-        """
-        response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-        if "Contents" not in response:
-            logger.warning(f"[DataLoader] No files found in s3://{bucket}/{prefix}")
-            return []
-
-        return [f"s3://{bucket}/{file['Key']}" for file in response["Contents"]]
-
     def _get_file_urls(self, url: str) -> List[str]:
         """Get file URLs from S3 and distribute them among Ray workers.
+
+        This method:
+        1. Gets worker information from Ray
+        2. Collects file metadata from S3
+        3. Distributes files among workers
 
         Args:
             url: The S3 URL to list files from
 
         Returns:
             List of S3 URLs assigned to the current Ray worker
+
+        Raises:
+            S3CredentialsError: If AWS credentials are not found
+            S3FileError: If there's an error listing files
         """
         try:
             # Get Ray worker info
             worker_rank = ray.train.get_context().get_world_rank()
             num_workers = ray.train.get_context().get_world_size()
-            logger.info(
-                f"[DataLoader] Worker {worker_rank}/{num_workers}: Listing files"
-            )
 
-            # List files
+            # Parse bucket and prefix
             bucket, prefix = self._parse_s3_url(url)
-            file_urls = self._list_s3_files(bucket, prefix)
-
-            if not file_urls:
-                return []
-
-            # Log file count
-            logger.info(f"[DataLoader] Found {len(file_urls)} files in {url}")
 
             # Collect metadata for balanced distribution
             logger.info(
-                "[DataLoader] Collecting file metadata for balanced distribution"
+                f"[S3JpegReader] Worker {worker_rank}: Collecting file metadata for "
+                "balanced distribution"
             )
             file_urls, file_size_bytes = self._collect_file_info(bucket, prefix)
+            logger.info(f"[S3JpegReader] Found {len(file_urls)} files in {url}")
+
             return self._distribute_files(
                 file_urls=file_urls,
                 file_rows=file_size_bytes,
@@ -260,53 +281,121 @@ class S3Reader:
             raise self.S3FileError(f"Error listing files from {url}: {str(e)}")
 
 
-class S3JpegImageIterableDataset(S3Reader, IterableDataset):
-    """An iterable dataset that loads images from S3-stored Parquet files.
+@ray.remote(num_cpus=0.25)
+def _fetch_image_batch(
+    file_urls: List[str], batch_size: int = 32
+) -> List[Tuple[str, PILImage.Image]]:
+    """Fetch a batch of images from S3 in parallel.
+
+    This function:
+    1. Takes a list of S3 URLs for JPEG images
+    2. Fetches each image in parallel using Ray tasks
+    3. Returns a list of (URL, PIL Image) tuples, with None for failed fetches
+
+    Args:
+        file_urls: List of S3 URLs to fetch (e.g., "s3://bucket/path/to/image.jpg")
+        batch_size: Number of images to fetch in parallel (default: 10)
+
+    Returns:
+        List of (file_url, PIL Image) tuples where:
+            - file_url: The original S3 URL
+            - PIL Image: The loaded image, or None if fetch failed
+    """
+    # Create S3 client for this task
+    s3_client = boto3.client("s3")
+    results = []
+
+    for file_url in file_urls:
+        try:
+            # Parse S3 URL into bucket and key
+            bucket = file_url.replace("s3://", "").split("/")[0]
+            key = "/".join(file_url.replace("s3://", "").split("/")[1:])
+
+            # Fetch and decode image
+            response = s3_client.get_object(Bucket=bucket, Key=key)
+            image_data = response["Body"].read()
+            image = PILImage.open(io.BytesIO(image_data))
+            results.append((file_url, image))
+
+        except Exception as e:
+            logger.error(
+                f"[S3JpegImageIterableDataset] Error fetching image from {file_url}: {str(e)}",
+                exc_info=True,
+            )
+            results.append((file_url, None))
+
+    return results
+
+
+class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
+    """An iterable dataset that loads images from S3-stored JPEG files.
 
     This dataset:
-    1. Reads Jpeg files from S3
+    1. Reads JPEG files from S3
     2. Processes images with optional random transforms
     3. Yields (image, label) tensors
     4. Supports row limits per worker for controlled data processing
     """
 
     LOG_FREQUENCY = 1000  # Log progress every 1000 rows
+    BATCH_SIZE = 10  # Number of images to fetch in parallel
 
     def __init__(
         self,
         file_urls: List[str],
         random_transforms: bool = True,
         limit_rows_per_worker: Optional[int] = None,
+        batch_size: int = 10,
     ):
         """Initialize the dataset.
 
         Args:
             file_urls: List of S3 URLs to load
             random_transforms: Whether to use random transforms for training
-            limit_rows_per_worker: Maximum number of rows to process per worker (None for all rows)
+            limit_rows_per_worker: Maximum number of rows to process per worker
+            batch_size: Number of images to fetch in parallel
         """
         super().__init__()
         self.file_urls = file_urls
         self.limit_rows_per_worker = limit_rows_per_worker
         self.random_transforms = random_transforms
+        self.batch_size = batch_size
 
-    def _fetch_image(self, file_url: str) -> Image:
-        """Fetch and decode JPEG image from S3.
+        worker_rank = ray.train.get_context().get_world_rank()
+        logger.info(
+            f"[S3JpegImageIterableDataset] Worker {worker_rank}: Initialized with {len(file_urls)} "
+            f"files{f' (limit: {limit_rows_per_worker} rows)' if limit_rows_per_worker else ''} "
+            f"(batch size: {batch_size})"
+        )
+
+    def _fetch_images_batch(
+        self, file_urls: List[str]
+    ) -> List[Tuple[str, PILImage.Image]]:
+        """Fetch a batch of images from S3 in parallel.
 
         Args:
-            file_url: S3 URL of the image file
+            file_urls: List of S3 URLs to fetch
 
         Returns:
-            PIL Image object
+            List of (file_url, PIL Image) tuples
+
+        Raises:
+            Exception: If there's an error fetching the batch
         """
         try:
-            bucket, key = self._parse_s3_url(file_url)
-            response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            image_data = response["Body"].read()
-            image = Image.open(io.BytesIO(image_data))
-            return image
+            future = _fetch_image_batch.remote(file_urls, self.batch_size)
+            results = ray.get(future)
+
+            valid_results = [(url, img) for url, img in results if img is not None]
+            if len(valid_results) < len(results):
+                logger.warning(
+                    f"[S3JpegImageIterableDataset] Failed to fetch {len(results) - len(valid_results)} "
+                    "images"
+                )
+
+            return valid_results
         except Exception as e:
-            logger.error(f"Error fetching image from {file_url}: {str(e)}")
+            logger.error(f"[S3JpegImageIterableDataset] Error fetching batch: {str(e)}")
             raise
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
@@ -317,89 +406,125 @@ class S3JpegImageIterableDataset(S3Reader, IterableDataset):
         2. Processes rows with image transforms
         3. Converts to tensors
         4. Respects row limits per worker
+
+        Yields:
+            Tuple[torch.Tensor, torch.Tensor]: (image, label) tensors
+
+        Raises:
+            Exception: If there's a fatal error during iteration
         """
         try:
-            # Get worker info for file distribution
             worker_info = torch.utils.data.get_worker_info()
             worker_id = worker_info.id if worker_info else 0
             num_workers = worker_info.num_workers if worker_info else 1
-
-            logger.info(f"[Dataset] Worker {worker_id}/{num_workers}: Starting")
-
-            # Initialize preprocessing function
-            preprocess_fn = get_preprocess_map_fn(
-                decode_image=True, random_transforms=self.random_transforms
-            )
 
             # Distribute files among workers
             if worker_info is None:
                 files_to_read = self.file_urls
             else:
-                # Round-robin distribution between PyTorch workers
                 files_to_read = self.file_urls[worker_id::num_workers]
 
             logger.info(
-                f"[Dataset] Worker {worker_id}: Processing {len(files_to_read)} files"
+                f"[S3JpegImageIterableDataset] Worker {worker_id}/{num_workers}: Processing "
+                f"{len(files_to_read)} files"
             )
 
-            # Process files and rows
+            preprocess_fn = get_preprocess_map_fn(
+                random_transforms=self.random_transforms
+            )
+
             rows_processed = 0
             last_log_time = time.time()
             total_start_time = time.time()
 
-            for file_url in files_to_read:
-                # Skip file if we've reached the limit
+            for i in range(0, len(files_to_read), self.batch_size):
+                batch_urls = files_to_read[i : i + self.batch_size]
+
                 if (
                     self.limit_rows_per_worker is not None
                     and rows_processed >= self.limit_rows_per_worker
                 ):
                     logger.info(
-                        f"[Dataset] Worker {worker_id}: Reached row limit: {rows_processed}"
+                        f"[S3JpegImageIterableDataset] Worker {worker_id}: Reached row limit of "
+                        f"{self.limit_rows_per_worker}"
                     )
                     break
 
                 try:
-                    # Fetch image from S3
-                    image = self._fetch_image(file_url)
+                    batch_results = self._fetch_images_batch(batch_urls)
 
-                    # Process image and convert to tensors
-                    processed = preprocess_fn(image)
-                    image = torch.as_tensor(processed["image"], dtype=torch.float32)
-                    label = torch.as_tensor(processed["label"], dtype=torch.int64)
+                    for file_url, image in batch_results:
+                        try:
+                            # Convert to RGB and numpy array
+                            if image.mode != "RGB":
+                                image = image.convert("RGB")
+                            image_array = np.array(image, dtype=np.uint8)
 
-                    rows_processed += 1
+                            # Ensure HWC format (Height x Width x Channels)
+                            if len(image_array.shape) == 2:  # Grayscale
+                                image_array = np.stack([image_array] * 3, axis=-1)
+                            elif (
+                                len(image_array.shape) == 3
+                                and image_array.shape[0] == 3
+                            ):  # CHW
+                                image_array = np.transpose(image_array, (1, 2, 0))
 
-                    # Log progress periodically
-                    if rows_processed % self.LOG_FREQUENCY == 0:
-                        current_time = time.time()
-                        elapsed_time = current_time - last_log_time
-                        rows_per_second = (
-                            self.LOG_FREQUENCY / elapsed_time if elapsed_time > 0 else 0
-                        )
-                        logger.info(
-                            f"[Dataset] Worker {worker_id}: "
-                            f"Processed {rows_processed} rows ({rows_per_second:.2f} rows/sec)"
-                        )
-                        last_log_time = current_time
+                            wnid = file_url.split("/")[-2]  # Extract WNID from path
 
-                    yield image, label
+                            processed = preprocess_fn(
+                                {"image": image_array, "class": wnid}
+                            )
+
+                            image = torch.as_tensor(
+                                processed["image"], dtype=torch.float32
+                            )
+                            label = torch.as_tensor(
+                                processed["label"], dtype=torch.int64
+                            )
+
+                            rows_processed += 1
+
+                            if rows_processed % self.LOG_FREQUENCY == 0:
+                                current_time = time.time()
+                                elapsed_time = current_time - last_log_time
+                                rows_per_second = (
+                                    self.LOG_FREQUENCY / elapsed_time
+                                    if elapsed_time > 0
+                                    else 0
+                                )
+                                logger.info(
+                                    f"[S3JpegImageIterableDataset] Worker {worker_id}: Processed "
+                                    f"{rows_processed} rows ({rows_per_second:.2f} rows/sec)"
+                                )
+                                last_log_time = current_time
+
+                            yield image, label
+
+                        except Exception as e:
+                            logger.error(
+                                f"[S3JpegImageIterableDataset] Worker {worker_id}: Error processing "
+                                f"{file_url}: {str(e)}",
+                                exc_info=True,
+                            )
+                            continue
 
                 except Exception as e:
                     logger.error(
-                        f"[Dataset] Worker {worker_id}: Error processing row: {str(e)}"
+                        f"[S3JpegImageIterableDataset] Worker {worker_id}: Error processing batch: "
+                        f"{str(e)}",
+                        exc_info=True,
                     )
                     continue
 
-            # Log final statistics
             total_time = time.time() - total_start_time
             logger.info(
-                f"[Dataset] Worker {worker_id}: Finished: "
-                f"{rows_processed} rows in {total_time:.2f}s "
-                f"({rows_processed/total_time:.2f} rows/sec)"
+                f"[S3JpegImageIterableDataset] Worker {worker_id}: Completed {rows_processed} rows "
+                f"in {total_time:.2f}s ({rows_processed/total_time:.2f} rows/sec)"
             )
 
         except Exception as e:
             logger.error(
-                f"[Dataset] Worker {worker_id}: Fatal error: {str(e)}", exc_info=True
+                f"[S3JpegImageIterableDataset] Worker {worker_id}: Fatal error: {str(e)}",
+                exc_info=True,
             )
             raise

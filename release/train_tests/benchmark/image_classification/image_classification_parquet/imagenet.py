@@ -8,7 +8,6 @@ from image_classification.imagenet import (
     IMAGENET_WNID_TO_ID,
 )
 
-
 IMAGENET_PARQUET_SPLIT_S3_ROOT = (
     "s3://ray-benchmark-data-internal/imagenet/parquet_split"
 )
@@ -25,8 +24,6 @@ def get_preprocess_map_fn(decode_image: bool = True, random_transforms: bool = T
     The output is a dict with 2 keys:
     - "image": np.array of the transformed, normalized image
     - "label": An integer index of the WNID
-
-    TODO: Move these preprocessing utilities shared between tests to a separate file.
     """
     crop_resize_transform = get_transform(
         to_torch_tensor=False, random_transforms=random_transforms
