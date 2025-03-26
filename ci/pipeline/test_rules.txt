@@ -218,5 +218,6 @@ setup_hooks.sh
 .prettierrc.toml
 build.sh
 build-docker.sh
+.rayciversion
 # pass
 ;
