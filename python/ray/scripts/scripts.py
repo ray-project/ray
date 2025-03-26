@@ -722,10 +722,12 @@ def start(
     # Compose labels passed in with `--labels` and `--labels-from-file`.
     # The label value from `--labels` will overrwite the value of any duplicate keys.
     labels_from_file_dict = parse_node_labels_json(labels_from_file, cli_logger, cf)
-    labels_dict = {
-        **labels_from_file_dict,
-        **parse_node_labels_string(labels, cli_logger, cf),
-    }
+    labels_from_string = parse_node_labels_string(labels, cli_logger, cf)
+    labels_dict = (
+        {**labels_from_file_dict, **labels_from_string}
+        if labels_from_file_dict
+        else labels_from_string
+    )
 
     if plasma_store_socket_name is not None:
         warnings.warn(
