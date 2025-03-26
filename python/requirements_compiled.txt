@@ -556,6 +556,7 @@ fsspec==2023.5.0
     #   delta-sharing
     #   etils
     #   evaluate
+    #   getdaft
     #   gradio-client
     #   huggingface-hub
     #   modin
@@ -577,6 +578,8 @@ gast==0.4.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.0
     # via gsutil
+getdaft==0.4.3
+    # via -r python/requirements/ml/data-requirements.txt
 gitdb==4.0.11
     # via gitpython
 gitpython==3.1.40
@@ -1577,6 +1580,7 @@ pyarrow==14.0.2
     #   delta-sharing
     #   deltalake
     #   feather-format
+    #   getdaft
     #   hudi
     #   mlflow
     #   pylance
@@ -2311,6 +2315,7 @@ tqdm==4.64.1
     #   dm-control
     #   etils
     #   evaluate
+    #   getdaft
     #   huggingface-hub
     #   hyperopt
     #   mosaicml
