@@ -3054,6 +3054,7 @@ pyx_library(
     # shared lib, see python/ray/__init__.py.
     cc_kwargs = dict(
         srcs = PYX_SRCS,
+        # cython code is auto-generated, which is out of our control.
         copts = COPTS + PYX_COPTS + ["-Wno-shadow"],
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
