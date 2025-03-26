@@ -41,6 +41,10 @@ class AbstractFormatter(logging.Formatter, ABC):
     ) -> None:
         self._additional_log_standard_attrs = additional_log_standard_attrs
 
+    @property
+    def additional_log_standard_attrs(self) -> List[str]:
+        return self._additional_log_standard_attrs
+
     def generate_record_format_attrs(
         self,
         record: logging.LogRecord,
