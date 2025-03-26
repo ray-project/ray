@@ -140,35 +140,46 @@ def test_make_async_gen_fail(buffer_size: int):
 def test_make_async_gen_varying_seq_lengths(buffer_size: int):
     """Tests that iterators of varying lengths are handled appropriately"""
 
-    def _gen(base_iterator):
-        worker_id = next(base_iterator)
+    seq_set = set()
 
-        # Make workers produce sequences increasing the same order
-        # as worker-ids (so that for left workers sequences run out first)
-        target_length = worker_id + 1
+    # Roll the dice 50 times
+    for i in range(50):
+        seed = time.time_ns()
+        r = random.Random(seed)
 
-        return iter([f"worker_{worker_id}:{i}" for i in range(target_length)])
+        def _gen(base_iterator):
+            worker_id = next(base_iterator)
 
-    num_seqs = 3
+            # Make workers produce sequences increasing the same order
+            # as worker-ids (so that for left workers sequences run out first)
+            target_length = worker_id + 1
 
-    iterator = make_async_gen(
-        base_iterator=iter(list(range(num_seqs))),
-        fn=_gen,
-        # Make sure individual elements are handle by diff workers
-        num_workers=num_seqs,
-        queue_buffer_size=buffer_size,
-    )
+            def _jittery_iter():
+                for i in range(target_length):
+                    # Generate random duration to sleep for in range [0, 0.001s)
+                    sleep_s = r.random() / 1000
+                    time.sleep(sleep_s)
 
-    seq = list(iterator)
+                    yield f"worker_{worker_id}:{i}"
 
-    assert [
-        "worker_0:0",
-        "worker_1:0",
-        "worker_1:1",
-        "worker_2:0",
-        "worker_2:1",
-        "worker_2:2",
-    ] == seq
+            return _jittery_iter()
+
+        num_seqs = 32
+
+        iterator = make_async_gen(
+            base_iterator=iter(list(range(num_seqs))),
+            fn=_gen,
+            # Make sure individual elements are handle by diff workers
+            num_workers=4,
+            queue_buffer_size=buffer_size,
+        )
+
+        seq = tuple(list(iterator))
+
+        seq_set.add(seq)
+
+    # Assert ordering doesn't change
+    assert len(seq_set) == 1, seq_set
 
 
 def test_make_async_gen_deadlock():
