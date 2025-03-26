@@ -1247,7 +1247,14 @@ def test_outdated_nodes(disable_launch_config_check):
 
 @pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
 @pytest.mark.parametrize("has_resource_constraints", [True, False])
-def test_idle_termination(idle_timeout_s, has_resource_constraints):
+@pytest.mark.parametrize("has_resource_requests", [True, False])
+@pytest.mark.parametrize("has_gang_resource_requests", [True, False])
+def test_idle_termination(
+    idle_timeout_s,
+    has_resource_constraints,
+    has_resource_requests,
+    has_gang_resource_requests,
+):
     """
     Test that idle nodes are terminated.
     """
@@ -1271,11 +1278,23 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
     }
 
     idle_time_s = 5
-    constraints = (
-        []
-        if not has_resource_constraints
-        else [ResourceRequestUtil.make({"CPU": 1})] * 2
-    )
+    constraints = []
+    if has_resource_constraints:
+        constraints = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    resource_requests = []
+    if has_resource_requests:
+        resource_requests = [ResourceRequestUtil.make({"CPU": 1})] * 2
+
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+    gang_resource_requests = []
+    if has_gang_resource_requests:
+        gang_resource_requests = [
+            [  # This is a strict spread placement group that requires 2 nodes.
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+                ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "pg", "")]),
+            ]
+        ]
 
     request = sched_request(
         node_type_configs=node_type_configs,
@@ -1338,11 +1357,18 @@ def test_idle_termination(idle_timeout_s, has_resource_constraints):
         ],
         idle_timeout_s=idle_timeout_s,
         cluster_resource_constraints=constraints,
+        resource_requests=resource_requests,
+        gang_resource_requests=gang_resource_requests,
     )
 
     reply = scheduler.schedule(request)
     _, to_terminate = _launch_and_terminate(reply)
-    if idle_timeout_s <= idle_time_s and not has_resource_constraints:
+    if (
+        idle_timeout_s <= idle_time_s
+        and not has_resource_constraints
+        and not has_resource_requests
+        and not has_gang_resource_requests
+    ):
         assert len(to_terminate) == 1
         assert to_terminate == [("i-2", "r-2", TerminationRequest.Cause.IDLE)]
     else:
