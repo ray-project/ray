@@ -1570,6 +1570,7 @@ def start_raylet(
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
     enable_physical_mode: bool = False,
+    accelerator_cpu_mask: Optional[str] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1628,6 +1629,13 @@ def start_raylet(
         enable_physical_mode: Whether physical mode is enabled, which applies
             constraint to tasks' resource consumption. As of now only memory
             resource is supported.
+        accelerator_cpu_mask: The CPU mask for the affinity of accelerator,
+            it is a string of digits separated by commas. The mapping
+            is specified to be node specific and identical mapping is
+            applied to the tasks on each node with same accelerator id.
+            If the number of accelerators exceeds the number of elements
+            in this list, elements in the list will be reused as needed
+            starting from the beginning of the list.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1689,6 +1697,7 @@ def start_raylet(
             log_dir,
             node_ip_address,
             setup_worker_path,
+            accelerator_cpu_mask,
         )
     else:
         cpp_worker_command = []
@@ -1719,6 +1728,7 @@ def start_raylet(
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
             f"--cluster-id={cluster_id}",
+            f"--accelerator-cpu-mask={accelerator_cpu_mask}",
         ]
     )
 
@@ -1973,6 +1983,7 @@ def build_cpp_worker_command(
     log_dir: str,
     node_ip_address: str,
     setup_worker_path: str,
+    accelerator_cpu_mask: str,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1988,6 +1999,13 @@ def build_cpp_worker_command(
         node_ip_address: The ip address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
+        accelerator_cpu_mask: The CPU mask for the affinity of accelerator,
+            it is a string of digits separated by commas. The mapping
+            is specified to be node specific and identical mapping is
+            applied to the tasks on each node with same accelerator id.
+            If the number of accelerators exceeds the number of elements
+            in this list, elements in the list will be reused as needed
+            starting from the beginning of the list.
     Returns:
         The command string for starting CPP worker.
     """
@@ -2005,6 +2023,7 @@ def build_cpp_worker_command(
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
         f"--ray_node_ip_address={node_ip_address}",
+        f"--ray_accelerator_cpu_mask={accelerator_cpu_mask}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

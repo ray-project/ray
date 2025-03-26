@@ -642,6 +642,13 @@ Windows powershell users need additional escaping:
     "Only one log monitor should be started per physical host to avoid log "
     "duplication on the driver process.",
 )
+@click.option(
+    "--accelerator-cpu-mask",
+    required=False,
+    default="",
+    type=str,
+    help="CPU masks for the affinity of accelerator devices.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -689,6 +696,7 @@ def start(
     disable_usage_stats,
     labels,
     include_log_monitor,
+    accelerator_cpu_mask,
 ):
     """Start Ray processes manually on the local machine."""
     # TODO(hjiang): Expose physical mode interface to ray cluster start command after
@@ -787,6 +795,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
+        accelerator_cpu_mask=accelerator_cpu_mask,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
