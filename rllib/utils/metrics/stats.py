@@ -426,6 +426,9 @@ class Stats:
         if self._throughput_stats is not None:
             self._throughput_stats.merge_in_parallel(other._throughput_stats)
 
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
+
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
 
@@ -609,6 +612,9 @@ class Stats:
                 if other._throughput_stats is not None:
                     self._throughput_stats.merge_in_parallel(other._throughput_stats)
 
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
+
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
 
@@ -622,6 +628,9 @@ class Stats:
         else:
             assert len(self.values) > 0
             self._set_values(force_list(numpy_values))
+
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
