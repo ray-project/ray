@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
@@ -44,6 +45,16 @@ def upload_working_dir_if_needed(
         raise TypeError(
             "working_dir must be a string or Path (either a local path "
             f"or remote URI), got {type(working_dir)}."
+        )
+    # validate working dir for bad characters
+    allowed_chars_regex = r"^[a-zA-Z0-9_\-/.]*$"
+    print("------")
+    print(working_dir)
+    print(str(working_dir))
+    print("***")
+    if not re.match(allowed_chars_regex, str(working_dir)):
+        raise ValueError(
+            f"working_dir must only contain alphanumeric and -,_,. characters. {working_dir}"
         )
 
     if isinstance(working_dir, Path):

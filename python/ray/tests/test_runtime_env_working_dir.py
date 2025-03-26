@@ -381,6 +381,15 @@ def test_input_validation(start_cluster, option: str):
 
     ray.shutdown()
 
+    if option == "working_dir":
+        with pytest.raises(ValueError):
+            with tempfile.TemporaryDirectory(
+                dir=tempfile.gettempdir(), prefix="invalid(path)"
+            ) as working_dir:
+                ray.init(address, runtime_env={"working_dir": working_dir})
+
+    ray.shutdown()
+
     for uri in ["https://no_dot_zip", "s3://no_dot_zip", "gs://no_dot_zip"]:
         with pytest.raises(ValueError):
             if option == "working_dir":
