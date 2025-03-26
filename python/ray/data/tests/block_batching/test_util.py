@@ -257,10 +257,24 @@ def test_make_async_gen_non_reentrant():
 
         logs.append(">>> Leaving Outer")
 
-    for _ in make_async_gen(iter(range(3)), _transform_b, ):
+    for _ in make_async_gen(
+        iter(range(3)),
+        _transform_b,
+    ):
         pass
 
-    assert ['>>> Entering Outer', '>>> Entering Inner', '>>> Inner: 0', '>>> Outer: 0', '>>> Inner: 1', '>>> Outer: 1', '>>> Inner: 2', '>>> Outer: 2', '>>> Leaving Inner', '>>> Leaving Outer'] == logs
+    assert [
+        ">>> Entering Outer",
+        ">>> Entering Inner",
+        ">>> Inner: 0",
+        ">>> Outer: 0",
+        ">>> Inner: 1",
+        ">>> Outer: 1",
+        ">>> Inner: 2",
+        ">>> Outer: 2",
+        ">>> Leaving Inner",
+        ">>> Leaving Outer",
+    ] == logs
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
