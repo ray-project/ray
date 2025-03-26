@@ -380,7 +380,6 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
   // TODO(suquark): We should convert these interfaces to const later.
   const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
-  ObjectID object_id;
 
   // Process the different types of requests.
   switch (type) {
@@ -425,6 +424,7 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     ReplyToCreateClient(client, object_id, request->request_id());
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
     RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
                                                       "client currently using it "
@@ -443,6 +443,7 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
     bool may_unmap;
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     bool should_unmap = ReleaseObject(object_id, client);
     if (!may_unmap) {
@@ -468,6 +469,7 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     RAY_RETURN_NOT_OK(SendDeleteReply(client, object_ids, error_codes));
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
     if (object_lifecycle_mgr_.IsObjectSealed(object_id)) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
@@ -476,6 +478,7 @@ Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
     }
   } break;
   case fb::MessageType::PlasmaSealRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));
