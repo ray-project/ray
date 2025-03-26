@@ -98,6 +98,16 @@ ABSL_FLAG(std::string,
           "The namespace of job. If not set,"
           " a unique value will be randomly generated.");
 
+ABSL_FLAG(std::string,
+          ray_accelerator_cpu_mask,
+          "",
+          "The CPU mask for the affinity of accelerator, "
+          "it is a string of digits separated by commas. The mapping "
+          "is specified to be node specific and identical mapping is "
+          "applied to the tasks on each node with same accelerator id. "
+          "If the number of accelerators exceeds the number of elements "
+          "in this list, elements in the list will be reused as needed "
+          "starting from the beginning of the list.");
 using json = nlohmann::json;
 
 namespace ray {
@@ -195,6 +205,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_default_actor_lifetime.CurrentValue().empty()) {
       default_actor_lifetime =
           ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
+    }
+    if (!FLAGS_ray_accelerator_cpu_mask.CurrentValue().empty()) {
+      accelerator_cpu_mask = FLAGS_ray_accelerator_cpu_mask.CurrentValue();
     }
     if (!FLAGS_ray_runtime_env.CurrentValue().empty()) {
       runtime_env = RuntimeEnv::Deserialize(FLAGS_ray_runtime_env.CurrentValue());
