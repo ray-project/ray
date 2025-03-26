@@ -370,7 +370,7 @@ def test_state_serialization():
     assert len(loaded_stats) == len(stats)
 
 
-def test_state_serialization_with_throughput():
+def test_state_with_throughput_serialization():
     """Test saving and loading Stats state with throughput tracking."""
     # Create a Stats object with throughput tracking
     stats = Stats(
