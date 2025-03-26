@@ -4,18 +4,18 @@ To support ray on vSphere, the implementation has been added into [python/ray/au
 
 
 # vSphere Terminologies
-## [OVF file](https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.vm_admin.doc/GUID-AE61948B-C2EE-436E-BAFB-3C7209088552.html)
-OVF format is a packaging and distribution format for virtual machines. It is a standard which can be used to describe the VM metadata. We use the OVF files to create the virtual machines which will act as Ray head and worker node. 
+## [OVF file](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-virtual-machine-administration-guide-8-0.html)
+OVF format is a packaging and distribution format for virtual machines. It is a standard which can be used to describe the VM metadata. We use the OVF files to create the virtual machines which will act as Ray head and worker node.
 
 ## VI Admin
 
-The term VI stands for [Virtual Infrastructure](https://www.vmware.com/in/topics/glossary/content/virtual-infrastructure.html).
+The term VI stands for [Virtual Infrastructure](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-virtual-machine-administration-guide-8-0/introduction-to-vmware-vsphere-virtual-machinesvsphere-vm-admin/virtual-machines-and-the-virtual-infrastructurevsphere-vm-admin.html).
 
 A VI Admin is used to describe a persona that manages the lifecycle of VMware infrastructure. VI Admins engage in a range of activities. A subset of them are listed below:
 1. Provisioning [ESXi](https://www.vmware.com/in/products/esxi-and-esx.html) (Hypervisor developed by VMware) hosts.
 2. Provisioning a vSphere infrastructure.
 3. Managing lifecycle of VMs.
-4. Provisioning [vSAN](https://docs.vmware.com/en/VMware-vSAN/index.html) storage.  
+4. Provisioning [vSAN](https://docs.vmware.com/en/VMware-vSAN/index.html) storage.
 
 # Code Flow
 
