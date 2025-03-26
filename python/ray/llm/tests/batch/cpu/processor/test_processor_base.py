@@ -62,9 +62,10 @@ def test_processor_with_stages(has_extra: bool):
         def __init__(
             self,
             data_column: str,
+            expected_input_keys: List[str],
             factor: int,
         ):
-            super().__init__(data_column)
+            super().__init__(data_column, expected_input_keys)
             self.factor = factor
 
         async def udf(
@@ -80,14 +81,13 @@ def test_processor_with_stages(has_extra: bool):
                     self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 }
 
-        @property
-        def expected_input_keys(self) -> List[str]:
-            return ["val"]
-
     class DummyStage(StatefulStage):
         fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = dict(concurrency=1)
+
+        def get_required_input_keys(self) -> Dict[str, str]:
+            return {"val": "The value to multiply."}
 
     stages = [
         DummyStage(fn_constructor_kwargs=dict(factor=2)),
@@ -116,22 +116,25 @@ def test_processor_with_stages(has_extra: bool):
     for stage_name, stage in zip(stage_names, stages):
         assert processor.get_stage_by_name(stage_name) == stage
 
-    ds = ray.data.range(5)
-    ds = ds.map(
-        lambda row: {
-            "id": row["id"],
-            **({"extra": 1} if has_extra else {}),
-        }
-    )
+    # Run the processor twice with different datasets to test
+    # whether the processor is reusable.
+    for _ in range(2):
+        ds = ray.data.range(5)
+        ds = ds.map(
+            lambda row: {
+                "id": row["id"],
+                **({"extra": 1} if has_extra else {}),
+            }
+        )
 
-    ds = processor(ds).take_all()
-    extra = 1 if has_extra else 0
-    for row in ds:
-        assert "id" in row
-        assert "result" in row
+        ds = processor(ds).take_all()
+        extra = 1 if has_extra else 0
+        for row in ds:
+            assert "id" in row
+            assert "result" in row
 
-        # The final output should be the result of the last stage.
-        assert row["result"] == (row["id"] * 2 + extra) * 3 + extra
+            # The final output should be the result of the last stage.
+            assert row["result"] == (row["id"] * 2 + extra) * 3 + extra
 
 
 def test_builder():

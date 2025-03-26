@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library", "ray_cc_binary")
+load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 ray_cc_test(
     name = "resource_request_test",
@@ -50,7 +50,7 @@ ray_cc_test(
     ],
     deps = [
         "//:grpc_common_lib",
-        "//:ray_mock",
+        "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
         "@com_google_googletest//:gtest",
     ],
@@ -159,9 +159,9 @@ ray_cc_test(
 
 ray_cc_library(
     name = "testing",
+    testonly = True,
     hdrs = ["testing.h"],
     deps = ["//src/ray/util:macros"],
-    testonly = True,
 )
 
 ray_cc_test(
@@ -197,7 +197,10 @@ ray_cc_test(
     srcs = [
         "memory_monitor_test.cc",
     ],
-    tags = ["team:core", "no_windows"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -234,5 +237,5 @@ ray_cc_test(
         "//src/ray/common:grpc_util",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_googletest//:gtest_main",
-    ]
+    ],
 )

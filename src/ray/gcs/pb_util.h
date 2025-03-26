@@ -15,6 +15,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/time/time.h"
 #include "ray/common/constants.h"
@@ -340,8 +342,8 @@ inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
 }
 
 inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
-  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
-                          task_event.attempt_number());
+  return std::make_pair(TaskID::FromBinary(task_event.task_id()),
+                        task_event.attempt_number());
 }
 
 inline bool IsActorTask(const rpc::TaskEvents &task_event) {

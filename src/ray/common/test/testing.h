@@ -16,6 +16,6 @@
 
 #pragma once
 
-#define RAY_EXPECT_OK(s) EXPECT_TRUE((s).ok())
+#define RAY_EXPECT_OK(s) EXPECT_TRUE((s).ok()) << s.StatusString()
 
-#define RAY_ASSERT_OK(s) ASSERT_TRUE((s).ok())
+#define RAY_ASSERT_OK(s) ASSERT_TRUE((s).ok()) << s.StatusString()

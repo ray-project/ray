@@ -34,14 +34,8 @@ def get_local_state_client():
         hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
     )
 
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname)
     client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
 
     return client
 

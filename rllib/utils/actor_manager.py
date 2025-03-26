@@ -260,19 +260,15 @@ class FaultTolerantActorManager:
                 dropped. This only applies to the asynchronous remote call mode.
             init_id: The initial ID to use for the next remote actor. Default is 0.
         """
-        # For historic reasons, just start remote worker ID from 1, so they never
-        # collide with local worker ID (0).
-        self._next_id = init_id
+        # For round-robin style async requests, keep track of which actor to send
+        # a new func next (current).
+        self._next_id = self._current_actor_id = init_id
 
         # Actors are stored in a map and indexed by a unique (int) ID.
         self._actors: Dict[int, ActorHandle] = {}
         self._remote_actor_states: Dict[int, self._ActorState] = {}
         self._restored_actors = set()
         self.add_actors(actors or [])
-
-        # For round-robin style async requests, keep track of which actor to send
-        # a new func next.
-        self._current_actor_id = self._next_id
 
         # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
@@ -401,6 +397,7 @@ class FaultTolerantActorManager:
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
         remote_actor_ids: Optional[List[int]] = None,
         timeout_seconds: Optional[float] = None,
@@ -417,6 +414,10 @@ class FaultTolerantActorManager:
                 In the latter case, both list of Callables and list of specified actors
                 must have the same length. Alternatively, you can use the name of the
                 remote method to be called, instead, or a list of remote method names.
+            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
+                list of provided `func` or `remote_actor_ids`. In the first case (single
+                dict), use `kwargs` on all remote calls. The latter case (list of
+                dicts) allows you to define individualized kwarg dicts per actor.
             healthy_only: If True, applies `func` only to actors currently tagged
                 "healthy", otherwise to all actors. If `healthy_only=False` and
                 `mark_healthy=True`, will send `func` to all actors and mark those
@@ -445,13 +446,14 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or self.actor_ids()
         if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
-                func, remote_actor_ids
+            func, kwargs, remote_actor_ids = self._filter_by_healthy_state(
+                func=func, kwargs=kwargs, remote_actor_ids=remote_actor_ids
             )
 
         # Send out remote requests.
         remote_calls = self._call_actors(
             func=func,
+            kwargs=kwargs,
             remote_actor_ids=remote_actor_ids,
         )
 
@@ -471,10 +473,11 @@ class FaultTolerantActorManager:
     def foreach_actor_async(
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
-        tag: str = None,
+        tag: Optional[str] = None,
         *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
+        remote_actor_ids: Optional[List[int]] = None,
     ) -> int:
         """Calls given functions against each actors without waiting for results.
 
@@ -485,6 +488,10 @@ class FaultTolerantActorManager:
                 must have the same length. Alternatively, you can use the name of the
                 remote method to be called, instead, or a list of remote method names.
             tag: A tag to identify the results from this async call.
+            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
+                list of provided `func` or `remote_actor_ids`. In the first case (single
+                dict), use `kwargs` on all remote calls. The latter case (list of
+                dicts) allows you to define individualized kwarg dicts per actor.
             healthy_only: If True, applies `func` only to actors currently tagged
                 "healthy", otherwise to all actors. If `healthy_only=False` and
                 later, `self.fetch_ready_async_reqs()` is called with
@@ -510,21 +517,29 @@ class FaultTolerantActorManager:
         if not remote_actor_ids:
             remote_actor_ids = self.actor_ids()
 
-        # Perform round robin assignment of all provided calls for any number of our
+        num_calls = (
+            len(func)
+            if isinstance(func, list)
+            else len(kwargs)
+            if isinstance(kwargs, list)
+            else len(remote_actor_ids)
+        )
+
+        # Perform round-robin assignment of all provided calls for any number of our
         # actors. Note that this way, some actors might receive more than 1 request in
         # this call.
-        if isinstance(func, list) and len(remote_actor_ids) != len(func):
+        if num_calls != len(remote_actor_ids):
             remote_actor_ids = [
                 (self._current_actor_id + i) % self.num_actors()
-                for i in range(len(func))
+                for i in range(num_calls)
             ]
             # Update our round-robin pointer.
-            self._current_actor_id += len(func)
+            self._current_actor_id += num_calls
             self._current_actor_id %= self.num_actors()
 
         if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
-                func, remote_actor_ids
+            func, kwargs, remote_actor_ids = self._filter_by_healthy_state(
+                func=func, kwargs=kwargs, remote_actor_ids=remote_actor_ids
             )
 
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
@@ -532,34 +547,42 @@ class FaultTolerantActorManager:
         if isinstance(func, list):
             assert len(func) == len(remote_actor_ids)
             limited_func = []
+            limited_kwargs = []
             limited_remote_actor_ids = []
-            for i, f in zip(remote_actor_ids, func):
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
                 num_outstanding_reqs = self._remote_actor_states[
-                    i
+                    raid
                 ].num_in_flight_async_requests
                 if (
-                    num_outstanding_reqs + num_calls_to_make[i]
+                    num_outstanding_reqs + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
-                    num_calls_to_make[i] += 1
+                    num_calls_to_make[raid] += 1
+                    k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     limited_func.append(f)
-                    limited_remote_actor_ids.append(i)
+                    limited_kwargs.append(k)
+                    limited_remote_actor_ids.append(raid)
         else:
             limited_func = func
+            limited_kwargs = kwargs
             limited_remote_actor_ids = []
-            for i in remote_actor_ids:
+            for raid in remote_actor_ids:
                 num_outstanding_reqs = self._remote_actor_states[
-                    i
+                    raid
                 ].num_in_flight_async_requests
                 if (
-                    num_outstanding_reqs + num_calls_to_make[i]
+                    num_outstanding_reqs + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
-                    num_calls_to_make[i] += 1
-                    limited_remote_actor_ids.append(i)
+                    num_calls_to_make[raid] += 1
+                    limited_remote_actor_ids.append(raid)
+
+        if not limited_remote_actor_ids:
+            return 0
 
         remote_calls = self._call_actors(
             func=limited_func,
+            kwargs=limited_kwargs,
             remote_actor_ids=limited_remote_actor_ids,
         )
 
@@ -717,6 +740,7 @@ class FaultTolerantActorManager:
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         remote_actor_ids: List[int] = None,
     ) -> List[ray.ObjectRef]:
         """Apply functions on a list of remote actors.
@@ -727,32 +751,48 @@ class FaultTolerantActorManager:
                 In the latter case, both list of Callables and list of specified actors
                 must have the same length. Alternatively, you can use the name of the
                 remote method to be called, instead, or a list of remote method names.
+            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
+                list of provided `func` or `remote_actor_ids`. In the first case (single
+                dict), use `kwargs` on all remote calls. The latter case (list of
+                dicts) allows you to define individualized kwarg dicts per actor.
             remote_actor_ids: Apply func on this selected set of remote actors.
 
         Returns:
             A list of ObjectRefs returned from the remote calls.
         """
+        if remote_actor_ids is None:
+            remote_actor_ids = self.actor_ids()
+
         if isinstance(func, list):
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
 
-        if remote_actor_ids is None:
-            remote_actor_ids = self.actor_ids()
-
         calls = []
         if isinstance(func, list):
-            for i, f in zip(remote_actor_ids, func):
+            for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
-                    calls.append(getattr(self._actors[i], f).remote())
+                    calls.append(
+                        getattr(self._actors[raid], f).remote(
+                            **(
+                                kwargs[i]
+                                if isinstance(kwargs, list)
+                                else (kwargs or {})
+                            )
+                        )
+                    )
                 else:
-                    calls.append(self._actors[i].apply.remote(f))
+                    calls.append(self._actors[raid].apply.remote(f))
         elif isinstance(func, str):
-            for i in remote_actor_ids:
-                calls.append(getattr(self._actors[i], func).remote())
+            for i, raid in enumerate(remote_actor_ids):
+                calls.append(
+                    getattr(self._actors[raid], func).remote(
+                        **(kwargs[i] if isinstance(kwargs, list) else (kwargs or {}))
+                    )
+                )
         else:
-            for i in remote_actor_ids:
-                calls.append(self._actors[i].apply.remote(func))
+            for raid in remote_actor_ids:
+                calls.append(self._actors[raid].apply.remote(func))
 
         return calls
 
@@ -855,15 +895,21 @@ class FaultTolerantActorManager:
 
         return readies, remote_results
 
-    def _filter_func_and_remote_actor_id_by_state(
+    def _filter_by_healthy_state(
         self,
+        *,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        kwargs: Optional[Union[Dict, List[Dict]]] = None,
         remote_actor_ids: List[int],
     ):
         """Filter out func and remote worker ids by actor state.
 
         Args:
             func: A single, or a list of Callables.
+            kwargs: An optional single kwargs dict or a list of kwargs dicts matching
+                the list of provided `func` or `remote_actor_ids`. In case of a single
+                dict, uses `kwargs` on all remote calls. In case of a list of dicts,
+                the given kwarg dicts are per actor `func` or per `remote_actor_ids`.
             remote_actor_ids: IDs of potential remote workers to apply func on.
 
         Returns:
@@ -877,17 +923,21 @@ class FaultTolerantActorManager:
             # Need to filter the functions together with worker IDs.
             temp_func = []
             temp_remote_actor_ids = []
-            for f, i in zip(func, remote_actor_ids):
-                if self.is_actor_healthy(i):
+            temp_kwargs = []
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
+                if self.is_actor_healthy(raid):
+                    k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     temp_func.append(f)
-                    temp_remote_actor_ids.append(i)
+                    temp_kwargs.append(k)
+                    temp_remote_actor_ids.append(raid)
             func = temp_func
+            kwargs = temp_kwargs
             remote_actor_ids = temp_remote_actor_ids
         else:
             # Simply filter the worker IDs.
             remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
 
-        return func, remote_actor_ids
+        return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
         self, tags: Union[str, List[str], Tuple[str]]

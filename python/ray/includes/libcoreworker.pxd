@@ -4,6 +4,7 @@
 
 from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
+from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
@@ -70,7 +71,6 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
-
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
@@ -92,6 +92,8 @@ cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
+        void SetCurrentActorShouldExit()
+        c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
         const CActorID &GetRootDetachedActorID()
@@ -211,7 +213,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
-        CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
@@ -404,6 +405,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t generator_backpressure_num_objects
         ) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
+        (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
         (c_vector[c_string](

@@ -85,7 +85,9 @@ steps:
     depends_on: servebuild
 
   - label: ":ray-serve: serve: wheel tests"
-    tags: linux_wheels
+    tags:
+      - serve
+      - linux_wheels
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve

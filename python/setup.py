@@ -366,8 +366,11 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm>=0.7.2",
                 "jsonref>=1.1.0",
-                "boto3",
-                "async_timeout",
+                "jsonschema",
+                "ninja",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
+                "typer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
@@ -837,7 +840,11 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": [
+            "includes/*.pxd",
+            "*.pxd",
+            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+        ],
     },
     include_package_data=True,
     exclude_package_data={

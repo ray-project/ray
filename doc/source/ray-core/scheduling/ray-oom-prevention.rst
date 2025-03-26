@@ -84,7 +84,7 @@ If, at this point, the node still runs out of memory, the process will repeat:
 
     Let's create an application oom.py that runs a single task that requires more memory than what is available. It is set to infinite retry by setting ``max_retries`` to -1.
 
-    The worker killer policy sees that it is the last task of the caller, and will fail the workload when it kills the task as it is the last one for the caller, even when the task is set to retry forver.
+    The worker killer policy sees that it is the last task of the caller, and will fail the workload when it kills the task as it is the last one for the caller, even when the task is set to retry forever.
 
     .. literalinclude:: ../doc_code/ray_oom_prevention.py
           :language: python

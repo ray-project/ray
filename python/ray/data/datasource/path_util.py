@@ -181,6 +181,11 @@ def _is_url(path) -> bool:
     return urllib.parse.urlparse(path).scheme != ""
 
 
+def _is_http_url(path) -> bool:
+    parsed = urllib.parse.urlparse(path)
+    return parsed.scheme in ("http", "https")
+
+
 def _is_local_windows_path(path: str) -> bool:
     """Determines if path is a Windows file-system location."""
     if sys.platform != "win32":

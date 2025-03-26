@@ -12,10 +12,12 @@ from typing import Optional, List, Union, Dict
 from unittest.mock import patch
 
 import pytest
+import requests
 import yaml
 
 import ray
 from ray import NodeID
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -23,11 +25,17 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+from ray._private.runtime_env.packaging import (
+    get_uri_for_file,
+    create_package,
+    download_and_unpack_package,
+)
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
+from ray.dashboard.modules.job.common import uri_to_http_components
 from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
@@ -51,11 +59,16 @@ def headers():
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client(headers) -> JobSubmissionClient:
+def ray_start_context():
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        address = ctx.address_info["webui_url"]
-        assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address), headers=headers)
+        yield ctx
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers, ray_start_context) -> JobSubmissionClient:
+    address = ray_start_context.address_info["webui_url"]
+    assert wait_until_server_available(address)
+    yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 @pytest.fixture
@@ -422,7 +435,7 @@ def test_http_bad_request(job_sdk_client):
     )
 
     assert r.status_code == 400
-    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
+    assert "__init__() got an unexpected keyword argument" in r.text
 
 
 def test_invalid_runtime_env(job_sdk_client):
@@ -784,6 +797,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
                 return self._gcs_aio_client
 
         job_head = MockJobHead()
+        job_head._gcs_aio_client = _FakeGcsClient()
 
         async def add_agent(agent):
             node_id = agent[0]
@@ -927,6 +941,42 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             job_agent_client = await job_head.get_target_agent()
             assert address is None or address == job_agent_client._agent_address
             address = job_agent_client._agent_address
+
+
+@pytest.mark.asyncio
+async def test_get_upload_package(ray_start_context, tmp_path):
+    assert wait_until_server_available(ray_start_context["webui_url"])
+    webui_url = format_web_url(ray_start_context["webui_url"])
+    gcs_aio_client = GcsAioClient(address=ray_start_context["gcs_address"])
+    url = webui_url + "/api/packages/{protocol}/{package_name}"
+
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    filename = "task.py"
+
+    file_content = b"Hello world"
+    with (pkg_dir / filename).open("wb") as f:
+        f.write(file_content)
+
+    package_uri = get_uri_for_file(str(pkg_dir / filename))
+    protocol, package_name = uri_to_http_components(package_uri)
+    package_file = tmp_path / package_name
+    create_package(str(pkg_dir), package_file)
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 404
+
+    resp = requests.put(
+        url.format(protocol=protocol, package_name=package_name),
+        data=package_file.read_bytes(),
+    )
+    assert resp.status_code == 200
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 200
+
+    await download_and_unpack_package(package_uri, str(tmp_path), gcs_aio_client)
+    assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
 
 if __name__ == "__main__":

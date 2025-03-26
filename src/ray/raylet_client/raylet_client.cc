@@ -83,30 +83,22 @@ Status RayletClient::Disconnect(
                          creation_task_exception_pb_bytes->Size());
   }
   const auto &fb_exit_detail = fbb.CreateString(exit_detail);
-  protocol::DisconnectClientBuilder builder(fbb);
+  protocol::DisconnectClientRequestBuilder builder(fbb);
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
-  builder.add_disconnect_type(static_cast<int>(exit_type));
-  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
-  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
-  // Don't be too strict for disconnection errors.
-  // Just create logs and prevent it from crash.
-  // TODO(myan): In the current implementation, if raylet is already terminated in the
-  // "WriteMessage" function above, the worker process will exit early in the function
-  // and will not reach here. However, the code path here is shared between graceful
-  // shutdown and force termination. We need to make sure the above early exit
-  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
-  // leak if early exit is triggered
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << status.ToString()
-        << " [RayletClient] Failed to disconnect from raylet. This means the "
-           "raylet the worker is connected is probably already dead.";
-  }
-  return Status::OK();
+  std::vector<uint8_t> reply;
+  // NOTE(edoakes): AtomicRequestReply will fast fail and exit the process if the raylet
+  // is already dead.
+  // TODO(edoakes): we should add a timeout to this call in case the raylet is overloaded.
+  return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
+                                   MessageType::DisconnectClientReply,
+                                   &reply,
+                                   &fbb);
 }
 
 // TODO(hjiang): After we merge register client and announce port, should delete this
@@ -179,12 +171,12 @@ Status RayletClient::NotifyDirectCallTaskUnblocked() {
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
-Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
-                          const std::vector<rpc::Address> &owner_addresses,
-                          int num_returns,
-                          int64_t timeout_milliseconds,
-                          const TaskID &current_task_id,
-                          WaitResultPair *result) {
+StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(fbb,
@@ -199,19 +191,13 @@ Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
       MessageType::WaitRequest, MessageType::WaitReply, &reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
-  auto found = reply_message->found();
-  result->first.reserve(found->size());
+  auto *found = reply_message->found();
+  absl::flat_hash_set<ObjectID> result;
+  result.reserve(found->size());
   for (size_t i = 0; i < found->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
-    result->first.push_back(object_id);
+    result.insert(ObjectID::FromBinary(found->Get(i)->str()));
   }
-  auto remaining = reply_message->remaining();
-  result->second.reserve(remaining->size());
-  for (size_t i = 0; i < remaining->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
-    result->second.push_back(object_id);
-  }
-  return Status::OK();
+  return result;
 }
 
 Status RayletClient::WaitForDirectActorCallArgs(
@@ -369,7 +355,8 @@ void RayletClient::PushMutableObject(
     request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
+    request.set_payload(absl::MakeCordFromExternal(
+        absl::string_view(static_cast<char *>(data) + offset, chunk_size), []() {}));
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(

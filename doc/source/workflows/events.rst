@@ -1,6 +1,11 @@
 Events
 ======
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 To allow an event to trigger a workflow, Ray Workflows supports pluggable event systems. Using the event framework provides a few properties.
 
 1. Waits for events efficiently (without requiring a running workflow task while waiting).
