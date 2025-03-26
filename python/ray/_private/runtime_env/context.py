@@ -9,7 +9,12 @@ from typing import Dict, List, Optional
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
 from ray._private.services import get_ray_jars_dir
-from ray._private.utils import update_envs
+from ray._private.utils import (
+    update_envs,
+    try_update_code_search_path,
+    try_update_ld_preload,
+    try_update_ld_library_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +30,19 @@ class RuntimeEnvContext:
         py_executable: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
+        native_libraries: List[Dict[str, str]] = None,
+        preload_libraries: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
+        self.native_libraries = native_libraries or {
+            "lib_path": [],
+            "code_search_path": [],
+        }
+        self.preload_libraries = preload_libraries or []
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -56,11 +68,28 @@ class RuntimeEnvContext:
                 local_java_jars.append(java_jar)
 
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
+            # try update code search path
+            passthrough_args = try_update_code_search_path(
+                passthrough_args, language, self.java_jars, self.native_libraries
+            )
             passthrough_args = class_path_args + passthrough_args
+        elif language == Language.CPP:
+            executable = ["exec"]
+            # try update code search path
+            passthrough_args = try_update_code_search_path(
+                passthrough_args, language, self.java_jars, self.native_libraries
+            )
+
         elif sys.platform == "win32":
             executable = []
         else:
             executable = ["exec"]
+
+        # try update ld_library path
+        try_update_ld_library_path(language, self.native_libraries)
+
+        # try update ld_preload
+        try_update_ld_preload(self.native_libraries)
 
         # By default, raylet uses the path to default_worker.py on host.
         # However, the path to default_worker.py inside the container
@@ -99,7 +128,7 @@ class RuntimeEnvContext:
                     f"{MACOS_LIBRARY_PATH_ENV_NAME}="
                     f"{os.environ[MACOS_LIBRARY_PATH_ENV_NAME]}",
                 )
-            logger.debug(f"Exec'ing worker with command: {cmd}")
+            logger.info(f"Exec'ing worker with command: {cmd}")
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
             # The monkey patched os.execvp function has a different

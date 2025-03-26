@@ -1,3 +1,6 @@
+import sys
+import os
+
 # Env var set by job manager to pass runtime env and metadata to subprocess
 RAY_JOB_CONFIG_JSON_ENV_VAR = "RAY_JOB_CONFIG_JSON_ENV_VAR"
 
@@ -26,3 +29,16 @@ RAY_RUNTIME_ENV_PLUGIN_SCHEMAS_ENV_VAR = "RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"
 
 # The file suffix of runtime env plugin schemas.
 RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX = ".json"
+
+# The names of the LIBRARY environment variable on different platforms.
+_LINUX = sys.platform.startswith("linux")
+_MACOS = sys.platform.startswith("darwin")
+if _LINUX:
+    LIBRARY_PATH_ENV_NAME = "LD_LIBRARY_PATH"
+elif _MACOS:
+    LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
+else:
+    # Win32
+    LIBRARY_PATH_ENV_NAME = "PATH"
+
+PRELOAD_ENV_NAME = "LD_PRELOAD"

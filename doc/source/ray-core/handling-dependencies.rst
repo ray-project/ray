@@ -613,6 +613,30 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
     # archives plugin a instance of str, like runtime_env = {"archives": "https://bucket/my_project.zip"}
     ray.get(get_archives_context.options(runtime_env={"archives": {"url1": "https://bucket/my_project.zip", "url2": "https://bucket/my_project.zip"}))
 
+- ``native_libraries`` (List[str | dict]): Specifies dynamically loaded files to Ray workers, such as dynamic libraries required by C++ workers and 
+  dynamically loaded jar packages required by Java workers. The element in List must either be (1) a URI to a remote-stored zip or tar file (no file size limit if enforced by Ray) 
+  See :ref:`remote-uris` for details, (2) a native libraries element dictionary which containing three fileds: (a) ``url``: (required, str): a URI to a remote-stored zip of tar file.
+  (b): ``lib_path``: (optional, List[str | dict]): a List or Dict containing where Ray workers load dynamic libraries from. 
+  If your dynamic library is in the second-level directory after package is unzipped, you need to add the library name of the second-level dictionary lib_path, 
+  defaults to ``["./"]``. If ``lib_path`` is a instance of Dict, a lib path element dictionary which containing two fields: 
+  (i): ``path``: (required, str): a second-level dictionary name where to find lib path. (ii): ``env_var_name``: (optional, str): environment variable where lib_path should be added.
+  Only ``LD_LIBRARY_PATH`` and ``LD_PRELOAD`` is supported. defaults to ``LD_LIBRARY_PATH``
+  (c): ``code_search_path``: (optional, List): a List containing where Ray looks for dependent files. if your dynamic library is in the second-level directory
+  after package is unzipped, you need to add the library name of the second-level directory code_search_path, defaults to ``["./"]``.
+  See :ref:`code_search_path` for details.
+
+  - Example: ``["https://bucket/my_native_libraries.zip"]``
+
+  - Example: ``[{"url": "https://bucket/my_native_libraries.zip", "lib_path": ["my_lib_path"], "code_search_path": ["your_code_search_path"]}]``
+
+  - Example: ``[{"url": "https://bucket/my_native_libraries.zip", "lib_path": [{"path": "ld_libraries", "env_var_name": "LD_LIBRARY_PATH"}, {"path": "preload_libraries", "env_var_name": "LD_PRELOAD"}], "code_search_path": ["your_code_search_path"]}]``
+
+  Note: ``native_libraries`` plugin is not a built-in plugin of Runtime Env Agent. if users need to use this plugin, you need to specify environment variables 
+  ``RAY_RUNTIME_ENV_PLUGINS='[{"class": "ray._private.runtime_env.native_libraries.NativeLibrariesPlugin"}]'``
+
+  Note: If you set `LD_LIBRARY_PATH` in `env_var_name` element, you just need to set dir where dynamic library is located,
+  otherwise you set `LD_PRELOAD` in `env_var_name` element, you need to set the dynamic library path.
+
 - ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
   - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 

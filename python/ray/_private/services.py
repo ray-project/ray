@@ -2289,6 +2289,20 @@ def start_ray_client_server(
     return process_info
 
 
+def get_ray_native_library_dir():
+    """Return a directory where all ray-related native libraries and
+    their dependencies are located."""
+    current_dir = RAY_PATH
+    native_library_dir = os.path.abspath(os.path.join(current_dir, "cpp/lib"))
+    if not os.path.exists(native_library_dir):
+        raise RuntimeError(
+            "Ray native libraries is not packaged into ray. "
+            "Please install ray with option [cpp] "
+            '(pip install "ray[cpp]")'
+        )
+    return native_library_dir
+
+
 def wait_for_redis_to_start(redis_ip_address, redis_port, username=None, password=None):
     """Wait for a Redis server to be available.
 

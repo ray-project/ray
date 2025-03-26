@@ -15,6 +15,11 @@ ARCHIVE_PLUGIN_CLASS_PATH = (
 )
 ARCHIVE_PLUGIN_NAME = "archives"
 
+NATIVE_LIBRARIES_CLASS_PATH = (
+    "ray._private.runtime_env.native_libraries.NativeLibrariesPlugin"  # noqa: E501
+)
+NATIVE_LIBRARIES_PLUGIN_NAME = "native_libraries"
+
 default_logger = logging.getLogger(__name__)
 
 
@@ -197,6 +202,50 @@ def test_tar_package_for_runtime_env(
     local_dir = get_local_dir_from_uri(url, archive_file_dir)
     assert os.path.exists(local_dir), local_dir
     assert str(local_dir) == archive_path
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + NATIVE_LIBRARIES_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_native_libraries_for_runtime_env(set_runtime_env_plugins, ray_start_regular):
+
+    # test_internal_native_libraries.tar
+    #     - libha3.so
+    native_libraries_url = "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.gz"  # noqa: E501
+
+    @ray.remote
+    class Test_Actor:
+        def __init__(self):
+            self._count = 0
+
+        def get_count(self):
+            return self._count
+
+    session_dir = ray_start_regular.address_info["session_dir"]
+    url = native_libraries_url
+    a = Test_Actor.options(
+        runtime_env={
+            NATIVE_LIBRARIES_PLUGIN_NAME: [
+                {
+                    "url": url,
+                    "lib_path": ["./"],
+                    "code_search_path": ["./"],
+                }
+            ]
+        }
+    ).remote()
+    assert ray.get(a.get_count.remote()) == 0
+    native_libraries_dir = os.path.join(
+        session_dir, "runtime_resources/native_libraries_files"
+    )
+    local_dir = get_local_dir_from_uri(url, native_libraries_dir)
+    assert os.path.exists(local_dir), local_dir
+    local_file_path = os.path.join(local_dir, "libha3.so")
+    assert os.path.exists(local_file_path), local_file_path
 
 
 if __name__ == "__main__":

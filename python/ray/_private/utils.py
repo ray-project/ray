@@ -43,9 +43,12 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.runtime_env.constants as runtime_env_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+from ray.core.generated.common_pb2 import Language
+from ray._private.services import get_ray_native_library_dir
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -1992,3 +1995,78 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+def try_update_code_search_path(
+    passthrough_args: List[str],
+    language: Language,
+    java_jars: Optional[List[str]],
+    native_libraries: Dict,
+):
+    local_code_search_path = []
+    if language == Language.JAVA:
+        if java_jars:
+            for java_jar in java_jars:
+                local_code_search_path.append(java_jar)
+
+        if native_libraries["code_search_path"]:
+            local_code_search_path += native_libraries["code_search_path"]
+
+        if local_code_search_path:
+            old_path = None
+            index = 0
+            for args in passthrough_args:
+                if args.startswith("-Dray.job.code-search-path="):
+                    old_path = args.split("-Dray.job.code-search-path=", 1)[-1]
+                    break
+                index += 1
+            new_path = ":".join(local_code_search_path)
+            if old_path:
+                passthrough_args[
+                    index
+                ] = f"-Dray.job.code-search-path={new_path}:{old_path}"
+            else:
+                passthrough_args += [f"-Dray.job.code-search-path={new_path}"]
+    elif language == Language.CPP:
+        if native_libraries.get("code_search_path", []):
+            old_path = None
+            index = 0
+            for args in passthrough_args:
+                if args.startswith("--ray_code_search_path="):
+                    old_path = args.split("--ray_code_search_path=", 1)[-1]
+                    break
+                index += 1
+            new_path = ":".join(native_libraries["code_search_path"])
+            if old_path:
+                passthrough_args[
+                    index
+                ] = f"--ray_code_search_path={new_path}:{old_path}"
+            else:
+                passthrough_args += [f"--ray_code_search_path={new_path}"]
+
+    return passthrough_args
+
+
+def try_update_ld_preload(preload_libraries: List[str]):
+    ld_preload_env = os.environ.get(runtime_env_constants.PRELOAD_ENV_NAME, "")
+    if preload_libraries:
+        if ld_preload_env:
+            ld_preload_env += ":"
+        ld_preload_env += ":".join(preload_libraries)
+    os.environ[runtime_env_constants.PRELOAD_ENV_NAME] = ld_preload_env
+
+
+def try_update_ld_library_path(language: Language, native_libraries: dict):
+    all_library_paths = ""
+    if language == Language.CPP:
+        all_library_paths += get_ray_native_library_dir()
+    if native_libraries.get("lib_path", []):
+        all_library_paths += ":"
+        all_library_paths += ":".join(native_libraries["lib_path"])
+    os_ld_library_paths = os.environ.get(
+        runtime_env_constants.LIBRARY_PATH_ENV_NAME, None
+    )
+    if os_ld_library_paths:
+        all_library_paths += ":"
+        all_library_paths += os_ld_library_paths
+    os.environ[runtime_env_constants.LIBRARY_PATH_ENV_NAME] = all_library_paths
