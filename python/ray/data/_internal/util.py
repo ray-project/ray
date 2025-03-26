@@ -970,10 +970,9 @@ def make_async_gen(
     # Signal handler used to interrupt workers when terminating
     interrupted_event = threading.Event()
 
-    input_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
-    ]
+    max_input_queue_buffer_size = (queue_buffer_size + 1) * num_workers
+    input_queue = _InterruptibleQueue(max_input_queue_buffer_size, interrupted_event)
+
     output_queues = [
         _InterruptibleQueue(queue_buffer_size, interrupted_event)
         for _ in range(num_workers)
@@ -984,12 +983,13 @@ def make_async_gen(
         try:
             # First, round-robin elements from the iterator into
             # corresponding input queues (one by one)
-            for idx, item in enumerate(base_iterator):
-                input_queues[idx % num_workers].put(item)
+            for item in base_iterator:
+                input_queue.put(item)
 
-            # Enqueue sentinel objects to signal end of the line
-            for idx in range(num_workers):
-                input_queues[idx].put(SENTINEL)
+            # Enqueue sentinel objects to signal EOL (end of the line)
+            # for every worker
+            for _ in range(num_workers):
+                input_queue.put(SENTINEL)
 
         except InterruptedError:
             pass
@@ -1005,7 +1005,6 @@ def make_async_gen(
 
     # Transforming worker
     def _run_transforming_worker(worker_id: int):
-        input_queue = input_queues[worker_id]
         output_queue = output_queues[worker_id]
 
         try:
