@@ -72,7 +72,9 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
-      const rpc::TensorTransport &tensor_transport)>;
+      const rpc::TensorTransport &tensor_transport,
+      // The CPU affinity mask for the accelerator devices.
+      const std::string &accelerator_cpu_mask)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -108,7 +110,8 @@ struct CoreWorkerOptions {
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
         debug_source(""),
-        enable_resource_isolation(false) {}
+        enable_resource_isolation(false),
+        accelerator_cpu_mask("") {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -216,6 +219,8 @@ struct CoreWorkerOptions {
   // If true, core worker enables resource isolation through cgroupv2 by reserving
   // resources for ray system processes.
   bool enable_resource_isolation = false;
+  // CPU affinity mask for the accelerator devices.
+  std::string accelerator_cpu_mask;
 };
 }  // namespace core
 }  // namespace ray

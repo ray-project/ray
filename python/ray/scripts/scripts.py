@@ -672,6 +672,13 @@ Windows powershell users need additional escaping:
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if --enable-resource-isolation is set.",
 )
+@click.option(
+    "--accelerator-cpu-mask",
+    required=False,
+    default="",
+    type=str,
+    help="CPU masks for the affinity of accelerator devices.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -720,6 +727,7 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    accelerator_cpu_mask,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -829,6 +837,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        accelerator_cpu_mask=accelerator_cpu_mask,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
