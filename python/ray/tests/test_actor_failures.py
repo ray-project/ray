@@ -10,6 +10,7 @@ import time
 
 import ray
 from ray.actor import exit_actor
+from ray.exceptions import AsyncioActorExit
 import ray.cluster_utils
 from ray._private.test_utils import (
     wait_for_condition,
@@ -69,6 +70,101 @@ def test_actor_spilled(ray_start_regular):
         num_success += 1
     # All of objects should've been spilled, so all of them should succeed.
     assert num_success == len(objects)
+
+
+def test_async_generator_crash_restart(ray_start_cluster):
+    """
+    Timeline:
+    1. In worker node, creates a generator that generates 2 objects
+    2. Kills worker node, objs exist in ref, but data lost
+    3. In worker node, creates a consumer that consumes 2 objects
+    4. Start a worker node to enable the task and lineage reconstruction
+    5. Lineage reconstruction should be working here.
+        The gen is dead after it only generated 1.
+    6. Verify that the consumer task can still run (it's not)
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, resources={"head": 0.1})
+    class Killer:
+        def __init__(self):
+            self.pid = None
+            self.at_num = None
+            self.kill_num = 0
+
+        def set_pid(self, pid):
+            self.pid = pid
+
+        def set_at_num(self, at_num):
+            self.at_num = at_num
+
+        def kill_if_needed(self, num):
+            if self.kill_num > 3:
+                return
+            self.kill_num = self.kill_num + 1
+            if self.pid is not None and self.at_num is not None and num == self.at_num:
+                import os
+                import signal
+
+                print(f"Killing the pid = {self.pid}")
+                os.kill(self.pid, signal.SIGKILL)
+
+    @ray.remote(
+        num_cpus=1, max_restarts=-1, max_task_retries=-1, resources={"worker": 1}
+    )
+    class Generator:
+        async def gen(self, nums, killer):
+            """
+            Generates "value_holder" objects. For each object, it first notifies the
+            killer, and yields the object.
+            """
+            print(f"my pid is {os.getpid()}, telling to killer")
+            await killer.set_pid.remote(os.getpid())
+            print(f"generates total {nums}")
+            for i in range(nums):
+                await killer.kill_if_needed.remote(i)
+
+                print(f"generating {i}")
+                yield np.ones((1000, 1000), dtype=np.uint8) * i
+                print(f"generated {i}")
+            print(f"generated total {nums}")
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def consumes(objs, expected_num):
+        nums = ray.get(objs)
+        assert len(nums) == expected_num
+        print(f"consumes {len(nums)}")
+        print(nums)
+        return expected_num
+
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    generator = Generator.remote()
+    killer = Killer.remote()
+
+    # First run, no kills
+    gen = ray.get(generator.gen.remote(2, killer))  # returns ObjectRefGenerator
+    objs = list(gen)  # [ObjectRef, ...]
+    assert len(objs) == 2
+
+    # kill the worker node
+    cluster.remove_node(worker_node, allow_graceful=False)
+
+    # In the lineage reconstruction, the generator is dead after it only generated 5...
+    ray.get(killer.set_at_num.remote(1))
+
+    # ... but a consumer takes all 10
+    consumer = consumes.remote(objs, 2)
+    # start a new worker node
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    ray.get(consumer)
 
 
 def test_actor_restart(ray_init_with_task_retry_delay):
@@ -748,7 +844,7 @@ def test_actor_failure_per_type(ray_start_cluster):
     cluster.remove_node(node_to_kill)
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match="The actor is dead because its node has died.",
+        match="The actor died because its node has died.",
     ) as exc_info:
         ray.get(a.check_alive.remote())
     assert exc_info.value.actor_id == a._actor_id.hex()
@@ -796,7 +892,7 @@ def test_failure_during_dependency_resolution(ray_start_regular):
         ray.get(ref)
 
 
-def test_exit_actor(shutdown_only, tmp_path):
+def test_exit_actor_invalid_usage_error(shutdown_only):
     """
     Verify TypeError is raised when exit_actor is not used
     inside an actor.
@@ -815,83 +911,261 @@ def test_exit_actor(shutdown_only, tmp_path):
     ):
         ray.get(f.remote())
 
-    """
-    Verify the basic case.
-    """
+
+def test_exit_actor_normal_actor_raise_immediately(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
 
     @ray.remote
     class Actor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
         def exit(self):
             exit_actor()
-
-    @ray.remote
-    class AsyncActor:
-        async def exit(self):
-            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
 
     a = Actor.remote()
     ray.get(a.__ray_ready__.remote())
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(a.exit.remote())
     assert "exit_actor()" in str(exc_info.value)
-
-    b = AsyncActor.remote()
-    ray.get(b.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
-        ray.get(b.exit.remote())
-    assert "exit_actor()" in str(exc_info.value)
-
-    """
-    Verify atexit handler is called correctly.
-    """
-    sync_temp_file = tmp_path / "actor.log"
-    async_temp_file = tmp_path / "async_actor.log"
-    sync_temp_file.touch()
-    async_temp_file.touch()
-
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            def f():
-                print("atexit handler")
-                with open(sync_temp_file, "w") as f:
-                    f.write("Actor\n")
-
-            atexit.register(f)
-
-        def exit(self):
-            exit_actor()
-
-    @ray.remote
-    class AsyncActor:
-        def __init__(self):
-            def f():
-                print("atexit handler")
-                with open(async_temp_file, "w") as f:
-                    f.write("Async Actor\n")
-
-            atexit.register(f)
-
-        async def exit(self):
-            exit_actor()
-
-    a = Actor.remote()
-    ray.get(a.__ray_ready__.remote())
-    b = AsyncActor.remote()
-    ray.get(b.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.exit.remote())
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(b.exit.remote())
 
     def verify():
-        with open(async_temp_file) as f:
-            assert f.readlines() == ["Async Actor\n"]
-        with open(sync_temp_file) as f:
-            assert f.readlines() == ["Actor\n"]
-        return True
+        return temp_file_atexit.exists()
 
     wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_normal_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = Actor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_normal_actor_user_catch_err_should_still_exit(
+    shutdown_only, tmp_path
+):
+    temp_file = tmp_path / "actor.log"
+    assert not temp_file.exists()
+
+    @ray.remote
+    class Actor:
+        def exit(self):
+            try:
+                exit_actor()
+            except SystemExit:
+                pass
+
+        def create(self):
+            temp_file.touch()
+
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.create.remote())
+
+    assert not temp_file.exists()
+
+
+def test_exit_actor_async_actor_raise_immediately(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
+        async def exit(self):
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+
+    try:
+        ray.get(a.exit.remote())
+    except Exception:
+        pass
+
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.exit.remote())
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_user_catch_err_should_still_exit(
+    shutdown_only, tmp_path
+):
+    temp_file = tmp_path / "actor.log"
+    assert not temp_file.exists()
+
+    @ray.remote
+    class AsyncActor:
+        async def exit(self):
+            try:
+                exit_actor()
+            except AsyncioActorExit:
+                pass
+
+        async def create(self):
+            temp_file.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.create.remote())
+    assert not temp_file.exists()
+
+
+def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+
+        async def start_exit_task(self, signal):
+            asyncio.create_task(self.exit(signal))
+
+        async def exit(self, signal):
+            await signal.wait.remote()
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+    ray.get(a.start_exit_task.remote(signal))
+    ray.get(signal.send.remote())
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_nested_task_in_constructor_should_exit(
+    shutdown_only, tmp_path
+):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            asyncio.create_task(self.exit())
+
+        async def exit(self):
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
 
 
 def test_exit_actor_queued(shutdown_only):

@@ -16,6 +16,7 @@
 
 #include <map>
 #include <utility>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/types/optional.h"
@@ -46,6 +47,10 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   void MarkDependencyFailed(uint64_t position) override;
   /// Make a task's dependency is resolved thus ready to send.
   void MarkDependencyResolved(uint64_t position) override;
+  // Mark a task has been canceled.
+  // If a task hasn't been sent yet, this API will guarantee a task won't be
+  // popped via PopNextTaskToSend.
+  void MarkTaskCanceled(uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.
@@ -63,7 +68,8 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   /// This is ignored by the receivier but only for debugging purpose.
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   /// Mark a task has been executed on the receiver side.
-  void MarkTaskCompleted(uint64_t position, const TaskSpecification &task_spec) override;
+  void MarkSeqnoCompleted(uint64_t position, const TaskSpecification &task_spec) override;
+  bool Empty() override;
 
  private:
   ActorID kActorId;

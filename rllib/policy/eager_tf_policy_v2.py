@@ -11,8 +11,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 import gymnasium as gym
 import tree  # pip install dm_tree
 
-from ray.rllib.core.models.base import STATE_IN
-from ray.rllib.evaluation.episode import Episode
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -27,10 +26,10 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
+    is_overridden,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    is_overridden,
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
@@ -41,8 +40,6 @@ from ray.rllib.utils.metrics import (
     NUM_GRAD_UPDATES_LIFETIME,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
@@ -58,7 +55,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class EagerTFPolicyV2(Policy):
     """A TF-eager / TF2 based tensorflow policy.
 
@@ -111,19 +108,12 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        if self.config.get("_enable_rl_module_api", False):
-            self.model = self.make_rl_module()
-            self.dist_class = None
-        else:
-            self.dist_class = self._init_dist_class()
-            self.model = self.make_model()
+        self.dist_class = self._init_dist_class()
+        self.model = self.make_model()
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_rl_module_api", False):
-            self.exploration = None
-        else:
-            self.exploration = self._create_exploration()
+        self.exploration = self._create_exploration()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
 
@@ -147,7 +137,6 @@ class EagerTFPolicyV2(Policy):
         # traced function after that.
         self._re_trace_counter = 0
 
-    @DeveloperAPI
     @staticmethod
     def enable_eager_execution_if_necessary():
         # If this class runs as a @ray.remote actor, eager mode may not
@@ -155,7 +144,6 @@ class EagerTFPolicyV2(Policy):
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
@@ -165,7 +153,6 @@ class EagerTFPolicyV2(Policy):
     ):
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     @override(Policy)
     def loss(
@@ -184,21 +171,8 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        # Under the new _enable_learner_api the loss function still gets called in order
-        # to initialize the view requirements of the sample batches that are returned by
-        # the sampler. In this case, we don't actually want to compute any loss, however
-        # if we access the keys that are needed for a forward_train pass, then the
-        # sampler will include those keys in the sample batches it returns. This means
-        # that the correct sample batch keys will be available when using the learner
-        # group API.
-        if self.config.get("_enable_rl_module_api", False):
-            for k in model.input_specs_train():
-                train_batch[k]
-            return None
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function. Returns a dict of statistics.
@@ -211,7 +185,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def grad_stats_fn(
         self, train_batch: SampleBatch, grads: ModelGradients
@@ -226,7 +199,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Build underlying model for this Policy.
@@ -246,7 +218,6 @@ class EagerTFPolicyV2(Policy):
             framework=self.framework,
         )
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
@@ -267,7 +238,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
@@ -286,7 +256,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_sampler_fn(
         self,
@@ -311,7 +280,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_distribution_fn(
         self,
@@ -335,7 +303,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
         """Get batch divisibility request.
@@ -346,7 +313,6 @@ class EagerTFPolicyV2(Policy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
@@ -357,7 +323,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
         """Extra stats to be reported after gradient computation.
@@ -373,7 +338,7 @@ class EagerTFPolicyV2(Policy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         """Post process trajectory in the format of a SampleBatch.
 
@@ -425,25 +390,23 @@ class EagerTFPolicyV2(Policy):
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
-        # TODO(jungong) : models will not carry view_requirements once they
-        # are migrated to be organic Keras models.
         self.view_requirements.update(self.model.view_requirements)
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     def maybe_initialize_optimizer_and_loss(self):
-        if not self.config.get("_enable_learner_api", False):
-            optimizers = force_list(self.optimizer())
-            if self.exploration:
-                # Policies with RLModules don't have an exploration object.
-                optimizers = self.exploration.get_exploration_optimizer(optimizers)
+        optimizers = force_list(self.optimizer())
+        if self.exploration:
+            # Policies with RLModules don't have an exploration object.
+            optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
-            # The list of local (tf) optimizers (one per loss term).
-            self._optimizers: List[LocalOptimizer] = optimizers
-            # Backward compatibility: A user's policy may only support a single
-            # loss term and optimizer (no lists).
-            self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
+        # The list of local (tf) optimizers (one per loss term).
+        self._optimizers: List[LocalOptimizer] = optimizers
+        # Backward compatibility: A user's policy may only support a single
+        # loss term and optimizer (no lists).
+        self._optimizer: LocalOptimizer = optimizers[0] if optimizers else None
 
         self._initialize_loss_from_dummy_batch(
             auto_remove_unneeded_view_reqs=True,
@@ -456,7 +419,7 @@ class EagerTFPolicyV2(Policy):
         input_dict: Dict[str, TensorType],
         explore: bool = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List[Episode]] = None,
+        episodes=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         self._is_training = False
@@ -475,7 +438,7 @@ class EagerTFPolicyV2(Policy):
             input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
         ]
         self._state_in = state_batches
-        self._is_recurrent = state_batches != []
+        self._is_recurrent = len(tree.flatten(self._state_in)) > 0
 
         # Call the exploration before_compute_actions hook.
         if self.exploration:
@@ -484,20 +447,14 @@ class EagerTFPolicyV2(Policy):
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-        if self.config.get("_enable_rl_module_api"):
-            if explore:
-                ret = self._compute_actions_helper_rl_module_explore(input_dict)
-            else:
-                ret = self._compute_actions_helper_rl_module_inference(input_dict)
-        else:
-            ret = self._compute_actions_helper(
-                input_dict,
-                state_batches,
-                # TODO: Passing episodes into a traced method does not work.
-                None if self.config["eager_tracing"] else episodes,
-                explore,
-                timestep,
-            )
+        ret = self._compute_actions_helper(
+            input_dict,
+            state_batches,
+            # TODO: Passing episodes into a traced method does not work.
+            None if self.config["eager_tracing"] else episodes,
+            explore,
+            timestep,
+        )
         # Update our global timestep by the batch size.
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
         return convert_to_numpy(ret)
@@ -594,38 +551,8 @@ class EagerTFPolicyV2(Policy):
             action_dist = self.dist_class(dist_inputs, self.model)
         # Default log-likelihood calculation.
         else:
-            if self.config.get("_enable_rl_module_api", False):
-                if in_training:
-                    output = self.model.forward_train(input_batch)
-                    action_dist_cls = self.model.get_train_action_dist_cls()
-                    if action_dist_cls is None:
-                        raise ValueError(
-                            "The RLModules must provide an appropriate action "
-                            "distribution class for training if is_eval_mode is False."
-                        )
-                else:
-                    output = self.model.forward_exploration(input_batch)
-                    action_dist_cls = self.model.get_exploration_action_dist_cls()
-                    if action_dist_cls is None:
-                        raise ValueError(
-                            "The RLModules must provide an appropriate action "
-                            "distribution class for exploration if is_eval_mode is "
-                            "True."
-                        )
-
-                action_dist_inputs = output.get(SampleBatch.ACTION_DIST_INPUTS, None)
-                if action_dist_inputs is None:
-                    raise ValueError(
-                        "The RLModules must provide inputs to create the action "
-                        "distribution. These should be part of the output of the "
-                        "appropriate forward method under the key "
-                        "SampleBatch.ACTION_DIST_INPUTS."
-                    )
-
-                action_dist = action_dist_cls.from_logits(action_dist_inputs)
-            else:
-                dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
-                action_dist = self.dist_class(dist_inputs, self.model)
+            dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
+            action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
@@ -750,9 +677,8 @@ class EagerTFPolicyV2(Policy):
         state["global_timestep"] = state["global_timestep"].numpy()
         # In the new Learner API stack, the optimizers live in the learner.
         state["_optimizer_variables"] = []
-        if not self.config.get("_enable_learner_api", False):
-            if self._optimizer and len(self._optimizer.variables()) > 0:
-                state["_optimizer_variables"] = self._optimizer.variables()
+        if self._optimizer and len(self._optimizer.variables()) > 0:
+            state["_optimizer_variables"] = self._optimizer.variables()
 
         # Add exploration state.
         if self.exploration:
@@ -791,9 +717,6 @@ class EagerTFPolicyV2(Policy):
 
     @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
-        enable_rl_module_api = self.config.get("enable_rl_module_api", False)
-        if enable_rl_module_api:
-            raise ValueError("ONNX export not supported for RLModule API.")
         if onnx:
             try:
                 import tf2onnx
@@ -832,120 +755,6 @@ class EagerTFPolicyV2(Policy):
     def loss_initialized(self):
         return self._loss_initialized
 
-    # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
-    #  eager_tracing=True.
-    #  It seems there may be a clash between the traced-by-tf function and the
-    #  traced-by-ray functions (for making the policy class a ray actor).
-    @with_lock
-    def _compute_actions_helper_rl_module_explore(
-        self, input_dict, _ray_trace_ctx=None
-    ):
-        # Increase the tracing counter to make sure we don't re-trace too
-        # often. If eager_tracing=True, this counter should only get
-        # incremented during the @tf.function trace operations, never when
-        # calling the already traced function after that.
-        self._re_trace_counter += 1
-
-        # Add models `forward_explore` extra fetches.
-        extra_fetches = {}
-
-        input_dict = NestedDict(input_dict)
-        # TODO (sven): Support RNNs when using RLModules.
-        input_dict[STATE_IN] = None
-        input_dict[SampleBatch.SEQ_LENS] = None
-
-        fwd_out = self.model.forward_exploration(input_dict)
-
-        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
-        # Create a distribution object.
-        action_dist = None
-        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
-            action_dist_class = self.model.get_exploration_action_dist_cls()
-            action_dist = action_dist_class.from_logits(
-                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-            )
-
-        # If `forward_exploration()` returned actions, use them here as-is.
-        if SampleBatch.ACTIONS in fwd_out:
-            actions = fwd_out[SampleBatch.ACTIONS]
-        # Otherwise, sample actions from the distribution.
-        else:
-            if action_dist is None:
-                raise KeyError(
-                    "Your RLModule's `forward_exploration()` method must return a dict"
-                    f"with either the {SampleBatch.ACTIONS} key or the "
-                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
-                )
-            actions = action_dist.sample()
-
-        # Anything but action_dist and state_out is an extra fetch
-        for k, v in fwd_out.items():
-            if k not in [SampleBatch.ACTIONS, "state_out"]:
-                extra_fetches[k] = v
-
-        # Compute action-logp and action-prob from distribution and add to
-        # `extra_fetches`, if possible.
-        if action_dist is not None:
-            logp = action_dist.logp(actions)
-            extra_fetches[SampleBatch.ACTION_LOGP] = logp
-            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
-
-        return actions, {}, extra_fetches
-
-    # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
-    #  eager_tracing=True.
-    #  It seems there may be a clash between the traced-by-tf function and the
-    #  traced-by-ray functions (for making the policy class a ray actor).
-    @with_lock
-    def _compute_actions_helper_rl_module_inference(
-        self, input_dict, _ray_trace_ctx=None
-    ):
-        # Increase the tracing counter to make sure we don't re-trace too
-        # often. If eager_tracing=True, this counter should only get
-        # incremented during the @tf.function trace operations, never when
-        # calling the already traced function after that.
-        self._re_trace_counter += 1
-
-        # Add models `forward_explore` extra fetches.
-        extra_fetches = {}
-
-        input_dict = NestedDict(input_dict)
-        # TODO (sven): Support RNNs when using RLModules.
-        input_dict[STATE_IN] = None
-        input_dict[SampleBatch.SEQ_LENS] = None
-
-        fwd_out = self.model.forward_inference(input_dict)
-
-        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
-        # Create a (deterministic) distribution object.
-        action_dist = None
-        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
-            action_dist_class = self.model.get_inference_action_dist_cls()
-            action_dist = action_dist_class.from_logits(
-                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-            )
-            action_dist = action_dist.to_deterministic()
-
-        # If `forward_inference()` returned actions, use them here as-is.
-        if SampleBatch.ACTIONS in fwd_out:
-            actions = fwd_out[SampleBatch.ACTIONS]
-        # Otherwise, sample actions from the distribution.
-        else:
-            if action_dist is None:
-                raise KeyError(
-                    "Your RLModule's `forward_inference()` method must return a dict"
-                    f"with either the {SampleBatch.ACTIONS} key or the "
-                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
-                )
-            actions = action_dist.sample()
-
-        # Anything but action_dist and state_out is an extra fetch
-        for k, v in fwd_out.items():
-            if k not in [SampleBatch.ACTIONS, "state_out"]:
-                extra_fetches[k] = v
-
-        return actions, {}, extra_fetches
-
     @with_lock
     def _compute_actions_helper(
         self,
@@ -963,8 +772,11 @@ class EagerTFPolicyV2(Policy):
         self._re_trace_counter += 1
 
         # Calculate RNN sequence lengths.
-        batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
-        seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
+        if SampleBatch.SEQ_LENS in input_dict:
+            seq_lens = input_dict[SampleBatch.SEQ_LENS]
+        else:
+            batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
+            seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches else None
 
         # Add default and custom fetches.
         extra_fetches = {}
@@ -980,9 +792,8 @@ class EagerTFPolicyV2(Policy):
                     episodes=episodes,
                 )
             else:
+                # Try `action_distribution_fn`.
                 if is_overridden(self.action_distribution_fn):
-                    # Try new action_distribution_fn signature, supporting
-                    # state_batches and seq_lens.
                     (
                         dist_inputs,
                         self.dist_class,
@@ -997,7 +808,6 @@ class EagerTFPolicyV2(Policy):
                         is_training=False,
                     )
                 elif isinstance(self.model, tf.keras.Model):
-                    input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
                     if state_batches and "state_in_0" not in input_dict:
                         for i, s in enumerate(state_batches):
                             input_dict[f"state_in_{i}"] = s
@@ -1136,14 +946,12 @@ class EagerTFPolicyV2(Policy):
     def _stats(self, samples, grads):
         fetches = {}
         if is_overridden(self.stats_fn):
-            fetches[LEARNER_STATS_KEY] = {
-                k: v for k, v in self.stats_fn(samples).items()
-            }
+            fetches[LEARNER_STATS_KEY] = dict(self.stats_fn(samples))
         else:
             fetches[LEARNER_STATS_KEY] = {}
 
-        fetches.update({k: v for k, v in self.extra_learn_fetches_fn().items()})
-        fetches.update({k: v for k, v in self.grad_stats_fn(samples, grads).items()})
+        fetches.update(dict(self.extra_learn_fetches_fn()))
+        fetches.update(dict(self.grad_stats_fn(samples, grads)))
         return fetches
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):

@@ -1,89 +1,43 @@
 .. _train-api:
-.. _air-trainer-ref:
 
 Ray Train API
 =============
 
-This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
-
-For core Ray AIR APIs, take a look at the :ref:`AIR package reference <air-api-ref>`.
-
-Ray Train Base Classes (Developer APIs)
----------------------------------------
-
 .. currentmodule:: ray
 
-.. _train-base-trainer:
 
-Trainer Base Classes
-~~~~~~~~~~~~~~~~~~~~
+.. important::
 
-.. autosummary::
-    :toctree: doc/
+    These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
+    by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
 
-    ~train.trainer.BaseTrainer
-    ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.data_config.DataConfig
-    ~train.gbdt_trainer.GBDTTrainer
+    See :ref:`train-deprecated-api` for the old API references.
 
-``BaseTrainer`` API
-*******************
+
+PyTorch Ecosystem
+-----------------
 
 .. autosummary::
-    :toctree: doc/
-
-    ~train.trainer.BaseTrainer.fit
-    ~train.trainer.BaseTrainer.setup
-    ~train.trainer.BaseTrainer.preprocess_datasets
-    ~train.trainer.BaseTrainer.training_loop
-    ~train.trainer.BaseTrainer.as_trainable
-
-
-Train Backend Base Classes
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. _train-backend:
-.. _train-backend-config:
-
-.. autosummary::
-    :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
-
-    ~train.backend.Backend
-    ~train.backend.BackendConfig
-
-
-.. _train-integration-api:
-.. _train-framework-specific-ckpts:
-
-Ray Train Integrations
-----------------------
-
-.. _train-pytorch-integration:
-
-PyTorch
-~~~~~~~~
-
-.. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
-    ~train.torch.TorchCheckpoint
+    ~train.torch.xla.TorchXLAConfig
 
+.. _train-pytorch-integration:
 
-PyTorch Training Loop Utilities
-********************************
+PyTorch
+~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.torch.prepare_model
-    ~train.torch.prepare_optimizer
-    ~train.torch.prepare_data_loader
     ~train.torch.get_device
-    ~train.torch.accelerate
-    ~train.torch.backward
+    ~train.torch.get_devices
+    ~train.torch.prepare_model
+    ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
 
 .. _train-lightning-integration:
@@ -92,157 +46,169 @@ PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.lightning.LightningTrainer
-    ~train.lightning.LightningConfigBuilder
-    ~train.lightning.LightningCheckpoint
-    ~train.lightning.LightningPredictor
+    ~train.lightning.prepare_trainer
+    ~train.lightning.RayLightningEnvironment
+    ~train.lightning.RayDDPStrategy
+    ~train.lightning.RayFSDPStrategy
+    ~train.lightning.RayDeepSpeedStrategy
+    ~train.lightning.RayTrainReportCallback
+
+.. _train-transformers-integration:
+
+Hugging Face Transformers
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.huggingface.transformers.prepare_trainer
+    ~train.huggingface.transformers.RayTrainReportCallback
+
+
+More Frameworks
+---------------
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.tensorflow.TensorflowTrainer
     ~train.tensorflow.TensorflowConfig
-    ~train.tensorflow.TensorflowCheckpoint
-
-
-Tensorflow/Keras Training Loop Utilities
-****************************************
-
-.. autosummary::
-    :toctree: doc/
-
     ~train.tensorflow.prepare_dataset_shard
-
-.. autosummary::
-
-    ~air.integrations.keras.ReportCheckpointCallback
-
-
-Horovod
-~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.horovod.HorovodTrainer
-    ~train.horovod.HorovodConfig
+    ~train.tensorflow.keras.ReportCheckpointCallback
 
 
 XGBoost
 ~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
-    ~train.xgboost.XGBoostCheckpoint
+    ~train.xgboost.RayTrainReportCallback
 
 
 LightGBM
 ~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
-    ~train.lightgbm.LightGBMCheckpoint
+    ~train.lightgbm.RayTrainReportCallback
 
 
-Hugging Face
-~~~~~~~~~~~~
+.. _ray-train-configs-api:
 
-Transformers
-************
+Ray Train Configuration
+-----------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.huggingface.TransformersTrainer
-    ~train.huggingface.TransformersCheckpoint
+    ~train.CheckpointConfig
+    ~train.DataConfig
+    ~train.FailureConfig
+    ~train.RunConfig
+    ~train.ScalingConfig
 
-Accelerate
-**********
+.. _train-loop-api:
+
+Ray Train Utilities
+-------------------
+
+**Classes**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.huggingface.AccelerateTrainer
+    ~train.Checkpoint
+    ~train.v2.api.context.TrainContext
 
-Scikit-Learn
-~~~~~~~~~~~~
+**Functions**
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~train.sklearn.SklearnTrainer
-    ~train.sklearn.SklearnCheckpoint
+    ~train.get_checkpoint
+    ~train.get_context
+    ~train.get_dataset_shard
+    ~train.report
 
 
-Mosaic
-~~~~~~
+Ray Train Output
+----------------
 
 .. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.mosaic.MosaicTrainer
+    ~train.Result
 
-
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Train Errors
+----------------
 
 .. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
+    ~train.v2.api.exceptions.TrainingFailedError
 
-
-.. _trainer-restore:
-
-Ray Train Experiment Restoration
---------------------------------
+Ray Tune Integration Utilities
+------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    train.trainer.BaseTrainer.restore
+    tune.integration.ray_train.TuneReportCallback
 
-.. note::
 
-    All trainer classes have a `restore` method that takes in a path
-    pointing to the directory of the experiment to be restored.
-    `restore` also exposes a subset of construtor arguments that can be re-specified.
-    See :ref:`train-framework-specific-restore`
-    below for details on `restore` arguments for different AIR trainer integrations.
+Ray Train Developer APIs
+------------------------
 
-.. _train-framework-specific-restore:
-
-Restoration API for Built-in Trainers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Trainer Base Class
+~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    train.data_parallel_trainer.DataParallelTrainer.restore
+    ~train.v2.api.data_parallel_trainer.DataParallelTrainer
+
+Train Backend Base Classes
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _train-backend:
+.. _train-backend-config:
 
 .. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
-    train.huggingface.TransformersTrainer.restore
+    ~train.backend.Backend
+    ~train.backend.BackendConfig
 
-.. note::
+Trainer Callbacks
+~~~~~~~~~~~~~~~~~
 
-    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
-    can take in the same parameters as their parent class's
-    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
 
-    Unless otherwise specified, other trainers will accept the same parameters as
-    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
-
-.. seealso::
-
-    See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.
+    ~train.UserCallback

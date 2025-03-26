@@ -4,6 +4,7 @@ import json
 from abc import ABC
 from typing import List, Dict, Optional, Any, Type
 
+from ray._common.utils import import_attr
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.constants import (
@@ -15,7 +16,6 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
 )
 from ray.util.annotations import DeveloperAPI
-from ray._private.utils import import_attr
 
 default_logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class RuntimeEnvPlugin(ABC):
     async def create(
         self,
         uri: Optional[str],
-        runtime_env: "RuntimeEnv",  # noqa: F821
+        runtime_env,
         context: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> float:
@@ -227,7 +227,7 @@ class RuntimeEnvPluginManager:
 
 
 async def create_for_plugin_if_needed(
-    runtime_env,
+    runtime_env: "RuntimeEnv",  # noqa: F821
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
     context: RuntimeEnvContext,
@@ -254,7 +254,11 @@ async def create_for_plugin_if_needed(
             size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
-            logger.debug(f"Cache hit for URI {uri}.")
+            logger.info(
+                f"Runtime env {plugin.name} {uri} is already installed "
+                "and will be reused. Search "
+                "all runtime_env_setup-*.log to find the corresponding setup log."
+            )
             uri_cache.mark_used(uri, logger=logger)
 
     plugin.modify_context(uris, runtime_env, context, logger)

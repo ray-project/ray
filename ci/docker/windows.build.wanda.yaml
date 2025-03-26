@@ -1,0 +1,13 @@
+name: "windowsbuild"
+froms: ["@rayproject/buildenv:windows"]
+dockerfile: ci/docker/windows.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - ci/ray_ci/windows/build_base.sh
+  - ci/ray_ci/windows/install_bazelisk.ps1
+  - ci/ray_ci/windows/cleanup.ps1
+tags:
+  - cr.ray.io/rayproject/windowsbuild

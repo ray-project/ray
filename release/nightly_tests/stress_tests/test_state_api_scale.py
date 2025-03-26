@@ -7,6 +7,7 @@ from ray._private.state_api_test_utils import (
     StateAPIMetric,
     aggregate_perf_results,
     invoke_state_api,
+    invoke_state_api_n,
     GLOBAL_STATE_STATS,
 )
 
@@ -36,16 +37,6 @@ logger = logging.getLogger(__file__)
 
 GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
-
-
-def invoke_state_api_n(*args, **kwargs):
-    def verify():
-        NUM_API_CALL_SAMPLES = 10
-        for _ in range(NUM_API_CALL_SAMPLES):
-            invoke_state_api(*args, **kwargs)
-        return True
-
-    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
@@ -188,7 +179,7 @@ def test_many_objects(num_objects, num_actors):
             for i in range(num_objects):
                 # Object size shouldn't matter here.
                 self.objs.append(ray.put(bytearray(os.urandom(1024))))
-                if i + 1 % 100 == 0:
+                if (i + 1) % 100 == 0:
                     logger.info(f"Created object {i+1}...")
 
             return self.objs
@@ -259,7 +250,7 @@ def test_large_log_file(log_file_size_byte: int):
     @ray.remote
     class LogActor:
         def write_log(self, log_file_size_byte: int):
-            ctx = hashlib.md5()
+            ctx = hashlib.sha1()
             job_id = ray.get_runtime_context().get_job_id()
             prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
             ctx.update(prefix.encode())
@@ -281,7 +272,7 @@ def test_large_log_file(log_file_size_byte: int):
     assert node_id is not None, "Empty node id from the log actor"
 
     # Retrieve the log and compare the checksum
-    ctx = hashlib.md5()
+    ctx = hashlib.sha1()
 
     time_taken = 0
     t_start = time.perf_counter()
@@ -466,8 +457,8 @@ def test(
         ]
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            json.dump(results, out_file)
 
     results.update(state_perf_result)
     print(json.dumps(results, indent=2))

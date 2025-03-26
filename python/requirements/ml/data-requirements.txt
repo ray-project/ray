@@ -1,0 +1,17 @@
+# Used by CI for datasets and docs.
+# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
+
+getdaft==0.4.3
+dask[complete]==2022.10.2; python_version < '3.12'
+distributed==2022.10.2; python_version < '3.12'
+dask[complete]==2024.6.0; python_version >= '3.12'
+distributed==2024.6.0; python_version >= '3.12'
+aioboto3==11.2.0
+crc32c==2.3
+flask_cors
+modin==0.22.2; python_version < '3.12'
+pandas==1.5.3; python_version < '3.12'
+modin==0.31.0; python_version >= '3.12'
+pandas==2.2.2; python_version >= '3.12'
+responses==0.13.4
+pymars>=0.8.3; python_version < "3.12"

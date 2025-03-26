@@ -96,6 +96,8 @@ struct PlasmaObjectSpec {
   segment_index: int;
   // The unique id of the segment fd in case of fd reuse.
   unique_fd_id: long;
+  // The offset in bytes in the memory mapped file of the plasma object header.
+  header_offset: ulong;
   // The offset in bytes in the memory mapped file of the data.
   data_offset: ulong;
   // The size in bytes of the data.
@@ -104,8 +106,17 @@ struct PlasmaObjectSpec {
   metadata_offset: ulong;
   // The size in bytes of the metadata.
   metadata_size: ulong;
+  // The allocated size. This is just data_size + metadata_size
+  // for immutable objects, but for mutable objects, the data size
+  // and metadata size may change.
+  allocated_size: ulong;
+  // Whether this object is on a fallback allocated mmap.
+  fallback_allocated: bool;
   // Device to create buffer on.
   device_num: int;
+  // Whether this is an experimental mutable object that can be written
+  // multiple times by a client.
+  is_experimental_mutable_object: bool;
 }
 
 table PlasmaGetDebugStringRequest {
@@ -127,6 +138,8 @@ table PlasmaCreateRequest {
   owner_port: int;
   // Unique id for the owner worker.
   owner_worker_id: string;
+  // Whether the object will be mutable.
+  is_mutable: bool;
   // The size of the object's data in bytes.
   data_size: ulong;
   // The size of the object's metadata in bytes.
@@ -231,11 +244,16 @@ table PlasmaGetReply {
 table PlasmaReleaseRequest {
   // ID of the object to be released.
   object_id: string;
+  // Client concerns this request may unmap a mmap region, and will wait for a reply.
+  // If false, the server should not send a PlasmaReleaseReply.
+  may_unmap: bool;
 }
 
 table PlasmaReleaseReply {
   // ID of the object that was released.
   object_id: string;
+  // Client should unmap the mmap section for this object_id.
+  should_unmap: bool;
   // Error code.
   error: PlasmaError;
 }

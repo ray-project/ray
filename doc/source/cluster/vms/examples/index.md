@@ -2,6 +2,12 @@
 
 # Examples
 
+```{toctree}
+:hidden:
+
+ml-example
+```
+
 :::{note}
 To learn the basics of Ray on Cloud VMs, we recommend taking a look
 at the {ref}`introductory guide <vm-cluster-quick-start>` first.

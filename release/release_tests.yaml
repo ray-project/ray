@@ -24,8 +24,6 @@
 #
 #  # Cluster information
 #  cluster:
-#    # Location of cluster env, relative to working_dir
-#    cluster_env: cluster_env.yaml
 #    # Location of cluster compute, relative to working_dir
 #    cluster_compute: cluster_compute.yaml
 #    # Autosuspend parameter passed to the cluster.
@@ -87,10 +85,9 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
@@ -99,16 +96,13 @@
     wait_for_nodes:
       num_nodes: 0
 
-
   variations:
     - __suffix__: aws
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
-
 
   alert: default
 
@@ -122,13 +116,12 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
         - RAY_memory_usage_threshold=0.5
         - automatic_object_spilling_enabled=0
-    cluster_env: frequent_pausing/app_config.yaml
     cluster_compute: frequent_pausing/compute_config_aws.yaml
 
   run:
@@ -142,7 +135,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: frequent_pausing/app_config.yaml
         cluster_compute: frequent_pausing/compute_config_gce.yaml
 
   alert: default
@@ -154,12 +146,11 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   variations:
@@ -168,7 +159,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config_master.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   run:
@@ -177,7 +167,6 @@
     long_running: true
     wait_for_nodes:
       num_nodes: 2
-
 
   smoke_test:
     frequency: manual
@@ -188,76 +177,6 @@
   alert: default
 
 
-- name: air_benchmark_data_bulk_ingest
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_data_20_nodes_aws.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
-
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_data_20_nodes_gce.yaml
-
-  alert: default
-
-# AIR benchmarks for XGBoost CUJ
-- name: air_benchmark_xgboost_cpu_10
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-  python: "3.8"
-  frequency: nightly
-  team: ml
-  cluster:
-#    byod:
-#      type: gpu
-#      pip:
-#        - xgboost_ray
-    cluster_env: xgboost_app_config.yaml
-    cluster_compute: compute_xgboost_aws.yaml
-
-  run:
-    timeout: 36000
-    script: python workloads/xgboost_benchmark.py
-
-    wait_for_nodes:
-      num_nodes: 11
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: xgboost_app_config.yaml
-        cluster_compute: compute_xgboost_gce.yaml
-
-  smoke_test:
-    frequency: manual
-
-    run:
-      timeout: 1800
-
-  alert: default
-
 # Ray AIR distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_cpu_4x1
   group: AIR tests
@@ -265,11 +184,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -285,7 +203,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -296,11 +213,10 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -329,7 +245,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -343,11 +258,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
@@ -360,73 +274,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_1_gce.yaml
 
   alert: default
 
-
-- name: air_benchmark_torch_batch_prediction_gpu_1x1_20gb
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
-
-
-- name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_4x4_aws.yaml
-
-  run:
-    timeout: 10800
-    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
-
-    wait_for_nodes:
-        num_nodes: 4
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_4x4_gce.yaml
 
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
@@ -434,11 +285,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -454,7 +304,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -465,11 +314,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_8_aws.yaml
 
   run:
@@ -485,7 +333,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_8_gce.yaml
 
   alert: default
@@ -496,8 +343,10 @@
 
   frequency: nightly
   team: ml
+
   cluster:
-    cluster_env: app_config.yaml
+    byod:
+      type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -513,7 +362,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
   alert: default
@@ -525,11 +373,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -545,7 +392,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -557,11 +403,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
@@ -574,7 +419,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_1_gce.yaml
 
   alert: default
@@ -586,13 +430,12 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   stable: false
 
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -608,7 +451,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -620,13 +462,12 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   stable: false
 
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -635,7 +476,6 @@
 
     wait_for_nodes:
       num_nodes: 4
-
 
   smoke_test:
     frequency: nightly
@@ -655,7 +495,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -668,11 +507,10 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_aws.yaml
 
   run:
@@ -687,7 +525,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_1_gce.yaml
 
 
@@ -697,10 +534,12 @@
 
   frequency: nightly
   team: ml
+
   stable: false
 
   cluster:
-    cluster_env: app_config.yaml
+    byod:
+      type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -718,18 +557,16 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
-# Test tiny, medium, and huge input files.
-- name: ray-data-bulk-ingest-file-size-benchmark
+# Test tiny, and medium input files to check that performance stays about
+# constant.
+- name: ray-data-resnet50-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
-  stable: false
-
   frequency: nightly
-  python: "3.8"
+
   team: data
   cluster:
     byod:
@@ -737,7 +574,6 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -750,18 +586,17 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
 
-# Test dataset larger than object store memory.
-- name: ray-data-bulk-ingest-out-of-core-benchmark
+# Test huge files to check that we do not OOM.
+- name: ray-data-resnet50-ingest-out-of-memory-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
 
   frequency: nightly
-  python: "3.8"
+
   team: data
   cluster:
     byod:
@@ -769,12 +604,11 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
     timeout: 3600
-    script: bash out_of_core_benchmark.sh
+    script: bash oom_benchmark.sh
 
   variations:
     - __suffix__: aws
@@ -782,44 +616,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
-
-# Test additional CPU nodes for preprocessing.
-- name: ray-data-bulk-ingest-heterogeneity-benchmark
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks/mlperf-train
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-      runtime_env:
-        - RAY_task_oom_retries=50
-        - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
-    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
-
-  run:
-    wait_for_nodes:
-      num_nodes: 3
-
-    timeout: 1800
-    script: bash heterogeneity_benchmark.sh 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_oom.yaml
-        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
-
 
 #######################
 # AIR examples
@@ -835,735 +632,84 @@
 
   frequency: weekly
   team: ml
+
   cluster:
-    cluster_env: dreambooth_env.yaml
+    byod:
+      type: gpu
     cluster_compute: dreambooth_compute_aws.yaml
 
   run:
     timeout: 1800
-    script: bash dreambooth_run.sh
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
   # variations: A10G not available on GCE, yet.
 
+- name: air_example_dreambooth_finetuning_lora
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dreambooth_compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
-
-  python: "3.9"
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
-    cluster_env: gptj_deepspeed_env.yaml
+      post_build_script: byod_gptj_test.sh
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
     timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: gptj_deepspeed_env.yaml
-        cluster_compute: gptj_deepspeed_compute_gce.yaml
-
-
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-
-  python: "3.8"
-
   frequency: weekly
   team: ml
   cluster:
-    cluster_env: dolly_v2_fsdp_env.yaml
+    byod:
+      type: gpu
+      post_build_script: byod_dolly_test.sh
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
   run:
     timeout: 4700
     script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
 
+  # variations: TODO(jungong): add GCP variation.
 
-- name: air_example_opt_deepspeed_batch_inference
+- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
   group: AIR examples
-  working_dir: air_examples/opt_deepspeed_batch_inference
-
-  python: "3.9"
-
+  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
-    cluster_env: 30b_deepspeed_env.yaml
-    cluster_compute: 30b_deepspeed_compute.yaml
+      post_build_script: byod_vicuna_test.sh
+    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
   run:
-    timeout: 3600
-    script: python test_myst_doc.py --path opt_deepspeed_batch_inference.ipynb
-
-  # variations: TODO(jungong): add GCP variation.
-
-
-#####################################
-# Workspace templates release tests #
-#####################################
-
-- name: workspace_template_batch_inference
-  group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
-  python: "3.9"
-  frequency: nightly-3x
-  team: data
-  cluster:
-    byod: 
-      type: gpu
-    cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
-    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
-          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
-
-
-- name: workspace_template_many_model_training
-  group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
-  python: "3.9"
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
-    cluster_compute: ../testing/compute_configs/cpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
-          cluster_compute: ../testing/compute_configs/cpu/gce.yaml
-
-
-- name: workspace_template_serving_stable_diffusion
-  group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
-  python: "3.9"
-  frequency: nightly-3x
-  team: serve
-  cluster:
-    byod:
-      type: cu118
-    cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
-    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
-          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
-
-
-#######################
-# XGBoost release tests
-#######################
-
-# It seems like the consensus is that we can deprecate this test.
-
-# - name: xgboost_train_small
-#   group: XGBoost
-#   working_dir: xgboost_tests
-
-#   frequency: nightly
-#   team: ml
-#   env: staging_v2
-
-#   cluster:
-#     cluster_env: app_config.yaml
-#     cluster_compute: tpl_cpu_small.yaml
-
-#   run:
-#     timeout: 600
-#     script: python workloads/train_small.py
-
-#     wait_for_nodes:
-#       num_nodes: 4
-
-#   alert: xgboost_tests
-
-- name: xgboost_train_moderate
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/train_moderate.py
-
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-  alert: xgboost_tests
-
-- name: xgboost_train_gpu
-  group: XGBoost
-  working_dir: xgboost_tests
-  python: "3.8"
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - NCCL_SOCKET_IFNAME=ens
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config_gpu.yaml
-    cluster_compute: tpl_gpu_small_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/train_gpu.py
-
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_gpu.yaml
-        cluster_compute: tpl_gpu_small_gce.yaml
-
-  alert: xgboost_tests
-
-- name: xgboost_distributed_api_test
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/distributed_api_test.py
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-
-  alert: default
-
-- name: xgboost_ft_small_elastic
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/ft_small_elastic.py
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-
-  alert: default
-
-- name: xgboost_ft_small_non_elastic
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/ft_small_non_elastic.py
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-  alert: default
-
-- name: xgboost_tune_small
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/tune_small.py
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-
-  alert: xgboost_tests
-
-- name: xgboost_tune_32x4
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/tune_32x4.py
-
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-
-  alert: xgboost_tests
-
-- name: xgboost_tune_4x32
-  group: XGBoost
-  working_dir: xgboost_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/tune_4x32.py
-
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-  alert: xgboost_tests
-
-#######################
-# LightGBM tests
-#######################
-
-# It seems like the consensus is that we can deprecate this test.
-
-# - name: lightgbm_train_small
-#   group: LightGBM tests
-#   working_dir: lightgbm_tests
-
-#   frequency: nightly
-#   team: ml
-#   env: staging_v2
-
-#   cluster:
-#     cluster_env: app_config.yaml
-#     cluster_compute: tpl_cpu_small.yaml
-
-#   run:
-#     timeout: 600
-#     script: python workloads/train_small.py
-#     wait_for_nodes:
-#       num_nodes: 4
-
-#   alert: default
-
-- name: lightgbm_train_moderate
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-      pip:
-        - lightgbm_ray
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/train_moderate.py
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-
-  alert: default
-
-- name: lightgbm_distributed_api_test
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-      pip:
-        - lightgbm_ray
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/distributed_api_test.py
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-  alert: default
-
-- name: lightgbm_ft_small_non_elastic
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-      pip:
-        - lightgbm_ray
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/ft_small_non_elastic.py
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-  alert: default
-
-- name: lightgbm_tune_small
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_small_aws.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/tune_small.py
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_small_gce.yaml
-
-  alert: default
-
-- name: lightgbm_tune_16x4
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/tune_16x4.py
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-  alert: default
-
-- name: lightgbm_tune_4x16
-  group: LightGBM tests
-  working_dir: lightgbm_tests
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_moderate_aws.yaml
-
-  run:
-    timeout: 900
-    script: python workloads/tune_4x16.py
-    wait_for_nodes:
-      num_nodes: 32
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_moderate_gce.yaml
-
-  alert: default
-
-#######################
-# Lightning tests
-#######################
-
-# Naming convention: lightning_{accelerator}_{mode}_{#cpu}_{#gpu}
-
-- name: lightning_gpu_train_3x16_3x1
-  group: Lightning tests
-  working_dir: lightning_tests
-
-  frequency: nightly-3x
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python workloads/test_trainer.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_gce.yaml
-
-  alert: default
-
-- name: lightning_gpu_tune_3x16_3x1
-  group: Lightning tests
-  working_dir: lightning_tests
-
-  frequency: nightly-3x
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python workloads/test_tuner.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_gce.yaml
-
-  alert: default
+    timeout: 4700
+    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
 #######################
 # ML user tests
@@ -1574,12 +720,11 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
@@ -1594,7 +739,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
@@ -1605,12 +749,11 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
@@ -1625,7 +768,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config_master.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
@@ -1636,18 +778,17 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
-      type: gpu
-    cluster_env: train/app_config.yaml
+      type: cu123
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_TRAIN_V2_ENABLED=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1657,7 +798,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: train/app_config.yaml
         cluster_compute: train/compute_tpl_gce.yaml
 
   alert: default
@@ -1668,13 +808,12 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
       type: gpu
-    cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
@@ -1689,70 +828,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: train/app_config.yaml
         cluster_compute: train/compute_tpl_gce.yaml
-
-  alert: default
-
-- name: ml_user_xgboost_gpu_connect_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_xgboost_test.sh
-    cluster_env: xgboost/app_config_gpu.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python xgboost/train_gpu_connect.py
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: xgboost/app_config_gpu.yaml
-        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
-
-  alert: default
-
-- name: ml_user_xgboost_gpu_connect_master
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_xgboost_master_test.sh
-    cluster_env: xgboost/app_config_gpu_master.yaml
-    cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python xgboost/train_gpu_connect.py
-    wait_for_nodes:
-      num_nodes: 5
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: xgboost/app_config_gpu_master.yaml
-        cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
 
@@ -1762,14 +838,14 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: ../rllib_tests/app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   run:
@@ -1784,7 +860,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tune_rllib/compute_tpl_gce.yaml
 
   alert: default
@@ -1792,23 +867,28 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_no_sync_down
+- name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-  frequency: nightly
+  frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
+    cluster_compute: tpl_aws_1x4.yaml
 
   run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down
+    # 14 hours
+    timeout: 50400
+    long_running: true
+    script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
 
-    wait_for_nodes:
-      num_nodes: 4
+  # NOTE: This smoke test is not useful to run because the point of the test
+  # is to be long running. This is just for debugging updates to the test quickly.
+  smoke_test:
+    frequency: manual
+    run:
+      timeout: 600
 
   variations:
     - __suffix__: aws
@@ -1816,153 +896,16 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
-- name: tune_cloud_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
-- name: tune_cloud_durable_upload
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_gce_4x8.yaml
+        cluster_compute: tpl_gce_1x4.yaml
       run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        # 14 hours
+        timeout: 50400
+        long_running: true
+        script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
         wait_for_nodes:
-          num_nodes: 4
+          num_nodes: 1
 
-  alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_str
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config_ml.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_ml.yaml
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_str
-        wait_for_nodes:
-          num_nodes: 4
-
-
-  alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_trainer
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config_ml.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_ml.yaml
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_trainer
-        wait_for_nodes:
-          num_nodes: 4
-
-  alert: tune_tests
+  alert: long_running_tests
 
 ########################
 # Tune scalability tests
@@ -1974,10 +917,9 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x16.yaml
 
   run:
@@ -1992,7 +934,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x16.yaml
 
 - name: tune_scalability_durable_trainable
@@ -2001,10 +942,9 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -2024,7 +964,6 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -2036,10 +975,9 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -2059,7 +997,6 @@
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -2070,10 +1007,9 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -2097,7 +1033,6 @@
       smoke_test:
         frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
@@ -2106,10 +1041,9 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -2126,7 +1060,6 @@
     - __suffix__: smoke-test
       frequency: nightly
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_20x2.yaml
       run:
         timeout: 750
@@ -2138,7 +1071,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
@@ -2147,10 +1079,9 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -2168,7 +1099,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
@@ -2177,10 +1107,9 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -2195,43 +1124,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x96.yaml
-      run:
-        timeout: 600
-        script: python workloads/test_result_throughput_single_node.py
-
-- name: tune_scalability_xgboost_sweep
-  group: Tune scalability tests
-  working_dir: tune_tests/scalability_tests
-
-  frequency: weekly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      post_build_script: byod_xgboost_tune_test.sh
-    cluster_env: app_config_data.yaml
-    cluster_compute: tpl_16x64.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/test_xgboost_sweep.py
-
-    wait_for_nodes:
-      num_nodes: 16
-
-
-  alert: tune_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_data.yaml
-        cluster_compute: tpl_gce_16x64.yaml
 
 
 ############################
@@ -2245,10 +1138,9 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -2271,7 +1163,6 @@
 #        wait_for_nodes:
 #          num_nodes: 16
 #      cluster:
-#        cluster_env: app_config.yaml
 #        cluster_compute: tpl_gce_16x1.yaml
 
 ########################
@@ -2281,13 +1172,12 @@
   group: Golden Notebook tests
   working_dir: golden_notebook_tests
 
-  frequency: nightly-3x
+  frequency: manual
   team: ml
-  python: "3.8"
+
   cluster:
-    byod: 
+    byod:
       type: gpu
-    cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
 
   run:
@@ -2302,7 +1192,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: torch_tune_serve_app_config.yaml
         cluster_compute: gpu_tpl_gce.yaml
 
   alert: default
@@ -2317,13 +1206,16 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2347,23 +1239,23 @@
       smoke_test:
         frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_apex
   group: Long running tests
   working_dir: long_running_tests
+  stable: false
 
   frequency: weekly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: ../rllib_tests/app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tpl_cpu_3.yaml
 
   run:
@@ -2392,7 +1284,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_3_gce.yaml
 
 - name: long_running_impala
@@ -2401,14 +1292,14 @@
 
   frequency: weekly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: ../rllib_tests/app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -2434,7 +1325,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
@@ -2442,13 +1332,15 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2474,7 +1366,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_drivers
@@ -2482,19 +1373,23 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_4.yaml
 
   run:
     timeout: 86400
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
+    wait_for_nodes:
+      num_nodes: 4
 
   smoke_test:
     frequency: nightly
@@ -2514,8 +1409,7 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_1_gce.yaml
+        cluster_compute: tpl_cpu_4_gce.yaml
 
 - name: long_running_many_ppo
   group: Long running tests
@@ -2525,14 +1419,14 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: ../rllib_tests/app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: many_ppo.yaml
 
   run:
@@ -2561,7 +1455,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
@@ -2569,13 +1462,15 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2601,7 +1496,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
@@ -2609,13 +1503,15 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2641,7 +1537,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
@@ -2649,13 +1544,15 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2681,49 +1578,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_cpu_1_gce.yaml
-
-- name: long_running_pbt
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: ml
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: ../rllib_tests/app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/pbt.py
-    long_running: true
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
@@ -2732,13 +1586,15 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
-    byod: 
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_cpu_1.yaml
+    cluster_compute: tpl_cpu_1_large.yaml
 
   run:
     timeout: 86400
@@ -2763,7 +1619,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
@@ -2774,12 +1629,14 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
-    byod: 
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
@@ -2805,7 +1662,6 @@
         run:
           timeout: 86400
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
@@ -2816,12 +1672,14 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
-    byod: 
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2847,7 +1705,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_distributed_pytorch_pbt_failure
@@ -2856,11 +1713,10 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -2885,7 +1741,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
 ########################
@@ -2898,11 +1753,10 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -2920,7 +1774,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
@@ -2929,11 +1782,10 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -2951,7 +1803,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
@@ -2959,11 +1810,10 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -2977,19 +1827,17 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
-  python: "3.8"
+
   frequency: nightly
   working_dir: jobs_tests
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -3003,19 +1851,17 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
-  python: "3.8"
+
   frequency: nightly
   working_dir: jobs_tests
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -3029,7 +1875,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_worker.yaml
 
 ########################
@@ -3040,12 +1885,10 @@
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
-  python: "3.8"
+  team: core
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_small.yaml
 
   run:
@@ -3063,19 +1906,18 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: rte_gce_small.yaml
+
 
 - name: runtime_env_wheel_urls
   group: Runtime env tests
   working_dir: runtime_env_tests
 
   frequency: nightly
-  team: serve
-  python: "3.8"
+  team: core
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -3093,7 +1935,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: rte_gce_minimal.yaml
 
 # It seems like the consensus is that this should be tested in CI, and not in a nightly test.
@@ -3103,10 +1944,9 @@
 #   working_dir: runtime_env_tests
 
 #   frequency: nightly
-#   team: serve
+#   team: core
 
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: rte_minimal.yaml
 
 #   run:
@@ -3122,33 +1962,28 @@
 # Serve tests
 ########################
 
-- name: serve_single_deployment_1k_noop_replica
+- name: serve_scale_replicas
   group: Serve tests
   working_dir: serve_tests
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_32_cpu.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/single_deployment_1k_noop_replica.py
+    script: python workloads/replica_scalability.py
 
   alert: default
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_multi_deployment_1k_noop_replica
   group: Serve tests
@@ -3156,11 +1991,12 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -3171,29 +2007,55 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py312
+      python: "3.12"
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
-- name: serve_autoscaling_single_deployment
+- name: serve_autoscaling_load_test
   group: Serve tests
   working_dir: serve_tests
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+    byod:
+      type: gpu
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/autoscaling_single_deployment.py
+    script: python workloads/autoscaling_load_test.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+
+- name: serve_microbenchmarks
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod: {}
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-all
 
   alert: default
 
@@ -3203,258 +2065,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_8_cpu_autoscaling_gce.yaml
-
-- name: serve_autoscaling_multi_deployment
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/autoscaling_multi_deployment.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
-
-- name: serve_serve_micro_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_gce.yaml
-
-# - name: serve_serve_micro_benchmark_k8s
-#   group: Serve tests
-#   working_dir: serve_tests
-
-#   # TODO(architkulkarni) Reenable after K8s migration.  Currently failing
-#   frequency: manual
-#   team: serve
-
-#   cluster:
-#     cluster_env: app_config.yaml
-#     cluster_compute: compute_tpl_single_node_k8s.yaml
-
-#   run:
-#     timeout: 7200
-#     long_running: false
-#     script: python workloads/serve_micro_benchmark.py
-
-#   alert: default
-
-
-- name: deployment_graph_long_chain
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: deployment_graph_wide_ensemble
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/deployment_graph_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: serve_handle_long_chain
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/serve_handle_long_chain.py --chain-length=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-- name: serve_handle_wide_ensemble
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node_32_cpu.yaml
-
-  run:
-    timeout: 3600
-    long_running: false
-    script: python workloads/serve_handle_wide_ensemble.py --fanout-degree=10 --num-clients=4 --local-test=False
-
-  alert: default
-  stable: False
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
-
-
-- name: serve_micro_protocol_grpc_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
-- name: serve_micro_protocol_http_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-  python: "3.8"
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
 
 - name: serve_resnet_benchmark
   group: Serve tests
@@ -3462,12 +2073,13 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
-    cluster_env: gpu_app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -3482,12 +2094,52 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: gpu_app_config.yaml
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
 # Train tests
 ########################
+
+- name: training_ingest_benchmark-task=image_classification
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
+
+  variations:
+    - __suffix__: full_training
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training_torch_dataloader
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16
+
+    - __suffix__: skip_training
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training_torch_dataloader
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.fault_tolerance
+      run:
+        timeout: 2700
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
+        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
+      cluster:
+        cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
 - name: train_horovod_multi_node_test
   group: Train tests
@@ -3495,12 +2147,11 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -3516,28 +2167,75 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
 
-########################
-# Alpa tests
-########################
 
-- name: alpa_opt_2_7b_sanity_check
-  group: Alpa tests
-  working_dir: alpa_tests
+- name: train_multinode_persistence
+  group: Train tests
+  working_dir: train_tests/multinode_persistence
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      post_build_script: byod_train_persistence_test.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3000
+    script: pytest -v test_persistence.py -s
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+  alert: default
+
+- name: train_colocate_trainer
+  group: Train tests
+  working_dir: train_tests/colocate_trainer
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod: {}
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3000
+    script: pytest -v test_colocate_trainer.py -s
+
+    wait_for_nodes:
+      num_nodes: 4
+
+  alert: default
+
+
+- name: xgboost_train_batch_inference_benchmark_10G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
 
   frequency: nightly
   team: ml
   cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: gpu_2x4_t4_aws.yaml
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_1worker.yaml
 
   run:
-    timeout: 3600
-    script: bash run_train_opt_2_7b.sh --storage aws
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "xgboost" --size=10G
 
     wait_for_nodes:
       num_nodes: 2
@@ -3548,33 +2246,33 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: gpu_2x4_t4_gce.yaml
-      run:
-        timeout: 3600
-        script: bash run_train_opt_2_7b.sh --storage gcs
+        cluster_compute: compute_gce_1worker.yaml
 
-        wait_for_nodes:
-          num_nodes: 2
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
 
   alert: default
 
-- name: alpa_opt_30b_inference
-  group: Alpa tests
-  working_dir: alpa_tests
+- name: xgboost_train_batch_inference_benchmark_100G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: gpu_1x8_v100_aws.yaml
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_10workers.yaml
 
   run:
-    timeout: 3600
-    script: bash run_inference_opt_30b.sh --storage aws
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "xgboost" --size=100G
 
     wait_for_nodes:
-      num_nodes: 1
+      num_nodes: 11
 
   variations:
     - __suffix__: aws
@@ -3582,20 +2280,94 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: gpu_1x8_v100_gce.yaml
-      run:
-        timeout: 3600
-        script: bash run_inference_opt_30b.sh --storage gcs
+        cluster_compute: compute_gce_10workers.yaml
 
-        wait_for_nodes:
-          num_nodes: 1
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
 
   alert: default
+
+
+- name: lightgbm_train_batch_inference_benchmark_10G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_1worker.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "lightgbm" --size=10G
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_1worker.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
+
+  alert: default
+
+
+- name: lightgbm_train_batch_inference_benchmark_100G
+  group: Train tests
+  working_dir: train_tests/xgboost_lightgbm
+
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_aws_10workers.yaml
+
+  run:
+    timeout: 36000
+    script: python train_batch_inference_benchmark.py "lightgbm" --size=100G
+
+    wait_for_nodes:
+      num_nodes: 11
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce_10workers.yaml
+
+  smoke_test:
+    frequency: manual
+
+    run:
+      timeout: 1800
+
+  alert: default
+
 
 ########################
 # RLlib tests
 ########################
+
+# ----------------------------------------------------------
+# Checkpointing with RLModule and Learner APIs
+# ----------------------------------------------------------
 
 - name: rllib_learner_group_checkpointing_multinode
   group: RLlib tests
@@ -3603,14 +2375,15 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+  stable: False
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3618,7 +2391,7 @@
     script: pytest checkpointing_tests/test_learner_group_checkpointing.py
 
     wait_for_nodes:
-      num_nodes: 3
+      num_nodes: 2
 
   alert: default
 
@@ -3628,23 +2401,23 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
 - name: rllib_learner_e2e_module_loading
   group: RLlib tests
   working_dir: rllib_tests
+  stable: false
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3652,7 +2425,7 @@
     script: pytest checkpointing_tests/test_e2e_rl_module_restore.py
 
     wait_for_nodes:
-      num_nodes: 3
+      num_nodes: 2
 
   alert: default
 
@@ -3662,538 +2435,38 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
-- name: rllib_multi_node_e2e_training_smoke_test
+
+# ----------------------------------------------------------
+# Learning and benchmarking tests
+# ----------------------------------------------------------
+
+# --------------------------
+# APPO
+# --------------------------
+- name: rllib_learning_tests_pong_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  stable: true
+
+  # frequency was nightly.
+  # TODO(#50217): re-enable after fixing the flakiness.
+  frequency: manual
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: multi_node_checkpointing_compute_config.yaml
-
-  run:
-    timeout: 3600
-    script: pytest smoke_tests/smoke_test_basic_multi_node_training_learner.py
-
-    wait_for_nodes:
-      num_nodes: 3
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
-
-- name: rllib_learning_tests_a2c_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_a2c_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a2c --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_a3c_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a3c --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 32cpus_gce.yaml
-
-- name: rllib_learning_tests_apex_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_24cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_24cpus_gce.yaml
-
-- name: rllib_learning_tests_apex_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_24cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=apex --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_24cpus_gce.yaml
-
-- name: rllib_learning_tests_appo_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=tf2
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
-- name: rllib_learning_tests_appo_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
-# TODO (sven): Remove this test once we are on new stack by default for APPO.
-- name: rllib_learning_tests_appo_old_stack_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-# TODO (sven): Remove this test once we are on new stack by default for APPO.
-- name: rllib_learning_tests_appo_old_stack_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-- name: rllib_learning_tests_bc_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_bc_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=bc --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_cql_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_cql_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=cql --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_ddpg_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_ddpg_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ddpg --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_dqn_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_dqn_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=dqn --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_es_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: 2gpus_64cpus.yaml
 
   run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=es --framework=tf
+    timeout: 1800
+    script: python learning_tests/tuned_examples/appo/pong_appo.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
 
   alert: default
 
@@ -4203,537 +2476,28 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_64cpus_gce.yaml
 
-- name: rllib_learning_tests_es_torch
+- name: rllib_learning_tests_halfcheetah_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
 
+  stable: true
+
   frequency: nightly
   team: rllib
-  python: "3.8"
   cluster:
     byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=es --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 2gpus_64cpus_gce.yaml
-
-- name: rllib_learning_tests_impala_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_impala_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=impala --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_marwil_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_marwil_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=marwil --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_ppo_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=tf2
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
-- name: rllib_learning_tests_ppo_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
-# TODO (sven): Remove this test once we are on new stack by default for APPO.
-- name: rllib_learning_tests_ppo_old_stack_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-  frequency: nightly
-  team: rllib
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/old_stack --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-# TODO (sven): Remove this test once we are on new stack by default for APPO.
-- name: rllib_learning_tests_ppo_old_stack_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/old_stack --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-- name: rllib_learning_tests_sac_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_sac_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=sac --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_slateq_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_slateq_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  # Marking as unstable since it's currently expected to fail.
-  stable: false
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=slateq --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_td3_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=tf
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_learning_tests_td3_torch
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
-
-  run:
-    timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=td3 --framework=torch
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 1gpu_16cpus_gce.yaml
-
-- name: rllib_multi_gpu_learning_tests
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
-
-  run:
-    timeout: 7200
-    script: python multi_gpu_learning_tests/run.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 8gpus_96cpus_gce.yaml
-
-- name: rllib_multi_gpu_with_lstm_learning_tests
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
-
-  run:
-    timeout: 7200
-    script: python multi_gpu_with_lstm_learning_tests/run.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 8gpus_96cpus_gce.yaml
-
-- name: rllib_multi_gpu_with_attention_learning_tests
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
-
-  run:
-    timeout: 7200
-    script: python multi_gpu_with_attention_learning_tests/run.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        # TODO(https://github.com/ray-project/ray/issues/34591)
-        # Revert to the comment below once ^ closed.
-        # cluster_env: app_config.yaml
-        cluster_env: debug_app_config.yaml
-        cluster_compute: 8gpus_96cpus_gce.yaml
-
-- name: rllib_stress_tests
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: weekly
-  team: rllib
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
-    cluster_compute: 4gpus_544_cpus.yaml
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_32cpus.yaml
 
   run:
     timeout: 5400
-    script: python stress_tests/run_stress_tests.py
-
-    wait_for_nodes:
-      num_nodes: 6
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 2000
+    script: python learning_tests/tuned_examples/appo/halfcheetah_appo.py --enable-new-api-stack --num-learners=0 --num-env-runners=31 --stop-reward=1000.0 --as-release-test
 
   alert: default
 
@@ -4742,13 +2506,146 @@
     - __suffix__: gce
       env: gce
       frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 2000
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: 4gpus_512_cpus_gce.yaml
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
+# --------------------------
+# DreamerV3
+# --------------------------
+# TODO (sven): Move algo and this test to pytorch
+- name: rllib_learning_tests_pong_dreamerv3_tf2
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: false
+
+  frequency: weekly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_dreamerv3_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_4cpus.yaml
+
+  run:
+    timeout: 43200  # 12h
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_4cpus_gce.yaml
+
+# --------------------------
+# IMPALA
+# --------------------------
+- name: rllib_learning_tests_pong_impala_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_64cpus.yaml
+
+  run:
+    timeout: 1800
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_64cpus_gce.yaml
+
+# --------------------------
+# PPO
+# --------------------------
+- name: rllib_learning_tests_pong_ppo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 4gpus_96cpus.yaml
+
+  run:
+    timeout: 1200
+    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 4gpus_96cpus_gce.yaml
+
+
+# --------------------------
+# SAC
+# --------------------------
+- name: rllib_learning_tests_halfcheetah_sac_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python learning_tests/tuned_examples/sac/halfcheetah_sac.py --enable-new-api-stack --num-learners=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 4gpus_64cpus_gce.yaml
 
 
 ########################
@@ -4760,13 +2657,12 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -4781,20 +2677,19 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
 
 
 - name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -4807,7 +2702,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
 - name: decision_tree_autoscaling_20_runs
@@ -4815,11 +2709,10 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod: {}
-    cluster_env: decision_tree/decision_tree_app_config.yaml
     cluster_compute: decision_tree/autoscaling_compute.yaml
 
   run:
@@ -4832,7 +2725,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: decision_tree/decision_tree_app_config.yaml
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
@@ -4840,13 +2732,12 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -4860,19 +2751,17 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
   group: core-daily-test
   team: core
   frequency: nightly
+  env: aws_perf
   working_dir: microbenchmark
 
-  python: "3.7"
-
   cluster:
-    cluster_env: app_config.yaml
+    byod: {}
     cluster_compute: tpl_64.yaml
 
   run:
@@ -4881,40 +2770,65 @@
 
   variations:
     - __suffix__: aws
+      repeated_run: 5
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_64_gce.yaml
+    - __suffix__: aws.py312
+      frequency: weekly
+      python: "3.12"
 
-
-- name: microbenchmark_38
+- name: compiled_graphs
   group: core-daily-test
   team: core
   frequency: nightly
   working_dir: microbenchmark
 
-  python: "3.8"
+  stable: false
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_64.yaml
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_64_gce.yaml
+- name: compiled_graphs_GPU
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
 
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py
+
+- name: compiled_graphs_GPU_multinode
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   group: core-daily-test
@@ -4923,12 +2837,10 @@
   working_dir: benchmark-worker-startup
   stable: false
 
-  python: "3.9"
 
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config_gpu.yaml
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -4945,7 +2857,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_gpu.yaml
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
 - name: dask_on_ray_100gb_sort
@@ -4954,8 +2865,13 @@
 
   frequency: nightly
   team: core
+  # https://github.com/ray-project/ray/issues/39165
+  stable: false
+
   cluster:
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -4969,7 +2885,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
         cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
 
 
@@ -4979,9 +2894,11 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
-    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -4996,7 +2913,6 @@
   smoke_test:
     frequency: nightly
     cluster:
-      app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
@@ -5011,9 +2927,8 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  stable: false 
+  stable: false
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5021,7 +2936,6 @@
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
@@ -5044,11 +2958,15 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.py312
+      frequency: manual
+      python: "3.12"
+      smoke_test:
+        frequency: nightly-3x
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/state_api_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
       smoke_test:
         frequency: manual
@@ -5058,15 +2976,13 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod:
       runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 
+        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
@@ -5080,19 +2996,17 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5120,7 +3034,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -5128,13 +3041,12 @@
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5163,7 +3075,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -5173,13 +3084,11 @@
 - name: threaded_actors_stress_test
   group: core-daily-test
   working_dir: nightly_tests
-  python: "3.8"
 
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -5196,7 +3105,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # - name: threaded_actors_stress_test
@@ -5206,7 +3114,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: stress_tests/stress_tests_app_config.yaml
 #     cluster_compute: stress_tests/stress_test_threaded_actor_compute.yaml
 #
 #   run:
@@ -5233,20 +3140,49 @@
 #         num_nodes: 5
 #         timeout: 600
 
+- name: stress_test_many_runtime_envs
+  group: core-daily-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+
+  cluster:
+    byod: {}
+    cluster_compute: stress_tests/smoke_test_compute.yaml
+
+  run:
+    timeout: 14400
+    wait_for_nodes:
+      num_nodes: 5
+    script: python stress_tests/test_many_runtime_envs.py --num_runtime_envs=100 --num_tasks=10000
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
+      smoke_test:
+        frequency: manual
+
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
+  # TODO: https://github.com/ray-project/ray/issues/47596
+  stable: false
+
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
-    timeout: 500
+    timeout: 1000
     script: python stress_tests/test_parallel_tasks_memory_pressure.py --num-tasks 20
 
   variations:
@@ -5255,7 +3191,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
@@ -5267,9 +3202,12 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
+
   cluster:
-    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.7
+        - RAY_task_oom_retries=-1
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
   run:
@@ -5283,8 +3221,11 @@
 
   frequency: nightly-3x
   team: core
+
   cluster:
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -5300,12 +3241,10 @@
   group: core-daily-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
   cluster:
     byod: {}
-    cluster_env: distributed/many_nodes_tests/app_config.yaml
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -5322,7 +3261,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: distributed/many_nodes_tests/app_config.yaml
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
 
 #- name: many_nodes_multi_master_test
@@ -5332,7 +3270,6 @@
 #  frequency: nightly-3x
 #  team: core
 #  cluster:
-#    cluster_env: many_nodes_tests/app_config.yaml
 #    cluster_compute: many_nodes_tests/compute_config.yaml
 #
 #  run:
@@ -5346,12 +3283,10 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -5364,19 +3299,16 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: placement_group_tests/app_config.yaml
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -5391,7 +3323,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: placement_group_tests/app_config.yaml
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
 
 
@@ -5403,15 +3334,14 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: single_node.yaml
 
   run:
@@ -5425,22 +3355,20 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: object_store.yaml
 
   run:
@@ -5455,22 +3383,20 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: object_store_gce.yaml
 
 - name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5485,14 +3411,12 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5500,7 +3424,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5514,15 +3437,14 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5537,22 +3459,20 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5567,7 +3487,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 
@@ -5575,7 +3494,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5583,7 +3501,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5597,15 +3514,14 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: many_nodes.yaml
 
   run:
@@ -5620,7 +3536,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
@@ -5630,7 +3545,10 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config.yaml
+    byod:
+      type: gpu
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
 
   run:
@@ -5647,7 +3565,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: scheduling_gce.yaml
 
 
@@ -5658,7 +3575,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: scheduling.yaml
 
 #   run:
@@ -5679,7 +3595,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: scheduling.yaml
 
 #   run:
@@ -5693,688 +3608,19 @@
 
 #   stable: false
 
-###############
-# Dataset tests
-###############
-
-- name: inference
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: inference.yaml
-
-  run:
-    timeout: 600
-    script: python inference.py
-    wait_for_nodes:
-      num_nodes: 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: inference_gce.yaml
-
-- name: shuffle_data_loader
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: shuffle_app_config.yaml
-    cluster_compute: shuffle_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python dataset_shuffle_data_loader.py --cloud aws
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle_compute_gce.yaml
-      run:
-        script: python dataset_shuffle_data_loader.py --cloud gcp
-
-- name: parquet_metadata_resolution
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the test to finish around 40 seconds.
-    timeout: 100
-    script: python parquet_metadata_resolution.py --num-files 915 --cloud aws
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-      run:
-        script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
-
-- name: dataset_random_access
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
-
-  run:
-    timeout: 1200
-    script: python dataset_random_access.py
-    wait_for_nodes:
-      num_nodes: 15
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: pipelined_training_app.yaml
-        cluster_compute: pipelined_training_compute_gce.yaml
-
-- name: pipelined_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: data_ingest_benchmark_compute.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
-
-- name: streaming_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: data_ingest_benchmark_compute.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --new_streaming
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gce.yaml
-
-- name: streaming_data_ingest_benchmark_100gb_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-# This test case will early stop the data ingestion iteration on the GPU actors.
-# This is a common usage in PyTorch Lightning
-# (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
-# There was a bug in Ray Data that caused GPU memoy leak (see #34819).
-# We add this test case to cover this scenario.
-- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
-
-  run:
-    timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu --early-stop
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-- name: aggregate_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python aggregate_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_parquet_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish in 400 seconds.
-    timeout: 400
-    script: python read_parquet_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_images_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python read_images_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_tfrecords_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: read_tfrecords_benchmark_app.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 22 minutes.
-    timeout: 1800
-    script: python read_tfrecords_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: read_tfrecords_benchmark_app.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: map_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python map_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python iter_tensor_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_multi_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: multi_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: multi_node_benchmark_compute_gce.yaml
-
-- name: iter_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 12 minutes.
-    timeout: 1080
-    script: python iter_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: pipelined_training_50_gb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_training_app.yaml
-    cluster_compute: pipelined_training_compute.yaml
-
-  run:
-    timeout: 4800
-    script: python pipelined_training.py --epochs 1
-    wait_for_nodes:
-      num_nodes: 15
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: pipelined_training_app.yaml
-        cluster_compute: pipelined_training_compute_gce.yaml
-
-- name: pipelined_ingestion_1500_gb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_ingestion_app.yaml
-    cluster_compute: pipelined_ingestion_compute.yaml
-
-  run:
-    timeout: 9600
-    script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
-      --debug
-
-    wait_for_nodes:
-      num_nodes: 21
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: pipelined_training_app.yaml
-        cluster_compute: pipelined_training_compute_gce.yaml
-
-- name: dataset_shuffle_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_push_based_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: weekly
-  team: data
-  cluster:
-    cluster_env: shuffle/100tb_shuffle_app_config.yaml
-    cluster_compute: shuffle/100tb_shuffle_compute.yaml
-
-  run:
-    timeout: 28800
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 100
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
-        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
-      run:
-        timeout: 28800
-        script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
-        wait_for_nodes:
-          num_nodes: 100
 
 ##################
 # Core Chaos tests
 ##################
 
-- name: chaos_many_tasks_no_object_store
+- name: chaos_many_tasks_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6390,19 +3636,36 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/app_config.yaml
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: chaos_many_actors
+- name: chaos_many_tasks_terminate_instance
   group: core-nightly-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos_basic.py --workload=tasks
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_many_actors_kill_raylet
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6418,9 +3681,27 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/app_config.yaml
         cluster_compute: chaos_test/compute_template_gce.yaml
 
+- name: chaos_many_actors_terminate_instance
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos_basic.py --workload=actors
+
+  variations:
+    - __suffix__: aws
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: data-tests
@@ -6428,15 +3709,18 @@
 
   frequency: nightly
   team: data
+
   cluster:
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
+    byod:
+      runtime_env:
+        - RAY_lineage_pinning_enabled=1
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6446,7 +3730,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
@@ -6455,15 +3738,18 @@
 
   frequency: nightly
   team: data
+
   cluster:
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
+    byod:
+      runtime_env:
+        - RAY_lineage_pinning_enabled=1
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: python setup_chaos.py --node-kill-interval 100
+    prepare: python setup_chaos.py --kill-interval 100
     script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
@@ -6473,178 +3759,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
-- name: chaos_pipelined_ingestion_1500_gb_15_windows
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
-      post_build_script: byod_data_pipelined_test.sh
-    cluster_env: dataset/pipelined_ingestion_app.yaml
-    cluster_compute: dataset/pipelined_ingestion_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: ' python setup_chaos.py --node-kill-interval 300'
-    script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
-      915 --debug
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: dataset/pipelined_ingestion_app.yaml
-        cluster_compute: dataset/pipelined_ingestion_compute_gce.yaml
-
-- name: chaos_dataset_shuffle_push_based_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: chaos_dataset_shuffle_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: 'python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    # leave oom disabled as test is marked unstable at the moment.
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
-      pip:
-        - ray[default]
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    # leave oom disabled as test is marked unstable at the moment.
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 #####################
 # Observability tests
@@ -6653,7 +3768,6 @@
   group: core-observability-test
   working_dir: dashboard
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6662,7 +3776,6 @@
       runtime_env:
         - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
       post_build_script: byod_agent_stress_test.sh
-    cluster_env: agent_stress_app_config.yaml
     cluster_compute: agent_stress_compute.yaml
 
   run:
@@ -6675,7 +3788,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: agent_stress_app_config.yaml
         cluster_compute: agent_stress_compute_gce.yaml
 
 - name: k8s_serve_ha_test
@@ -6687,7 +3799,7 @@
   frequency: nightly
   team: serve
   cluster:
-    cluster_env: app_config.yaml
+    byod: {}
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -6699,28 +3811,72 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   frequency: nightly
-  team: core
+  team: clusters
+
   cluster:
-    cluster_env: aws/tests/aws_config.yaml
+    byod: {}
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+
+
+- name: aws_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
+
+
+- name: aws_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
+
+
+- name: aws_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
+
+
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.8"
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -6731,17 +3887,15 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.8"
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/example-full.yaml
+    timeout: 3000
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6751,14 +3905,14 @@
 
   env: gce
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
     timeout: 1200
-    script: python launch_and_verify_cluster.py gcp/example-minimal.yaml
+    script: python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
   group: cluster-launcher-test
@@ -6768,11 +3922,267 @@
 
   env: gce
   frequency: nightly
-  team: core
+  team: clusters
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 2400
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml
+    timeout: 4800
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 30
+
+- name: gcp_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+
+- name: gcp_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+
+
+- name: gcp_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: manual
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+- name: gcp_cluster_launcher_gpu_docker
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: weekly
+  team: clusters
+  cluster:
+    byod: {}
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 1200
+    script: python launch_and_verify_cluster.py gcp/example-gpu-docker.yaml
+
+- name: autoscaler_aws
+  group: autoscaler-test
+  working_dir: autoscaling_tests
+
+  stable: False
+
+  frequency: nightly
+  team: core
+
+  cluster:
+    # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
+    cluster_compute: aws.yaml
+
+  run:
+    timeout: 1800
+    script: python run.py
+
+
+##############
+# LLM Serve
+##############
+
+- name: llm_serve_llama_3dot1_8B_quantized_tp_1
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
+
+- name: llm_serve_llama_3dot1_8B_tp_2
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
+
+- name: llm_serve_llama_3dot1_8B_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+
+- name: llm_serve_llama_3dot2_1B_s3
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --run-perf-profiler false --skip-hf-token true
+
+
+##############
+# LLM Batch
+##############
+
+- name: llm_batch_vllm_v1_llama_tp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --tp-size 2 --concurrency 2 --vllm-use-v1
+
+- name: llm_batch_vllm_llama_pp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --pp-size 2 --concurrency 2
+
+- name: llm_batch_vllm_llama_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --model-source s3://air-example-data/llama-3.2-216M-dummy/
+      --dynamic-lora-loading-path s3://air-example-data/
+      --lora-name llama-3.2-216M-lora-dummy
+      --max-lora-rank 32
+
+- name: llm_batch_vllm_v1_llava_tp1dp1
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_vision_language_model.py
+      --tp-size 1 --concurrency 1 --vllm-use-v1

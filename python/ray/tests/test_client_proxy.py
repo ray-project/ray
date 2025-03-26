@@ -14,21 +14,24 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    agent_port = ray._private.worker.global_worker.node.metrics_agent_port
+    runtime_env_agent_address = (
+        ray._private.worker.global_worker.node.runtime_env_agent_address
+    )
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
         redis_password=REDIS_DEFAULT_PASSWORD,
-        runtime_env_agent_port=agent_port,
+        runtime_env_agent_address=runtime_env_agent_address,
     )
-    free_ports = random.choices(range(45000, 45100), k=n_ports)
+    free_ports = random.choices(pm._free_ports, k=n_ports)
+    assert len(free_ports) == n_ports
     pm._free_ports = free_ports.copy()
 
     return pm, free_ports
@@ -85,17 +88,24 @@ def test_proxy_manager_bad_startup(shutdown_only):
     """
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
+    ctx = ray.init(ignore_reinit_error=True)
+    port_to_conflict = ctx.dashboard_url.split(":")[1]
 
     pm.create_specific_server(client)
-    assert not pm.start_specific_server(
+    # Intentionally bind to the wrong port so that the
+    # server will crash.
+    pm._get_server_for_client(client).port = port_to_conflict
+    pm.start_specific_server(
         client,
-        JobConfig(runtime_env={"conda": "conda-env-that-sadly-does-not-exist"}),
+        JobConfig(),
     )
-    # Wait for reconcile loop
-    time.sleep(2)
-    assert pm.get_channel(client) is None
 
-    assert len(pm._free_ports) == 2
+    def verify():
+        assert pm.get_channel(client) is None
+        assert len(pm._free_ports) == 2
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
@@ -111,10 +121,10 @@ def test_multiple_clients_use_different_drivers(call_ray_start):
     Test that each client uses a separate JobIDs and namespaces.
     """
     with ray.client("localhost:25001").connect():
-        job_id_one = ray.get_runtime_context().job_id
+        job_id_one = ray.get_runtime_context().get_job_id()
         namespace_one = ray.get_runtime_context().namespace
     with ray.client("localhost:25001").connect():
-        job_id_two = ray.get_runtime_context().job_id
+        job_id_two = ray.get_runtime_context().get_job_id()
         namespace_two = ray.get_runtime_context().namespace
 
     assert job_id_one != job_id_two
@@ -311,9 +321,8 @@ def test_prepare_runtime_init_req_modified_job():
         (["ipython", "-m", "ray.util.client.server"], True),
         (["ipython -m ray.util.client.server"], True),
         (["ipython -m", "ray.util.client.server"], True),
-        (["bash", "ipython", "-m", "ray.util.client.server"], False),
-        (["bash", "ipython -m ray.util.client.server"], False),
-        (["python", "-m", "bash", "ipython -m ray.util.client.server"], False),
+        (["bash", "-c", "ipython -m ray.util.client.server"], True),
+        (["python", "-m", "bash", "ipython"], False),
     ],
 )
 def test_match_running_client_server(test_case):

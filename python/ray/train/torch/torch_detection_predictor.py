@@ -40,26 +40,6 @@ class TorchDetectionPredictor(TorchPredictor):
 
             dict_keys(['pred_boxes', 'pred_labels', 'pred_scores'])
 
-        .. testcode::
-
-            import numpy as np
-            from torchvision import models
-
-            import ray
-            from ray.train.batch_predictor import BatchPredictor
-            from ray.train.torch import TorchCheckpoint, TorchDetectionPredictor
-
-            dataset = ray.data.from_items([{"image": np.zeros((3, 32, 32), dtype=np.float32)}])
-            model = models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
-            checkpoint = TorchCheckpoint.from_model(model)
-            predictor = BatchPredictor.from_checkpoint(checkpoint, TorchDetectionPredictor)
-            predictions = predictor.predict(dataset, feature_columns=["image"])
-
-            print(predictions.take(1))
-
-        .. testoutput::
-
-            [{'pred_boxes': array([], shape=(0, 4), dtype=float32), 'pred_labels': array([], dtype=int64), 'pred_scores': array([], dtype=float32)}]
     """  # noqa: E501
 
     def _predict_numpy(
@@ -69,16 +49,7 @@ class TorchDetectionPredictor(TorchPredictor):
     ) -> Dict[str, np.ndarray]:
         if isinstance(data, dict) and len(data) != 1:
             raise ValueError(
-                f"""Expected input to contain one key, but got {len(data)} instead.
-
-                If you're using `BatchPredictor`, pass a one-element list to
-                `feature_columns`.
-
-                ---
-                predictor = BatchPredictor(checkpoint, TorchDetectionPredictor)
-                predictor.predict(dataset, feature_columns=["image"])
-                ---
-                """
+                f"""Expected input to contain one key, but got {len(data)} instead."""
             )
 
         if dtype is not None and not isinstance(dtype, torch.dtype):

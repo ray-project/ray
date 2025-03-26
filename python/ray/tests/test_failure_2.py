@@ -99,6 +99,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     [g.remote(remote_waits, nested_waits) for _ in range(num_root_tasks)]
 
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
+
     assert len(errors) == 1
     assert errors[0]["type"] == ray_constants.WORKER_POOL_LARGE_ERROR
     p.close()

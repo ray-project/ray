@@ -1,19 +1,18 @@
 import json
 import os
-
-import numpy as np
-import pandas as pd
-from pathlib import Path
-import pytest
-import time
 import shutil
 import signal
 import subprocess
 import sys
+import time
+from pathlib import Path
 
-from ray.tune.result_grid import ResultGrid
+import numpy as np
+import pandas as pd
+import pytest
+
 from ray.tune.analysis import ExperimentAnalysis
-
+from ray.tune.result_grid import ResultGrid
 
 _RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 
@@ -51,14 +50,14 @@ def test_experiment_restore(tmp_path, runner_type):
         - Without any interrupts/restoration:
             - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
         - The test will stop the script with a SIGINT at a random time between
-        4-8 iterations each restore.
+        6-10 iterations each restore.
 
     - For Trainer.restore:
         - 1 trial with 4 workers
         - Each iteration takes 0.5 seconds
         - Runs for 32 iterations --> Minimum runtime = 16 seconds
         - The test will stop the script with a SIGINT at a random time between
-        4-8 iterations after each restore.
+        6-10 iterations after each restore.
 
     Requirements:
     - Req 1: Reasonable runtime
@@ -102,19 +101,21 @@ def test_experiment_restore(tmp_path, runner_type):
 
     total_iters = iters_per_trial * num_trials
 
-    env = {
-        "RUNNER_TYPE": runner_type,
-        "STORAGE_PATH": str(storage_path),
-        "EXP_NAME": exp_name,
-        "CALLBACK_DUMP_FILE": str(callback_dump_file),
-        "RUN_STARTED_MARKER": str(run_started_marker),
-        "TIME_PER_ITER_S": str(time_per_iter_s),
-        "ITERATIONS_PER_TRIAL": str(iters_per_trial),
-        "NUM_TRIALS": str(num_trials),
-        "MAX_CONCURRENT_TRIALS": str(max_concurrent),
-        "CSV_DATA_FILE": csv_file,
-        "TUNE_NEW_EXECUTION": os.environ.get("TUNE_NEW_EXECUTION", "1"),
-    }
+    env = os.environ.copy()
+    env.update(
+        {
+            "RUNNER_TYPE": runner_type,
+            "STORAGE_PATH": str(storage_path),
+            "EXP_NAME": exp_name,
+            "CALLBACK_DUMP_FILE": str(callback_dump_file),
+            "RUN_STARTED_MARKER": str(run_started_marker),
+            "TIME_PER_ITER_S": str(time_per_iter_s),
+            "ITERATIONS_PER_TRIAL": str(iters_per_trial),
+            "NUM_TRIALS": str(num_trials),
+            "MAX_CONCURRENT_TRIALS": str(max_concurrent),
+            "CSV_DATA_FILE": csv_file,
+        }
+    )
 
     # Pass criteria
     no_interrupts_runtime = 16.0
@@ -131,6 +132,7 @@ def test_experiment_restore(tmp_path, runner_type):
     return_code = None
     total_runtime = 0
     run_iter = 0
+    progress = 0
     progress_history = []
 
     poll_interval_s = 0.1
@@ -154,7 +156,7 @@ def test_experiment_restore(tmp_path, runner_type):
             break
 
         timeout_s = min(
-            np.random.uniform(4 * time_per_iter_s, 8 * time_per_iter_s),
+            np.random.uniform(6 * time_per_iter_s, 10 * time_per_iter_s),
             passing_runtime - total_runtime,
         )
 
@@ -201,7 +203,8 @@ def test_experiment_restore(tmp_path, runner_type):
     )
     test_end_time = time.monotonic()
 
-    # Req 1: runtime
+    # Req 1: runtime and completion
+    assert progress == 1.0
     assert total_runtime <= passing_runtime, (
         f"Expected runtime to be <= {passing_runtime}, but ran for: {total_runtime}. "
         f"This means the experiment did not finish (iterations still running). Are "

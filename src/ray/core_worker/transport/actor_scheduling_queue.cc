@@ -14,22 +14,31 @@
 
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
+    worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+    std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
       wait_timer_(main_io_service),
-      main_thread_id_(boost::this_thread::get_id()),
+      main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
+      task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
+      fiber_state_manager_(fiber_state_manager),
       is_asyncio_(is_asyncio) {
   if (is_asyncio_) {
     std::stringstream ss;
@@ -38,9 +47,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     for (const auto &concurrency_group : concurrency_groups) {
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
-    RAY_LOG(INFO) << ss.str();
-    fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
-        concurrency_groups, fiber_max_concurrency);
+    RAY_LOG(DEBUG) << ss.str();
   }
 }
 
@@ -68,19 +75,18 @@ size_t ActorSchedulingQueue::Size() const {
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(int64_t seq_no,
-                               int64_t client_processed_up_to,
-                               std::function<void(rpc::SendReplyCallback)> accept_request,
-                               std::function<void(rpc::SendReplyCallback)> reject_request,
-                               rpc::SendReplyCallback send_reply_callback,
-                               const std::string &concurrency_group_name,
-                               const ray::FunctionDescriptor &function_descriptor,
-                               TaskID task_id,
-                               const std::vector<rpc::ObjectReference> &dependencies) {
+void ActorSchedulingQueue::Add(
+    int64_t seq_no,
+    int64_t client_processed_up_to,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
+    rpc::SendReplyCallback send_reply_callback,
+    TaskSpecification task_spec) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
     RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                    << client_processed_up_to;
@@ -91,31 +97,60 @@ void ActorSchedulingQueue::Add(int64_t seq_no,
   pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
                                                 std::move(reject_request),
                                                 std::move(send_reply_callback),
-                                                task_id,
-                                                dependencies.size() > 0,
-                                                concurrency_group_name,
-                                                function_descriptor);
+                                                task_spec);
+  {
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
+  }
 
+  const auto dependencies = task_spec.GetDependencies();
   if (dependencies.size() > 0) {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        /* include_task_info */ false));
     waiter_.Wait(dependencies, [seq_no, this]() {
-      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+      RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
+        const TaskSpecification &task_spec = it->second.TaskSpec();
+        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+            task_spec.TaskId(),
+            task_spec.JobId(),
+            task_spec.AttemptNumber(),
+            task_spec,
+            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+            /* include_task_info */ false));
         it->second.MarkDependenciesSatisfied();
         ScheduleRequests();
       }
     });
+  } else {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        /* include_task_info */ false));
   }
+
   ScheduleRequests();
 }
 
-// We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
-// results in a fatal error.
 bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
-  RAY_CHECK(false) << "Cannot cancel actor tasks";
-  // The return instruction will never be executed, but we need to include it
-  // nonetheless because this is a non-void function.
-  return false;
+  absl::MutexLock lock(&mu_);
+  if (pending_task_id_to_is_canceled.find(task_id) !=
+      pending_task_id_to_is_canceled.end()) {
+    // Mark the task is canceled.
+    pending_task_id_to_is_canceled[task_id] = true;
+    return true;
+  } else {
+    return false;
+  }
 }
 
 /// Schedules as many requests as possible in sequence.
@@ -126,7 +161,11 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel();
+    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
+    {
+      absl::MutexLock lock(&mu_);
+      pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    }
     pending_actor_tasks_.erase(head);
   }
 
@@ -136,21 +175,26 @@ void ActorSchedulingQueue::ScheduleRequests() {
          pending_actor_tasks_.begin()->second.CanExecute()) {
     auto head = pending_actor_tasks_.begin();
     auto request = head->second;
+    auto task_id = head->second.TaskID();
 
     if (is_asyncio_) {
       // Process async actor task.
       auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                      request.FunctionDescriptor());
-      fiber->EnqueueFiber([request]() mutable { request.Accept(); });
+      fiber->EnqueueFiber([this, request, task_id]() mutable {
+        AcceptRequestOrRejectIfCanceled(task_id, request);
+      });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);
       auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                              request.FunctionDescriptor());
       if (pool == nullptr) {
-        request.Accept();
+        AcceptRequestOrRejectIfCanceled(task_id, request);
       } else {
-        pool->Post([request]() mutable { request.Accept(); });
+        pool->Post([this, request, task_id]() mutable {
+          AcceptRequestOrRejectIfCanceled(task_id, request);
+        });
       }
     }
     pending_actor_tasks_.erase(head);
@@ -177,15 +221,42 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
 /// Called when we time out waiting for an earlier task to show up.
 void ActorSchedulingQueue::OnSequencingWaitTimeout() {
-  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
-    head->second.Cancel();
+    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
     next_seq_no_ = std::max(next_seq_no_, head->first + 1);
+    {
+      absl::MutexLock lock(&mu_);
+      pending_task_id_to_is_canceled.erase(head->second.TaskID());
+    }
     pending_actor_tasks_.erase(head);
   }
+}
+
+void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
+                                                           InboundRequest &request) {
+  bool is_canceled = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = pending_task_id_to_is_canceled.find(task_id);
+    if (it != pending_task_id_to_is_canceled.end()) {
+      is_canceled = it->second;
+    }
+  }
+
+  // Accept can be very long, and we shouldn't hold a lock.
+  if (is_canceled) {
+    request.Cancel(
+        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+  } else {
+    request.Accept();
+  }
+
+  absl::MutexLock lock(&mu_);
+  pending_task_id_to_is_canceled.erase(task_id);
 }
 
 }  // namespace core

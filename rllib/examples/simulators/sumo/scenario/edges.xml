@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<edges>
-    <edge id="road" from="origin" to="destination" numLanes="3" speed="13.89"/>
-</edges>

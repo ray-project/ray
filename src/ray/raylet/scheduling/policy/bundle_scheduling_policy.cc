@@ -64,7 +64,7 @@ bool AllocationWillExceedMaxCpuFraction(
 
   // Get the sum of all cpu allocated by placement group on this node.
   FixedPoint cpus_used_by_pg_before(0);
-  for (const auto &resource_id : node_resources.total.ResourceIds()) {
+  for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     if (ray::GetOriginalResourceNameFromWildcardResource(resource_id.Binary()) == "CPU") {
       cpus_used_by_pg_before += node_resources.total.Get(resource_id);
     }
@@ -164,12 +164,12 @@ BundleSchedulingPolicy::SortRequiredResources(
     // Make sure that resources are always sorted in the same order
     std::set<scheduling::ResourceID> extra_resources_set;
     for (const auto &r : a.ResourceIds()) {
-      if (!IsPredefinedResource(r)) {
+      if (!r.IsPredefinedResource()) {
         extra_resources_set.insert(r);
       }
     }
     for (const auto &r : b.ResourceIds()) {
-      if (!IsPredefinedResource(r)) {
+      if (!r.IsPredefinedResource()) {
         extra_resources_set.insert(r);
       }
     }
@@ -306,11 +306,12 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   }
 
   // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
-  for (size_t index = 0; index < result_nodes.size(); index++) {
+  for (size_t res_node_idx = 0; res_node_idx < result_nodes.size(); res_node_idx++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
-    if (!result_nodes[index].IsNil()) {
+    if (!result_nodes[res_node_idx].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], *sorted_resource_request_list[index]));
+          result_nodes[res_node_idx],
+          (*sorted_resource_request_list[res_node_idx]).GetResourceSet()));
     }
   }
 
@@ -361,10 +362,10 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
       selected_nodes.emplace(best_node);
     } else {
       // Scheduling from selected nodes.
-      auto best_node = GetBestNode(*resource_request,
-                                   selected_nodes,
-                                   options,
-                                   available_cpus_before_bundle_scheduling);
+      best_node = GetBestNode(*resource_request,
+                              selected_nodes,
+                              options,
+                              available_cpus_before_bundle_scheduling);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
@@ -380,7 +381,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], *sorted_resource_request_list[index]));
+          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
     }
   }
 
@@ -441,10 +442,26 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  auto best_node = GetBestNode(aggregated_resource_request,
-                               candidate_nodes,
-                               options,
-                               available_cpus_before_bundle_scheduling);
+  std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
+                                                        nullptr);
+  if (!options.bundle_strict_pack_soft_target_node_id.IsNil()) {
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id)) {
+      best_node = GetBestNode(
+          aggregated_resource_request,
+          absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
+              {options.bundle_strict_pack_soft_target_node_id,
+               candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
+          options,
+          available_cpus_before_bundle_scheduling);
+    }
+  }
+
+  if (best_node.first.IsNil()) {
+    best_node = GetBestNode(aggregated_resource_request,
+                            candidate_nodes,
+                            options,
+                            available_cpus_before_bundle_scheduling);
+  }
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it

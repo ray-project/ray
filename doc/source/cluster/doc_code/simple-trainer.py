@@ -19,7 +19,7 @@ print(ray.nodes())
 @ray.remote
 def f():
     time.sleep(1)
-    return socket.gethostbyname(socket.gethostname())
+    return socket.gethostbyname("localhost")
 
 
 # The following takes one second (assuming that

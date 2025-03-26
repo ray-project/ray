@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 import botocore
 from boto3.resources.base import ServiceResource
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
@@ -438,14 +439,18 @@ class AWSNodeProvider(NodeProvider):
 
                         # The correct value is technically
                         # {"code": "0", "Message": "pending"}
-                        state_reason = instance.state_reason or {"Message": "pending"}
+                        state_reason = "pending"
+                        if instance.state_reason:
+                            state_reason = (
+                                instance.state_reason["Message"] or state_reason
+                            )
 
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=state_reason["Message"],
+                                info=state_reason,
                             ),
                         )
                 break
@@ -640,14 +645,28 @@ class AWSNodeProvider(NodeProvider):
                     memory_resources = int(memory_total * prop)
                     autodetected_resources["memory"] = memory_resources
 
-                gpus = instances_dict[instance_type].get("GpuInfo", {}).get("Gpus")
-                if gpus is not None:
-                    # TODO(ameer): currently we support one gpu type per node.
-                    assert len(gpus) == 1
-                    gpu_name = gpus[0]["Name"]
-                    autodetected_resources.update(
-                        {"GPU": gpus[0]["Count"], f"accelerator_type:{gpu_name}": 1}
+                for (
+                    accelerator_manager
+                ) in ray._private.accelerators.get_all_accelerator_managers():
+                    num_accelerators = (
+                        accelerator_manager.get_ec2_instance_num_accelerators(
+                            instance_type, instances_dict
+                        )
                     )
+                    accelerator_type = (
+                        accelerator_manager.get_ec2_instance_accelerator_type(
+                            instance_type, instances_dict
+                        )
+                    )
+                    if num_accelerators:
+                        autodetected_resources[
+                            accelerator_manager.get_resource_name()
+                        ] = num_accelerators
+                        if accelerator_type:
+                            autodetected_resources[
+                                f"accelerator_type:{accelerator_type}"
+                            ] = 1
+
                 autodetected_resources.update(
                     available_node_types[node_type].get("resources", {})
                 )

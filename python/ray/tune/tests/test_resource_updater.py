@@ -1,7 +1,8 @@
+from unittest import mock
+
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.tune.utils.resource_updater import _ResourceUpdater, _Resources
-from unittest import mock
+from ray.tune.utils.resource_updater import _Resources, _ResourceUpdater
 
 
 def test_resources_numerical_error():
@@ -144,6 +145,7 @@ def test_resource_updater_automatic():
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

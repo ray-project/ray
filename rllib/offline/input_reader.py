@@ -42,19 +42,21 @@ class InputReader(metaclass=ABCMeta):
         Args:
             queue_size: Max elements to allow in the TF queue.
 
-        Example:
-            >>> from ray.rllib.models.modelv2 import ModelV2
-            >>> from ray.rllib.offline.json_reader import JsonReader
-            >>> imitation_loss = ... # doctest +SKIP
-            >>> class MyModel(ModelV2): # doctest +SKIP
-            ...     def custom_loss(self, policy_loss, loss_inputs):
-            ...         reader = JsonReader(...)
-            ...         input_ops = reader.tf_input_ops()
-            ...         logits, _ = self._build_layers_v2(
-            ...             {"obs": input_ops["obs"]},
-            ...             self.num_outputs, self.options)
-            ...         il_loss = imitation_loss(logits, input_ops["action"])
-            ...         return policy_loss + il_loss
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.models.modelv2 import ModelV2
+            from ray.rllib.offline.json_reader import JsonReader
+            imitation_loss = ...
+            class MyModel(ModelV2):
+                def custom_loss(self, policy_loss, loss_inputs):
+                    reader = JsonReader(...)
+                    input_ops = reader.tf_input_ops()
+                    logits, _ = self._build_layers_v2(
+                        {"obs": input_ops["obs"]},
+                        self.num_outputs, self.options)
+                    il_loss = imitation_loss(logits, input_ops["action"])
+                    return policy_loss + il_loss
 
         You can find a runnable version of this in examples/custom_loss.py.
 
@@ -75,8 +77,14 @@ class InputReader(metaclass=ABCMeta):
                 "tf_input_ops() is not implemented for multi agent batches"
             )
 
+        # Note on casting to `np.array(batch[k])`: In order to get all keys that
+        # are numbers, we need to convert to numpy everything that is not a numpy array.
+        # This is because SampleBatches used to only hold numpy arrays, but since our
+        # RNN efforts under RLModules, we also allow lists.
         keys = [
-            k for k in sorted(batch.keys()) if np.issubdtype(batch[k].dtype, np.number)
+            k
+            for k in sorted(batch.keys())
+            if np.issubdtype(np.array(batch[k]).dtype, np.number)
         ]
         dtypes = [batch[k].dtype for k in keys]
         shapes = {k: (-1,) + s[1:] for (k, s) in [(k, batch[k].shape) for k in keys]}

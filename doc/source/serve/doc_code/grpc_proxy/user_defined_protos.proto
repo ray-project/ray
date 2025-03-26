@@ -1,0 +1,49 @@
+// __begin_proto__
+// user_defined_protos.proto
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.ray.examples.user_defined_protos";
+option java_outer_classname = "UserDefinedProtos";
+
+package userdefinedprotos;
+
+message UserDefinedMessage {
+  string name = 1;
+  string origin = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num = 2;
+}
+
+message UserDefinedMessage2 {}
+
+message UserDefinedResponse2 {
+  string greeting = 1;
+}
+
+message ImageData {
+  string url = 1;
+  string filename = 2;
+}
+
+message ImageClass {
+  repeated string classes = 1;
+  repeated float probabilities = 2;
+}
+
+service UserDefinedService {
+  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Multiplexing(UserDefinedMessage2) returns (UserDefinedResponse2);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+
+service ImageClassificationService {
+  rpc Predict(ImageData) returns (ImageClass);
+}
+
+// __end_proto__

@@ -24,13 +24,11 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeCreateGlobalStateAccessor
- * Signature: (Ljava/lang/String;Ljava/lang/String;)J
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J
  */
 JNIEXPORT jlong JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(JNIEnv *,
-                                                                            jobject,
-                                                                            jstring,
-                                                                            jstring);
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
+    JNIEnv *, jobject, jstring, jstring, jstring);
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
@@ -79,12 +77,11 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *,
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllActorInfo
- * Signature: (J)Ljava/util/List;
+ * Signature: (J[BLjava/lang/String;)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(JNIEnv *,
-                                                                  jobject,
-                                                                  jlong);
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
+    JNIEnv *, jobject, jlong, jbyteArray, jstring);
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor

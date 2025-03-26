@@ -17,8 +17,11 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -28,31 +31,42 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, RECORD_METRICS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
-      new ServerCallFactoryImpl<SERVICE,                                        \
-                                SERVICE##Handler,                               \
-                                HANDLER##Request,                               \
-                                HANDLER##Reply>(                                \
-          service_,                                                             \
-          &SERVICE::AsyncService::Request##HANDLER,                             \
-          service_handler_,                                                     \
-          &SERVICE##Handler::Handle##HANDLER,                                   \
-          cq,                                                                   \
-          main_service_,                                                        \
-          #SERVICE ".grpc_server." #HANDLER,                                    \
-          cluster_id,                                                           \
-          MAX_ACTIVE_RPCS,                                                      \
-          RECORD_METRICS));                                                     \
+#define _RPC_SERVICE_HANDLER(                                             \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS)         \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(              \
+      new ServerCallFactoryImpl<SERVICE,                                  \
+                                SERVICE##Handler,                         \
+                                HANDLER##Request,                         \
+                                HANDLER##Reply,                           \
+                                AUTH_TYPE>(                               \
+          service_,                                                       \
+          &SERVICE::AsyncService::Request##HANDLER,                       \
+          service_handler_,                                               \
+          &SERVICE##Handler::Handle##HANDLER,                             \
+          cq,                                                             \
+          main_service_,                                                  \
+          #SERVICE ".grpc_server." #HANDLER,                              \
+          AUTH_TYPE == AuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
+          MAX_ACTIVE_RPCS,                                                \
+          RECORD_METRICS));                                               \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::LAZY_AUTH, true)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::LAZY_AUTH, false)
+
+/// Define a RPC service handler with gRPC server metrics enabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
+
+/// Define a RPC service handler with gRPC server metrics disabled.
+#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
@@ -82,6 +96,7 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
+             const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
@@ -90,7 +105,8 @@ class GrpcServer {
         cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
+        keepalive_time_ms_(keepalive_time_ms),
+        shutdown_(false) {
     Init();
   }
 
@@ -117,18 +133,18 @@ class GrpcServer {
 
   grpc::Server &GetServer() { return *server_; }
 
-  const ClusterID GetClusterId() {
-    RAY_CHECK(!cluster_id_.load().IsNil()) << "Cannot fetch cluster ID before it is set.";
-    return cluster_id_.load();
+  const ClusterID &GetClusterId() const {
+    RAY_CHECK(!cluster_id_.IsNil()) << "Cannot fetch cluster ID before it is set.";
+    return cluster_id_;
   }
 
   void SetClusterId(const ClusterID &cluster_id) {
     RAY_CHECK(!cluster_id.IsNil()) << "Cannot set cluster ID back to Nil!";
-    auto old_id = cluster_id_.exchange(cluster_id);
-    if (!old_id.IsNil() && old_id != cluster_id) {
+    if (!cluster_id_.IsNil() && cluster_id_ != cluster_id) {
       RAY_LOG(FATAL) << "Resetting non-nil cluster ID! Setting to " << cluster_id
-                     << ", but old value is " << old_id;
+                     << ", but old value is " << cluster_id_;
     }
+    cluster_id_ = cluster_id;
   }
 
  protected:
@@ -148,7 +164,7 @@ class GrpcServer {
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
-  SafeClusterID cluster_id_;
+  ClusterID cluster_id_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
@@ -167,6 +183,8 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
+
+  std::atomic_bool shutdown_;
 };
 
 /// Base class that represents an abstract gRPC service.

@@ -1,6 +1,6 @@
 (clusters-vm-ml-example)=
 
-# Ray AIR XGBoostTrainer on VMs
+# Ray Train XGBoostTrainer on VMs
 
 :::{note}
 To learn the basics of Ray on VMs, we recommend taking a look
@@ -88,7 +88,7 @@ Use the following tools to observe its progress.
 
 To follow the job's logs, use the command printed by the above submission script.
 ```shell
-# Subsitute the Ray Job's submission id.
+# Substitute the Ray Job's submission id.
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --address="http://localhost:8265" --follow
 ```
 

@@ -2,13 +2,18 @@
 
 import unittest
 
-import numpy as np
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary, Tuple, Dict
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.spaces.space_utils import (
+    batch,
     convert_element_to_space_type,
     get_base_struct_from_space,
+    unbatch,
     unsquash_action,
 )
+from ray.rllib.utils.test_utils import check
 
 
 class TestSpaceUtils(unittest.TestCase):
@@ -35,18 +40,18 @@ class TestSpaceUtils(unittest.TestCase):
             }
         )
 
-        box_space_uncoverted = box_space.sample().astype(np.float64)
+        box_space_unconverted = box_space.sample().astype(np.float64)
         multi_discrete_unconverted = multi_discrete_space.sample().astype(np.int32)
         multi_binary_unconverted = multi_binary_space.sample().astype(np.int32)
-        tuple_unconverted = (box_space_uncoverted, float(0))
+        tuple_unconverted = (box_space_unconverted, float(0))
         modified_element = {
-            "box": box_space_uncoverted,
+            "box": box_space_unconverted,
             "discrete": float(0),
             "multi_discrete": multi_discrete_unconverted,
             "multi_binary": multi_binary_unconverted,
             "tuple_space": tuple_unconverted,
             "dict_space": {
-                "box2": box_space_uncoverted,
+                "box2": box_space_unconverted,
                 "discrete2": float(0),
             },
         }
@@ -68,6 +73,60 @@ class TestSpaceUtils(unittest.TestCase):
         action = unsquash_action(3, struct)
         self.assertEqual(action[0], 6)
         self.assertEqual(action[1], 6)
+
+    def test_batch_and_unbatch_simple(self):
+        """Tests the two utility functions `batch` and `unbatch`."""
+        # Test, whether simple structs are batch/unbatch'able.
+        # B=8
+        simple_struct = [0, 1, 2, 3, 4, 5, 6, 7]
+        simple_struct_batched = batch(simple_struct)
+        check(unbatch(simple_struct_batched), simple_struct)
+
+        # Test, whether simple structs that are already batched are
+        # batch/unbatch'able.
+        # B=1 or 2
+        simple_struct = [np.array([0]), np.array([1, 2]), np.array([3, 4, 5])]
+        simple_struct_batched = batch(
+            simple_struct, individual_items_already_have_batch_dim=True
+        )
+        check(simple_struct_batched, np.array([0, 1, 2, 3, 4, 5]))
+        # Unbatching here does NOT restore the original list of items as these
+        # had arrays in them of different batch dims.
+        check(unbatch(simple_struct_batched), [0, 1, 2, 3, 4, 5])
+
+        # Create a complex struct of individual batches (B=2).
+        complex_struct = {
+            "a": (
+                np.array([-10.0, -20.0]),
+                {
+                    "a1": np.array([-1, -2]),
+                    "a2": np.array([False, False]),
+                },
+            ),
+            "b": np.array([0, 1]),
+            "c": {
+                "c1": np.array([True, False]),
+                "c2": np.array([1, 2]),
+                "c3": (np.array([3, 4]), np.array([5, 6])),
+            },
+            "d": np.array([0.0, 0.1]),
+        }
+        complex_struct_unbatched = unbatch(complex_struct)
+        # Check that we now have a list of two complex items, the first one
+        # containing all the index=0 values, the second one containing all the index=1
+        # values.
+        check(
+            complex_struct_unbatched,
+            [
+                tree.map_structure(lambda s: s[0], complex_struct),
+                tree.map_structure(lambda s: s[1], complex_struct),
+            ],
+        )
+
+        # Re-batch the unbatched struct.
+        complex_struct_rebatched = batch(complex_struct_unbatched)
+        # Should be identical to original struct.
+        check(complex_struct, complex_struct_rebatched)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from typing import Generic
 
-from ray.data.block import Block, BlockAccessor, T
+from ray.data.block import Block, BlockAccessor, BlockType, T
 
 
 class BlockBuilder(Generic[T]):
@@ -32,4 +32,8 @@ class BlockBuilder(Generic[T]):
 
     def get_estimated_memory_usage(self) -> int:
         """Return the estimated memory usage so far in bytes."""
+        raise NotImplementedError
+
+    def block_type(self) -> BlockType:
+        """Return the block type."""
         raise NotImplementedError

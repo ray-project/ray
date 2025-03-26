@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
+#include <map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 
@@ -47,6 +51,15 @@ const std::pair<TaskSpecification, bool> &OutofOrderActorSubmitQueue::Get(
 
 void OutofOrderActorSubmitQueue::MarkDependencyFailed(uint64_t position) {
   pending_queue_.erase(position);
+}
+
+void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t position) {
+  pending_queue_.erase(position);
+  sending_queue_.erase(position);
+}
+
+bool OutofOrderActorSubmitQueue::Empty() {
+  return pending_queue_.empty() && sending_queue_.empty();
 }
 
 void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
@@ -96,8 +109,8 @@ uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter();
 }
 
-void OutofOrderActorSubmitQueue::MarkTaskCompleted(uint64_t position,
-                                                   const TaskSpecification &task_spec) {}
+void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
+                                                    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

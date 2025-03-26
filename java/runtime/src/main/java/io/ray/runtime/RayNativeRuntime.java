@@ -218,7 +218,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (gcsClient == null) {
       synchronized (this) {
         if (gcsClient == null) {
-          gcsClient = new GcsClient(rayConfig.getBootstrapAddress(), rayConfig.redisPassword);
+          gcsClient =
+              new GcsClient(
+                  rayConfig.getBootstrapAddress(),
+                  rayConfig.redisUsername,
+                  rayConfig.redisPassword);
         }
       }
     }

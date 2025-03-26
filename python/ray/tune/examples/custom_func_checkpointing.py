@@ -1,12 +1,14 @@
 # If want to use checkpointing with a custom training function (not a Ray
 # integration like PyTorch or Tensorflow), your function can read/write
-# checkpoint through ``ray.air.session`` APIs.
-import time
+# checkpoint through the ``ray.tune.report(metrics, checkpoint=...)`` API.
 import argparse
+import json
+import os
+import tempfile
+import time
 
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 
 
 def evaluation_fn(step, width, height):
@@ -18,16 +20,23 @@ def train_func(config):
     step = 0
     width, height = config["width"], config["height"]
 
-    if session.get_checkpoint():
-        loaded_checkpoint = session.get_checkpoint()
-        step = loaded_checkpoint.to_dict()["step"] + 1
+    checkpoint = tune.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.json")) as f:
+                state = json.load(f)
+            step = state["step"] + 1
 
-    for step in range(step, 100):
-        intermediate_score = evaluation_fn(step, width, height)
-        checkpoint = Checkpoint.from_dict({"step": step})
-        session.report(
-            {"iterations": step, "mean_loss": intermediate_score}, checkpoint=checkpoint
-        )
+    for current_step in range(step, 100):
+        intermediate_score = evaluation_fn(current_step, width, height)
+
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            with open(os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w") as f:
+                json.dump({"step": current_step}, f)
+            tune.report(
+                {"iterations": current_step, "mean_loss": intermediate_score},
+                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
 
 if __name__ == "__main__":
@@ -39,7 +48,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train_func,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 1 if args.smoke_test else 10},
         ),
@@ -58,5 +67,4 @@ if __name__ == "__main__":
     best_result = results.get_best_result()
     print("Best hyperparameters: ", best_result.config)
     best_checkpoint = best_result.checkpoint
-    checkpoint_data = best_checkpoint.to_dict()
-    print("Best checkpoint: ", checkpoint_data)
+    print("Best checkpoint: ", best_checkpoint)

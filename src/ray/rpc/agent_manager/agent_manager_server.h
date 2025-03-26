@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
@@ -24,7 +27,8 @@ namespace ray {
 namespace rpc {
 
 #define RAY_AGENT_MANAGER_RPC_HANDLERS \
-  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent, -1)
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH(     \
+      AgentManagerService, RegisterAgent, -1, AuthType::NO_AUTH)
 
 /// Implementations of the `AgentManagerGrpcService`, check interface in
 /// `src/ray/protobuf/agent_manager.proto`.

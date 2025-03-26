@@ -1,22 +1,25 @@
-import gc
 import asyncio
+import gc
+import sys
 
 import numpy as np
-import requests
 import pytest
+import requests
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 import ray
-from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.context import get_global_client
-from ray.serve.drivers import DAGDriver
+from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture
 def shutdown_ray():
+    if ray.is_initialized():
+        serve.shutdown()
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()
@@ -46,7 +49,7 @@ def test_fastapi_serialization(shutdown_ray):
             return data.values.tolist()
 
     serve.start()
-    CustomService.deploy()
+    serve.run(CustomService.bind())
 
 
 def test_np_in_composed_model(serve_instance):
@@ -61,45 +64,49 @@ def test_np_in_composed_model(serve_instance):
 
     @serve.deployment(name="model")
     class ComposedModel:
-        def __init__(self, handle):
+        def __init__(self, handle: DeploymentHandle):
             self.model = handle
 
-        async def __call__(self, *args):
+        async def __call__(self):
             data = np.ones((10, 10))
-            return await (await self.model.remote(data))
+            return await self.model.remote(data)
 
     sum_d = Sum.bind()
     cm_d = ComposedModel.bind(sum_d)
-    dag = DAGDriver.bind(cm_d)
-    serve.run(dag)
+    serve.run(cm_d)
 
     result = requests.get("http://127.0.0.1:8000/")
     assert result.status_code == 200
-    assert result.json() == 100.0
+    assert float(result.text) == 100.0
 
 
 def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
-    @serve.deployment(name="model")
+    @serve.deployment
     def gc_unreachable_objects(*args):
         gc.set_debug(gc.DEBUG_SAVEALL)
         gc.collect()
-        return len(gc.garbage)
+        gc_garbage_len = len(gc.garbage)
+        if gc_garbage_len > 0:
+            print(gc.garbage)
+        return gc_garbage_len
 
     handle = serve.run(gc_unreachable_objects.bind())
 
-    # We are checking that there's constant number of object in gc.
-    known_num_objects = ray.get(handle.remote())
-
-    for _ in range(10):
-        result = requests.get("http://127.0.0.1:8000/model")
+    def get_gc_garbage_len_http():
+        result = requests.get("http://127.0.0.1:8000")
         assert result.status_code == 200
-        num_unreachable_objects = result.json()
-        assert num_unreachable_objects == known_num_objects
+        return result.json()
+
+    # We are checking that there's constant number of object in gc.
+    known_num_objects_from_http = get_gc_garbage_len_http()
 
     for _ in range(10):
-        num_unreachable_objects = ray.get(handle.remote())
-        assert num_unreachable_objects == known_num_objects
+        assert get_gc_garbage_len_http() == known_num_objects_from_http
+
+    known_num_objects_from_handle = handle.remote().result()
+    for _ in range(10):
+        assert handle.remote().result() == known_num_objects_from_handle
 
 
 def test_ref_in_handle_input(serve_instance):
@@ -118,12 +125,12 @@ def test_ref_in_handle_input(serve_instance):
     worker_result = handle.remote(ref)
 
     # Worker shouldn't execute the request
-    with pytest.raises(GetTimeoutError):
-        ray.get(worker_result, timeout=1)
+    with pytest.raises(TimeoutError):
+        worker_result.result(timeout_s=1)
 
     # Now unblock the worker
     unblock_worker_signal.send.remote()
-    ray.get(worker_result)
+    worker_result.result()
 
 
 def test_nested_actors(serve_instance):
@@ -147,7 +154,7 @@ def test_nested_actors(serve_instance):
 
 def test_handle_cache_out_of_scope(serve_instance):
     # https://github.com/ray-project/ray/issues/18980
-    initial_num_cached = len(get_global_client().handle_cache)
+    initial_num_cached = len(_get_global_client().handle_cache)
 
     @serve.deployment(name="f")
     def f():
@@ -155,13 +162,13 @@ def test_handle_cache_out_of_scope(serve_instance):
 
     handle = serve.run(f.bind(), name="app")
 
-    handle_cache = get_global_client().handle_cache
+    handle_cache = _get_global_client().handle_cache
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
-        f = get_global_client().get_handle("app_f", missing_ok=True, sync=True)
+        f = _get_global_client().get_handle("f", "app", check_exists=False)
         assert f is handle
-        assert ray.get(f.remote()) == "hi"
+        assert f.remote().result() == "hi"
 
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
@@ -190,11 +197,9 @@ def test_out_of_order_chaining(serve_instance):
             self.m2 = m2
 
         async def run(self, _id):
-            r1_task: asyncio.Task = self.m1.compute.remote(_id)
-            r2_ref = await self.m2.compute.remote(r1_task)
-            await r2_ref
+            return await self.m2.compute.remote(self.m1.compute.remote(_id))
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.0)
     class FirstModel:
         async def compute(self, _id):
             if _id == 0:
@@ -216,7 +221,7 @@ def test_out_of_order_chaining(serve_instance):
     handle = serve.run(combine)
 
     handle.run.remote(_id=0)
-    ray.get(handle.run.remote(_id=1))
+    handle.run.remote(_id=1).result()
 
     assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
@@ -232,8 +237,8 @@ def test_uvicorn_duplicate_headers(serve_instance):
         def func(self):
             return JSONResponse({"a": "b"})
 
-    A.deploy()
-    resp = requests.get("http://127.0.0.1:8000/A")
+    serve.run(A.bind())
+    resp = requests.get("http://127.0.0.1:8000")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
 
@@ -249,22 +254,17 @@ def test_healthcheck_timeout(serve_instance):
         graceful_shutdown_timeout_s=0,
     )
     class A:
-        def check_health(self):
-            return True
-
         def __call__(self):
             ray.get(signal.wait.remote())
 
     handle = serve.run(A.bind())
-    ref = handle.remote()
+    response = handle.remote()
     # without the proper fix, the ref will fail with actor died error.
-    with pytest.raises(GetTimeoutError):
-        ray.get(ref, timeout=10)
+    with pytest.raises(TimeoutError):
+        response.result(timeout_s=10)
     signal.send.remote()
-    ray.get(ref)
+    response.result()
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -1,31 +1,16 @@
-package(default_visibility = ["//visibility:public"])
-
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 
-proto_library(
-    name = "monitor_proto",
-    srcs = ["monitor.proto"],
-)
-
-cc_proto_library(
-    name = "monitor_cc_proto",
-    deps = [":monitor_proto"],
-)
-
-python_grpc_compile(
-    name = "monitor_py_proto",
-    deps = [":monitor_proto"],
-)
+package(default_visibility = ["//visibility:public"])
 
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [
-      ":runtime_env_common_proto",
-    ],
     visibility = ["//java:__subpackages__"],
+    deps = [
+        ":runtime_env_common_proto",
+    ],
 )
 
 cc_proto_library(
@@ -59,7 +44,7 @@ python_grpc_compile(
 )
 
 cc_proto_library(
-    name ="instance_manager_cc_proto",
+    name = "instance_manager_cc_proto",
     deps = [":instance_manager_proto"],
 )
 
@@ -130,8 +115,10 @@ proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
     deps = [
-      ":common_proto",
-      ":gcs_proto",
+        ":autoscaler_proto",
+        ":common_proto",
+        ":gcs_proto",
+        ":runtime_env_common_proto",
     ],
 )
 
@@ -150,7 +137,7 @@ proto_library(
     srcs = ["reporter.proto"],
     deps = [
         ":common_proto",
-        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
     ],
 )
 
@@ -259,16 +246,141 @@ python_grpc_compile(
     deps = [":event_proto"],
 )
 
-# Job agent.
 proto_library(
-    name = "job_agent_proto",
-    srcs = ["job_agent.proto"],
-    deps = [":agent_manager_proto"],
+    name = "export_event_proto",
+    srcs = ["export_api/export_event.proto"],
+    deps = [
+        ":export_actor_event_proto",
+        ":export_driver_job_event_proto",
+        ":export_node_event_proto",
+        ":export_submission_job_event_proto",
+        ":export_task_event_proto",
+        ":export_train_state_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_event_cc_proto",
+    deps = [":export_event_proto"],
 )
 
 python_grpc_compile(
-    name = "job_agent_py_proto",
-    deps = [":job_agent_proto"],
+    name = "export_event_py_proto",
+    deps = [":export_event_proto"],
+)
+
+proto_library(
+    name = "export_task_event_proto",
+    srcs = ["export_api/export_task_event.proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_task_event_cc_proto",
+    deps = [":export_task_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_task_event_py_proto",
+    deps = [":export_task_event_proto"],
+)
+
+proto_library(
+    name = "export_runtime_env_proto",
+    srcs = ["export_api/export_runtime_env.proto"],
+)
+
+cc_proto_library(
+    name = "export_runtime_env_cc_proto",
+    deps = [":export_runtime_env_proto"],
+)
+
+python_grpc_compile(
+    name = "export_runtime_env_py_proto",
+    deps = [":export_runtime_env_proto"],
+)
+
+proto_library(
+    name = "export_node_event_proto",
+    srcs = ["export_api/export_node_data.proto"],
+)
+
+cc_proto_library(
+    name = "export_node_event_cc_proto",
+    deps = [":export_node_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_node_event_py_proto",
+    deps = [":export_node_event_proto"],
+)
+
+proto_library(
+    name = "export_actor_event_proto",
+    srcs = ["export_api/export_actor_data.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "export_actor_event_cc_proto",
+    deps = [":export_actor_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_actor_event_py_proto",
+    deps = [":export_actor_event_proto"],
+)
+
+proto_library(
+    name = "export_driver_job_event_proto",
+    srcs = ["export_api/export_driver_job_event.proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "export_driver_job_event_cc_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_driver_job_event_py_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
+proto_library(
+    name = "export_submission_job_event_proto",
+    srcs = ["export_api/export_submission_job_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_submission_job_event_cc_proto",
+    deps = [":export_submission_job_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_submission_job_event_py_proto",
+    deps = [":export_submission_job_event_proto"],
+)
+
+proto_library(
+    name = "export_train_state_proto",
+    srcs = ["export_api/export_train_state.proto"],
+)
+
+cc_proto_library(
+    name = "export_train_state_cc_proto",
+    deps = [":export_train_state_proto"],
+)
+
+python_grpc_compile(
+    name = "export_train_state_py_proto",
+    deps = [":export_train_state_proto"],
 )
 
 # Agent manager gRPC lib.
@@ -323,8 +435,8 @@ proto_library(
     name = "runtime_env_agent_proto",
     srcs = ["runtime_env_agent.proto"],
     deps = [
-        ":common_proto",
         ":agent_manager_proto",
+        ":common_proto",
         ":runtime_env_common_proto",
     ],
 )
@@ -367,7 +479,7 @@ cc_proto_library(
 
 proto_library(
     name = "autoscaler_proto",
-    srcs = ["experimental/autoscaler.proto"],
+    srcs = ["autoscaler.proto"],
 )
 
 python_grpc_compile(

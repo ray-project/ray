@@ -144,9 +144,6 @@ class TestModelCatalog(unittest.TestCase):
                 flat_complex_input_case,
                 nested_complex_input_case,
             ],
-            "jax": [
-                flat_input_case,
-            ],
         }
 
         for fw, test_cases in test_suite.items():

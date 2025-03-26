@@ -1,13 +1,11 @@
-from ray.tune.search.search_algorithm import SearchAlgorithm
-from ray.tune.search.searcher import Searcher
+from ray._private.utils import get_function_args
+from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.repeater import Repeater
-
-from ray.tune.search.basic_variant import BasicVariantGenerator
-from ray.tune.search.variant_generator import grid_search
+from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.search_generator import SearchGenerator
-
-from ray._private.utils import get_function_args
+from ray.tune.search.searcher import Searcher
+from ray.tune.search.variant_generator import grid_search
 from ray.util import PublicAPI
 
 
@@ -19,30 +17,6 @@ def _import_ax_search():
     from ray.tune.search.ax.ax_search import AxSearch
 
     return AxSearch
-
-
-def _import_blendsearch_search():
-    from ray.tune.search.flaml.flaml_search import BlendSearch
-
-    return BlendSearch
-
-
-def _import_cfo_search():
-    from ray.tune.search.flaml.flaml_search import CFO
-
-    return CFO
-
-
-def _import_dragonfly_search():
-    from ray.tune.search.dragonfly.dragonfly_search import DragonflySearch
-
-    return DragonflySearch
-
-
-def _import_skopt_search():
-    from ray.tune.search.skopt.skopt_search import SkOptSearch
-
-    return SkOptSearch
 
 
 def _import_hyperopt_search():
@@ -81,12 +55,6 @@ def _import_zoopt_search():
     return ZOOptSearch
 
 
-def _import_sigopt_search():
-    from ray.tune.search.sigopt.sigopt_search import SigOptSearch
-
-    return SigOptSearch
-
-
 def _import_hebo_search():
     from ray.tune.search.hebo.hebo_search import HEBOSearch
 
@@ -97,18 +65,13 @@ SEARCH_ALG_IMPORT = {
     "variant_generator": _import_variant_generator,
     "random": _import_variant_generator,
     "ax": _import_ax_search,
-    "dragonfly": _import_dragonfly_search,
-    "skopt": _import_skopt_search,
     "hyperopt": _import_hyperopt_search,
     "bayesopt": _import_bayesopt_search,
     "bohb": _import_bohb_search,
     "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
     "zoopt": _import_zoopt_search,
-    "sigopt": _import_sigopt_search,
     "hebo": _import_hebo_search,
-    "blendsearch": _import_blendsearch_search,
-    "cfo": _import_cfo_search,
 }
 
 

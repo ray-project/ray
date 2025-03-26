@@ -11,8 +11,13 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
-from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
 from ray._private.utils import get_directory_size_bytes
+from ray._private.test_utils import (
+    chdir,
+    check_local_files_gced,
+    wait_for_condition,
+    find_free_port,
+)
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -106,7 +111,9 @@ class TestGC:
         cluster, address = start_cluster
         for i in range(NUM_NODES - 1):  # Head node already added.
             cluster.add_node(
-                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
+                num_cpus=1,
+                runtime_env_dir_name=f"node_{i}_runtime_resources",
+                dashboard_agent_listen_port=find_free_port(),
             )
             print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
 
@@ -259,6 +266,10 @@ class TestGC:
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
+        # Wait until agent is ready.
+        # TODO(sang): There's a bug where is runtime env creation request is
+        # sent before agent is ready, it fails. We will fix this issue soon.
+        time.sleep(2)
 
         if option == "working_dir":
             ray.init(address, namespace="test", runtime_env={"working_dir": source})

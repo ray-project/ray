@@ -24,7 +24,9 @@
 #include <memory>
 #include <mutex>
 #include <random>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -181,7 +183,7 @@ class ObjectManager : public ObjectManagerInterface,
       AddObjectCallback add_object_callback,
       DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
+      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
 
   ~ObjectManager();
 

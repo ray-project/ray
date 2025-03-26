@@ -1,133 +1,51 @@
-from typing import List, Optional, Tuple, Union
+from functools import partial
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from ._internal.table_block import TableBlockAccessor
-from ray.data._internal import sort
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data._internal.plan import AllToAllStage
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import (
-    Block,
     BlockAccessor,
-    BlockExecStats,
-    BlockMetadata,
-    KeyType,
+    CallableClass,
+    DataBatch,
     UserDefinedFunction,
 )
-from ray.data.context import DataContext
-from ray.data.dataset import DataBatch, Dataset
+from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
 
-
-class _GroupbyOp(ShuffleOp):
-    @staticmethod
-    def map(
-        idx: int,
-        block: Block,
-        output_num_blocks: int,
-        boundaries: List[KeyType],
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> List[Union[BlockMetadata, Block]]:
-        """Partition the block and combine rows with the same key."""
-        stats = BlockExecStats.builder()
-
-        block = _GroupbyOp._prune_unused_columns(block, key, aggs)
-
-        if key is None:
-            partitions = [block]
-        else:
-            partitions = BlockAccessor.for_block(block).sort_and_partition(
-                boundaries,
-                [(key, "ascending")] if isinstance(key, str) else key,
-                descending=False,
-            )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
-        return parts + [meta]
-
-    @staticmethod
-    def reduce(
-        key: str,
-        aggs: Tuple[AggregateFn],
-        *mapper_outputs: List[Block],
-        partial_reduce: bool = False,
-    ) -> (Block, BlockMetadata):
-        """Aggregate sorted and partially combined blocks."""
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
-        )
-
-    @staticmethod
-    def _prune_unused_columns(
-        block: Block,
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> Block:
-        """Prune unused columns from block before aggregate."""
-        prune_columns = True
-        columns = set()
-
-        if isinstance(key, str):
-            columns.add(key)
-        elif callable(key):
-            prune_columns = False
-
-        for agg in aggs:
-            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
-                columns.add(agg._key_fn)
-            elif not isinstance(agg, Count):
-                # Don't prune columns if any aggregate key is not string.
-                prune_columns = False
-
-        block_accessor = BlockAccessor.for_block(block)
-        if (
-            prune_columns
-            and isinstance(block_accessor, TableBlockAccessor)
-            and block_accessor.num_rows() > 0
-        ):
-            return block_accessor.select(list(columns))
-        else:
-            return block
+CDS_API_GROUP = "Computations or Descriptive Stats"
+FA_API_GROUP = "Function Application"
 
 
-class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
-    pass
-
-
-class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
-    pass
-
-
-@PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: str):
+    def __init__(
+        self,
+        dataset: Dataset,
+        key: Optional[Union[str, List[str]]],
+        *,
+        num_partitions: Optional[int],
+    ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
-        self._dataset = dataset
-        self._key = key
+        self._dataset: Dataset = dataset
+        self._key: Optional[Union[str, List[str]]] = key
+        self._num_partitions: Optional[int] = num_partitions
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
         """Implements an accumulator-based aggregation.
 
@@ -141,67 +59,16 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
-            # TODO: implement clear_input_blocks
-            stage_info = {}
-            if len(aggs) == 0:
-                raise ValueError("Aggregate requires at least one aggregation")
-            for agg in aggs:
-                agg._validate(self._dataset.schema(fetch_if_missing=True))
-            # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, stage_info
-
-            num_mappers = blocks.initial_num_blocks()
-            num_reducers = num_mappers
-            if self._key is None:
-                num_reducers = 1
-                boundaries = []
-            else:
-                boundaries = sort.sample_boundaries(
-                    blocks.get_blocks(),
-                    [(self._key, "ascending")]
-                    if isinstance(self._key, str)
-                    else self._key,
-                    num_reducers,
-                    task_ctx,
-                )
-            ctx = DataContext.get_current()
-            if ctx.use_push_based_shuffle:
-                shuffle_op_cls = PushBasedGroupbyOp
-            else:
-                shuffle_op_cls = SimpleShuffleGroupbyOp
-            shuffle_op = shuffle_op_cls(
-                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
-            )
-            return shuffle_op.execute(
-                blocks,
-                num_reducers,
-                clear_input_blocks,
-                ctx=task_ctx,
-            )
-
-        plan = self._dataset._plan.with_stage(
-            AllToAllStage(
-                "Aggregate",
-                None,
-                do_agg,
-                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-            )
+        plan = self._dataset._plan.copy()
+        op = Aggregate(
+            self._dataset._logical_plan.dag,
+            key=self._key,
+            aggs=aggs,
+            num_partitions=self._num_partitions,
         )
-
-        logical_plan = self._dataset._logical_plan
-        if logical_plan is not None:
-            op = Aggregate(
-                logical_plan.dag,
-                key=self._key,
-                aggs=aggs,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 
@@ -209,7 +76,6 @@ class GroupedData:
         self,
         agg_cls: type,
         on: Union[str, List[str]],
-        ignore_nulls: bool,
         *args,
         **kwargs,
     ):
@@ -221,25 +87,42 @@ class GroupedData:
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
+            agg_cls, on, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def map_groups(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
-            * It may be slower than using more specific methods such as min(), max().
-            * It requires that each group fits in memory on a single node.
 
-        In general, prefer to use aggregate() instead of map_groups().
+        * It may be slower than using more specific methods such as min(), max().
+        * It requires that each group fits in memory on a single node.
+
+        In general, prefer to use `aggregate()` instead of `map_groups()`.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -282,12 +165,37 @@ class GroupedData:
                 select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor or task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
+
+        .. seealso::
+
+            :meth:`GroupedData.aggregate`
+                Use this method for common aggregation use cases.
         """
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
@@ -297,54 +205,78 @@ class GroupedData:
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        # Returns the group boundaries.
-        def get_key_boundaries(block_accessor: BlockAccessor):
-            import numpy as np
-
-            boundaries = []
-            # Get the keys of the batch in numpy array format
-            keys = block_accessor.to_numpy(self._key)
-            start = 0
-            while start < keys.size:
-                end = start + np.searchsorted(keys[start:], keys[start], side="right")
-                boundaries.append(end)
-                start = end
-            return boundaries
-
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch):
+        def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
-            if self._key:
-                boundaries = get_key_boundaries(block_accessor)
+
+            if self._key is None:
+                keys = []
+            elif isinstance(self._key, str):
+                keys = [self._key]
+            elif isinstance(self._key, List):
+                keys = self._key
             else:
-                boundaries = [block_accessor.num_rows()]
-            builder = DelegatingBlockBuilder()
-            start = 0
-            for end in boundaries:
-                group_block = block_accessor.slice(start, end)
+                raise ValueError(
+                    f"Group-by keys are expected to either be a single column (str) "
+                    f"or a list of columns (got '{self._key}')"
+                )
+
+            boundaries = block_accessor._get_group_boundaries_sorted(keys)
+
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                group_block = block_accessor.slice(start, end, copy=False)
                 group_block_accessor = BlockAccessor.for_block(group_block)
                 # Convert block of each group to batch format here, because the
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch)
-                builder.add_batch(applied)
-                start = end
-            rs = builder.build()
-            return rs
+                applied = udf(group_batch, *args, **kwargs)
+                yield applied
+
+        if isinstance(fn, CallableClass):
+
+            class wrapped_fn:
+                def __init__(self, *args, **kwargs):
+                    self.fn = fn(*args, **kwargs)
+
+                def __call__(self, batch, *args, **kwargs):
+                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+
+        else:
+
+            def wrapped_fn(batch, *args, **kwargs):
+                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+
+        # Change the name of the wrapped function so that users see the name of their
+        # function rather than `wrapped_fn` in the progress bar.
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds.map_batches(
-            group_fn,
+        return sorted_ds._map_batches_without_batch_size_validation(
+            wrapped_fn,
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            zero_copy_batch=False,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
+            ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def count(self) -> Dataset:
         """Compute count aggregation.
 
@@ -361,6 +293,7 @@ class GroupedData:
         """
         return self.aggregate(Count())
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def sum(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -370,14 +303,14 @@ class GroupedData:
             >>> import ray
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3)  # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
             >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -402,20 +335,21 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Sum, on, ignore_nulls)
+        return self._aggregate_on(Sum, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped min aggregation.
+        r"""Compute grouped min aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -440,20 +374,21 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Min, on, ignore_nulls)
+        return self._aggregate_on(Min, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped max aggregation.
+        r"""Compute grouped max aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -478,20 +413,21 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Max, on, ignore_nulls)
+        return self._aggregate_on(Max, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped mean aggregation.
+        r"""Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -516,23 +452,24 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Mean, on, ignore_nulls)
+        return self._aggregate_on(Mean, on, ignore_nulls=ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def std(
         self,
         on: Union[str, List[str]] = None,
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
-        """Compute grouped standard deviation aggregation.
+        r"""Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
@@ -567,7 +504,7 @@ class GroupedData:
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
+        return self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
 
 
 # Backwards compatibility alias.

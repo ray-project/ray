@@ -27,6 +27,7 @@ int cmd_argc = 0;
 char **cmd_argv = nullptr;
 
 ABSL_FLAG(bool, external_cluster, false, "");
+ABSL_FLAG(std::string, redis_username, "default", "");
 ABSL_FLAG(std::string, redis_password, "12345678", "");
 ABSL_FLAG(int32_t, redis_port, 6379, "");
 
@@ -67,10 +68,13 @@ TEST(RayClusterModeTest, FullTest) {
       "--num-cpus", "2", "--resources", "{\"resource1\":1,\"resource2\":2}"};
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
+    std::string username = absl::GetFlag<std::string>(FLAGS_redis_username);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
     std::string local_ip = ray::internal::GetNodeIpAddress();
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(local_ip, port, password);
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(
+        local_ip, port, username, password);
     config.address = local_ip + ":" + std::to_string(port);
+    config.redis_username_ = username;
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
@@ -79,6 +83,8 @@ TEST(RayClusterModeTest, FullTest) {
   auto obj = ray::Put(12345);
   auto get_result = *(ray::Get(obj));
   EXPECT_EQ(12345, get_result);
+
+  EXPECT_EQ(12345, *(ray::Get(obj, 5)));
 
   auto named_obj =
       ray::Task(Return1).SetName("named_task").SetResources({{"CPU", 1.0}}).Remote();
@@ -168,6 +174,11 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);
 
+  result_vector = ray::Get(objects, 5);
+  EXPECT_EQ(*(result_vector[0]), 1);
+  EXPECT_EQ(*(result_vector[1]), 31);
+  EXPECT_EQ(*(result_vector[2]), 25);
+
   /// general function remote call（args passed by reference）
   auto r3 = ray::Task(Return1).Remote();
   auto r4 = ray::Task(Plus1).Remote(r3);
@@ -231,7 +242,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(arr, *(ray::Get(r17)));
   EXPECT_EQ(arr, *(ray::Get(r18)));
 
-  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
+  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get(5);
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
   auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
@@ -305,6 +316,16 @@ TEST(RayClusterModeTest, MaxConcurrentTest) {
   EXPECT_EQ(*object1.Get(), "ok");
   EXPECT_EQ(*object2.Get(), "ok");
   EXPECT_EQ(*object3.Get(), "ok");
+
+  auto actor2 =
+      ray::Actor(ActorConcurrentCall::FactoryCreate).SetMaxConcurrency(2).Remote();
+  auto object2_1 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2_2 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2_3 = actor2.Task(&ActorConcurrentCall::CountDown).Remote();
+
+  EXPECT_THROW(object2_1.Get(2), ray::internal::RayTimeoutException);
+  EXPECT_THROW(object2_2.Get(2), ray::internal::RayTimeoutException);
+  EXPECT_THROW(object2_3.Get(2), ray::internal::RayTimeoutException);
 }
 
 TEST(RayClusterModeTest, ResourcesManagementTest) {
@@ -571,11 +592,11 @@ class Pip {
       : packages(packages), pip_check(pip_check) {}
 };
 
-void to_json(json &j, const Pip &pip) {
-  j = json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+void to_json(nlohmann::json &j, const Pip &pip) {
+  j = nlohmann::json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
 };
 
-void from_json(const json &j, Pip &pip) {
+void from_json(const nlohmann::json &j, Pip &pip) {
   j.at("packages").get_to(pip.packages);
   j.at("pip_check").get_to(pip.pip_check);
 };

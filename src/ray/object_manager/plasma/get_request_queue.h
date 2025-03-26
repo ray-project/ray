@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/connection.h"
@@ -21,8 +24,10 @@
 
 namespace plasma {
 struct GetRequest;
-using ObjectReadyCallback = std::function<void(
-    const ObjectID &object_id, const std::shared_ptr<GetRequest> &get_request)>;
+using ObjectReadyCallback =
+    std::function<void(const ObjectID &object_id,
+                       std::optional<MEMFD_TYPE> fallback_allocated_fd,
+                       const std::shared_ptr<GetRequest> &get_request)>;
 using AllObjectReadyCallback =
     std::function<void(const std::shared_ptr<GetRequest> &get_request)>;
 

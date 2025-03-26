@@ -7,14 +7,16 @@ from typing import Optional
 import numpy as np
 
 import ray
-from ray.air import session
+from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DataIterator, Preprocessor
-from ray.data.preprocessors import BatchMapper, Chain
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.data import DataIterator, Dataset, Preprocessor
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.data_config import DataConfig
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
+
+MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG = """
+make_local_dataset_iterator is deprecated. Call ``iterator()`` directly on your dataset instead to create a local DataIterator.
+"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -42,15 +44,13 @@ class DummyTrainer(DataParallelTrainer):
         num_epochs: int = 1,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
-        # Deprecated.
-        prefetch_blocks: int = 0,
         **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_batches, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, batch_size
             ),
             *args,
             scaling_config=scaling_config,
@@ -61,7 +61,6 @@ class DummyTrainer(DataParallelTrainer):
     def make_train_loop(
         num_epochs: int,
         prefetch_batches: int,
-        prefetch_blocks: int,
         batch_size: Optional[int],
     ):
         """Make a debug train loop that runs for the given amount of epochs."""
@@ -69,8 +68,8 @@ class DummyTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             import pandas as pd
 
-            rank = session.get_world_rank()
-            data_shard = session.get_dataset_shard("train")
+            rank = train.get_context().get_world_rank()
+            data_shard = train.get_dataset_shard("train")
             start = time.perf_counter()
             epochs_read, batches_read, bytes_read = 0, 0, 0
             batch_delays = []
@@ -81,7 +80,6 @@ class DummyTrainer(DataParallelTrainer):
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
                     prefetch_batches=prefetch_batches,
-                    prefetch_blocks=prefetch_blocks,
                     batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start
@@ -100,7 +98,7 @@ class DummyTrainer(DataParallelTrainer):
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
                         bytes_read += sys.getsizeof(batch)
-                    session.report(
+                    train.report(
                         dict(
                             bytes_read=bytes_read,
                             batches_read=batches_read,
@@ -131,7 +129,7 @@ class DummyTrainer(DataParallelTrainer):
         return train_loop_per_worker
 
 
-@DeveloperAPI
+@Deprecated(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
 def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
@@ -139,7 +137,7 @@ def make_local_dataset_iterator(
 ) -> DataIterator:
     """A helper function to create a local
     :py:class:`DataIterator <ray.data.DataIterator>`,
-    like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
+    like the one returned by :meth:`~ray.train.get_dataset_shard`.
 
     This function should only be used for development and debugging. It will
     raise an exception if called by a worker instead of the driver.
@@ -149,21 +147,7 @@ def make_local_dataset_iterator(
         preprocessor: The preprocessor that will be applied to the input dataset.
         dataset_config: The dataset config normally passed to the trainer.
     """
-    runtime_context = ray.runtime_context.get_runtime_context()
-    if runtime_context.worker.mode == ray._private.worker.WORKER_MODE:
-        raise RuntimeError(
-            "make_local_dataset_iterator should only be used by the driver "
-            "for development and debugging. To consume a dataset from a "
-            "worker or AIR trainer, see "
-            "https://docs.ray.io/en/latest/ray-air/check-ingest.html."
-        )
-
-    dataset_config = dataset_config.fill_defaults()
-    spec = DataParallelIngestSpec({"train": dataset_config})
-    spec.preprocess_datasets(preprocessor, {"train": dataset})
-    training_worker_handles = [None]
-    it = spec.get_dataset_shards(training_worker_handles)[0]["train"]
-    return it
+    raise DeprecationWarning(MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG)
 
 
 if __name__ == "__main__":
@@ -185,15 +169,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
-    # into 100 blocks (parallelism=100).
-    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
+    # into 100 blocks (override_num_blocks=100).
+    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), override_num_blocks=100)
 
-    # An example preprocessor chain that just scales all values by 4.0 in two stages.
-    preprocessor = Chain(
-        BatchMapper(lambda df: df * 2, batch_format="pandas"),
-        BatchMapper(lambda df: df * 2, batch_format="pandas"),
-    )
-    ds = preprocessor.transform(ds)
+    # An example preprocessing chain that just scales all values by 4.0 in two stages.
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
 
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.

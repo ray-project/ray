@@ -1,8 +1,9 @@
+import argparse
 import os
 import random
-import argparse
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
 
 from ray.tune import run, sample_from
 from ray.tune.schedulers import PopulationBasedTraining
@@ -22,7 +23,6 @@ def explore(config):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--max", type=int, default=1000000)
     parser.add_argument("--algo", type=str, default="PPO")
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         hyperparam_bounds={
             "lambda": [0.9, 1.0],
             "clip_param": [0.1, 0.5],
-            "lr": [1e-3, 1e-5],
+            "lr": [1e-5, 1e-3],
             "train_batch_size": [1000, 60000],
         },
     )
@@ -108,6 +108,7 @@ if __name__ == "__main__":
         scheduler=methods[args.method],
         verbose=1,
         num_samples=args.num_samples,
+        reuse_actors=True,
         stop={args.criteria: args.max},
         config={
             "env": args.env_name,
@@ -133,12 +134,11 @@ if __name__ == "__main__":
         },
     )
 
-    all_dfs = analysis.trial_dataframes
-    names = list(all_dfs.keys())
+    all_dfs = list(analysis.trial_dataframes.values())
 
     results = pd.DataFrame()
     for i in range(args.num_samples):
-        df = all_dfs[names[i]]
+        df = all_dfs[i]
         df = df[
             [
                 "timesteps_total",

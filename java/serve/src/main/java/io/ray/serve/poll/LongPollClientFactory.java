@@ -14,7 +14,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.controller.ServeController;
-import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.generated.DeploymentTargetInfo;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -51,7 +51,7 @@ public class LongPollClientFactory {
 
   private static boolean inited = false;
 
-  private static long longPollTimoutS = 10L;
+  private static long longPollTimoutS = 1L;
 
   public static final Map<LongPollNamespace, Function<byte[], Object>> DESERIALIZERS =
       new HashMap<>();
@@ -59,8 +59,8 @@ public class LongPollClientFactory {
   static {
     DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, ServeProtoUtil::parseEndpointSet);
     DESERIALIZERS.put(
-        LongPollNamespace.RUNNING_REPLICAS,
-        bytes -> ServeProtoUtil.bytesToProto(bytes, ActorNameList::parseFrom));
+        LongPollNamespace.DEPLOYMENT_TARGETS,
+        bytes -> ServeProtoUtil.bytesToProto(bytes, DeploymentTargetInfo::parseFrom));
   }
 
   public static void register(BaseActorHandle hostActor, Map<KeyType, KeyListener> keyListeners) {
@@ -73,13 +73,18 @@ public class LongPollClientFactory {
       SNAPSHOT_IDS.put(keyType, -1);
     }
     LOGGER.info("LongPollClient registered keys: {}.", keyListeners.keySet());
+    try {
+      pollNext();
+    } catch (RayTimeoutException e) {
+      LOGGER.info("Register poll timeout. keys:{}", keyListeners.keySet());
+    }
   }
 
   public static synchronized void init(BaseActorHandle hostActor) {
     if (inited) {
       return;
     }
-    long intervalS = 6L;
+    long intervalS = 10L;
     try {
       ReplicaContext replicaContext = Serve.getReplicaContext();
       boolean enabled =
@@ -92,15 +97,13 @@ public class LongPollClientFactory {
         return;
       }
       if (null == hostActor) {
-        hostActor =
-            Ray.getActor(replicaContext.getInternalControllerName(), Constants.SERVE_NAMESPACE)
-                .get();
+        hostActor = Ray.getActor(Constants.SERVE_CONTROLLER_NAME, Constants.SERVE_NAMESPACE).get();
       }
       intervalS =
           Optional.ofNullable(replicaContext.getConfig())
               .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_INTERVAL))
               .map(Long::valueOf)
-              .orElse(1L);
+              .orElse(10L);
       longPollTimoutS =
           Optional.ofNullable(replicaContext.getConfig())
               .map(config -> config.get(RayServeConfig.LONG_POOL_CLIENT_TIMEOUT_S))
@@ -152,7 +155,7 @@ public class LongPollClientFactory {
 
   /** Poll the updates. */
   @SuppressWarnings("unchecked")
-  public static void pollNext() {
+  public static synchronized void pollNext() {
     LOGGER.info("LongPollClient polls next snapshotIds {}", SNAPSHOT_IDS);
     LongPollRequest longPollRequest = new LongPollRequest(SNAPSHOT_IDS);
     LongPollResult longPollResult = null;

@@ -1,3 +1,4 @@
+import os
 import random
 import shutil
 import tempfile
@@ -7,9 +8,45 @@ import ray
 from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
-from read_images_benchmark import generate_images
+from PIL import Image
 import pyarrow as pa
 import numpy as np
+
+
+def generate_images(
+    num_images: int, sizes: List[Tuple[int, int]], modes: List[str], formats: List[str]
+) -> str:
+    dimensions = []
+    for mode in modes:
+        if mode in ["1", "L", "P"]:
+            dimension = 1
+        elif mode in ["RGB", "YCbCr", "LAB", "HSV"]:
+            dimension = 3
+        elif mode in ["RGBA", "CMYK", "I", "F"]:
+            dimension = 4
+        else:
+            raise ValueError(f"Found unknown image mode: {mode}.")
+        dimensions.append(dimension)
+    images_dir = tempfile.mkdtemp()
+    for image_idx in range(num_images):
+        size = random.choice(sizes)
+        file_format = random.choice(formats)
+        mode_idx = random.randrange(len(modes))
+        mode = modes[mode_idx]
+        dimension = dimensions[mode_idx]
+        width, height = size
+        file_name = f"{images_dir}/{image_idx}.{file_format}"
+        pixels_per_dimension = []
+        for _ in range(dimension):
+            pixels = os.urandom(width * height)
+            pixels_per_dimension.append(pixels)
+        image = Image.new(mode, size)
+        if len(pixels_per_dimension) == 1:
+            image.putdata(pixels_per_dimension[0])
+        else:
+            image.putdata(list(zip(*pixels_per_dimension)))
+        image.save(file_name)
+    return images_dir
 
 
 def read_tfrecords(path: str) -> Dataset:
@@ -67,11 +104,10 @@ def generate_random_tfrecords(
         features = {k: v for (k, v) in features.items() if len(v) > 0}
         return pa.table(features)
 
-    ds = ray.data.range(num_rows).map_batches(generate_features)
-    assert ds.count() == num_rows, ds.count()
-
     tfrecords_dir = tempfile.mkdtemp()
-    ds.write_tfrecords(tfrecords_dir)
+    ray.data.range(num_rows).map_batches(generate_features).write_tfrecords(
+        tfrecords_dir
+    )
     return tfrecords_dir
 
 
@@ -91,12 +127,24 @@ def run_tfrecords_benchmark(benchmark: Benchmark):
     ]
 
     try:
-        benchmark.run("tfrecords-images-100-256", read_tfrecords, path=test_input[0])
-        benchmark.run("tfrecords-images-100-2048", read_tfrecords, path=test_input[1])
-        benchmark.run("tfrecords-images-1000-mix", read_tfrecords, path=test_input[2])
-        benchmark.run("tfrecords-random-int-1g", read_tfrecords, path=test_input[3])
-        benchmark.run("tfrecords-random-float-1g", read_tfrecords, path=test_input[4])
-        benchmark.run("tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5])
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-256", read_tfrecords, path=test_input[0]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-2048", read_tfrecords, path=test_input[1]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-1000-mix", read_tfrecords, path=test_input[2]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-int-1g", read_tfrecords, path=test_input[3]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-float-1g", read_tfrecords, path=test_input[4]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5]
+        )
 
     finally:
         for root in test_input:
@@ -106,7 +154,7 @@ def run_tfrecords_benchmark(benchmark: Benchmark):
 if __name__ == "__main__":
     ray.init()
 
-    benchmark = Benchmark("read-tfrecords")
+    benchmark = Benchmark()
 
     run_tfrecords_benchmark(benchmark)
 

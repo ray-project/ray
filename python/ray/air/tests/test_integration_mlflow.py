@@ -3,20 +3,13 @@ import shutil
 import tempfile
 import unittest
 from collections import namedtuple
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
-from ray.train._internal.session import init_session
-from ray.tune.trainable import wrap_function
-from ray.tune.trainable.session import _shutdown as tune_session_shutdown
-from ray.tune.integration.mlflow import (
-    MLflowTrainableMixin,
-    mlflow_mixin,
-)
-from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air.integrations.mlflow import MLflowLoggerCallback, _NoopModule, setup_mlflow
 
 
 class MockTrial(
@@ -54,8 +47,7 @@ class MLflowTest(unittest.TestCase):
         assert client.get_experiment_by_name("existing_experiment").experiment_id == "1"
 
     def tearDown(self) -> None:
-        # Remove tune session if initialized to clean up for next test
-        tune_session_shutdown()
+        pass
 
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
@@ -201,34 +193,6 @@ class MLflowTest(unittest.TestCase):
             {"dir": "artifact", "run_id": run.info.run_id},
         )
 
-    def testMlFlowMixinConfig(self):
-        clear_env_vars()
-        trial_config = {"par1": 4, "par2": 9.0}
-
-        with self.assertRaises(DeprecationWarning):
-
-            @mlflow_mixin
-            def train_fn(config):
-                return 1
-
-        def train_fn_2(config):
-            return 1
-
-        train_fn_2.__mixins__ = (MLflowTrainableMixin,)
-
-        with self.assertRaises(DeprecationWarning):
-            wrap_function(train_fn_2)(trial_config)
-
-    # TODO(ml-team): Remove in 2.6.
-    def testMlFlowSetupConfigDeprecated(self):
-        clear_env_vars()
-        trial_config = {"par1": 4, "par2": 9.0}
-
-        trial_config.update({"mlflow": {"experiment_name": "asdf"}})
-        # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(DeprecationWarning):
-            setup_mlflow(trial_config)
-
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
@@ -258,16 +222,14 @@ class MLflowTest(unittest.TestCase):
         )
         mlflow.end_run()
 
-    def testMlFlowSetupRankNonRankZero(self):
+    @patch("ray.train.get_context")
+    def testMlFlowSetupRankNonRankZero(self, mock_get_context):
         """Assert that non-rank-0 workers get a noop module"""
-        init_session(
-            training_func=None,
-            world_rank=1,
-            local_rank=1,
-            node_rank=1,
-            local_world_size=2,
-            world_size=2,
-        )
+        mock_context = MagicMock()
+        mock_context.get_world_rank.return_value = 1
+
+        mock_get_context.return_value = mock_context
+
         mlflow = setup_mlflow({})
         assert isinstance(mlflow, _NoopModule)
 

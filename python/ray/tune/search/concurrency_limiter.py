@@ -1,11 +1,10 @@
 import copy
 import logging
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
 from ray.tune.search.searcher import Searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util.annotations import PublicAPI
-
 
 logger = logging.getLogger(__name__)
 

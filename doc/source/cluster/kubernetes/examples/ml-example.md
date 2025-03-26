@@ -1,6 +1,6 @@
 (kuberay-ml-example)=
 
-# Ray AIR XGBoostTrainer on Kubernetes
+# Ray Train XGBoostTrainer on Kubernetes
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -99,7 +99,7 @@ See the {ref}`networking notes <kuberay-networking>` for production use-cases.
 
 ```shell
 # Run the following blocking command in a separate shell.
-kubectl port-forward --address 0.0.0.0 service/raycluster-xgboost-benchmark-head-svc 8265:8265
+kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 ```
 
 ### Submit the workload.

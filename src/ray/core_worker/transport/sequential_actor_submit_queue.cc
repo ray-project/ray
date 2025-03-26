@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 
+#include <map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
@@ -30,6 +34,8 @@ bool SequentialActorSubmitQueue::Contains(uint64_t sequence_no) const {
   return requests.find(sequence_no) != requests.end();
 }
 
+bool SequentialActorSubmitQueue::Empty() { return requests.empty(); }
+
 const std::pair<TaskSpecification, bool> &SequentialActorSubmitQueue::Get(
     uint64_t sequence_no) const {
   auto it = requests.find(sequence_no);
@@ -39,6 +45,12 @@ const std::pair<TaskSpecification, bool> &SequentialActorSubmitQueue::Get(
 
 void SequentialActorSubmitQueue::MarkDependencyFailed(uint64_t sequence_no) {
   requests.erase(sequence_no);
+}
+
+void SequentialActorSubmitQueue::MarkTaskCanceled(uint64_t sequence_no) {
+  requests.erase(sequence_no);
+  // No need to clean out_of_order_completed_tasks because
+  // it means a task has been already submitted and finished.
 }
 
 void SequentialActorSubmitQueue::MarkDependencyResolved(uint64_t sequence_no) {
@@ -95,8 +107,8 @@ uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter() - caller_starts_at;
 }
 
-void SequentialActorSubmitQueue::MarkTaskCompleted(uint64_t sequence_no,
-                                                   const TaskSpecification &task_spec) {
+void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
+                                                    const TaskSpecification &task_spec) {
   // Try to increment queue.next_task_reply_position consecutively until we
   // cannot. In the case of tasks not received in order, the following block
   // ensure queue.next_task_reply_position are incremented to the max possible

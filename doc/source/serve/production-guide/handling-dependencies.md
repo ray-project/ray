@@ -1,7 +1,33 @@
 (serve-handling-dependencies)=
 # Handle Dependencies
 
-Ray Serve supports serving deployments with different (possibly conflicting)
+(serve-runtime-env)=
+## Add a runtime environment
+
+The import path (e.g., `text_ml:app`) must be importable by Serve at runtime.
+When running locally, this path might be in your current working directory.
+However, when running on a cluster you also need to make sure the path is importable.
+Build the code into the cluster's container image (see [Cluster Configuration](kuberay-config) for more details) or use a `runtime_env` with a [remote URI](remote-uris) that hosts the code in remote storage.
+
+For an example, see the [Text ML Models application on GitHub](https://github.com/ray-project/serve_config_examples/blob/master/text_ml.py). You can use this config file to deploy the text summarization and translation application to your own Ray cluster even if you don't have the code locally:
+
+```yaml
+import_path: text_ml:app
+
+runtime_env:
+    working_dir: "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
+    pip:
+      - torch
+      - transformers
+```
+
+:::{note}
+You can also package a deployment graph into a standalone Python package that you can import using a [PYTHONPATH](https://docs.python.org/3.10/using/cmdline.html#envvar-PYTHONPATH) to provide location independence on your local machine. However, the best practice is to use a `runtime_env`, to ensure consistency across all machines in your cluster.
+:::
+
+## Dependencies per deployment
+
+Ray Serve also supports serving deployments with different (and possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
@@ -12,7 +38,8 @@ Runtime Environments feature is installed.
 
 Example:
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/conda_env.py
+```{literalinclude} ../doc_code/varying_deps.py
+:language: python
 ```
 
 :::{tip}
@@ -29,5 +56,6 @@ using runtime environments.
 
 Example:
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/delayed_import.py
+```{literalinclude} ../doc_code/delayed_import.py
+:language: python
 ```

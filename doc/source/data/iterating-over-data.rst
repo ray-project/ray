@@ -64,7 +64,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
                 print(batch)
@@ -106,7 +106,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_torch_batches(batch_size=2):
                 print(batch)
@@ -155,13 +155,14 @@ shuffles all rows. If a full global shuffle isn't required, you can shuffle a su
 rows up to a provided buffer size during iteration by specifying
 ``local_shuffle_buffer_size``. While this isn't a true global shuffle like
 ``random_shuffle``, it's more performant because it doesn't require excessive data
-movement.
+movement. For more details about these options, see :doc:`Shuffling Data <shuffling-data>`.
 
 .. tip::
 
     To configure ``local_shuffle_buffer_size``, choose the smallest value that achieves
     sufficient randomness. Higher values result in more randomness at the cost of slower
-    iteration.
+    iteration. See :ref:`Local shuffle when iterating over batches <local_shuffle_buffer>`
+    on how to diagnose slowdowns.
 
 .. tab-set::
 
@@ -172,7 +173,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(
                 batch_size=2,
@@ -223,7 +224,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             for batch in ds.iter_torch_batches(
                 batch_size=2,
                 local_shuffle_buffer_size=250,
@@ -273,7 +274,7 @@ into disjoint shards.
 
   If you're using :ref:`Ray Train <train-docs>`, you don't need to split the dataset.
   Ray Train automatically splits your dataset for you. To learn more, see
-  :ref:`Configuring training datasets <air-ingest>`.
+  :ref:`Data Loading for ML Training guide <data-ingest-torch>`.
 
 .. testcode::
 

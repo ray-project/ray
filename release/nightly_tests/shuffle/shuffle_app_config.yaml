@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 debian_packages: []
 
 # We use retriable_lifo as the workload can crash due to multiple tasks from different

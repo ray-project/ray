@@ -34,43 +34,35 @@ Template for testing with these mocks:
 """
 
 import gc
-import numpy as np
 import os
-import pytest
-import time
 import tempfile
-from unittest.mock import (
-    Mock,
-    patch,
-)
+import time
+from pathlib import Path
+from unittest.mock import Mock, patch
 
+import numpy as np
+import pytest
 
 import ray
-from ray.exceptions import RayActorError
-from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbTrainableMixin
-from ray.tune.integration.wandb import wandb_mixin
-from ray.air.integrations.wandb import (
-    WandbLoggerCallback,
-    _QueueItem,
-    _WandbLoggingActor,
-)
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
+    WandbLoggerCallback,
+    _QueueItem,
+    _WandbLoggingActor,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-
 from ray.air.tests.mocked_wandb_integration import (
-    _MockWandbAPI,
-    _MockWandbLoggingActor,
     Trial,
     WandbTestExperimentLogger,
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
     get_mock_wandb_logger,
 )
+from ray.exceptions import RayActorError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -106,6 +98,17 @@ def wandb_env():
     yield
     if WANDB_ENV_VAR in os.environ:
         del os.environ[WANDB_ENV_VAR]
+
+
+def fake_wandb_populate_run_location_hook():
+    """Fake user-provided hook to populate W&B environment variables."""
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH = (
+    "ray.air.tests.test_integration_wandb.fake_wandb_populate_run_location_hook"
+)
 
 
 class TestWandbLogger:
@@ -219,7 +222,7 @@ class TestWandbLogger:
             # Project and group env vars from external hook
             monkeypatch.setenv(
                 WANDB_POPULATE_RUN_LOCATION_HOOK,
-                "ray._private.test_utils.wandb_populate_run_location_hook",
+                FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH,
             )
             logger = WandbTestExperimentLogger(api_key="1234")
             logger.setup()
@@ -343,7 +346,7 @@ class TestWandbLogger:
             "framework": "torch",
             "num_gpus": 1,
             "num_workers": 20,
-            "num_envs_per_worker": 1,
+            "num_envs_per_env_runner": 1,
             "compress_observations": True,
             "lambda": 0.99,
             "train_batch_size": 512,
@@ -452,24 +455,64 @@ class TestWandbLogger:
         with pytest.raises(RayActorError):
             ray.get(actor.get_state.remote())
 
+    def test_wandb_logging_actor_fault_tolerance(self, trial):
+        """Tests that failing wandb logging actors are restarted"""
 
-class TestWandbClassMixin:
-    def test_wandb_mixin(self):
-        class WandbTestTrainable(WandbTrainableMixin, Trainable):
-            pass
+        with tempfile.TemporaryDirectory() as tempdir:
+            fail_marker = Path(tempdir) / "fail_marker"
 
-        config = {}
-        with pytest.raises(DeprecationWarning):
-            WandbTestTrainable(config)
+            class _FailingWandbLoggingActor(_MockWandbLoggingActor):
+                def _handle_result(self, result):
+                    if (
+                        result.get("training_iteration") == 3
+                        and not fail_marker.exists()
+                    ):
+                        fail_marker.write_text("Ok")
+                        raise SystemExit
 
+                    return super()._handle_result(result)
 
-class TestWandbMixinDecorator:
-    def test_wandb_decorator(self):
-        with pytest.raises(DeprecationWarning):
+            logger = WandbLoggerCallback(
+                project="test_project", api_key="1234", excludes=["metric2"]
+            )
+            logger._logger_actor_cls = _FailingWandbLoggingActor
+            logger.setup()
+            logger.log_trial_start(trial)
 
-            @wandb_mixin
-            def train_fn(config):
-                return 1
+            actor = logger._trial_logging_actors[trial]
+            queue = logger._trial_queues[trial]
+
+            logger.log_trial_result(1, trial, result={"training_iteration": 1})
+            logger.log_trial_result(2, trial, result={"training_iteration": 2})
+            logger.log_trial_result(3, trial, result={"training_iteration": 3})
+
+            logger.log_trial_result(4, trial, result={"training_iteration": 4})
+            logger.log_trial_result(5, trial, result={"training_iteration": 5})
+
+            queue.put(_QueueItem.END)
+
+            state = ray.get(actor.get_state.remote())
+            assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
+
+    def test_wandb_restart(self, trial):
+        """Test that the WandbLoggerCallback reuses actors for trial restarts."""
+
+        logger = WandbLoggerCallback(project="test_project", api_key="1234")
+        logger._logger_actor_cls = _MockWandbLoggingActor
+        logger.setup()
+
+        assert len(logger._trial_logging_futures) == 0
+        assert len(logger._logging_future_to_trial) == 0
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
@@ -483,7 +526,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
+    with patch.object(ray.air.integrations.wandb, "load_class") as mock_load_class:
         logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )
@@ -499,7 +542,8 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

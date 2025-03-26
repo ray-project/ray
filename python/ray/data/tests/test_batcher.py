@@ -48,7 +48,7 @@ def test_shuffling_batcher():
             assert batcher._batch_head == 0
 
         assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._materialized_buffer_size() == materialized_buffer_size
+        assert batcher._num_compacted_rows() == materialized_buffer_size
 
     def next_and_check(
         current_cursor,
@@ -71,7 +71,7 @@ def test_shuffling_batcher():
             assert len(batch) == batch_size
 
         assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._materialized_buffer_size() == materialized_buffer_size
+        assert batcher._num_compacted_rows() == materialized_buffer_size
 
         if should_have_batch_after:
             assert batcher.has_batch()
@@ -203,7 +203,7 @@ def test_batching_pyarrow_table_with_many_chunks():
     while shuffling_batcher.has_any():
         shuffling_batcher.next_batch()
     duration = time.perf_counter() - start
-    assert duration < 20
+    assert duration < 30
 
 
 @pytest.mark.parametrize(
@@ -220,6 +220,47 @@ def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
         count += len(batch["data"])
     print((ds.size_bytes() / 1e9) / (time.time() - start), "GB/s")
     assert count == 10000
+
+
+@pytest.mark.parametrize(
+    "batch_size,local_shuffle_buffer_size",
+    [(1, 1), (10, 1), (1, 10), (10, 100), (100, 10)],
+)
+def test_local_shuffle_determinism(batch_size, local_shuffle_buffer_size):
+    # Preserve order so that the blocks are in the same order prior to shuffling.
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    TEST_ITERATIONS = 10
+
+    ds = ray.data.range(1000)
+    batch_map = {}
+    for i in range(TEST_ITERATIONS):
+        for batch in ds.iter_batches(
+            batch_size=batch_size,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=0,
+        ):
+            if i == 0:
+                batch_map[batch["id"][0]] = batch
+            else:
+                # Check that batch is the same as the first dataset's batch
+                assert all(batch_map[batch["id"][0]]["id"] == batch["id"])
+
+
+def test_local_shuffle_buffer_warns_if_too_large(shutdown_only):
+    ray.shutdown()
+    ray.init(object_store_memory=128 * 1024 * 1024)
+
+    # Each row is 16 MiB * 8 = 128 MiB
+    ds = ray.data.range_tensor(2, shape=(16, 1024, 1024))
+
+    # Test that Ray Data emits a warning if the local shuffle buffer size would cause
+    # spilling.
+    with pytest.warns(UserWarning, match="shuffle buffer"):
+        # Each row is 128 MiB and the shuffle buffer size is 2 rows, so expect at least
+        # 256 MiB of memory usage > 128 MiB total on node.
+        batches = ds.iter_batches(batch_size=1, local_shuffle_buffer_size=2)
+        next(iter(batches))
 
 
 if __name__ == "__main__":

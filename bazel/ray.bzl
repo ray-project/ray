@@ -1,49 +1,49 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
     "//conditions:default": [
+        "-Wunused-result",
+        "-Wconversion-null",
+        "-Wno-misleading-indentation",
     ],
 }) + select({
     "//:clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 COPTS = COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
-    "//:msvc-cl": [
-    ],
+    "//:msvc-cl": [],
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
     ],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "/FI" + "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 PYX_SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
@@ -103,12 +103,16 @@ def copy_to_workspace(name, srcs, dstdir = ""):
         outs = [name + ".out"],
         cmd = r"""
             mkdir -p -- {dstdir}
+            echo "name={name}" > $@
+            echo "dstdir={dstdir}" >> $@
+            echo "----" >> $@
             for f in {locations}; do
                 rm -f -- {dstdir}$${{f##*/}}
                 cp -f -- "$$f" {dstdir}
+                if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
             done
-            date > $@
         """.format(
+            name = name,
             locations = src_locations,
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
@@ -139,8 +143,8 @@ def native_java_binary(module_name, name, native_binary_name):
     native.filegroup(
         name = name,
         srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [name + "_windows"],
+            "@platforms//os:osx": [name + "_darwin"],
+            "@platforms//os:windows": [name + "_windows"],
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],
@@ -163,9 +167,52 @@ def native_java_library(module_name, name, native_library_name):
     native.filegroup(
         name = name,
         srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [],
+            "@platforms//os:osx": [name + "_darwin"],
+            "@platforms//os:windows": [],
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],
     )
+
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
+    cc_library(
+        name = name,
+        strip_include_prefix = strip_include_prefix,
+        copts = COPTS + copts,
+        visibility = ["//visibility:public"],
+        **kwargs
+    )
+
+def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
+    cc_test(
+        name = name,
+        copts = COPTS + copts,
+        linkopts = linkopts + ["-pie"],
+        **kwargs
+    )
+
+def ray_cc_binary(name, linkopts = [], copts = [], **kwargs):
+    cc_binary(
+        name = name,
+        copts = COPTS + copts,
+        linkopts = linkopts + ["-pie"],
+        **kwargs
+    )
+
+def _filter_files_with_suffix_impl(ctx):
+    suffix = ctx.attr.suffix
+    filtered_files = [f for f in ctx.files.srcs if f.basename.endswith(suffix)]
+    print(filtered_files)
+    return [
+        DefaultInfo(
+            files = depset(filtered_files),
+        ),
+    ]
+
+filter_files_with_suffix = rule(
+    implementation = _filter_files_with_suffix_impl,
+    attrs = {
+        "srcs": attr.label_list(allow_files = True),
+        "suffix": attr.string(),
+    },
+)

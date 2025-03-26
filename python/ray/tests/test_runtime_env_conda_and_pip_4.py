@@ -2,7 +2,7 @@ import os
 import pytest
 import sys
 
-from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env import virtualenv_utils
 import ray
 
 
@@ -14,8 +14,9 @@ if not os.environ.get("CI"):
 
 def test_in_virtualenv(start_cluster):
     assert (
-        PipProcessor._is_in_virtualenv() is False and "IN_VIRTUALENV" not in os.environ
-    ) or (PipProcessor._is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
+        virtualenv_utils.is_in_virtualenv() is False
+        and "IN_VIRTUALENV" not in os.environ
+    ) or (virtualenv_utils.is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
     cluster, address = start_cluster
     runtime_env = {"pip": ["pip-install-test==0.5"]}
 
@@ -25,11 +26,54 @@ def test_in_virtualenv(start_cluster):
     def f():
         import pip_install_test  # noqa: F401
 
-        return PipProcessor._is_in_virtualenv()
+        return virtualenv_utils.is_in_virtualenv()
 
     # Ensure that the runtime env has been installed
     # and virtualenv is activated.
     assert ray.get(f.remote())
+
+
+def test_multiple_pip_installs(start_cluster, monkeypatch):
+    """Test that multiple pip installs don't interfere with each other."""
+    monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
+    cluster, address = start_cluster
+
+    if sys.platform == "win32" and "ray" not in address:
+        pytest.skip(
+            "Failing on windows, as python.exe is in use during deletion attempt."
+        )
+
+    ray.init(
+        address,
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_1": "test_1"},
+        },
+    )
+
+    @ray.remote
+    def f():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_2": "test_2"},
+        }
+    )
+    def f2():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_3": "test_3"},
+        }
+    )
+    def f3():
+        return True
+
+    assert all(ray.get([f.remote(), f2.remote(), f3.remote()]))
 
 
 class TestGC:
@@ -87,18 +131,21 @@ class TestGC:
         ray.shutdown()
 
 
+# pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
+# https://github.com/man-group/pytest-plugins/issues/220
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
+    "IN_VIRTUALENV" in os.environ
+    or sys.platform != "linux"
+    or (sys.version_info.major == 3 and sys.version_info.minor >= 12),
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 def test_run_in_virtualenv(cloned_virtualenv):
     python_exe_path = cloned_virtualenv.python
-    print(python_exe_path)
 
     # make sure cloned_virtualenv.run will run in virtualenv.
     cloned_virtualenv.run(
-        f"{python_exe_path} -c 'from ray._private.runtime_env.pip import PipProcessor;"
-        "assert PipProcessor._is_in_virtualenv()'",
+        f"{python_exe_path} -c 'from ray._private.runtime_env import virtualenv_utils;"
+        "assert virtualenv_utils.is_in_virtualenv()'",
         capture=True,
     )
 
@@ -114,7 +161,7 @@ def test_run_in_virtualenv(cloned_virtualenv):
 def test_runtime_env_with_pip_config(start_cluster):
     @ray.remote(
         runtime_env={
-            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==20.2.3"}
+            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==24.1.2"}
         }
     )
     def f():
@@ -122,7 +169,7 @@ def test_runtime_env_with_pip_config(start_cluster):
 
         return pip.__version__
 
-    assert ray.get(f.remote()) == "20.2.3"
+    assert ray.get(f.remote()) == "24.1.2"
 
 
 if __name__ == "__main__":

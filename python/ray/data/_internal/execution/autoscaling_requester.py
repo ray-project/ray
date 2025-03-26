@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 from typing import Dict, List
 
@@ -9,6 +10,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
 RESOURCE_REQUEST_TIMEOUT = 60
+PURGE_INTERVAL = RESOURCE_REQUEST_TIMEOUT * 2
 
 # When the autoscaling is driven by memory pressure and there are abundant
 # CPUs to support incremental CPUs needed to launch more tasks, we'll translate
@@ -32,6 +34,23 @@ class AutoscalingRequester:
         self._resource_requests = {}
         # TTL for requests.
         self._timeout = RESOURCE_REQUEST_TIMEOUT
+
+        self._self_handle = ray.get_runtime_context().current_actor
+
+        # Start a thread to purge expired requests periodically.
+        def purge_thread_run():
+            while True:
+                time.sleep(PURGE_INTERVAL)
+                # Call purge_expired_requests() as an actor task,
+                # so we don't need to handle multi-threading.
+                ray.get(self._self_handle.purge_expired_requests.remote())
+
+        self._purge_thread = threading.Thread(target=purge_thread_run, daemon=True)
+        self._purge_thread.start()
+
+    def purge_expired_requests(self):
+        self._purge()
+        ray.autoscaler.sdk.request_resources(bundles=self._aggregate_requests())
 
     def request_resources(self, req: List[Dict], execution_id: str):
         # Purge expired requests before making request to autoscaler.
@@ -87,6 +106,11 @@ class AutoscalingRequester:
         self._timeout = ttl
 
 
+# Creating/getting an actor from multiple threads is not safe.
+# https://github.com/ray-project/ray/issues/41324
+_autoscaling_requester_lock: threading.RLock = threading.RLock()
+
+
 def get_or_create_autoscaling_requester_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
@@ -95,13 +119,13 @@ def get_or_create_autoscaling_requester_actor():
     # point to the head node.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
-        soft=True,
-        _spill_on_unavailable=True,
+        soft=False,
     )
-    return AutoscalingRequester.options(
-        name="AutoscalingRequester",
-        namespace="AutoscalingRequester",
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    with _autoscaling_requester_lock:
+        return AutoscalingRequester.options(
+            name="AutoscalingRequester",
+            namespace="AutoscalingRequester",
+            get_if_exists=True,
+            lifetime="detached",
+            scheduling_strategy=scheduling_strategy,
+        ).remote()

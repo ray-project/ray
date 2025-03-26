@@ -9,7 +9,7 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.util import format_link, anyscale_cluster_env_build_url
-from retry import retry
+from ray_release.retry import retry
 
 REPORT_S = 30.0
 
@@ -20,12 +20,15 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
+    @retry(
+        init_delay_sec=10,
+        jitter_sec=5,
+        max_retry_count=2,
+        exceptions=(ClusterEnvCreateError,),
+    )
     def create_cluster_env(self):
         assert self.cluster_env_id is None
 
-        if not self.cluster_env:
-            return
         assert self.cluster_env_name
 
         logger.info(
@@ -40,7 +43,7 @@ class MinimalClusterManager(ClusterManager):
                 dict(
                     name=dict(equals=self.cluster_env_name),
                     paging=dict(count=50, paging_token=paging_token),
-                    project_id=None if self.test.is_byod_cluster() else self.project_id,
+                    project_id=None,
                 )
             )
             paging_token = result.metadata.next_paging_token
@@ -59,25 +62,16 @@ class MinimalClusterManager(ClusterManager):
         if not self.cluster_env_id:
             logger.info("Cluster env not found. Creating new one.")
             try:
-                if self.test.is_byod_cluster():
-                    result = self.sdk.create_byod_cluster_environment(
-                        dict(
-                            name=self.cluster_env_name,
-                            config_json=dict(
-                                docker_image=self.test.get_anyscale_byod_image(),
-                                ray_version="nightly",
-                                env_vars={},
-                            ),
-                        )
+                result = self.sdk.create_byod_cluster_environment(
+                    dict(
+                        name=self.cluster_env_name,
+                        config_json=dict(
+                            docker_image=self.test.get_anyscale_byod_image(),
+                            ray_version="nightly",
+                            env_vars=self.test.get_byod_runtime_env(),
+                        ),
                     )
-                else:
-                    result = self.sdk.create_cluster_environment(
-                        dict(
-                            name=self.cluster_env_name,
-                            project_id=self.project_id,
-                            config_json=self.cluster_env,
-                        )
-                    )
+                )
                 self.cluster_env_id = result.result.id
             except Exception as e:
                 logger.warning(
@@ -183,12 +177,6 @@ class MinimalClusterManager(ClusterManager):
             time.sleep(1)
 
         self.cluster_env_build_id = build_id
-
-    def fetch_build_info(self):
-        assert self.cluster_env_build_id
-
-        result = self.sdk.get_cluster_environment_build(self.cluster_env_build_id)
-        self.cluster_env = result.result.config_json
 
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None

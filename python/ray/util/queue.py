@@ -1,4 +1,5 @@
 import asyncio
+import queue
 from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
@@ -7,12 +8,12 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 
@@ -38,19 +39,23 @@ class Queue:
             need to pass in custom resource requirements, for example.
 
     Examples:
-        >>> from ray.util.queue import Queue
-        >>> q = Queue() # doctest: +SKIP
-        >>> items = list(range(10)) # doctest: +SKIP
-        >>> for item in items: # doctest: +SKIP
-        ...     q.put(item) # doctest: +SKIP
-        >>> for item in items: # doctest: +SKIP
-        ...     assert item == q.get() # doctest: +SKIP
-        >>> # Create Queue with the underlying actor reserving 1 CPU.
-        >>> q = Queue(actor_options={"num_cpus": 1}) # doctest: +SKIP
+        .. testcode::
+
+            from ray.util.queue import Queue
+            q = Queue()
+            items = list(range(10))
+            for item in items:
+                q.put(item)
+            for item in items:
+                assert item == q.get()
+            # Create Queue with the underlying actor reserving 1 CPU.
+            q = Queue(actor_options={"num_cpus": 1})
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
-        ray._private.usage.usage_lib.record_library_usage("util.Queue")
+        from ray._private.usage.usage_lib import record_library_usage
+
+        record_library_usage("util.Queue")
 
         actor_options = actor_options or {}
         self.maxsize = maxsize

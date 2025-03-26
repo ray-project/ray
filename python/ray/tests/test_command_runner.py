@@ -60,8 +60,8 @@ def test_ssh_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -127,8 +127,8 @@ def test_docker_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )

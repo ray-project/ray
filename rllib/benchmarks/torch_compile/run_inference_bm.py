@@ -13,9 +13,9 @@ import torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
-from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
@@ -91,17 +91,17 @@ def main(pargs):
     with open(output / "args.json", "w") as f:
         json.dump(config, f)
 
-    # create the environment
-    env = wrap_deepmind(gym.make("GymV26Environment-v0", env_id="ALE/Breakout-v5"))
+    # Create the environment.
+    env = wrap_atari_for_new_api_stack(gym.make("ale_py:ALE/Breakout-v5"))
 
     # setup RLModule
     model_cfg = MODEL_DEFAULTS.copy()
-    spec = SingleAgentRLModuleSpec(
+    spec = RLModuleSpec(
         module_class=PPOTorchRLModule,
         observation_space=env.observation_space,
         action_space=env.action_space,
         catalog_class=PPOCatalog,
-        model_config_dict=model_cfg,
+        model_config=model_cfg,
     )
     device = torch.device("cuda" if not use_cpu else "cpu")
 

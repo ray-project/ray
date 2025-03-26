@@ -3,6 +3,20 @@
 Ray Clusters Overview
 =====================
 
+.. toctree::
+    :hidden:
+
+    Key Concepts <key-concepts>
+    Deploying on Kubernetes <kubernetes/index>
+    Deploying on VMs <vms/index>
+    metrics
+    configure-manage-dashboard
+    Applications Guide <running-applications/index>
+    faq
+    package-overview
+    usage-stats
+
+
 Ray enables seamless scaling of workloads from a laptop to a large cluster. While Ray
 works out of the box on single machines with just a call to ``ray.init``, to run Ray
 applications on multiple nodes you must first *deploy a Ray cluster*.
@@ -16,8 +30,9 @@ Where can I deploy Ray clusters?
 
 Ray provides native cluster deployment support on the following technology stacks:
 
-* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure and Aliyun integrations also exist.
+* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure, Aliyun and vSphere integrations also exist.
 * On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
+* On `Anyscale <https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=ray-cluster-deployment>`_, a fully managed Ray platform by the creators of Ray. You can either bring an existing AWS, GCP, Azure and Kubernetes clusters, or use the Anyscale hosted compute layer.
 
 Advanced users may want to :ref:`deploy Ray manually <on-prem>`
 or onto :ref:`platforms not listed here <ref-cluster-setup>`.
@@ -54,7 +69,7 @@ What's next?
         **I want to run Ray on Kubernetes**
         ^^^
         Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-        Kubernetes cluster or on your laptop via KinD.
+        Kubernetes cluster or on your laptop via Kind.
 
         +++
         .. button-ref:: kuberay-quickstart
@@ -92,5 +107,3 @@ What's next?
             :expand:
 
             Job Submission
-
-.. include:: /_includes/clusters/announcement_bottom.rst

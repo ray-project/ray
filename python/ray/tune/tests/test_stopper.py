@@ -57,7 +57,8 @@ def test_timeout_stopper_recover_after_timeout():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

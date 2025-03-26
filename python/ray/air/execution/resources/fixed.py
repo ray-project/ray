@@ -1,17 +1,15 @@
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from dataclasses import dataclass
-
 import ray
-from ray import SCRIPT_MODE, LOCAL_MODE
+from ray import LOCAL_MODE, SCRIPT_MODE
 from ray.air.execution.resources.request import (
-    ResourceRequest,
     AcquiredResources,
     RemoteRayEntity,
+    ResourceRequest,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI
-
 
 # Avoid numerical errors by multiplying and subtracting with this number.
 # Compare: 0.99 - 0.33 = 0.65999... vs (0.99 * 1000 - 0.33 * 1000) / 1000 = 0.66

@@ -15,14 +15,21 @@
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using testing::_;
+using testing::Invoke;
+using testing::Return;
+using testing::Test;
 
 namespace plasma {
 

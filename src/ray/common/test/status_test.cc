@@ -20,6 +20,66 @@
 namespace ray {
 class StatusTest : public ::testing::Test {};
 
+TEST_F(StatusTest, CopyAndMoveForOkStatus) {
+  // OK status.
+  Status ok_status = Status::OK();
+
+  // Copy constructor.
+  {
+    Status new_status = ok_status;
+    EXPECT_TRUE(new_status.ok());
+  }
+  // Copy assignment.
+  {
+    Status new_status = Status::Invalid("invalid");
+    new_status = ok_status;
+    EXPECT_TRUE(new_status.ok());
+  }
+
+  // Move constructor.
+  Status copied_ok_status = ok_status;
+  {
+    Status new_status = std::move(ok_status);
+    EXPECT_TRUE(new_status.ok());
+  }
+  // Move assignment.
+  {
+    Status new_status = Status::Invalid("invalid");
+    new_status = std::move(copied_ok_status);
+    EXPECT_TRUE(new_status.ok());
+  }
+}
+
+TEST_F(StatusTest, CopyAndMoveErrorStatus) {
+  // Invalid status.
+  Status invalid_status = Status::Invalid("invalid");
+
+  // Copy constructor.
+  {
+    Status new_status = invalid_status;
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+  // Copy assignment.
+  {
+    Status new_status = Status::OK();
+    new_status = invalid_status;
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+
+  // Move constructor.
+  Status copied_invalid_status = invalid_status;
+  {
+    Status new_status = std::move(invalid_status);
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+  // Move assignment.
+  {
+    Status new_status = Status::OK();
+    new_status = std::move(copied_invalid_status);
+    EXPECT_EQ(new_status.code(), StatusCode::Invalid);
+  }
+}
+
 TEST_F(StatusTest, StringToCode) {
   auto ok = Status::OK();
   StatusCode status = Status::StringToCode(ok.CodeAsString());
@@ -49,11 +109,13 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
 
   grpc_status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
-  ASSERT_TRUE(ray_status.IsGrpcUnavailable());
+  ASSERT_TRUE(ray_status.IsRpcError());
+  ASSERT_EQ(ray_status.rpc_code(), grpc::StatusCode::UNAVAILABLE);
 
   grpc_status = grpc::Status(grpc::StatusCode::UNKNOWN, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
-  ASSERT_TRUE(ray_status.IsGrpcUnknown());
+  ASSERT_TRUE(ray_status.IsRpcError());
+  ASSERT_EQ(ray_status.rpc_code(), grpc::StatusCode::UNKNOWN);
 
   grpc_status = grpc::Status(grpc::StatusCode::ABORTED, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
@@ -61,8 +123,3 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

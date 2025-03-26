@@ -1,11 +1,9 @@
-import mock
 import subprocess
 import sys
 
 import pytest
 
 import ray
-from ray._raylet import check_health
 from ray._private.test_utils import (
     Semaphore,
     client_test_enabled,
@@ -69,7 +67,7 @@ def test_jemalloc_env_var_propagate():
     When the shared library is specified
     """
     library_path = "/abc"
-    expected = {"LD_PRELOAD": library_path}
+    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD": "1"}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
@@ -100,7 +98,11 @@ def test_jemalloc_env_var_propagate():
     """
     library_path = "/abc"
     malloc_conf = "a,b,c"
-    expected = {"LD_PRELOAD": library_path, "MALLOC_CONF": malloc_conf}
+    expected = {
+        "LD_PRELOAD": library_path,
+        "MALLOC_CONF": malloc_conf,
+        "RAY_LD_PRELOAD": "1",
+    }
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
@@ -108,23 +110,6 @@ def test_jemalloc_env_var_propagate():
         process_type=gcs_ptype,
     )
     assert actual == expected
-
-
-def test_check_health(shutdown_only):
-    assert not check_health("127.0.0.1:8888")
-
-    conn = ray.init()
-    addr = conn.address_info["address"]
-    assert check_health(addr)
-
-
-def test_check_health_version_check(shutdown_only):
-    with mock.patch("ray.__version__", "FOO-VERSION"):
-        conn = ray.init()
-        addr = conn.address_info["address"]
-        assert check_health(addr, skip_version_check=True)
-        with pytest.raises(RuntimeError):
-            check_health(addr)
 
 
 def test_back_pressure(shutdown_only_with_initialization_check):
@@ -192,11 +177,6 @@ def function_entry_num(job_id):
 
     return (
         len(
-            _internal_kv_list(
-                b"IsolatedExports:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
-            )
-        )
-        + len(
             _internal_kv_list(
                 b"RemoteFunction:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
             )

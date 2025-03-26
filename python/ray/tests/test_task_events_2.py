@@ -1,26 +1,35 @@
 import asyncio
+from collections import defaultdict
 import os
+from typing import Dict
 import pytest
 import sys
 import time
 from ray._private import ray_constants
+from functools import reduce
 
 import ray
 from ray._private.state_api_test_utils import (
     PidActor,
+    get_state_api_manager,
     verify_tasks_running_or_terminated,
     verify_failed_task,
+    _is_actor_task_running,
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
+    async_wait_for_condition,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
 from ray.util.state import (
     StateApiClient,
     list_actors,
+    list_jobs,
     list_tasks,
 )
+import psutil
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -474,6 +483,111 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     )
 
 
+def test_ray_intentional_errors(shutdown_only):
+    """
+    Test in the below cases, ray task should not be marked as failure:
+    1. ray.actor_exit_actor()
+    2. __ray_terminate__.remote()
+    3. max calls reached.
+    4. task that exit with exit(0)
+    """
+
+    # Test `exit_actor`
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+        def exit_normal(self):
+            exit(0)
+
+    ray.init(num_cpus=1)
+
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+
+    a.exit.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test `__ray_terminate__`
+    b = Actor.remote()
+
+    ray.get(b.ready.remote())
+
+    b.__ray_terminate__.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.__ray_terminate__")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+    # Test max calls reached exiting workers should not fail the task.
+    @ray.remote(max_calls=1)
+    def f():
+        pass
+
+    for _ in range(3):
+        ray.get(f.remote())
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "f")])
+        assert len(ts) == 3
+        workers = set()
+        for t in ts:
+            assert t["state"] == "FINISHED"
+            workers.add(t["worker_id"])
+
+        assert len(workers) == 3
+        return True
+
+    wait_for_condition(verify)
+
+    # Test tasks that fail with exit(0)
+    @ray.remote
+    def g():
+        exit(0)
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "g")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    c = Actor.remote()
+    ray.get(c.ready.remote())
+
+    c.exit_normal.remote()
+
+    def verify():
+        ts = list_tasks(filters=[("name", "=", "Actor.exit_normal")])
+        assert len(ts) == 1
+        t = ts[0]
+
+        assert t["state"] == "FINISHED"
+        return True
+
+    wait_for_condition(verify)
+
+
 @pytest.mark.parametrize(
     "exit_type",
     ["exit_kill", "exit_exception"],
@@ -705,7 +819,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
         verify_tasks_running_or_terminated,
         task_pids=ray.get(killer.get_pids.remote()),
         expect_num_tasks=len(tasks),
-        timeout=15,
+        timeout=30,
         retry_interval_ms=500,
     )
 
@@ -853,6 +967,339 @@ def test_task_logs_info_running_task(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+@pytest.mark.asyncio
+async def test_task_events_gc_jobs(shutdown_only):
+    """
+    Test that later jobs should override previous jobs' task events.
+    """
+    ctx = ray.init(
+        num_cpus=8,
+        _system_config={
+            "task_events_max_num_task_in_gcs": 3,
+            "task_events_skip_driver_for_test": True,
+            "task_events_report_interval_ms": 100,
+        },
+    )
+
+    script = """
+import ray
+
+ray.init("auto")
+@ray.remote
+def f():
+    pass
+
+ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
+"""
+
+    gcs_address = ctx.address_info["gcs_address"]
+    manager = get_state_api_manager(gcs_address)
+
+    def get_last_job() -> str:
+        jobs = list_jobs()
+        sorted(jobs, key=lambda x: x["job_id"])
+        return jobs[-1].job_id
+
+    async def verify_tasks(task_name: str):
+        # Query with job directly.
+        resp = await manager.list_tasks(
+            option=ListApiOptions(
+                filters=[("name", "=", task_name), ("job_id", "=", get_last_job())]
+            )
+        )
+        assert len(resp.result) == 3
+        assert resp.total == 10
+        assert resp.num_after_truncation == 3
+
+        return True
+
+    for i in range(10):
+        # Run the script
+        run_string_as_driver(script.format(task_name=i))
+
+        await async_wait_for_condition(
+            verify_tasks, task_name=f"f.{i}", retry_interval_ms=500
+        )
+
+
+def test_task_events_gc_default_policy(shutdown_only):
+    @ray.remote
+    def finish_task():
+        pass
+
+    @ray.remote
+    def running_task():
+        time.sleep(999)
+
+    @ray.remote
+    class Actor:
+        def actor_finish_task(self):
+            pass
+
+        def actor_running_task(self):
+            time.sleep(999)
+
+        def ready(self):
+            pass
+
+    @ray.remote(max_retries=0)
+    def error_task():
+        raise ValueError("Expected to fail")
+
+    ray.init(
+        num_cpus=8,
+        _system_config={
+            "task_events_max_num_task_in_gcs": 5,
+            "task_events_skip_driver_for_test": True,
+            "task_events_report_interval_ms": 100,
+        },
+    )
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    # Run 10 and 5 should be evicted
+    ray.get([finish_task.remote() for _ in range(10)])
+
+    def verify_tasks(expected_tasks_cnt: Dict[str, int]):
+        tasks = list_tasks(raise_on_missing_output=False)
+        total_cnt = reduce(lambda x, y: x + y, expected_tasks_cnt.values())
+        assert len(tasks) == total_cnt
+        actual_cnt = defaultdict(int)
+        for task in tasks:
+            actual_cnt[task.name] += 1
+        assert actual_cnt == expected_tasks_cnt
+        return True
+
+    wait_for_condition(verify_tasks, expected_tasks_cnt={"finish_task": 5})
+
+    # Run a few other tasks to occupy the buffer
+    running_task.remote()
+    error_task.remote()
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={"finish_task": 3, "running_task": 1, "error_task": 1},
+    )
+
+    # Run more finished tasks should not evict those running/error tasks
+    for _ in range(3):
+        ray.get(a.actor_finish_task.remote())
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={
+            "Actor.actor_finish_task": 3,
+            "running_task": 1,
+            "error_task": 1,
+        },
+    )
+
+    # Run actor non-finished tasks should not evict those running/error tasks
+    [a.actor_running_task.remote() for _ in range(3)]
+
+    wait_for_condition(
+        verify_tasks,
+        expected_tasks_cnt={
+            "Actor.actor_running_task": 3,
+            "running_task": 1,
+            "error_task": 1,
+        },
+    )
+
+    # Run more error tasks now should evict the older "running_task"
+    [error_task.remote() for _ in range(5)]
+
+    wait_for_condition(verify_tasks, expected_tasks_cnt={"error_task": 5})
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="setproctitle has different definitions of `title` on different OSes",
+)
+class TestIsActorTaskRunning:
+    def test_main_thread_short_comm(self, ray_start_regular):
+        """
+        Test that the main thread's comm is not truncated.
+        """
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check")
+                assert psutil.Process(pid).name() == "ray::A.check"
+                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_main_thread_long_comm(self, ray_start_regular):
+        """
+        In this case, the process comm should be truncated because of the
+        name is more than 15 characters ("ray::Actor.check_long_comm"). Hence,
+        `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check_long_comm")
+                assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
+                assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_main_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`.
+        """
+        task_name = "hello"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == f"ray::{task_name}"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_main_thread_options_name_long_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`, and it's longer than 15
+        characters. `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+        task_name = "very_long_task_name_1234567890"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == f"ray::{task_name}"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check")
+                assert psutil.Process(pid).name() == "ray::A"
+                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_default_thread_long_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+
+        In this example, because `ray::VeryLongCommActor` is longer than 15
+        characters, `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check_long_comm")
+                assert (
+                    psutil.Process(pid).name()
+                    == "ray::VeryLongCommActor.check_long_comm"
+                )
+                assert (
+                    psutil.Process(pid).cmdline()[0]
+                    == "ray::VeryLongCommActor.check_long_comm"
+                )
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_default_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == "ray::A"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm(self, ray_start_regular):
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == "ray::Actor"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm_2(self, ray_start_regular):
+        """
+        `/proc/PID/comm` is truncated to 15 characters, so the process title
+        is "ray::VeryLongCo". `psutil.Process.name()` doesn't return `cmdline()[0]`
+        because `cmdline()[0]` doesn't start with "ray::VeryLongCo". This is the
+        implementation detail of `psutil`.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                # The first 15 characters of "ray::VeryLongCommActor"
+                assert psutil.Process(pid).name() == "ray::VeryLongCo"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+name: "docgpubuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_gpu"]
+dockerfile: ci/docker/docgpu.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/core-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
+  - python/requirements/ml/train-requirements.txt
+  - python/requirements/ml/train-test-requirements.txt
+  - python/requirements/ml/tune-requirements.txt
+  - python/requirements/ml/tune-test-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/data-test-requirements.txt
+  - python/requirements/ml/rllib-requirements.txt
+  - python/requirements/ml/rllib-test-requirements.txt
+tags:
+  - cr.ray.io/rayproject/docgpubuild

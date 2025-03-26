@@ -15,6 +15,7 @@ from abc import abstractmethod
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
+import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
@@ -567,7 +568,7 @@ class ResourceDemandScheduler:
         for bundles in strict_spreads:
             # Try to pack as many bundles of this group as possible on existing
             # nodes. The remaining will be allocated on new nodes.
-            unfulfilled, node_resources = get_bin_pack_residual(
+            unfulfilled, updated_node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True
             )
             max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
@@ -581,8 +582,6 @@ class ResourceDemandScheduler:
                 utilization_scorer=utilization_scorer,
                 strict_spread=True,
             )
-            _inplace_add(node_type_counts, to_launch)
-            _inplace_add(to_add, to_launch)
             new_node_resources = _node_type_counts_to_node_resources(
                 self.node_types, to_launch
             )
@@ -591,8 +590,14 @@ class ResourceDemandScheduler:
             unfulfilled, including_reserved = get_bin_pack_residual(
                 new_node_resources, unfulfilled, strict_spread=True
             )
-            assert not unfulfilled
-            node_resources += including_reserved
+            if unfulfilled:
+                logger.debug(
+                    "Unfulfilled strict spread placement group: {}".format(bundles)
+                )
+                continue
+            _inplace_add(node_type_counts, to_launch)
+            _inplace_add(to_add, to_launch)
+            node_resources = updated_node_resources + including_reserved
         return to_add, node_resources, node_type_counts
 
     def debug_string(
@@ -889,7 +894,7 @@ def get_bin_pack_residual(
 
     Returns:
         List[ResourceDict]: the residual list resources that do not fit.
-        List[ResourceDict]: The updated node_resources after the method.
+        List[ResourceDict]: The updated node_resources after the method. The order of the list elements remains unchanged.
     """
 
     unfulfilled = []
@@ -897,7 +902,7 @@ def get_bin_pack_residual(
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
-    used = []
+    used = set()
     # We order the resource demands in the following way:
     # More complex demands first.
     # Break ties: heavier demands first.
@@ -914,25 +919,30 @@ def get_bin_pack_residual(
         found = False
         node = None
         for i in range(len(nodes)):
+            if i in used:
+                continue
             node = nodes[i]
             if _fits(node, demand):
                 found = True
                 # In the strict_spread case, we can't reuse nodes.
                 if strict_spread:
-                    used.append(node)
-                    del nodes[i]
+                    used.add(i)
                 break
         if found and node:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)
 
-    return unfulfilled, nodes + used
+    return unfulfilled, nodes
 
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
     for k, v in resources.items():
-        if v > node.get(k, 0.0):
+        # TODO(jjyao): Change ResourceDict to a class so we can
+        # hide the implicit resource handling.
+        if v > node.get(
+            k, 1.0 if k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX) else 0.0
+        ):
             return False
     return True
 
@@ -943,6 +953,9 @@ def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
             # This is an edge case since some reasonable programs/computers can
             # do `ray.autoscaler.sdk.request_resources({"GPU": 0}"})`.
             continue
+        if k not in node:
+            assert k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX), (k, node)
+            node[k] = 1
         assert k in node, (k, node)
         node[k] -= v
         assert node[k] >= 0.0, (node, k, v)
@@ -957,7 +970,7 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
 
 def placement_groups_to_resource_demands(
     pending_placement_groups: List[PlacementGroupTableData],
-):
+) -> Tuple[List[ResourceDict], List[List[ResourceDict]]]:
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
         * STRICT_PACK - Convert to a single bundle.

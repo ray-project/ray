@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 
 from ray.rllib.core.models.base import Model
@@ -8,10 +6,9 @@ from ray.rllib.core.models.configs import (
     FreeLogStdMLPHeadConfig,
     MLPHeadConfig,
 )
-from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -28,22 +25,47 @@ class TorchMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
+        # The clipping parameter for the log standard deviation.
+        self.log_std_clip_param = torch.Tensor([config.log_std_clip_param])
+        # Register a buffer to handle device mapping.
+        self.register_buffer("log_std_clip_param_const", self.log_std_clip_param)
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
-        return self.net(inputs)
+        # Only clip the log standard deviations, if the user wants to clip. This
+        # avoids also clipping value heads.
+        if self.clip_log_std:
+            # Forward pass.
+            means, log_stds = torch.chunk(self.net(inputs), chunks=2, dim=-1)
+            # Clip the log standard deviations.
+            log_stds = torch.clamp(
+                log_stds, -self.log_std_clip_param_const, self.log_std_clip_param_const
+            )
+            return torch.cat((means, log_stds), dim=-1)
+        # Otherwise just return the logits.
+        else:
+            return self.net(inputs)
 
 
 class TorchFreeLogStdMLPHead(TorchModel):
@@ -61,31 +83,56 @@ class TorchFreeLogStdMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * self._half_output_dim)
         )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
+        # The clipping parameter for the log standard deviation.
+        self.log_std_clip_param = torch.Tensor(
+            [config.log_std_clip_param], device=self.log_std.device
+        )
+        # Register a buffer to handle device mapping.
+        self.register_buffer("log_std_clip_param_const", self.log_std_clip_param)
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         # Compute the mean first, then append the log_std.
         mean = self.net(inputs)
 
-        return torch.cat(
-            [mean, self.log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1
-        )
+        # If log standard deviation should be clipped.
+        if self.clip_log_std:
+            # Clip the log standard deviation to avoid running into too small
+            # deviations that factually collapses the policy.
+            log_std = torch.clamp(
+                self.log_std,
+                -self.log_std_clip_param_const,
+                self.log_std_clip_param_const,
+            )
+        else:
+            log_std = self.log_std
+
+        return torch.cat([mean, log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1)
 
 
 class TorchCNNTransposeHead(TorchModel):
@@ -101,6 +148,27 @@ class TorchCNNTransposeHead(TorchModel):
             bias=True,
         )
 
+        # Initial Dense layer initializers.
+        initial_dense_weights_initializer = get_initializer_fn(
+            config.initial_dense_weights_initializer, framework="torch"
+        )
+        initial_dense_bias_initializer = get_initializer_fn(
+            config.initial_dense_bias_initializer, framework="torch"
+        )
+
+        # Initialize dense layer weights, if necessary.
+        if initial_dense_weights_initializer:
+            initial_dense_weights_initializer(
+                self.initial_dense.weight,
+                **config.initial_dense_weights_initializer_config or {},
+            )
+        # Initialized dense layer bais, if necessary.
+        if initial_dense_bias_initializer:
+            initial_dense_bias_initializer(
+                self.initial_dense.bias,
+                **config.initial_dense_bias_initializer_config or {},
+            )
+
         # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(
             input_dims=config.initial_image_dims,
@@ -108,20 +176,14 @@ class TorchCNNTransposeHead(TorchModel):
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
             cnn_transpose_use_bias=config.cnn_transpose_use_bias,
-        )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return TensorSpec(
-            "b, w, h, c",
-            w=self.config.output_dims[0],
-            h=self.config.output_dims[1],
-            c=self.config.output_dims[2],
-            framework="torch",
+            cnn_transpose_kernel_initializer=config.cnn_transpose_kernel_initializer,
+            cnn_transpose_kernel_initializer_config=(
+                config.cnn_transpose_kernel_initializer_config
+            ),
+            cnn_transpose_bias_initializer=config.cnn_transpose_bias_initializer,
+            cnn_transpose_bias_initializer_config=(
+                config.cnn_transpose_bias_initializer_config
+            ),
         )
 
     @override(Model)

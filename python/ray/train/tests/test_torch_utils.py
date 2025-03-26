@@ -4,9 +4,9 @@ import pytest
 import torch
 
 from ray.air._internal.torch_utils import (
+    contains_tensor,
     convert_pandas_to_torch_tensor,
     load_torch_model,
-    contains_tensor,
 )
 from ray.util.debug import _test_some_code_for_memory_leaks
 

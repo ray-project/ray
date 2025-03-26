@@ -1,18 +1,17 @@
 import asyncio
 import os
-import pytest
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+import pytest
 import requests
-from starlette.responses import StreamingResponse
+from fastapi import FastAPI
 from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
-from ray._private.test_utils import SignalActor
-
 from ray import serve
-from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+from ray._private.test_utils import SignalActor
+from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
@@ -25,10 +24,6 @@ class StreamingRequester:
             await asyncio.sleep(0.001)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
 def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
@@ -67,10 +62,6 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
         assert chunk == f"hi_{i}"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
 @pytest.mark.parametrize("use_multiple_replicas", [False, True])
@@ -158,10 +149,6 @@ def test_responses_actually_streamed(
         next(gen2)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 def test_metadata_preserved(serve_instance, use_fastapi: bool):
     """Check that status code, headers, and media type are preserved."""
@@ -207,10 +194,6 @@ def test_metadata_preserved(serve_instance, use_fastapi: bool):
         assert chunk == f"hi_{i}".encode("utf-8")
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
 def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bool):
@@ -251,10 +234,62 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
         next(stream_iter)
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    reason="Streaming feature flag is disabled.",
-)
+@pytest.mark.parametrize("use_fastapi", [False, True])
+@pytest.mark.parametrize("use_async", [False, True])
+def test_proxy_from_streaming_handle(
+    serve_instance, use_async: bool, use_fastapi: bool
+):
+    @serve.deployment
+    class Streamer:
+        async def hi_gen_async(self):
+            for i in range(10):
+                yield f"hi_{i}"
+
+        def hi_gen_sync(self):
+            for i in range(10):
+                yield f"hi_{i}"
+
+    if use_fastapi:
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class SimpleGenerator:
+            def __init__(self, handle: DeploymentHandle):
+                self._h = handle.options(stream=True)
+
+            @app.get("/")
+            def stream_hi(self, request: Request) -> StreamingResponse:
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
+
+                return StreamingResponse(gen, media_type="text/plain")
+
+    else:
+
+        @serve.deployment
+        class SimpleGenerator:
+            def __init__(self, handle: DeploymentHandle):
+                self._h = handle.options(stream=True)
+
+            def __call__(self, request: Request) -> StreamingResponse:
+                if use_async:
+                    gen = self._h.hi_gen_async.remote()
+                else:
+                    gen = self._h.hi_gen_sync.remote()
+
+                return StreamingResponse(gen, media_type="text/plain")
+
+    serve.run(SimpleGenerator.bind(Streamer.bind()))
+
+    r = requests.get("http://localhost:8000", stream=True)
+    r.raise_for_status()
+    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
+        assert chunk == f"hi_{i}"
+
+
 def test_http_disconnect(serve_instance):
     """Test that response generators are cancelled when the client disconnects."""
     signal_actor = SignalActor.remote()

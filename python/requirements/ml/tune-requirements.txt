@@ -1,0 +1,13 @@
+# Searchers
+ax-platform==0.3.2
+
+bayesian-optimization==1.4.3
+
+# BOHB
+ConfigSpace==0.7.1; python_version < "3.12"
+hpbandster==0.7.4; python_version < "3.12"
+
+hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
+future
+nevergrad==0.4.3.post7
+optuna==4.1.0

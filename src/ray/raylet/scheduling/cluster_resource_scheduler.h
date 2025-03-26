@@ -17,19 +17,21 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/task/scheduling_resources.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -63,6 +65,8 @@ class ClusterResourceScheduler {
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
+          nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
@@ -91,7 +95,7 @@ class ClusterResourceScheduler {
   ///  \param is_infeasible[out]: It is set
   ///  true if the task is not schedulable because it is infeasible.
   ///
-  ///  \return emptry string, if no node can schedule the current request; otherwise,
+  ///  \return empty string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
   scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
                                             const std::string &preferred_node_id,
@@ -123,6 +127,7 @@ class ClusterResourceScheduler {
                            bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
+
   ClusterResourceManager &GetClusterResourceManager() {
     return *cluster_resource_manager_;
   }
@@ -133,9 +138,10 @@ class ClusterResourceScheduler {
   void Init(instrumented_io_context &io_service,
             const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
-            std::function<bool(void)> get_pull_manager_at_capacity);
+            std::function<bool(void)> get_pull_manager_at_capacity,
+            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
-  bool NodeAlive(scheduling::NodeID node_id) const;
+  bool NodeAvailable(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.

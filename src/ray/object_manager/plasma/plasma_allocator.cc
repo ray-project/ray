@@ -17,6 +17,9 @@
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/util/logging.h"
@@ -39,7 +42,7 @@ int dlmallopt(int param_number, int value);
 
 namespace {
 /* Copied from dlmalloc.c; make sure to keep in sync */
-size_t MAX_SIZE_T = (size_t)-1;
+size_t MAX_SIZE_T = static_cast<size_t>(-1);
 const int M_MMAP_THRESHOLD = -3;
 
 // We align the allocated region to a 64-byte boundary. This is not
@@ -75,7 +78,7 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
   auto allocation = Allocate(kFootprintLimit - kDlMallocReserved);
   RAY_CHECK(allocation.has_value())
       << "PlasmaAllocator initialization failed."
-      << " It's likely we don't have enought space in " << plasma_directory;
+      << " It's likely we don't have enough space in " << plasma_directory;
   // This will unmap the file, but the next one created will be as large
   // as this one (this is an implementation detail of dlmalloc).
   Free(std::move(allocation.value()));

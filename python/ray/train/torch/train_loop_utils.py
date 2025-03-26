@@ -1,35 +1,39 @@
+import collections
 import logging
 import os
 import random
 import types
-import collections
-from packaging.version import Version
-
-from typing import Any, Dict, List, Optional, Callable, Union
-
-from ray.air import session
-from ray.train._internal.accelerator import Accelerator
-from torch.optim import Optimizer
-from ray.train._internal.session import get_accelerator, set_accelerator
-from ray.util.annotations import PublicAPI, Deprecated
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from packaging.version import Version
+from torch.cuda.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel
+from torch.optim import Optimizer
+from torch.utils.data import (
+    DataLoader,
+    DistributedSampler,
+    IterableDataset,
+    RandomSampler,
+    SequentialSampler,
+)
+
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.air._internal.device_manager import (
+    get_torch_device_manager_by_context,
+    get_torch_device_manager_by_device_type,
+)
+from ray.train._internal import session
+from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.session import get_accelerator, set_accelerator
+from ray.train.utils import _log_deprecation_warning
+from ray.util.annotations import Deprecated, PublicAPI
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
 else:
     from torch.distributed.fsdp import FullyShardedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
 
 try:
     from torch.profiler import profile
@@ -39,39 +43,123 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
-def get_device() -> Union[torch.device, List[torch.device]]:
+@PublicAPI(stability="stable")
+def get_device() -> torch.device:
     """Gets the correct torch device configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
-    is requested.
+    Returns the torch device for the current worker. If more than 1 GPU is
+    requested per worker, returns the device with the minimal device index.
+
+    .. note::
+
+        If you requested multiple GPUs per worker, and want to get
+        the full list of torch devices, please use
+        :meth:`~ray.train.torch.get_devices`.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
 
-    Example:
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-        >>> # ray.get_gpu_ids() == [3]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:0")
+    Examples:
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-        >>> # ray.get_gpu_ids() == [4]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:4")
+        Example: Launched 2 workers on the current node, each with 1 GPU
 
-        >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-        >>> # ray.get_gpu_ids() == [4,5]
-        >>> # torch.cuda.is_available() == True
-        >>> # get_device() == torch.device("cuda:4")
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:0")
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_device() == torch.device("cuda:2")
+
+
+        You can move a model to device by:
+
+        .. testcode::
+            :skipif: True
+
+            model.to(ray.train.torch.get_device())
+
+        Instead of manually checking the device type:
+
+        .. testcode::
+            :skipif: True
+
+            model.to("cuda" if torch.cuda.is_available() else "cpu")
     """
     from ray.air._internal import torch_utils
 
-    return torch_utils.get_device()
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICE, "1")
+    return torch_utils.get_devices()[0]
 
 
-# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
 @PublicAPI(stability="beta")
+def get_devices() -> List[torch.device]:
+    """Gets the correct torch device list configured for this process.
+
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
+
+
+    Examples:
+
+        Example: Launched 2 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:0")]
+
+        Example: Launched 4 workers on the current node, each with 1 GPU
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2")]
+
+        Example: Launched 2 workers on the current node, each with 2 GPUs
+
+        .. testcode::
+            :skipif: True
+
+            os.environ["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+            ray.get_gpu_ids() == [2,3]
+            torch.cuda.is_available() == True
+            get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
+    """
+
+    from ray.air._internal import torch_utils
+
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_GET_DEVICES, "1")
+    return torch_utils.get_devices()
+
+
+@PublicAPI(stability="stable")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -104,6 +192,7 @@ def prepare_model(
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
         )
 
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_MODEL, "1")
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
@@ -112,17 +201,56 @@ def prepare_model(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def prepare_data_loader(
     data_loader: torch.utils.data.DataLoader,
     add_dist_sampler: bool = True,
     move_to_device: bool = True,
     auto_transfer: bool = True,
 ) -> torch.utils.data.DataLoader:
-    """Prepares DataLoader for distributed execution.
+    """Prepares :class:`~torch.utils.data.DataLoader` for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
+
+    .. note::
+
+        This method adds a `DistributedSampler` to the `DataLoader` if the
+        number of training workers is greater than 1. If shuffling is
+        enabled on the original `DataLoader`, then `shuffle=True` will also
+        be passed into the `DistributedSampler` constructor. `shuffle=False`
+        on the original `DataLoader` also means that shuffling is disabled
+        on the sampler.
+
+        With more than 1 worker, calling the `DistributedSampler.set_epoch` method
+        at the beginning of each epoch before creating the DataLoader iterator
+        is necessary to make shuffling work properly across multiple epochs.
+        Otherwise, the same ordering will be always used.
+        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
+
+    Example:
+
+    .. testcode:
+        :skipif: True
+
+        import torch
+
+        import ray.train.torch
+
+        train_dataloader = torch.utils.data.DataLoader(
+            ..., batch_size=..., shuffle=True
+        )
+        train_dataloader = ray.train.torch.prepare_data_loader(train_loader)
+
+        for epoch in range(10):
+            if ray.train.get_context().get_world_size() > 1:
+                # Required for the distributed sampler to shuffle properly across epochs
+                train_dataloader.sampler.set_epoch(epoch)
+
+            for X, y in train_loader:
+                # No need to move data to GPU, this is done by `prepare_data_loader`!
+                # X, y = X.to("cuda"), y.to("cuda")
+                ...
 
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
@@ -138,6 +266,7 @@ def prepare_data_loader(
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
     """
+    record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
     return get_accelerator(_TorchAccelerator).prepare_data_loader(
         data_loader,
         add_dist_sampler=add_dist_sampler,
@@ -146,9 +275,16 @@ def prepare_data_loader(
     )
 
 
-@PublicAPI(stability="beta")
+def _log_amp_deprecation_warning():
+    # Keep V2 imports out of top-level V1 imports.
+    from ray.train.v2.torch.train_loop_utils import _TORCH_AMP_DEPRECATION_MESSAGE
+
+    _log_deprecation_warning(_TORCH_AMP_DEPRECATION_MESSAGE)
+
+
+@Deprecated
 def accelerate(amp: bool = False) -> None:
-    """Enables training optimizations.
+    """[Deprecated] Enables training optimizations.
 
     Arguments:
         amp: If true, perform training with automatic mixed precision.
@@ -157,6 +293,7 @@ def accelerate(amp: bool = False) -> None:
     .. warning:: ``train.torch.accelerate`` cannot be called more than once, and it
        must be called before any other ``train.torch`` utility function.
     """
+    _log_amp_deprecation_warning()
     try:
         set_accelerator(_TorchAccelerator(amp=amp))
     except RuntimeError:
@@ -167,9 +304,9 @@ def accelerate(amp: bool = False) -> None:
         )
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer:
-    """Wraps optimizer to support automatic mixed precision.
+    """[Deprecated] Wraps optimizer to support automatic mixed precision.
 
     Args:
         optimizer (torch.optim.Optimizer): The DataLoader to prepare.
@@ -177,20 +314,22 @@ def prepare_optimizer(optimizer: torch.optim.Optimizer) -> torch.optim.Optimizer
     Returns:
         A wrapped optimizer.
     """
+    _log_amp_deprecation_warning()
     return get_accelerator(_TorchAccelerator).prepare_optimizer(optimizer)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 def backward(tensor: torch.Tensor) -> None:
-    """Computes the gradient of the specified tensor w.r.t. graph leaves.
+    """[Deprecated] Computes the gradient of the specified tensor w.r.t. graph leaves.
 
     Args:
         tensor (torch.Tensor): Tensor of which the derivative will be computed.
     """
+    _log_amp_deprecation_warning()
     get_accelerator(_TorchAccelerator).backward(tensor)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def enable_reproducibility(seed: int = 0) -> None:
     """Limits sources of nondeterministic behavior.
 
@@ -241,6 +380,7 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
+        self.device_manager = get_torch_device_manager_by_context()
 
     def prepare_model(
         self,
@@ -278,8 +418,8 @@ class _TorchAccelerator(Accelerator):
             if isinstance(device, list):
                 device = device[0]
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(device)
+        if self.device_manager.is_available():
+            self.device_manager.set_device(device)
 
         if move_to_device:
             if rank == 0:
@@ -327,7 +467,7 @@ class _TorchAccelerator(Accelerator):
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
                 DataParallel = DistributedDataParallel
-                if torch.cuda.is_available():
+                if self.device_manager.is_available() and device.type != "cpu":
                     parallel_strategy_kwargs = {
                         "device_ids": [device],
                         "output_device": device,
@@ -432,7 +572,7 @@ class _TorchAccelerator(Accelerator):
                     loader.sampler, (SequentialSampler, RandomSampler)
                 )
                 if not using_default_sampler and world_rank == 0:
-                    logger.warn(
+                    logger.warning(
                         f"The {loader.sampler.__class__.__name__} will be overwritten "
                         "with a DistributedSampler. You can disable this by setting "
                         "`with_sampler` to False in `prepare_data_loader`."
@@ -504,17 +644,22 @@ class _WrappedDataLoader(DataLoader):
     def __init__(
         self, base_dataloader: DataLoader, device: torch.device, auto_transfer: bool
     ):
-
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
         self._dataloader = base_dataloader
         self.dataloader_iter = None
         self.device = device
+
+        self.device_manager = get_torch_device_manager_by_device_type(device.type)
+
         # disable auto transfer (host->device) if cpu is used
-        self._auto_transfer = auto_transfer if device.type == "cuda" else False
-        # create a new CUDA stream to move data from host to device concurrently
+        if device.type != "cpu" and self.device_manager.supports_stream():
+            self._auto_transfer = auto_transfer
+        else:
+            self._auto_transfer = False
+        # create a new device stream to move data from host to device concurrently
         self._memcpy_stream = (
-            torch.cuda.Stream(device)
-            if device.type == "cuda" and self._auto_transfer
+            self.device_manager.create_stream(device)
+            if device.type != "cpu" and self._auto_transfer
             else None
         )
         self.next_batch = None
@@ -530,7 +675,7 @@ class _WrappedDataLoader(DataLoader):
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
-        with torch.cuda.stream(self._memcpy_stream):
+        with self.device_manager.get_stream_context(self._memcpy_stream):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
             elif isinstance(item, tuple):
@@ -554,7 +699,7 @@ class _WrappedDataLoader(DataLoader):
         # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
-        curr_stream = torch.cuda.current_stream()
+        curr_stream = self.device_manager.get_current_stream()
         curr_stream.wait_stream(self._memcpy_stream)
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``

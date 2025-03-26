@@ -75,21 +75,6 @@ If using the command line, connect to the Ray cluster as follow:
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
   ray.init(address=<address>)
 
-.. _omp-num-thread-note:
-
-.. note::
-    Ray sets the environment variable ``OMP_NUM_THREADS=<num_cpus>`` if ``num_cpus`` is set on
-    the task/actor via :func:`ray.remote() <ray.remote>` and :meth:`task.options() <ray.remote_function.RemoteFunction.options>`/:meth:`actor.options() <ray.actor.ActorClass.options>`.
-    Ray sets ``OMP_NUM_THREADS=1`` if ``num_cpus`` is not specified; this
-    is done to avoid performance degradation with many workers (issue #6998). You can
-    also override this by explicitly setting ``OMP_NUM_THREADS`` to override anything Ray sets by default.
-    ``OMP_NUM_THREADS`` is commonly used in numpy, PyTorch, and Tensorflow to perform multi-threaded
-    linear algebra. In multi-worker setting, we want one thread per worker instead of many threads
-    per worker to avoid contention. Some other libraries may have their own way to configure
-    parallelism. For example, if you're using OpenCV, you should manually set the number of
-    threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).
-
-
 .. _temp-dir-log-files:
 
 Logging and Debugging
@@ -123,13 +108,14 @@ All Nodes
 ~~~~~~~~~
 - ``--node-manager-port``: Raylet port for node manager. Default: Random value.
 - ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+- ``--runtime-env-agent-port``: Raylet port for runtime env agent. Default: Random value.
 
 The node manager and object manager run as separate processes with their own ports for communication.
 
 The following options specify the ports used by dashboard agent process.
 
 - ``--dashboard-agent-grpc-port``: The port to listen for grpc on. Default: Random value.
-- ``--dashboard-agent-listen-port``: The port to listen for http on. Default: Random value.
+- ``--dashboard-agent-listen-port``: The port to listen for http on. Default: 52365.
 - ``--metrics-export-port``: The port to use to expose Ray metrics. Default: Random value.
 
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.

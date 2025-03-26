@@ -1,8 +1,0 @@
-accelerate==0.15.0
-bitsandbytes
-diffusers==0.11.1
-flax==0.6.4
-huggingface_hub
-numpy==1.21
-torchvision
-transformers>=4.25.1

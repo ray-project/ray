@@ -2,9 +2,12 @@ from time import sleep
 import pytest
 
 import ray
-from ray import workflow, serve
+from ray import workflow
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
+from ray import serve
+from ray.workflow import common
+from ray._private.test_utils import wait_for_condition
 
 import requests
 
@@ -36,8 +39,12 @@ def test_receive_event_by_http(workflow_start_regular_shared_serve):
     workflow.run_async(event_promise, workflow_id="workflow_test_receive_event_by_http")
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
-        sleep(0.1)
+    def check_app_running():
+        status = serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME]
+        assert status.status == "RUNNING"
+        return True
+
+    wait_for_condition(check_app_running)
 
     # repeat send_event() until the returned status code is not 404
     while True:
@@ -88,9 +95,12 @@ def test_dynamic_event_by_http(workflow_start_regular_shared_serve):
     )
 
     # wait until HTTPEventProvider is ready
-    while len(serve.list_deployments().keys()) < 1:
-        sleep(0.1)
+    def check_app_running():
+        status = serve.status().applications[common.HTTP_EVENT_PROVIDER_NAME]
+        assert status.status == "RUNNING"
+        return True
 
+    wait_for_condition(check_app_running)
     # repeat send_event() until the returned status code is not 404
     while True:
         res = send_event()

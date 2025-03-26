@@ -2,7 +2,10 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any
+from typing import Any, Optional
+
+
+import google.protobuf.message
 
 import ray._private.utils
 import ray.cloudpickle as pickle
@@ -10,7 +13,7 @@ from ray._private import ray_constants
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
-    ObjectRefGenerator,
+    DynamicObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
@@ -19,7 +22,9 @@ from ray._raylet import (
 )
 from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
+    ActorDiedError,
     ActorPlacementGroupRemoved,
+    ActorUnavailableError,
     ActorUnschedulableError,
     LocalRayletDiedError,
     NodeDiedError,
@@ -31,7 +36,6 @@ from ray.exceptions import (
     OutOfDiskError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
-    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -43,11 +47,17 @@ from ray.exceptions import (
     TaskUnschedulableError,
     WorkerCrashedError,
     OutOfMemoryError,
+    ObjectRefStreamEndOfStreamError,
 )
+import ray.exceptions
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
+ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
+    "RAY_allow_out_of_band_object_ref_serialization", True
+)
 
 
 class DeserializationError(Exception):
@@ -60,11 +70,14 @@ def pickle_dumps(obj: Any, error_msg: str):
     """
     try:
         return pickle.dumps(obj)
-    except TypeError as e:
+    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
         sio = io.StringIO()
         inspect_serializability(obj, print_file=sio)
         msg = f"{error_msg}:\n{sio.getvalue()}"
-        raise TypeError(msg) from e
+        if isinstance(e, TypeError):
+            raise TypeError(msg) from e
+        else:
+            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -96,12 +109,14 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     return obj_ref
 
 
-def _actor_handle_deserializer(serialized_obj):
+def _actor_handle_deserializer(serialized_obj, weak_ref):
     # If this actor handle was stored in another object, then tell the
     # core worker.
     context = ray._private.worker.global_worker.get_serialization_context()
     outer_id = context.get_outer_object_ref()
-    return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
+    return ray.actor.ActorHandle._deserialization_helper(
+        serialized_obj, weak_ref, outer_id
+    )
 
 
 class SerializationContext:
@@ -117,17 +132,34 @@ class SerializationContext:
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
-            serialized, actor_handle_id = obj._serialization_helper()
+            serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
-            self.add_contained_object_ref(actor_handle_id)
-            return _actor_handle_deserializer, (serialized,)
+            if not weak_ref:
+                self.add_contained_object_ref(
+                    actor_handle_id,
+                    # Right now, so many tests are failing when this is set.
+                    # Allow it for now, but we should eventually disallow it here.
+                    allow_out_of_band_serialization=True,
+                )
+            return _actor_handle_deserializer, (serialized, weak_ref)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
+
+        def compiled_dag_ref_reducer(obj):
+            raise TypeError("Serialization of CompiledDAGRef is not supported.")
+
+        self._register_cloudpickle_reducer(CompiledDAGRef, compiled_dag_ref_reducer)
 
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
-            self.add_contained_object_ref(obj)
+            self.add_contained_object_ref(
+                obj,
+                allow_out_of_band_serialization=(
+                    ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION
+                ),
+                call_site=obj.call_site(),
+            )
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
@@ -141,10 +173,10 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
         def object_ref_generator_reducer(obj):
-            return ObjectRefGenerator, (obj._refs,)
+            return DynamicObjectRefGenerator, (obj._refs,)
 
         self._register_cloudpickle_reducer(
-            ObjectRefGenerator, object_ref_generator_reducer
+            DynamicObjectRefGenerator, object_ref_generator_reducer
         )
 
         serialization_addons.apply(self)
@@ -186,7 +218,13 @@ class SerializationContext:
         self._thread_local.object_refs = set()
         return object_refs
 
-    def add_contained_object_ref(self, object_ref):
+    def add_contained_object_ref(
+        self,
+        object_ref: "ray.ObjectRef",
+        *,
+        allow_out_of_band_serialization: bool,
+        call_site: Optional[str] = None,
+    ):
         if self.is_in_band_serialization():
             # This object ref is being stored in an object. Add the ID to the
             # list of IDs contained in the object so that we keep the inner
@@ -195,13 +233,25 @@ class SerializationContext:
                 self._thread_local.object_refs = set()
             self._thread_local.object_refs.add(object_ref)
         else:
-            # If this serialization is out-of-band (e.g., from a call to
-            # cloudpickle directly or captured in a remote function/actor),
-            # then pin the object for the lifetime of this worker by adding
-            # a local reference that won't ever be removed.
-            ray._private.worker.global_worker.core_worker.add_object_ref_reference(
-                object_ref
-            )
+            if not allow_out_of_band_serialization:
+                raise ray.exceptions.OufOfBandObjectRefSerializationException(
+                    f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
+                    "If you want to allow serialization, "
+                    "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
+                    "If you set the env var, the object is pinned forever in the "
+                    "lifetime of the worker process and can cause Ray object leaks. "
+                    "See the callsite and trace to find where the serialization "
+                    "occurs.\nCallsite: "
+                    f"{call_site or 'Disabled. Set RAY_record_ref_creation_sites=1'}"
+                )
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray._private.worker.global_worker.core_worker.add_object_ref_reference(
+                    object_ref
+                )
 
     def _deserialize_pickle5_data(self, data):
         try:
@@ -244,7 +294,7 @@ class SerializationContext:
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
-            return RayActorError()
+            return ActorDiedError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
         if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
@@ -253,7 +303,7 @@ class SerializationContext:
             )
         else:
             assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
-            return RayActorError(
+            return ActorDiedError(
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
@@ -272,7 +322,9 @@ class SerializationContext:
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
-                return _actor_handle_deserializer(obj)
+                # The last character is a 1 if weak_ref=True and 0 else.
+                serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
+                return _actor_handle_deserializer(serialized, weak_ref)
             # Otherwise, return an exception object based on
             # the error type.
             try:
@@ -295,7 +347,22 @@ class SerializationContext:
             elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
                 return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                return TaskCancelledError()
+                # Task cancellations are serialized in two ways, so check both
+                # deserialization paths.
+                # TODO(swang): We should only have one serialization path.
+                try:
+                    # Deserialization from C++ (the CoreWorker task submitter).
+                    # The error info will be stored as a RayErrorInfo.
+                    error_message = ""
+                    if data:
+                        error_info = self._deserialize_error_info(data, metadata_fields)
+                        error_message = error_info.error_message
+                    return TaskCancelledError(error_message=error_message)
+                except google.protobuf.message.DecodeError:
+                    # Deserialization from Python. The TaskCancelledError is
+                    # serialized and returned directly.
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
+                    return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
@@ -359,6 +426,15 @@ class SerializationContext:
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
+                return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                if error_info.HasField("actor_unavailable_error"):
+                    actor_id = error_info.actor_unavailable_error.actor_id
+                else:
+                    actor_id = None
+                return ActorUnavailableError(error_info.error_message, actor_id)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:
@@ -416,16 +492,31 @@ class SerializationContext:
         contained_object_refs = []
 
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
-            value = value.to_bytes()
+            if issubclass(value.cause.__class__, TaskCancelledError):
+                # Handle task cancellation errors separately because we never
+                # want to warn about tasks that were intentionally cancelled by
+                # the user.
+                metadata = str(ErrorType.Value("TASK_CANCELLED")).encode("ascii")
+                value = value.to_bytes()
+            else:
+                metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode(
+                    "ascii"
+                )
+                value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
-            serialized, actor_handle_id = value._serialization_helper()
-            contained_object_refs.append(actor_handle_id)
+            serialized, actor_handle_id, weak_ref = value._serialization_helper()
+            if not weak_ref:
+                contained_object_refs.append(actor_handle_id)
             # Update ref counting for the actor handle
             metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
-            value = serialized
+            # Append a 1 to mean weak ref or 0 for strong ref.
+            # We do this here instead of in the main serialization helper
+            # because msgpack expects a bytes object. We cannot serialize
+            # `weak_ref` in the C++ code because the weak_ref property is only
+            # available in the Python ActorHandle instance.
+            value = serialized + (b"1" if weak_ref else b"0")
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 

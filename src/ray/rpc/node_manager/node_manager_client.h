@@ -16,6 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
+#include <string>
 #include <thread>
 
 #include "ray/common/status.h"
@@ -73,23 +75,13 @@ class NodeManagerWorkerClient
       const std::string &address,
       const int port,
       ClientCallManager &client_call_manager) {
+    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
+    // invoke private constructors.
     auto instance = new NodeManagerWorkerClient(address, port, client_call_manager);
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return grpc_client_->Channel(); }
-
-  /// Update cluster resource usage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         UpdateResourceUsage,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
-  /// Request a resource report.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestResourceReport,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
 
   /// Get a resource load
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
@@ -97,7 +89,13 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get a resource load
+  /// Cancel tasks with certain resource shapes
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         CancelTasksWithResourceShapes,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  /// Notify GCS restart.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          NotifyGCSRestart,
                          grpc_client_,
@@ -106,6 +104,12 @@ class NodeManagerWorkerClient
   /// Request a worker lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          RequestWorkerLease,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  /// Request a prestart worker.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PrestartWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -123,13 +127,23 @@ class NodeManagerWorkerClient
 
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
+                         ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
   /// Shutdown the raylet gracefully.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ShutdownRaylet,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         DrainRaylet,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         IsLocalWorkerDead,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -169,12 +183,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Ask the raylet to spill an object to external storage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestObjectSpillage,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReleaseUnusedBundles,
@@ -187,12 +195,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get all the task information from the node.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetTasksInfo,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Get all the object information from the node.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetObjectsInfo,
@@ -201,6 +203,16 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetTaskFailureCause,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         RegisterMutableObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PushMutableObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

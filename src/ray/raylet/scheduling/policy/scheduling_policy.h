@@ -16,9 +16,9 @@
 
 #include <vector>
 
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
@@ -82,7 +82,7 @@ struct SchedulingResult {
 };
 
 /// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
-/// resource requirment list as well as the scheduling options.
+/// resource requirement list as well as the scheduling options.
 class IBundleSchedulingPolicy {
  public:
   virtual ~IBundleSchedulingPolicy() = default;
@@ -102,7 +102,7 @@ class IBundleSchedulingPolicy {
 };
 
 /// ISchedulingPolicy picks a node to from the cluster, according to the resource
-/// requirment as well as the scheduling options.
+/// requirement as well as the scheduling options.
 class ISchedulingPolicy {
  public:
   virtual ~ISchedulingPolicy() = default;

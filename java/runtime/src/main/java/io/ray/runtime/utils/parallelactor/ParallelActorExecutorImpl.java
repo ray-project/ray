@@ -26,7 +26,7 @@ public class ParallelActorExecutorImpl {
     RayFunction init = functionManager.getFunction(javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
     for (int i = 0; i < parallelism; ++i) {
-      Object instance = init.getMethod().invoke(null, null);
+      Object instance = init.getMethod().invoke(null);
       instances.put(i, instance);
     }
   }

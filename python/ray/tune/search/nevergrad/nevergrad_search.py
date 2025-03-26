@@ -1,9 +1,15 @@
 import inspect
 import logging
 import pickle
-from typing import Dict, Optional, Type, Union, List, Sequence
+from typing import Dict, List, Optional, Sequence, Type, Union
 
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -11,12 +17,6 @@ from ray.tune.search.sample import (
     Integer,
     LogUniform,
     Quantized,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_dict

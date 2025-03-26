@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import hashlib
 import json
-from typing import Optional, List, Union, Tuple
+from typing import Optional, List, Tuple
 
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
@@ -100,6 +100,7 @@ def create_conda_env_if_needed(
     """
     if logger is None:
         logger = logging.getLogger(__name__)
+
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
@@ -115,7 +116,7 @@ def create_conda_env_if_needed(
         )
 
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
-    envs = json.loads(stdout)["envs"]
+    envs = json.loads(stdout[stdout.index("{") :])["envs"]
 
     if prefix in envs:
         logger.info(f"Conda environment {prefix} already exists.")
@@ -160,7 +161,7 @@ def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bo
 
 def get_conda_env_list() -> list:
     """
-    Get conda env list.
+    Get conda env list in full paths.
     """
     conda_path = get_conda_bin_executable("conda")
     try:
@@ -172,13 +173,51 @@ def get_conda_env_list() -> list:
     return envs
 
 
+def get_conda_info_json() -> dict:
+    """
+    Get `conda info --json` output.
+
+    Returns dict of conda info. See [1] for more details. We mostly care about these
+    keys:
+
+    - `conda_prefix`: str The path to the conda installation.
+    - `envs`: List[str] absolute paths to conda environments.
+
+    [1] https://github.com/conda/conda/blob/main/conda/cli/main_info.py
+    """
+    conda_path = get_conda_bin_executable("conda")
+    try:
+        exec_cmd([conda_path, "--help"], throw_on_error=False)
+    except EnvironmentError:
+        raise ValueError(f"Could not find Conda executable at {conda_path}.")
+    _, stdout, _ = exec_cmd([conda_path, "info", "--json"])
+    return json.loads(stdout)
+
+
+def get_conda_envs(conda_info: dict) -> List[Tuple[str, str]]:
+    """
+    Gets the conda environments, as a list of (name, path) tuples.
+    """
+    prefix = conda_info["conda_prefix"]
+    ret = []
+    for env in conda_info["envs"]:
+        if env == prefix:
+            ret.append(("base", env))
+        else:
+            ret.append((os.path.basename(env), env))
+    return ret
+
+
 class ShellCommandException(Exception):
     pass
 
 
 def exec_cmd(
-    cmd: List[str], throw_on_error: bool = True, logger: Optional[logging.Logger] = None
-) -> Union[int, Tuple[int, str, str]]:
+    cmd: List[str],
+    throw_on_error: bool = True,
+    shell: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> Tuple[int, str, str]:
     """
     Runs a command as a child process.
 
@@ -198,6 +237,7 @@ def exec_cmd(
         stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
+        shell=shell,
     )
     (stdout, stderr) = child.communicate()
     exit_code = child.wait()
@@ -240,3 +280,15 @@ def exec_cmd_stream_to_logger(
 
     exit_code = child.wait()
     return exit_code, "\n".join(last_n_lines)
+
+
+def check_if_conda_environment_valid(conda_env_name: str) -> bool:
+    """
+    Check if the given conda environment exists and is valid.
+    We try to `conda activate` it and check that python is runnable
+    """
+    activate_cmd = get_conda_activate_commands(conda_env_name) + ["python", "--version"]
+    exit_code, _, _ = exec_cmd(
+        [" ".join(activate_cmd)], throw_on_error=False, shell=True
+    )
+    return exit_code == 0

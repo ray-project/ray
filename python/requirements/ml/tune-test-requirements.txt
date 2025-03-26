@@ -1,0 +1,19 @@
+aim==3.23.0; python_version < "3.12"
+
+gpy==1.13.1
+
+jupyterlab==3.6.1
+matplotlib!=3.4.3
+
+pytest-remotedata==0.3.2
+pytorch-lightning==1.8.6
+fairscale==0.4.6
+shortuuid==1.0.1
+timm==0.9.2
+
+zoopt==0.4.1
+
+# timeseries lib
+statsforecast==1.7.0
+prophet==1.1.5
+holidays==0.39

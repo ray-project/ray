@@ -1,18 +1,20 @@
 import abc
+import base64
 import collections
+import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
 
     from ray.air.data_batch_type import DataBatchType
-    from ray.data import Dataset, DatasetPipeline
+    from ray.data import Dataset
 
 
 @PublicAPI(stability="beta")
@@ -61,27 +63,27 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
+    def _check_has_fitted_state(self):
+        """Checks if the Preprocessor has fitted state.
+
+        This is also used as an indiciation if the Preprocessor has been fit, following
+        convention from Ray versions prior to 2.6.
+        This allows preprocessors that have been fit in older versions of Ray to be
+        used to transform data in newer versions.
+        """
+
+        fitted_vars = [v for v in vars(self) if v.endswith("_")]
+        return bool(fitted_vars)
+
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif self._check_is_fitted():
+        elif (
+            hasattr(self, "_fitted") and self._fitted
+        ) or self._check_has_fitted_state():
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
-
-    @Deprecated
-    def transform_stats(self) -> Optional[str]:
-        """Return Dataset stats for the most recent transform call, if any."""
-
-        raise DeprecationWarning(
-            "`preprocessor.transform_stats()` is no longer supported in Ray 2.4. "
-            "With Dataset now lazy by default, the stats are only populated "
-            "after execution. Once the dataset transform is executed, the "
-            "stats can be accessed directly from the transformed dataset "
-            "(`ds.stats()`), or can be viewed in the ray-data.log "
-            "file saved in the Ray logs directory "
-            "(defaults to /tmp/ray/session_{SESSION_ID}/logs/)."
-        )
 
     def fit(self, ds: "Dataset") -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
@@ -112,7 +114,9 @@ class Preprocessor(abc.ABC):
                 "All previously fitted state will be overwritten!"
             )
 
-        return self._fit(ds)
+        fitted_ds = self._fit(ds)
+        self._fitted = True
+        return fitted_ds
 
     def fit_transform(self, ds: "Dataset") -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
@@ -179,40 +183,6 @@ class Preprocessor(abc.ABC):
             )
         return self._transform_batch(data)
 
-    def _transform_pipeline(self, pipeline: "DatasetPipeline") -> "DatasetPipeline":
-        """Transform the given DatasetPipeline.
-
-        Args:
-            pipeline: The pipeline to transform.
-
-        Returns:
-            A DatasetPipeline with this preprocessor's transformation added as an
-                operation to the pipeline.
-        """
-
-        fit_status = self.fit_status()
-        if fit_status not in (
-            Preprocessor.FitStatus.NOT_FITTABLE,
-            Preprocessor.FitStatus.FITTED,
-        ):
-            raise RuntimeError(
-                "Streaming/pipelined ingest only works with "
-                "Preprocessors that do not need to be fit on the entire dataset. "
-                "It is not possible to fit on Datasets "
-                "in a streaming fashion."
-            )
-
-        return self._transform(pipeline)
-
-    def _check_is_fitted(self) -> bool:
-        """Returns whether this preprocessor is fitted.
-
-        We use the convention that attributes with a trailing ``_`` are set after
-        fitting is complete.
-        """
-        fitted_vars = [v for v in vars(self) if v.endswith("_")]
-        return bool(fitted_vars)
-
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -247,9 +217,7 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(
-        self, ds: Union["Dataset", "DatasetPipeline"]
-    ) -> Union["Dataset", "DatasetPipeline"]:
+    def _transform(self, ds: "Dataset") -> "Dataset":
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()
@@ -309,6 +277,27 @@ class Preprocessor(abc.ABC):
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
+    @classmethod
+    def _derive_and_validate_output_columns(
+        cls, columns: List[str], output_columns: Optional[List[str]]
+    ) -> List[str]:
+        """Returns the output columns after validation.
+
+        Checks if the columns are explicitly set, otherwise defaulting to
+        the input columns.
+
+        Raises:
+            ValueError if the length of the output columns does not match the
+        length of the input columns.
+        """
+
+        if output_columns and len(columns) != len(output_columns):
+            raise ValueError(
+                "Invalid output_columns: Got len(columns) != len(output_columns). "
+                "The length of columns and output_columns must match."
+            )
+        return output_columns or columns
+
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
         """Run the transformation on a data batch in a Pandas DataFrame format."""
@@ -333,3 +322,18 @@ class Preprocessor(abc.ABC):
         path is the most optimal.
         """
         return BatchFormat.PANDAS
+
+    @DeveloperAPI
+    def serialize(self) -> str:
+        """Return this preprocessor serialized as a string.
+        Note: this is not a stable serialization format as it uses `pickle`.
+        """
+        # Convert it to a plain string so that it can be included as JSON metadata
+        # in Trainer checkpoints.
+        return base64.b64encode(pickle.dumps(self)).decode("ascii")
+
+    @staticmethod
+    @DeveloperAPI
+    def deserialize(serialized: str) -> "Preprocessor":
+        """Load the original preprocessor serialized via `self.serialize()`."""
+        return pickle.loads(base64.b64decode(serialized))

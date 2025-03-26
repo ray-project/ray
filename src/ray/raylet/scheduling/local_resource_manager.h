@@ -17,27 +17,42 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+/// Encapsulates non-resource artifacts that evidence work when present.
+enum WorkFootprint {
+  NODE_WORKERS = 1,
+};
+
+// Represents artifacts of a node that can be busy or idle.
+// Resources are schedulable, such as gpu or cpu.
+// WorkFootprints are not, such as leased workers on a node.
+using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
+
+using rpc::autoscaler::DrainNodeReason;
 
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
-/// Whenever the resouce changes, it notifies the subscriber of the change.
+/// Whenever the resource changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
 class LocalResourceManager : public syncer::ReporterInterface {
  public:
@@ -46,6 +61,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
@@ -75,9 +91,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \param resource_id id of the resource.
   /// \param instances instances to be added to available resources.
   ///
-  /// \return Overflow capacities of resource instances after adding the resources.
-  std::vector<double> AddResourceInstances(scheduling::ResourceID resource_id,
-                                           const std::vector<double> &cpu_instances);
+  void AddResourceInstances(scheduling::ResourceID resource_id,
+                            const std::vector<double> &cpu_instances);
 
   /// Decrease the available resource instances of this node.
   ///
@@ -109,23 +124,10 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
-  /// resources_available and resources_total.
-  ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data);
-
-  /// Populate a UpdateResourcesRequest. This is inteneded to update the
-  /// resource totals on a node when a custom resource is created or deleted
-  /// (e.g. during the placement group lifecycle).
-  ///
-  /// \param resource_map_filter When returning the resource map, the returned result will
-  /// only contain the keys in the filter. Note that only the key of the map is used.
-  /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const absl::flat_hash_map<std::string, double> &resource_map_filter) const;
+  // Removes idle time for a WorkFootprint, thereby marking it busy.
+  void SetBusyFootprint(WorkFootprint item);
+  // Sets the idle time for a WorkFootprint to now.
+  void SetIdleFootprint(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;
 
@@ -134,11 +136,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
-
-  /// Replace the local resources by the provided value.
-  ///
-  /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const NodeResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///
@@ -150,8 +147,27 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
+  void PopulateResourceViewSyncMessage(
+      syncer::ResourceViewSyncMessage &resource_view_sync_message) const;
+
   /// Record the metrics.
   void RecordMetrics() const;
+
+  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+
+  /// Change the local node to the draining state.
+  /// After that, no new tasks can be scheduled onto the local node.
+  void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
+
+  bool IsLocalNodeDraining() const { return drain_request_.has_value(); }
+
+  /// Get the local drain request.
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return drain_request_;
+  }
+
+  /// Generate node death info from existing drain request.
+  rpc::NodeDeathInfo DeathInfoFromDrainRequest();
 
  private:
   struct ResourceUsage {
@@ -164,71 +180,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
   absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
   GetResourceUsageMap() const;
 
-  /// Notify the subscriber that the local resouces has changed.
-  void OnResourceChanged();
+  /// Notify the subscriber that the local resouces or state has changed.
+  void OnResourceOrStateChanged();
 
-  /// Increase the available capacities of the instances of a given resource.
-  ///
-  /// \param available A list of available capacities for resource's instances.
-  /// \param local_total Local total resource instances.
-  /// \param local_available Local available resource instances being updated.
-  ///
-  /// \return Overflow capacities of "local_available" after adding instance
-  /// capacities in "available", i.e.,
-  /// min(available + local_available, local_total)
-  std::vector<FixedPoint> AddAvailableResourceInstances(
-      const std::vector<FixedPoint> &available,
-      const std::vector<FixedPoint> &local_total,
-      std::vector<FixedPoint> &local_available) const;
-
-  /// Decrease the available capacities of the instances of a given resource.
-  ///
-  /// \param free A list of capacities for resource's instances to be freed.
-  /// \param local_available Local available resource instances being updated.
-  /// \param allow_going_negative Allow the values to go negative (disable underflow).
-  ///
-  /// \return Underflow of "local_available" after subtracting instance
-  /// capacities in "available", i.e.,.
-  /// max(available - reasource_instances.available, 0)
-  std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      const std::vector<FixedPoint> &available,
-      std::vector<FixedPoint> &local_available,
-      bool allow_going_negative = false) const;
-
-  /// Allocate enough capacity across the instances of a resource to satisfy "demand".
-  /// If resource has multiple unit-capacity instances, we consider two cases.
-  ///
-  /// 1) If the constraint is hard, allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional demand using the
-  /// instance with the smallest available capacity that can satisfy the fractional
-  /// demand. For example, assume a resource conisting of 4 instances, with available
-  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
-  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
-  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .3).
-  /// Thus, if the constraint is hard, we will allocate a bunch of full instances and
-  /// at most a fractional instance.
-  ///
-  /// 2) If the constraint is soft, we can allocate multiple fractional resources,
-  /// and even overallocate the resource. For example, in the previous case, if we
-  /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
-  /// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
-  /// all instances, and return success (true), despite the fact that the total
-  /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
-  /// than the demand, 3.5. In this case, the remaining available resource is
-  /// (0., 0., 0., 0.)
-  ///
-  /// \param demand: The resource amount to be allocated.
-  /// \param available: List of available capacities of the instances of the resource.
-  /// \param allocation: List of instance capacities allocated to satisfy the demand.
-  /// This is a return parameter.
-  ///
-  /// \return true, if allocation successful. In this case, the sum of the elements in
-  /// "allocation" is equal to "demand".
-
-  bool AllocateResourceInstances(FixedPoint demand,
-                                 std::vector<FixedPoint> &available,
-                                 std::vector<FixedPoint> *allocation) const;
+  /// Convert local resources to NodeResources.
+  NodeResources ToNodeResources() const;
 
   /// Allocate local resources to satisfy a given request (resource_request).
   ///
@@ -246,25 +202,48 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
+  /// \param record_idle_resource: Whether to record the idle resource. This is false
+  ///   when the resource was allocated partially so its idle state is actually not
+  ///   affected.
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+                                 bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();
 
+  void SetResourceIdle(const scheduling::ResourceID &resource_id);
+
+  void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
+
+  absl::optional<absl::Time> GetResourceIdleTime() const;
+
+  /// Get the draining deadline if node is in draining state.
+  ///
+  /// \return The draining deadline if node is in draining state, otherwise -1.
+  int64_t GetDrainingDeadline() const {
+    return drain_request_.has_value() ? drain_request_->deadline_timestamp_ms() : -1;
+  }
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
+
+  /// A map storing when the resource was last idle.
+  absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
   std::function<bool(void)> get_pull_manager_at_capacity_;
+  /// Function to shutdown the raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
+
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
+
+  /// The draining request this node received.
+  std::optional<rpc::DrainRayletRequest> drain_request_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
@@ -274,9 +253,13 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
+  FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
+  FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
 };
 
 }  // end namespace ray

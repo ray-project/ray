@@ -4,14 +4,14 @@ import logging
 import numpy as np
 import random
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
@@ -24,7 +24,7 @@ def standardized(array: np.ndarray):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-@DeveloperAPI
+@OldAPIStack
 def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = True):
     """Return a generator yielding minibatches from a sample batch.
 
@@ -68,7 +68,7 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
             yield samples.slice(i, j, si, sj)
 
 
-@DeveloperAPI
+@OldAPIStack
 def do_minibatch_sgd(
     samples,
     policies,

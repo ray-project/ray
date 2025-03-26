@@ -5,6 +5,19 @@
 Getting Involved / Contributing
 ===============================
 
+
+.. toctree::
+    :hidden:
+
+    development
+    ci
+    docs
+    writing-code-snippets
+    fake-autoscaler
+    testing-tips
+    debugging
+    profiling
+
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.
 
@@ -39,7 +52,7 @@ ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8
 Setting up your development environment
 ---------------------------------------
 
-To edit the Ray source code, you'll want to checkout the repository and also build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
+To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
 
 Submitting and Merging a Contribution
 -------------------------------------
@@ -96,7 +109,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -c python/requirements.txt -r python/requirements_test.txt
+    pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -222,11 +235,11 @@ Lint and Formatting
 
 We also have tests for code formatting and linting that need to pass before merge.
 
-* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements_linters.txt>`_ first with:
+* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements/lint-requirements.txt>`_ first with:
 
 .. code-block:: shell
 
-  pip install -r python/requirements_linters.txt
+  pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
@@ -234,7 +247,9 @@ You can run the following locally:
 
 .. code-block:: shell
 
-    scripts/format.sh
+    pip install -U pre-commit==3.5.0
+    pre-commit install  # automatic checks before committing
+    pre-commit run ruff -a
 
 An output like the following indicates failure:
 
@@ -272,7 +287,6 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/lint/check-git-clang-tidy-output.sh
 
-You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------
@@ -284,9 +298,6 @@ multiple CI test jobs.
 The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
-
-* Raylet integration tests commands:
-    * ``bazel test //:core_worker_test``
 
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``
@@ -325,7 +336,23 @@ For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward comp
     def tune_user_callback(model, score, **future_kwargs):
         pass
 
+Community Examples
+------------------
 
+We're always looking for new example contributions! When contributing an example for a Ray library,
+include a link to your example in the ``examples.yml`` file for that library:
+
+.. code-block:: yaml
+
+     - title: Serve a Java App
+       skill_level: advanced
+       link: tutorials/java
+       contributor: community
+
+Give your example a title, a skill level (``beginner``, ``intermediate``, or ``advanced``), and a
+link (relative links point to other documentation pages, but direct links starting with ``http://``
+also work). Include the ``contributor: community`` metadata to ensure that the example is correctly
+labeled as a community example in the example gallery.
 
 Becoming a Reviewer
 -------------------

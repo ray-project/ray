@@ -1,0 +1,12 @@
+clang-format==12.0.1
+docutils
+pre-commit==3.5.0
+mypy==1.7.0
+mypy-extensions==1.0.0
+types-PyYAML==6.0.12.2
+black==22.10.0
+semgrep==1.32.0
+shellcheck-py==0.7.1.1
+yq
+types-pycurl==7.45.3.20240421
+types-requests==2.31.0.6

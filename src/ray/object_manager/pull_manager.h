@@ -18,6 +18,12 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind/bind.hpp>
 #include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -26,18 +32,17 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
-#include "ray/object_manager/common.h"
-#include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
 
 // Identifier for task metrics reporting, which is tuple of the task name
 // (empty string if unknown), and is_retry bool.
-typedef std::pair<std::string, bool> TaskMetricsKey;
+using TaskMetricsKey = std::pair<std::string, bool>;
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
@@ -65,13 +70,13 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id,
-      const std::function<bool(const ObjectID &)> object_is_local,
-      const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const std::function<void(const ObjectID &)> cancel_pull_request,
-      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-      const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds,
+      NodeID self_node_id,
+      std::function<bool(const ObjectID &)> object_is_local,
+      std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      std::function<void(const ObjectID &)> cancel_pull_request,
+      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<double()> get_time_seconds,
       int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
@@ -181,7 +186,7 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
-    ObjectPullRequest(double first_retry_time)
+    explicit ObjectPullRequest(double first_retry_time)
         : client_locations(),
           spilled_url(),
           next_pull_time(first_retry_time),
@@ -364,7 +369,7 @@ class PullManager {
   /// request or if it is already local. This also sets a timeout for when to
   /// make the next attempt to make the object local.
   void TryToMakeObjectLocal(const ObjectID &object_id)
-      EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(active_objects_mu_);
 
   /// Returns whether the set of active pull requests exceeds the memory allowance
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
@@ -494,7 +499,7 @@ class PullManager {
   /// is the number of bytes that we are currently pulling, and it must be less
   /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
-      active_object_pull_requests_ GUARDED_BY(active_objects_mu_);
+      active_object_pull_requests_ ABSL_GUARDED_BY(active_objects_mu_);
 
   /// Tracks the objects we have pinned. Keys are subset of active_object_pull_requests_.
   /// We need to pin these objects so that parts of in-progress bundles aren't evicted

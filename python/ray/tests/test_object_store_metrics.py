@@ -11,6 +11,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray._private.worker import RayContext
+from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
 KiB = 1 << 10
 MiB = 1 << 20
@@ -92,7 +93,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -134,7 +135,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -255,7 +256,7 @@ def test_fallback_memory(shutdown_only):
 
     wait_for_condition(
         # 2KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -282,8 +283,8 @@ def test_fallback_memory(shutdown_only):
     }
 
     wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        # 3KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -302,8 +303,8 @@ def test_fallback_memory(shutdown_only):
     }
 
     wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        # 3KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -333,7 +334,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -347,7 +348,7 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -381,7 +382,7 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
         assert object_store_memory_bytes_from_dashboard == 500 * MiB
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=RAY_DASHBOARD_STATS_UPDATING_INTERVAL * 1.5)
 
 
 if __name__ == "__main__":

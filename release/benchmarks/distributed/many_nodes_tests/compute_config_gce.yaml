@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
 allowed_azs:
-    - us-west1-c
+  - us-west1-c
 
 gcp_advanced_configurations_json:
   instance_properties:
@@ -11,13 +11,18 @@ gcp_advanced_configurations_json:
         initialize_params:
           disk_size_gb: 30
 
+    # NFS needs to be disabled for this test, since the test spawns too many nodes
+    # and may hit the limit on the # of clients.
+    labels:
+      as-feature-disable-nfs-mount: "true"
+
 head_node_type:
-    name: head_node
-    instance_type: n2-standard-64
+  name: head_node
+  instance_type: n2-standard-64
 
 worker_node_types:
-   - name: worker_node
-     instance_type: n2-standard-2
-     min_workers: 500
-     max_workers: 2000
-     use_spot: false
+  - name: worker_node
+    instance_type: n2-standard-2
+    min_workers: 500
+    max_workers: 2000
+    use_spot: false

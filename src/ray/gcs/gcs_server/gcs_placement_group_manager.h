@@ -15,28 +15,29 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <deque>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
@@ -83,6 +84,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
+    placement_group_table_data_.set_soft_target_node_id(
+        placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
@@ -159,6 +162,10 @@ class GcsPlacementGroup {
   /// Returns the maximum CPU fraction per node for this placement group.
   double GetMaxCpuFractionPerNode() const;
 
+  /// Return the target node ID where bundles of this placement group should be placed.
+  /// Only works for STRICT_PACK placement group.
+  NodeID GetSoftTargetNodeID() const;
+
   const rpc::PlacementGroupStats &GetStats() const;
 
   rpc::PlacementGroupStats *GetMutableStats();
@@ -232,12 +239,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
   GcsPlacementGroupManager(instrumented_io_context &io_context,
-                           std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                           GcsPlacementGroupSchedulerInterface *scheduler,
+                           gcs::GcsTableStorage *gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
-  ~GcsPlacementGroupManager() = default;
+  ~GcsPlacementGroupManager() override = default;
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -300,7 +307,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff,
+                                      ExponentialBackoff backoff,
                                       bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
@@ -379,19 +386,14 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
-  /// Get a read only view of the pending placement groups.
+  /// Get the placement group load information.
   ///
-  /// \return Pending placement groups.
-  const absl::btree_multimap<
-      int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
-
-  /// Get a read only view of the infeasible placement groups.
+  /// The API guarantees the returned placement groups' states
+  /// are either PENDING or RESCHEDULING.
   ///
-  /// \return Infeasible placement groups.
-  const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
-      const;
+  /// \return Placement group load information. Users should check if
+  /// the returned rpc has any placement_group_data.
+  virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
  protected:
   /// For testing/mocking only.
@@ -410,7 +412,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// it's not set. This will be used to generate the deferred time for this pg.
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
                          std::optional<int64_t> rank = std::nullopt,
-                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+                         std::optional<ExponentialBackoff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.
@@ -473,18 +475,18 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// need to post retry job to io context. And when schedule pending placement
   /// group, we always start with the one with the smallest key.
   absl::btree_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+                       std::pair<ExponentialBackoff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.
   std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
-  std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
-      gcs_placement_group_scheduler_;
+  /// Scheduler's lifecycle lies in [GcsServer].
+  gcs::GcsPlacementGroupSchedulerInterface *gcs_placement_group_scheduler_ = nullptr;
 
   /// Used to update placement group information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage *gcs_table_storage_ = nullptr;
 
   /// Counter of placement groups broken down by State.
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>
@@ -523,8 +525,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  friend GcsMonitorServerTest;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

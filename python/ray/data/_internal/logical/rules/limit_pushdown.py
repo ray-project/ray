@@ -25,7 +25,7 @@ class LimitPushdownRule(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         optimized_dag = self._apply_limit_pushdown(plan.dag)
         optimized_dag = self._apply_limit_fusion(optimized_dag)
-        return LogicalPlan(dag=optimized_dag)
+        return LogicalPlan(dag=optimized_dag, context=plan.context)
 
     def _apply_limit_pushdown(self, op: LogicalOperator) -> LogicalOperator:
         """Given a DAG of LogicalOperators, traverse the DAG and push down

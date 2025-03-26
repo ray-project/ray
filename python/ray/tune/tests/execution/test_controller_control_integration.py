@@ -1,13 +1,17 @@
+import sys
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
+
+STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
@@ -25,19 +29,22 @@ def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testStopTrial
     """
+
+    register_mock_trainable()
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(),
+        resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 10},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 1}]),
         "config": {"sleep": 1},
+        "storage": STORAGE,
     }
     trials = [
-        Trial("__fake", **kwargs),
-        Trial("__fake", **kwargs),
-        Trial("__fake", **kwargs),
-        Trial("__fake", **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
     ]
     for t in trials:
         runner.add_trial(t)
@@ -107,16 +114,19 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
     in ``self._stopping_trials``.
     """
     runner = TuneController(
-        resource_manager_factory=lambda: resource_manager_cls(), reuse_actors=True
+        resource_manager_factory=lambda: resource_manager_cls(),
+        reuse_actors=True,
+        storage=STORAGE,
     )
 
-    def train(config):
+    def train_fn(config):
         return 1
 
-    register_trainable("test_remove_actor_tracking", train)
+    register_trainable("test_remove_actor_tracking", train_fn)
 
     kwargs = {
         "placement_group_factory": PlacementGroupFactory([{"CPU": 4, "GPU": 2}]),
+        "storage": STORAGE,
     }
     trials = [Trial("test_remove_actor_tracking", **kwargs) for i in range(4)]
     for t in trials:

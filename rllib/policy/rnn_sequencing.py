@@ -15,9 +15,10 @@ import logging
 import numpy as np
 import tree  # pip install dm_tree
 from typing import List, Optional
+import functools
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
@@ -30,7 +31,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def pad_batch_to_sequences_of_same_size(
     batch: SampleBatch,
     max_seq_len: int,
@@ -38,6 +39,8 @@ def pad_batch_to_sequences_of_same_size(
     batch_divisibility_req: int = 1,
     feature_keys: Optional[List[str]] = None,
     view_requirements: Optional[ViewRequirementsDict] = None,
+    _enable_new_api_stack: bool = False,
+    padding: str = "zero",
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -61,6 +64,10 @@ def pad_batch_to_sequences_of_same_size(
         view_requirements: An optional Policy ViewRequirements dict to
             be able to infer whether e.g. dynamic max'ing should be
             applied over the seq_lens.
+        _enable_new_api_stack: This is a temporary flag to enable the new RLModule API.
+            After a complete rollout of the new API, this flag will be removed.
+        padding: Padding type to use. Either "zero" or "last". Zero padding
+            will pad with zeros, last padding will pad with the last value.
     """
     # If already zero-padded, skip.
     if batch.zero_padded:
@@ -81,7 +88,33 @@ def pad_batch_to_sequences_of_same_size(
 
     # RNN/attention net case. Figure out whether we should apply dynamic
     # max'ing over the list of sequence lengths.
-    if "state_in_0" in batch or "state_out_0" in batch:
+    if _enable_new_api_stack and ("state_in" in batch or "state_out" in batch):
+        # TODO (Kourosh): This is a temporary fix to enable the new RLModule API.
+        # We should think of a more elegant solution once we have confirmed that other
+        # parts of the API are stable and user-friendly.
+        seq_lens = batch.get(SampleBatch.SEQ_LENS)
+
+        # state_in is a nested dict of tensors of states. We need to retreive the
+        # length of the inner most tensor (which should be already the same as the
+        # length of other tensors) and compare it to len(seq_lens).
+        state_ins = tree.flatten(batch["state_in"])
+        if state_ins:
+            assert all(
+                len(state_in) == len(state_ins[0]) for state_in in state_ins
+            ), "All state_in tensors should have the same batch_dim size."
+
+            # if the batch dim of states is the same as the number of sequences
+            if len(state_ins[0]) == len(seq_lens):
+                states_already_reduced_to_init = True
+
+            # TODO (Kourosh): What is the use-case of DynamicMax functionality?
+            dynamic_max = True
+        else:
+            dynamic_max = False
+
+    elif not _enable_new_api_stack and (
+        "state_in_0" in batch or "state_out_0" in batch
+    ):
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
         if batch.get(SampleBatch.SEQ_LENS) is not None and len(
@@ -90,7 +123,7 @@ def pad_batch_to_sequences_of_same_size(
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
-        if view_requirements["state_in_0"].shift_from is None:
+        if view_requirements and view_requirements["state_in_0"].shift_from is None:
             dynamic_max = True
         # Attention Nets (state inputs are over some range): No dynamic maxing
         # possible.
@@ -111,15 +144,14 @@ def pad_batch_to_sequences_of_same_size(
     state_keys = []
     feature_keys_ = feature_keys or []
     for k, v in batch.items():
-        if k.startswith("state_in_"):
+        if k.startswith("state_in"):
             state_keys.append(k)
         elif (
             not feature_keys
-            and not k.startswith("state_out_")
-            and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
+            and (not k.startswith("state_out") if not _enable_new_api_stack else True)
+            and k not in [SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
-
     feature_sequences, initial_states, seq_lens = chop_into_sequences(
         feature_columns=[batch[k] for k in feature_keys_],
         state_columns=[batch[k] for k in state_keys],
@@ -132,8 +164,9 @@ def pad_batch_to_sequences_of_same_size(
         states_already_reduced_to_init=states_already_reduced_to_init,
         shuffle=shuffle,
         handle_nested_data=True,
+        padding=padding,
+        pad_infos_with_empty_dicts=_enable_new_api_stack,
     )
-
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
     for i, k in enumerate(state_keys):
@@ -157,7 +190,7 @@ def pad_batch_to_sequences_of_same_size(
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
@@ -186,6 +219,7 @@ def add_time_dimension(
     # batch_size == len(seq_lens) * max(seq_lens)
     if framework in ["tf2", "tf"]:
         assert time_major is False, "time-major not supported yet for tf!"
+        padded_inputs = tf.convert_to_tensor(padded_inputs)
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = tf.shape(seq_lens)[0]
@@ -199,8 +233,8 @@ def add_time_dimension(
             axis=0,
         )
         return tf.reshape(padded_inputs, new_shape)
-    else:
-        assert framework == "torch", "`framework` must be either tf or torch!"
+    elif framework == "torch":
+        padded_inputs = torch.as_tensor(padded_inputs)
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
@@ -213,9 +247,24 @@ def add_time_dimension(
             # Swap the batch and time dimensions
             padded_outputs = padded_outputs.transpose(0, 1)
         return padded_outputs
+    else:
+        assert framework == "np", "Unknown framework: {}".format(framework)
+        padded_inputs = np.asarray(padded_inputs)
+        padded_batch_size = padded_inputs.shape[0]
+
+        # Dynamically reshape the padded batch to introduce a time dimension.
+        new_batch_size = seq_lens.shape[0]
+        time_size = padded_batch_size // new_batch_size
+        batch_major_shape = (new_batch_size, time_size) + padded_inputs.shape[1:]
+        padded_outputs = padded_inputs.reshape(batch_major_shape)
+
+        if time_major:
+            # Swap the batch and time dimensions
+            padded_outputs = padded_outputs.transpose(0, 1)
+        return padded_outputs
 
 
-@DeveloperAPI
+@OldAPIStack
 def chop_into_sequences(
     *,
     feature_columns,
@@ -230,6 +279,8 @@ def chop_into_sequences(
     states_already_reduced_to_init=False,
     handle_nested_data=False,
     _extra_padding=0,
+    padding: str = "zero",
+    pad_infos_with_empty_dicts: bool = False,
 ):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -253,6 +304,13 @@ def chop_into_sequences(
             If False, assumes that all items in `feature_columns` are
             only np.ndarrays (no nested structured of np.ndarrays).
         _extra_padding: Add extra padding to the end of sequences.
+        padding: Padding type to use. Either "zero" or "last". Zero padding
+            will pad with zeros, last padding will pad with the last value.
+        pad_infos_with_empty_dicts: If True, will zero-pad INFOs with empty
+            dicts (instead of None). Used by the new API stack in the meantime,
+            however, as soon as the new ConnectorV2 API will be activated (as
+            part of the new API stack), we will no longer use this utility function
+            anyway.
 
     Returns:
         f_pad: Padded feature columns. These will be of shape
@@ -261,22 +319,28 @@ def chop_into_sequences(
             [NUM_SEQUENCES, ...].
         seq_lens: List of sequence lengths, of shape [NUM_SEQUENCES].
 
-    Examples:
-        >>> from ray.rllib.policy.rnn_sequencing import chop_into_sequences
-        >>> f_pad, s_init, seq_lens = chop_into_sequences( # doctest: +SKIP
-        ...     episode_ids=[1, 1, 5, 5, 5, 5],
-        ...     unroll_ids=[4, 4, 4, 4, 4, 4],
-        ...     agent_indices=[0, 0, 0, 0, 0, 0],
-        ...     feature_columns=[[4, 4, 8, 8, 8, 8],
-        ...                      [1, 1, 0, 1, 1, 0]],
-        ...     state_columns=[[4, 5, 4, 5, 5, 5]],
-        ...     max_seq_len=3)
-        >>> print(f_pad) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+        f_pad, s_init, seq_lens = chop_into_sequences(
+            episode_ids=[1, 1, 5, 5, 5, 5],
+            unroll_ids=[4, 4, 4, 4, 4, 4],
+            agent_indices=[0, 0, 0, 0, 0, 0],
+            feature_columns=[[4, 4, 8, 8, 8, 8],
+                             [1, 1, 0, 1, 1, 0]],
+            state_columns=[[4, 5, 4, 5, 5, 5]],
+            max_seq_len=3)
+        print(f_pad)
+        print(s_init)
+        print(seq_lens)
+
+
+    .. testoutput::
+
         [[4, 4, 0, 8, 8, 8, 8, 0, 0],
          [1, 1, 0, 0, 1, 1, 0, 0, 0]]
-        >>> print(s_init) # doctest: +SKIP
         [[4, 4, 5]]
-        >>> print(seq_lens)
         [2, 3, 1]
     """
 
@@ -302,6 +366,8 @@ def chop_into_sequences(
     if dynamic_max:
         max_seq_len = max(seq_lens) + _extra_padding
 
+    length = len(seq_lens) * max_seq_len
+
     feature_sequences = []
     for col in feature_columns:
         if isinstance(col, list):
@@ -313,9 +379,18 @@ def chop_into_sequences(
             if not isinstance(f, np.ndarray):
                 f = np.array(f)
 
-            length = len(seq_lens) * max_seq_len
-            if f.dtype == object or f.dtype.type is np.str_:
+            # New stack behavior (temporarily until we move to ConnectorV2 API, where
+            # this (admitedly convoluted) function will no longer be used at all).
+            if (
+                f.dtype == object
+                and pad_infos_with_empty_dicts
+                and isinstance(f[0], dict)
+            ):
+                f_pad = [{} for _ in range(length)]
+            # Old stack behavior: Pad INFOs with None.
+            elif f.dtype == object or f.dtype.type is np.str_:
                 f_pad = [None] * length
+            # Pad everything else with zeros.
             else:
                 # Make sure type doesn't change.
                 f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)
@@ -325,7 +400,13 @@ def chop_into_sequences(
                 for seq_offset in range(len_):
                     f_pad[seq_base + seq_offset] = f[i]
                     i += 1
+
+                if padding == "last":
+                    for seq_offset in range(len_, max_seq_len):
+                        f_pad[seq_base + seq_offset] = f[i - 1]
+
                 seq_base += max_seq_len
+
             assert i == len(f), f
             feature_sequences[-1].append(f_pad)
 
@@ -333,16 +414,22 @@ def chop_into_sequences(
         initial_states = state_columns
     else:
         initial_states = []
-        for s in state_columns:
-            # Skip unnecessary copy.
-            if not isinstance(s, np.ndarray):
-                s = np.array(s)
-            s_init = []
-            i = 0
-            for len_ in seq_lens:
-                s_init.append(s[i])
-                i += len_
-            initial_states.append(np.array(s_init))
+        for state_column in state_columns:
+            if isinstance(state_column, list):
+                state_column = np.array(state_column)
+            initial_state_flat = []
+            # state_column may have a nested structure (e.g. LSTM state).
+            for s in tree.flatten(state_column):
+                # Skip unnecessary copy.
+                if not isinstance(s, np.ndarray):
+                    s = np.array(s)
+                s_init = []
+                i = 0
+                for len_ in seq_lens:
+                    s_init.append(s[i])
+                    i += len_
+                initial_state_flat.append(np.array(s_init))
+            initial_states.append(tree.unflatten_as(state_column, initial_state_flat))
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))
@@ -365,7 +452,7 @@ def chop_into_sequences(
     return feature_sequences, initial_states, seq_lens
 
 
-@DeveloperAPI
+@OldAPIStack
 def timeslice_along_seq_lens_with_overlap(
     sample_batch: SampleBatchType,
     seq_lens: Optional[List[int]] = None,
@@ -512,3 +599,85 @@ def timeslice_along_seq_lens_with_overlap(
             ts.right_zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices
+
+
+@OldAPIStack
+def get_fold_unfold_fns(b_dim: int, t_dim: int, framework: str):
+    """Produces two functions to fold/unfold any Tensors in a struct.
+
+    Args:
+        b_dim: The batch dimension to use for folding.
+        t_dim: The time dimension to use for folding.
+        framework: The framework to use for folding. One of "tf2" or "torch".
+
+    Returns:
+        fold: A function that takes a struct of torch.Tensors and reshapes
+            them to have a first dimension of `b_dim * t_dim`.
+        unfold: A function that takes a struct of torch.Tensors and reshapes
+            them to have a first dimension of `b_dim` and a second dimension
+            of `t_dim`.
+    """
+    if framework in "tf2":
+        # TensorFlow traced eager complains if we don't convert these to tensors here
+        b_dim = tf.convert_to_tensor(b_dim)
+        t_dim = tf.convert_to_tensor(t_dim)
+
+        def fold_mapping(item):
+            if item is None:
+                # Torch has no representation for `None`, so we return None
+                return item
+            item = tf.convert_to_tensor(item)
+            shape = tf.shape(item)
+            other_dims = shape[2:]
+            return tf.reshape(item, tf.concat([[b_dim * t_dim], other_dims], axis=0))
+
+        def unfold_mapping(item):
+            if item is None:
+                return item
+            item = tf.convert_to_tensor(item)
+            shape = item.shape
+            other_dims = shape[1:]
+
+            return tf.reshape(item, tf.concat([[b_dim], [t_dim], other_dims], axis=0))
+
+    elif framework == "torch":
+
+        def fold_mapping(item):
+            if item is None:
+                # Torch has no representation for `None`, so we return None
+                return item
+            item = torch.as_tensor(item)
+            size = list(item.size())
+            current_b_dim, current_t_dim = list(size[:2])
+
+            assert (b_dim, t_dim) == (current_b_dim, current_t_dim), (
+                "All tensors in the struct must have the same batch and time "
+                "dimensions. Got {} and {}.".format(
+                    (b_dim, t_dim), (current_b_dim, current_t_dim)
+                )
+            )
+
+            other_dims = size[2:]
+            return item.reshape([b_dim * t_dim] + other_dims)
+
+        def unfold_mapping(item):
+            if item is None:
+                return item
+            item = torch.as_tensor(item)
+            size = list(item.size())
+            current_b_dim = size[0]
+            other_dims = size[1:]
+            assert current_b_dim == b_dim * t_dim, (
+                "The first dimension of the tensor must be equal to the product of "
+                "the desired batch and time dimensions. Got {} and {}.".format(
+                    current_b_dim, b_dim * t_dim
+                )
+            )
+            return item.reshape([b_dim, t_dim] + other_dims)
+
+    else:
+        raise ValueError(f"framework {framework} not implemented!")
+
+    return functools.partial(tree.map_structure, fold_mapping), functools.partial(
+        tree.map_structure, unfold_mapping
+    )

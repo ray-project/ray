@@ -1,107 +1,149 @@
 .. _data_key_concepts:
 
-============
 Key Concepts
 ============
 
-.. _dataset_concept:
 
-----------
-Dataset
-----------
+Datasets and blocks
+-------------------
 
-A :term:`Dataset <Dataset (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
-Having multiple blocks in a dataset allows for parallel transformation and ingest.
+There are two main concepts in Ray Data:
 
-For ML use cases, Dataset natively supports mixing tensors with tabular data. To
-learn more, read :ref:`Working with tensor data <working_with_tensors>`.
+* Datasets
+* Blocks
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows. Note that certain blocks
-may not be computed yet. Normally, callers iterate over dataset blocks in a streaming fashion, so that not all
-blocks need to be materialized in the cluster memory at once.
+`Dataset` is the main user-facing Python API. It represents a distributed data collection and define data loading and processing operations. Users typically use the API by:
 
-.. image:: images/dataset-arch.svg
+1. Create a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data.
+2. Apply transformations to the data.
+3. Write the outputs to external storage or feed the outputs to training workers.
 
+The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
+like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
+and execute operations in a pipelined streaming fashion.
+
+Each *Dataset* consists of *blocks*. A *block* is a contiguous subset of rows from a dataset,
+which are distributed across the cluster and processed independently in parallel.
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
+(which is usually the entrypoint of the program, referred to as the :term:`driver`)
+and stores the blocks as objects in Ray's shared-memory
+:ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
+Pandas Dataframes or Arrow tables.
+
+.. image:: images/dataset-arch-with-blocks.svg
 ..
-  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+  https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
 
-Reading Data
-============
+Operators and Plans
+-------------------
 
-Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces one or more output blocks:
+Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program using the Dataset API, Ray Data first builds a *logical plan* - a high-level description of what operations to perform. When execution begins, it converts this into a *physical plan* that specifies exactly how to execute those operations.
 
-.. image:: images/dataset-read.svg
+This diagram illustrates the complete planning process:
+
+.. https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit
+
+.. image:: images/get_execution_plan.svg
+   :width: 600
    :align: center
 
-..
-  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+The building blocks of these plans are operators:
 
-You can increase or decrease the number of output blocks by changing the ``parallelism`` parameter.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, ``ReadOp`` specifies what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, ``TaskPoolMapOperator`` launches Ray tasks to actually read the data.
 
-For an in-depth guide on creating datasets, read :ref:`Loading Data <loading_data>`.
+Here is a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
 
-Transforming Data
-=================
+.. testcode::
+    import ray
 
-Dataset uses either Ray tasks or Ray actors to transform data blocks. By default, it uses tasks.
+    dataset = ray.data.range(100)
+    dataset = dataset.add_column("test", lambda x: x["id"] + 1)
+    dataset = dataset.select_columns("test")
 
-To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
-:meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
-pool of Ray actors. This allows you to cache expensive state initialization
-(e.g., model loading for GPU-based tasks).
+You can inspect the resulting logical plan by printing the dataset:
 
-.. image:: images/dataset-map.svg
+.. code-block::
+
+    Project
+    +- MapBatches(add_column)
+       +- Dataset(schema={...})
+
+When execution begins, Ray Data optimizes the logical plan, then translate it into a physical plan - a series of operators that implement the actual data transformations. During this translation:
+
+1. A single logical operator may become multiple physical operators. For example, ``ReadOp`` becomes both ``InputDataBuffer`` and ``TaskPoolMapOperator``.
+2. Both logical and physical plans go through optimization passes. For example, ``OperatorFusionRule`` combines map operators to reduce serialization overhead.
+
+Physical operators work by:
+
+* Taking in a stream of block references
+* Performing their operation (either transforming data with Ray Tasks/Actors or manipulating references)
+* Outputting another stream of block references
+
+For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-concepts>`.
+
+.. note:: A dataset's execution plan only runs when you materialize or consume the dataset through operations like :meth:`~ray.data.Dataset.show`.
+
+.. _streaming-execution:
+
+Streaming execution model
+-------------------------
+
+Ray Data uses a *streaming execution model* to efficiently process large datasets.
+
+Rather than materializing the entire dataset in memory at once,
+Ray Data can process data in a streaming fashion through a pipeline of operations.
+
+This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
+
+Here is an example of how the streaming execution model works. The below code creates a dataset with 1K rows, applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
+
+.. testcode::
+
+    import ray
+
+    # Create a dataset with 1K rows
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+    # Define a pipeline of operations
+    ds = ds.map(lambda x: {"target1": x["target"] * 2})
+    ds = ds.map(lambda x: {"target2": x["target1"] * 2})
+    ds = ds.map(lambda x: {"target3": x["target2"] * 2})
+    ds = ds.filter(lambda x: x["target3"] % 4 == 0)
+
+    # Data starts flowing when you call a method like show()
+    ds.show(5)
+
+This creates a logical plan like the following:
+
+.. code-block::
+
+    Filter(<lambda>)
+    +- Map(<lambda>)
+       +- Map(<lambda>)
+          +- Map(<lambda>)
+             +- Dataset(schema={...})
+
+
+The streaming topology looks like the following:
+
+.. https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit
+
+.. image:: images/streaming-topology.svg
+   :width: 1000
    :align: center
-..
-  https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For an in-depth guide on transforming datasets, read :ref:`Transforming Data <transforming_data>`.
+In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
 
-Shuffling Data
-==============
+The streaming execution model provides significant advantages for data processing.
 
-Operations like :meth:`~ray.data.Dataset.sort` and :meth:`~ray.data.Dataset.groupby`
-require blocks to be partitioned by value or *shuffled*. Dataset uses tasks to shuffle blocks in a map-reduce
-style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
-blocks.
+In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
 
-Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks in a :class:`~ray.data.Dataset`.
-Repartition has two modes:
+To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
 
-* ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-* ``shuffle=True`` - performs a full distributed shuffle
+.. note::
+   Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
 
-.. image:: images/dataset-shuffle.svg
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
-
-Dataset can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
-Note that operations like shuffle materialize the entire Dataset prior to their execution (shuffle execution is not streamed through memory).
-
-Iteration and materialization
-=============================
-
-Most transformations on a dataset are lazy. They don't execute until you iterate over the dataset or call
-:meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. When a Dataset is materialized, its
-type becomes a `MaterializedDataset`, which indicates that all its blocks are materialized in Ray
-object store memory.
-
-Dataset transformations are executed in a streaming way, incrementally on the data and
-with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
-
-Datasets and MaterializedDatasets can be freely passed between Ray tasks, actors, and libraries without
-incurring copies of the underlying block data (pass by reference semantics).
-
-Fault tolerance
-===============
-
-Dataset performs *lineage reconstruction* to recover data. If an application error or
-system failure occurs, Dataset recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-restarts the actor used for computing the block prior to re-executing the task.
-
-Fault tolerance is not supported if the original worker process that created the Dataset dies.
-This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
+You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.

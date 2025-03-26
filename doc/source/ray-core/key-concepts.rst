@@ -5,12 +5,16 @@ Key Concepts
 
 This section overviews Ray's key concepts. These primitives work together to enable Ray to flexibly support a broad range of distributed applications.
 
+.. _task-key-concept:
+
 Tasks
 -----
 
 Ray enables arbitrary functions to be executed asynchronously on separate Python workers. These asynchronous Ray functions are called "tasks". Ray enables tasks to specify their resource requirements in terms of CPUs, GPUs, and custom resources. These resource requests are used by the cluster scheduler to distribute tasks across the cluster for parallelized execution.
 
 See the :ref:`User Guide for Tasks <ray-remote-functions>`.
+
+.. _actor-key-concept:
 
 Actors
 ------

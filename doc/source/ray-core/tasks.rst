@@ -14,7 +14,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             :start-after: __tasks_start__
             :end-before: __tasks_end__
 
-        See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
+        See the :func:`ray.remote<ray.remote>` API for more details.
 
     .. tab-item:: Java
 
@@ -97,8 +97,8 @@ Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see r
   total_actor_scheduled: 0
   total_actor_tasks: 0
   total_tasks: 5
-  
-  
+
+
   Table (group by func_name):
   ------------------------------------
       FUNC_OR_CLASS_NAME    STATE_COUNTS    TYPE
@@ -219,6 +219,10 @@ works as follows.
 
         ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
+Generators
+----------
+Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
+
 .. _ray-task-returns:
 
 Multiple returns
@@ -246,6 +250,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
             :start-after: __generator_start__
             :end-before: __generator_end__
 
+.. _ray-task-cancel:
 
 Cancelling tasks
 ----------------
@@ -281,6 +286,18 @@ You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
+Task Events
+-----------
+
+
+By default, Ray traces the execution of tasks, reporting task status events and profiling events
+that the Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
+
+You can change this behavior by setting ``enable_task_events`` options in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`
+to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray Dashboard.
+Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
+
 
 
 More about Ray Tasks

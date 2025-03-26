@@ -1,12 +1,28 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-guides:
 
-===========
 User Guides
 ===========
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. toctree::
+    :hidden:
+
+    rllib-advanced-api
+    rllib-callback
+    checkpoints
+    metrics-logger
+    single-agent-episode
+    rllib-replay-buffers
+    rllib-offline
+    rl-modules
+    rllib-learner
+    rllib-torch2x
+    rllib-fault-tolerance
+    rllib-dev
+    scaling-guide
 
 .. _rllib-feature-guide:
 
@@ -23,39 +39,39 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-advanced-api-doc
 
-            Advanced Features of the RLlib Python API
+            Advanced features of the RLlib python API
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-models
+        .. button-ref:: rllib-callback
 
-            Working With Models, Preprocessors and Action Distributions
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-saving-and-loading-algos-and-policies
-
-            Checkpointing your Algorithms and Policies, and Exporting your Models
+            Injecting custom code into RLlib through callbacks
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-concepts
+        .. button-ref:: metrics-logger
 
-            How To Customize Your Policies?
+            Logging metrics and statistics from custom code
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-sample-collection
+        .. button-ref:: checkpoints
 
-            How To Use Sample Collections and Trajectory Views?
+            Checkpointing your experiments and models
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: single-agent-episode
+
+            How to process trajectories through episodes
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -63,7 +79,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-offline
 
-            Working With Offline Data
+            Offline RL with offline datasets
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -71,7 +87,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-replay-buffers
 
-            Working with ReplayBuffers
+            Working with replay buffers
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -79,20 +95,12 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-dev
 
-            How To Contribute To RLlib?
+            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-cli
+        .. button-ref:: scaling-guide
 
-            How To Work With the RLlib CLI?
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-catalogs
-
-            How To Use the RLlib Catalogs
+            How to run RLlib experiments at scale

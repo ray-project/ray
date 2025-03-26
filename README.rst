@@ -4,7 +4,7 @@
     :target: http://docs.ray.io/en/master/?badge=master
 
 .. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
-    :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+    :target: https://www.ray.io/join-slack
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
@@ -12,16 +12,17 @@
 .. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
     :target: https://twitter.com/raydistributed
 
-|
+.. image:: https://img.shields.io/badge/Get_started_for_free-3C8AE9?logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8%2F9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABKElEQVQ4Ea2TvWoCQRRGnWCVWChIIlikC9hpJdikSbGgaONbpAoY8gKBdAGfwkfwKQypLQ1sEGyMYhN1Pd%2B6A8PqwBZeOHt%2FvsvMnd3ZXBRFPQjBZ9K6OY8ZxF%2B0IYw9PW3qz8aY6lk92bZ%2BVqSI3oC9T7%2FyCVnrF1ngj93us%2B540sf5BrCDfw9b6jJ5lx%2FyjtGKBBXc3cnqx0INN4ImbI%2Bl%2BPnI8zWfFEr4chLLrWHCp9OO9j19Kbc91HX0zzzBO8EbLK2Iv4ZvNO3is3h6jb%2BCwO0iL8AaWqB7ILPTxq3kDypqvBuYuwswqo6wgYJbT8XxBPZ8KS1TepkFdC79TAHHce%2F7LbVioi3wEfTpmeKtPRGEeoldSP%2FOeoEftpP4BRbgXrYZefsAI%2BP9JU7ImyEAAAAASUVORK5CYII%3D
+   :target: https://www.anyscale.com/ray-on-anyscale?utm_source=github&utm_medium=ray_readme&utm_campaign=get_started_badge
 
-Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for simplifying ML compute:
+Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a set of AI libraries for simplifying ML compute:
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray-padded.svg
 
 ..
   https://docs.google.com/drawings/d/1Pl8aCYOsZCo61cmp57c7Sja6HhIygGCvSZLi_AuBuqo/edit
 
-Learn more about `Ray AIR`_ and its libraries:
+Learn more about `Ray AI Libraries`_:
 
 - `Data`_: Scalable Datasets for ML
 - `Train`_: Distributed Training
@@ -35,13 +36,16 @@ Or more about `Ray Core`_ and its key abstractions:
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Immutable values accessible across the cluster.
 
-Monitor and debug Ray applications and clusters using the `Ray dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
+Learn more about Monitoring and Debugging:
+
+- Monitor Ray apps and clusters with the `Ray Dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
+- Debug Ray apps with the `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
 .. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
@@ -66,7 +70,6 @@ More Information
 
 - `Documentation`_
 - `Ray Architecture whitepaper`_
-- `Ray AIR Technical whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `Ownership: a distributed futures system for fine-grained tasks`_
 - `RLlib paper`_
@@ -78,7 +81,7 @@ More Information
 - `Ray HotOS paper`_
 - `Ray Architecture v1 whitepaper`_
 
-.. _`Ray AIR`: https://docs.ray.io/en/latest/ray-air/getting-started.html
+.. _`Ray AI Libraries`: https://docs.ray.io/en/latest/ray-air/getting-started.html
 .. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
 .. _`Tasks`: https://docs.ray.io/en/latest/ray-core/tasks.html
 .. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
@@ -86,7 +89,6 @@ More Information
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Ray Architecture v1 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview
-.. _`Ray AIR Technical whitepaper`: https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
@@ -135,5 +137,4 @@ Getting Involved
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
-.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
-
+.. _`Slack`: https://www.ray.io/join-slack?utm_source=github&utm_medium=ray_readme&utm_campaign=getting_involved

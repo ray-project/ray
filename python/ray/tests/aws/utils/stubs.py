@@ -12,6 +12,7 @@ from ray.tests.aws.utils.constants import (
     A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
     DEFAULT_LT,
     TWENTY_SUBNETS_IN_DIFFERENT_AZS,
+    DEFAULT_CLUSTER_NAME,
 )
 from ray.autoscaler._private.aws.config import key_pair
 from ray.tests.aws.utils.helpers import (
@@ -140,6 +141,18 @@ def create_sg_echo(ec2_client_stub, security_group):
             "Description": security_group["Description"],
             "GroupName": security_group["GroupName"],
             "VpcId": security_group["VpcId"],
+            "TagSpecifications": [
+                {
+                    "ResourceType": "security-group",
+                    "Tags": [
+                        {
+                            "Key": ray.autoscaler._private.aws.config.RAY,
+                            "Value": "true",
+                        },
+                        {"Key": "ray-cluster-name", "Value": DEFAULT_CLUSTER_NAME},
+                    ],
+                },
+            ],
         },
         service_response={"GroupId": security_group["GroupId"]},
     )
@@ -245,31 +258,6 @@ def describe_launch_template_versions_by_name_default(ec2_client_stub, versions)
             "Versions": versions,
         },
         service_response={"LaunchTemplateVersions": [DEFAULT_LT]},
-    )
-
-
-def describe_instance_status_ok(ec2_client_stub, instance_ids):
-    ec2_client_stub.add_response(
-        "describe_instance_status",
-        expected_params={"InstanceIds": instance_ids},
-        service_response={
-            "InstanceStatuses": [
-                {
-                    "InstanceId": instance_id,
-                    "InstanceState": {"Code": 16, "Name": "running"},
-                    "AvailabilityZone": "us-west-2",
-                    "SystemStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                    "InstanceStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                }
-            ]
-            for instance_id in instance_ids
-        },
     )
 
 

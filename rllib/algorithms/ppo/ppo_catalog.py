@@ -1,3 +1,4 @@
+# __sphinx_doc_begin__
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
@@ -8,23 +9,32 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
-def _check_if_diag_gaussian(action_distribution_cls, framework):
+def _check_if_diag_gaussian(action_distribution_cls, framework, no_error=False):
     if framework == "torch":
         from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
 
-        assert issubclass(action_distribution_cls, TorchDiagGaussian), (
-            f"free_log_std is only supported for DiagGaussian action distributions. "
-            f"Found action distribution: {action_distribution_cls}."
-        )
+        is_diag_gaussian = issubclass(action_distribution_cls, TorchDiagGaussian)
+        if no_error:
+            return is_diag_gaussian
+        else:
+            assert is_diag_gaussian, (
+                f"free_log_std is only supported for DiagGaussian action "
+                f"distributions. Found action distribution: {action_distribution_cls}."
+            )
     elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
 
-        assert issubclass(action_distribution_cls, TfDiagGaussian), (
-            "free_log_std is only supported for DiagGaussian action distributions. "
-            "Found action distribution: {}.".format(action_distribution_cls)
-        )
+        is_diag_gaussian = issubclass(action_distribution_cls, TfDiagGaussian)
+        if no_error:
+            return is_diag_gaussian
+        else:
+            assert is_diag_gaussian, (
+                "free_log_std is only supported for DiagGaussian action distributions. "
+                "Found action distribution: {}.".format(action_distribution_cls)
+            )
     else:
         raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
@@ -38,7 +48,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModule for
+    for the policy and value function. See implementations of DefaultPPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -49,6 +59,12 @@ class PPOCatalog(Catalog):
     Any custom head can be built by overriding the build_pi_head() and build_vf_head()
     methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
     build custom heads during RLModule runtime.
+
+    Any module built for exploration or inference is built with the flag
+    `ìnference_only=True` and does not contain a value network. This flag can be set
+    in the `SingleAgentModuleSpec` through the `inference_only` boolean flag.
+    In case that the actor-critic-encoder is not shared between the policy and value
+    function, the inference-only module will contain only the actor encoder network.
     """
 
     def __init__(
@@ -69,15 +85,16 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
-
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=self.encoder_config,
-            shared=self.model_config_dict["vf_share_layers"],
+            base_encoder_config=self._encoder_config,
+            shared=self._model_config_dict["vf_share_layers"],
         )
 
-        self.pi_and_vf_head_hiddens = self.model_config_dict["post_fcnet_hiddens"]
-        self.pi_and_vf_head_activation = self.model_config_dict["post_fcnet_activation"]
+        self.pi_and_vf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
+        self.pi_and_vf_head_activation = self._model_config_dict[
+            "head_fcnet_activation"
+        ]
 
         # We don't have the exact (framework specific) action dist class yet and thus
         # cannot determine the exact number of output nodes (action space) required.
@@ -92,6 +109,7 @@ class PPOCatalog(Catalog):
             output_layer_dim=1,
         )
 
+    @OverrideToImplementCustomLogic
     def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
         """Builds the ActorCriticEncoder.
 
@@ -114,9 +132,10 @@ class PPOCatalog(Catalog):
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
         """
         raise NotImplementedError(
-            "Use PPOCatalog.build_actor_critic_encoder() instead."
+            "Use PPOCatalog.build_actor_critic_encoder() instead for PPO."
         )
 
+    @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
 
@@ -132,18 +151,25 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        if self.model_config_dict["free_log_std"]:
+        if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
+            is_diag_gaussian = True
+        else:
+            is_diag_gaussian = _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls,
+                framework=framework,
+                no_error=True,
+            )
         required_output_dim = action_distribution_cls.required_input_dim(
-            space=self.action_space, model_config=self.model_config_dict
+            space=self.action_space, model_config=self._model_config_dict
         )
         # Now that we have the action dist class and number of outputs, we can define
         # our pi-config and build the pi head.
         pi_head_config_class = (
             FreeLogStdMLPHeadConfig
-            if self.model_config_dict["free_log_std"]
+            if self._model_config_dict["free_log_std"]
             else MLPHeadConfig
         )
         self.pi_head_config = pi_head_config_class(
@@ -152,10 +178,13 @@ class PPOCatalog(Catalog):
             hidden_layer_activation=self.pi_and_vf_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            clip_log_std=is_diag_gaussian,
+            log_std_clip_param=self._model_config_dict.get("log_std_clip_param", 20),
         )
 
         return self.pi_head_config.build(framework=framework)
 
+    @OverrideToImplementCustomLogic
     def build_vf_head(self, framework: str) -> Model:
         """Builds the value function head.
 
@@ -170,3 +199,6 @@ class PPOCatalog(Catalog):
             The value function head.
         """
         return self.vf_head_config.build(framework=framework)
+
+
+# __sphinx_doc_end__

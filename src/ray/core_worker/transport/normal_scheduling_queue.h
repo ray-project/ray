@@ -14,12 +14,14 @@
 
 #pragma once
 
+#include <deque>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/core_worker/transport/actor_scheduling_util.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
+#include "ray/core_worker/transport/scheduling_util.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -40,13 +42,13 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
-           std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+               accept_request,
+           std::function<void(const TaskSpecification &,
+                              const Status &,
+                              rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           const std::string &concurrency_group_name,
-           const FunctionDescriptor &function_descriptor,
-           TaskID task_id,
-           const std::vector<rpc::ObjectReference> &dependencies) override;
+           TaskSpecification task_spec) override;
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
   // If found, remove the InboundRequest from the queue and return true. Otherwise,
@@ -60,7 +62,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_ GUARDED_BY(mu_);
+  std::deque<InboundRequest> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 

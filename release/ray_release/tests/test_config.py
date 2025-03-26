@@ -2,7 +2,6 @@ import sys
 import yaml
 import pytest
 
-from ray_release.bazel import bazel_runfile
 from ray_release.test import Test
 from ray_release.config import (
     read_and_validate_release_test_collection,
@@ -13,18 +12,22 @@ from ray_release.config import (
 )
 from ray_release.exception import ReleaseTestConfigError
 
-_TEST_COLLECTION_FILE = bazel_runfile("release/release_tests.yaml")
+_TEST_COLLECTION_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+    "release/ray_release/tests/test_collection_data.yaml",
+]
 
 VALID_TEST = Test(
     **{
         "name": "validation_test",
         "group": "validation_group",
         "working_dir": "validation_dir",
-        "python": "3.7",
+        "python": "3.9",
         "frequency": "nightly",
         "team": "release",
         "cluster": {
-            "cluster_env": "app_config.yaml",
+            "byod": {"type": "gpu"},
             "cluster_compute": "tpl_cpu_small.yaml",
             "autosuspend_mins": 10,
         },
@@ -53,7 +56,8 @@ def test_parse_test_definition():
           frequency: nightly
           team: sample
           cluster:
-            cluster_env: env.yaml
+            byod:
+              type: gpu
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -75,7 +79,7 @@ def test_parse_test_definition():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
-    assert gce_test["cluster"]["cluster_env"] == "env.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
     invalid_test_definition = test_definitions[0]
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime
@@ -87,6 +91,42 @@ def test_parse_test_definition():
     invalid_test_definition["variations"] = [{"__suffix__": "aws"}, {}]
     with pytest.raises(ReleaseTestConfigError):
         parse_test_definition([invalid_test_definition])
+
+
+def test_parse_test_definition_with_defaults():
+    test_definitions = yaml.safe_load(
+        """
+        - name: DEFAULTS
+          working_dir: default_working_dir
+        - name: sample_test_with_default_working_dir
+          frequency: nightly
+          team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+        - name: sample_test_with_overridden_working_dir
+          working_dir: overridden_working_dir
+          frequency: nightly
+          team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+    """
+    )
+    test_with_default, test_with_override = parse_test_definition(test_definitions)
+    schema = load_schema_file()
+    assert not validate_test(test_with_default, schema)
+    assert not validate_test(test_with_override, schema)
+    assert test_with_default["working_dir"] == "default_working_dir"
+    assert test_with_override["working_dir"] == "overridden_working_dir"
 
 
 def test_schema_validation():
@@ -216,7 +256,8 @@ def test_compute_config_invalid_ebs():
 
 
 def test_load_and_validate_test_collection_file():
-    read_and_validate_release_test_collection(_TEST_COLLECTION_FILE)
+    tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
+    assert [test for test in tests if test.get_name() == "test_name"]
 
 
 if __name__ == "__main__":

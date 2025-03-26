@@ -8,7 +8,7 @@ import click
 import numpy as np
 
 import ray
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -117,7 +117,6 @@ def main(
     ray.init(
         runtime_env={
             "working_dir": os.path.dirname(__file__),
-            "env_vars": {"NCCL_SOCKET_IFNAME": "ens"},
         }
     )
     prepare_mnist()

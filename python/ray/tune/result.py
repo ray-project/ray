@@ -1,16 +1,14 @@
-import os
-
 # Importing for Backward Compatibility
 from ray.air.constants import (  # noqa: F401
-    TIMESTAMP,
-    TIME_THIS_ITER_S,
-    TRAINING_ITERATION,
+    EXPR_ERROR_FILE,
+    EXPR_ERROR_PICKLE_FILE,
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
-    EXPR_ERROR_PICKLE_FILE,
-    EXPR_ERROR_FILE,
+    TIME_THIS_ITER_S,
+    TIMESTAMP,
+    TRAINING_ITERATION,
 )
 
 # fmt: off
@@ -104,6 +102,8 @@ AUTO_RESULT_KEYS = (
     "timesteps_since_restore",
     "iterations_since_restore",
     "config",
+    # TODO(justinvyu): Move this stuff to train to avoid cyclical dependency.
+    "checkpoint_dir_name",
 )
 
 # __duplicate__ is a magic keyword used internally to
@@ -118,24 +118,6 @@ TRIAL_INFO = "__trial_info__"
 # to pass log file locations to the Trainable via the constructor.
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
-
-
-def _get_defaults_results_dir() -> str:
-    return (
-        # This can be overwritten by our libraries
-        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
-        # This is a directory provided by Bazel automatically
-        or os.environ.get("TEST_TMPDIR")
-        # This is the old way to specify the results dir
-        # Deprecate: Remove in 2.6
-        or os.environ.get("TUNE_RESULT_DIR")
-        # Default
-        or os.path.expanduser("~/ray_results")
-    )
-
-
-# Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
 
 DEFAULT_EXPERIMENT_NAME = "default"
 

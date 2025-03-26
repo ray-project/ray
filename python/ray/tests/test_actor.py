@@ -17,18 +17,20 @@ from ray._private.test_utils import (
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
+from ray._private.test_utils import SignalActor
+from ray.core.generated import gcs_pb2
+from ray._private.utils import hex_to_binary
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+
+from ray.util.state import list_actors
+
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle  # noqa
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
 
-
-@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+@pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
 def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
@@ -40,7 +42,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
         def get_val(self):
             return 3
 
-    if set_enable_auto_connect == "0":
+    if not set_enable_auto_connect:
         # Check that we can't actually create actors before ray.init() has
         # been called.
         with pytest.raises(Exception):
@@ -61,7 +63,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
 def test_not_reusing_task_workers(shutdown_only):
     @ray.remote
     def create_ref():
-        ref = ray.put(np.zeros(100_000_000))
+        ref = ray.put(np.zeros(10_000_000))
         return ref
 
     @ray.remote
@@ -72,7 +74,7 @@ def test_not_reusing_task_workers(shutdown_only):
         def foo(self):
             return
 
-    ray.init(num_cpus=1, object_store_memory=1000_000_000)
+    ray.init(num_cpus=1, object_store_memory=100_000_000)
     wrapped_ref = create_ref.remote()
     print(ray.get(ray.get(wrapped_ref)))
 
@@ -84,7 +86,7 @@ def test_not_reusing_task_workers(shutdown_only):
 
     # Flush the object store.
     for _ in range(10):
-        ray.put(np.zeros(100_000_000))
+        ray.put(np.zeros(10_000_000))
 
     # Object has been evicted and owner has died. Throws OwnerDiedError.
     print(ray.get(ray.get(wrapped_ref)))
@@ -283,6 +285,44 @@ def test_actor_import_counter(ray_start_10_cpus):
         return ray.get(actor.get_val.remote())
 
     assert ray.get(g.remote()) == num_remote_functions - 1
+
+
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_exit_actor(ray_start_regular, enable_concurrency_group):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
+    class TestActor:
+        def exit(self):
+            ray.actor.exit_actor()
+
+    num_actors = 30
+    actor_class_name = TestActor.__ray_metadata__.class_name
+
+    actors = [TestActor.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
+
+    invoke_state_api_n(
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -939,6 +979,7 @@ def test_named_actor_cache(ray_start_regular_shared):
     a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
     assert ray.get(first_get.inc_and_get.remote()) == 1
+
     second_get = ray.get_actor("hi")
     assert ray.get(second_get.inc_and_get.remote()) == 2
     ray.kill(a, no_restart=True)
@@ -1047,6 +1088,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
     )
 
 
+@pytest.mark.parametrize("enable_concurrency_group", [True, False])
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1056,13 +1098,17 @@ def test_actor_creation_latency(ray_start_regular_shared):
         "ray.kill",
     ],
 )
-def test_atexit_handler(ray_start_regular_shared, exit_condition):
-    @ray.remote
+def test_atexit_handler(
+    ray_start_regular_shared, exit_condition, enable_concurrency_group
+):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
     class A:
         def __init__(self, tmpfile, data):
             import atexit
 
-            def f(*args, **kwargs):
+            def f():
                 with open(tmpfile, "w") as f:
                     f.write(data)
                     f.flush()
@@ -1122,6 +1168,22 @@ def test_actor_ready(ray_start_regular_shared):
     assert ray.get(actor.__ray_ready__.remote())
 
 
+def test_actor_generic_call(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    with pytest.raises(TypeError):
+        # Method can't be called directly
+        actor.__ray_call__()
+
+    assert ray.get(actor.__ray_call__.remote(lambda self: 4)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, 2)) == 4
+    assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1166,12 +1228,16 @@ def test_actor_autocomplete(ray_start_regular_shared):
         "__init__",
         "method_one",
         "__ray_ready__",
+        "__ray_call__",
         "__ray_terminate__",
     }
 
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
-    assert set(method_options) == {"options", "remote"}
+    if client_test_enabled():
+        assert set(method_options) == {"options", "remote"}
+    else:
+        assert set(method_options) == {"options", "remote", "bind"}
 
 
 def test_actor_mro(ray_start_regular_shared):
@@ -1205,9 +1271,10 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
     actor = Actor.options(name="ABC").remote()
     assert ray.get(actor.hello.remote()) == "hello"
 
+    # Getting the actor by name acts as a weakref.
     for _ in range(10):
-        actor = ray.get_actor("ABC")
-        assert ray.get(actor.hello.remote()) == "hello"
+        named_actor = ray.get_actor("ABC")
+        assert ray.get(named_actor.hello.remote()) == "hello"
 
     del actor
 
@@ -1220,6 +1287,299 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
             return True
 
     wait_for_condition(actor_removed)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+@pytest.mark.parametrize(
+    "actor_type",
+    [
+        "actor",
+        "threaded_actor",
+        "async_actor",
+    ],
+)
+def test_actor_parent_task_correct(shutdown_only, actor_type):
+    """Verify the parent task id is correct for all actors."""
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    class ChildActor:
+        def child(self):
+            pass
+
+    def parent_func(child_actor):
+        core_worker = ray._private.worker.global_worker.core_worker
+        refs = [child_actor.child.remote(), child.remote()]
+        expected = {ref.task_id().hex() for ref in refs}
+        task_id_hex = ray.get_runtime_context().get_task_id()
+        task_id = ray.TaskID(hex_to_binary(task_id_hex))
+        children_task_ids = core_worker.get_pending_children_task_ids(task_id)
+        actual = {task_id.hex() for task_id in children_task_ids}
+        ray.get(refs)
+        return expected, actual
+
+    if actor_type == "actor":
+
+        @ray.remote
+        class Actor:
+            def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote
+        class GeneratorActor:
+            def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    if actor_type == "threaded_actor":
+
+        @ray.remote(max_concurrency=5)
+        class Actor:  # noqa
+            def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote(max_concurrency=5)
+        class GeneratorActor:  # noqa
+            def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    if actor_type == "async_actor":
+
+        @ray.remote
+        class Actor:  # noqa
+            async def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote
+        class GeneratorActor:  # noqa
+            async def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    # Verify a regular actor.
+    actor = Actor.remote()
+    child_actor = ChildActor.remote()
+    actual, expected = ray.get(actor.parent.remote(child_actor))
+    assert actual == expected
+    # return True
+
+    # Verify a generator actor
+    actor = GeneratorActor.remote()
+    child_actor = ChildActor.remote()
+    gen = actor.parent.remote(child_actor)
+    for ref in gen:
+        result = ray.get(ref)
+    actual, expected = result
+    assert actual == expected
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_parent_task_correct_concurrent_async_actor(shutdown_only):
+    """Make sure when there are concurrent async tasks
+    the parent -> children task ids are properly mapped.
+    """
+    sig = SignalActor.remote()
+
+    @ray.remote
+    def child(sig):
+        ray.get(sig.wait.remote())
+
+    @ray.remote
+    class AsyncActor:
+        async def f(self, sig):
+            refs = [child.remote(sig) for _ in range(2)]
+            core_worker = ray._private.worker.global_worker.core_worker
+            expected = {ref.task_id().hex() for ref in refs}
+            task_id_hex = ray.get_runtime_context().get_task_id()
+            task_id = ray.TaskID(hex_to_binary(task_id_hex))
+            children_task_ids = core_worker.get_pending_children_task_ids(task_id)
+            actual = {task_id.hex() for task_id in children_task_ids}
+            await sig.wait.remote()
+            ray.get(refs)
+            return actual, expected
+
+    a = AsyncActor.remote()
+    # Run 3 concurrent tasks.
+    refs = [a.f.remote(sig) for _ in range(20)]
+    # 3 concurrent task will finish.
+    ray.get(sig.send.remote())
+    # Verify children task mapping is correct.
+    result = ray.get(refs)
+    for actual, expected in result:
+        assert actual, expected
+
+
+def test_actor_hash(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert hash(origin) == hash(remote)
+
+
+def test_actor_equal(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        ...
+
+    origin = Actor.remote()
+    assert origin != 1
+
+    @ray.remote
+    def get_actor(actor):
+        return actor
+
+    remote = ray.get(get_actor.remote(origin))
+    assert origin == remote
+
+
+def test_actor_handle_weak_ref_counting(ray_start_regular_shared):
+    """
+    Actors can get handles to themselves or to named actors but these count
+    only as weak refs.  Check that this pattern does not crash the normal ref
+    counting protocol, which tracks handles passed through task args and return
+    values.
+    """
+
+    @ray.remote
+    class WeakReferenceHolder:
+        def pass_weak_ref(self, handle):
+            self.handle = handle
+
+    @ray.remote
+    class Actor:
+        def read_self_handle(self, self_handle):
+            # This actor has a strong reference to itself through the arg
+            # self_handle.
+
+            # Get and delete a weak reference to ourselves. This should not
+            # crash the distributed ref counting protocol.
+            # TODO(swang): Commenting these lines out currently causes the
+            # actor handle to leak.
+            weak_self_handle = ray.get_runtime_context().current_actor
+            del weak_self_handle
+
+        def pass_self_handle(self, self_handle, weak_ref_holder):
+            # This actor has a strong reference to itself through the arg
+            # self_handle.
+
+            # Pass a weak reference to ourselves to another actor. This should
+            # not count towards the distributed ref counting protocol.
+            weak_self_handle = ray.get_runtime_context().current_actor
+            ray.get(weak_ref_holder.pass_weak_ref.remote(weak_self_handle))
+
+        def read_handle_by_name(self, handle, name):
+            # This actor has a strong reference to another actor through the
+            # arg handle.
+
+            # Get and delete a weak reference to the same actor as the one
+            # passed through handle. This should not crash the distributed ref
+            # counting protocol.
+            weak_handle = ray.get_actor(name=name)
+            del weak_handle
+
+        def pass_named_handle(self, handle, name, weak_ref_holder):
+            # This actor has a strong reference to another actor through the
+            # arg handle.
+
+            # Pass a weak reference to the actor to another actor. This should
+            # not count towards the distributed ref counting protocol.
+            weak_handle = ray.get_actor(name=name)
+            ray.get(weak_ref_holder.pass_weak_ref.remote(weak_handle))
+
+        def getpid(self):
+            return os.getpid()
+
+    # Check ref counting when getting actors via self handle.
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_self_handle.remote(a))
+    # Check that there are no leaks after all handles have gone out of scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+    # Check that passing a weak ref to the self actor to other actors does not
+    # count towards the ref count.
+    weak_ref_holder = WeakReferenceHolder.remote()
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.pass_self_handle.remote(a, weak_ref_holder))
+    # Check that there are no leaks after all strong refs have gone out of
+    # scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+    # Check ref counting when getting actors by name.
+    a = Actor.remote()
+    b = Actor.options(name="actor").remote()
+    pid = ray.get(b.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_handle_by_name.remote(b, "actor"))
+    # Check that there are no leaks after all handles have gone out of scope.
+    b = None
+    wait_for_pid_to_exit(pid)
+
+    # Check that passing a weak ref to an actor handle that was gotten by name
+    # to other actors does not count towards the ref count.
+    a = Actor.remote()
+    b = Actor.options(name="actor").remote()
+    pid = ray.get(b.getpid.remote())
+    for _ in range(3):
+        ray.get(a.pass_named_handle.remote(b, "actor", weak_ref_holder))
+    # Check that there are no leaks after all strong refs have gone out of
+    # scope.
+    b = None
+    wait_for_pid_to_exit(pid)
+
+
+def test_self_handle_leak(ray_start_regular_shared):
+    """
+    Actors can get handles to themselves. Check that holding such a reference
+    does not cause the actor to leak.
+    """
+
+    @ray.remote
+    class Actor:
+        def read_self_handle(self, self_handle):
+            pass
+
+        def getpid(self):
+            return os.getpid()
+
+    # Check ref counting when getting actors via self handle.
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    for _ in range(3):
+        ray.get(a.read_self_handle.remote(a))
+    # Check that there are no leaks after all handles have gone out of scope.
+    a = None
+    wait_for_pid_to_exit(pid)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_get_local_actor_state(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    assert actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.ALIVE
+    ray.kill(actor)
+    wait_for_condition(
+        lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
+    )
 
 
 if __name__ == "__main__":

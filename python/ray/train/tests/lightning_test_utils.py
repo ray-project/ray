@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
-from ray.air import session
+
+from ray import train
+from ray.train.lightning._lightning_utils import import_lightning
+
+pl = import_lightning()
 
 
 class LinearModule(pl.LightningModule):
@@ -13,11 +16,10 @@ class LinearModule(pl.LightningModule):
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
         self.strategy = strategy
-        self.restored = session.get_checkpoint() is not None
+        self.restored = train.get_checkpoint() is not None
         self.fail_epoch = fail_epoch
 
     def forward(self, input):
-        # Backwards compat for Ray data strict mode.
         if isinstance(input, dict) and len(input) == 1:
             input = list(input.values())[0]
         return self.linear(input)
@@ -51,9 +53,9 @@ class LinearModule(pl.LightningModule):
     def configure_optimizers(self):
         if self.strategy == "fsdp":
             # Feed FSDP wrapped model parameters to optimizer
-            return torch.optim.SGD(self.trainer.model.parameters(), lr=0.1)
+            return torch.optim.AdamW(self.trainer.model.parameters(), lr=0.1)
         else:
-            return torch.optim.SGD(self.parameters(), lr=0.1)
+            return torch.optim.AdamW(self.parameters(), lr=0.1)
 
 
 class DoubleLinearModule(pl.LightningModule):
@@ -89,7 +91,7 @@ class DoubleLinearModule(pl.LightningModule):
         return self.forward(batch)
 
     def configure_optimizers(self):
-        return torch.optim.SGD(self.parameters(), lr=0.1)
+        return torch.optim.AdamW(self.parameters(), lr=0.1)
 
 
 class DummyDataModule(pl.LightningDataModule):
@@ -119,7 +121,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy(task="multiclass", num_classes=10)
+        self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
         self.val_acc_list = []
         self.val_loss_list = []
 

@@ -44,9 +44,16 @@ using flatbuf::PlasmaError;
 Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
 
 template <class T>
-bool VerifyFlatbuffer(T *object, uint8_t *data, size_t size) {
+bool VerifyFlatbuffer(T *object, const uint8_t *data, size_t size) {
   flatbuffers::Verifier verifier(data, size);
   return object->Verify(verifier);
+}
+
+template <class T>
+void VerifyNotNullPtr(T *object, std::string_view obj_name, MessageType msg_type) {
+  RAY_CHECK(object != nullptr) << "Corrupted " << EnumNameMessageType(msg_type)
+                               << " message: " << obj_name << " is null. "
+                               << kCorruptedRequestErrorMessage;
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -85,13 +92,14 @@ Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
 Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          ObjectID object_id,
                          const ray::rpc::Address &owner_address,
+                         bool is_mutable,
                          int64_t data_size,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
                          int device_num,
                          bool try_immediately);
 
-void ReadCreateRequest(uint8_t *data,
+void ReadCreateRequest(const uint8_t *data,
                        size_t size,
                        ray::ObjectInfo *object_info,
                        flatbuf::ObjectSource *source,
@@ -116,7 +124,7 @@ Status ReadCreateReply(uint8_t *data,
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
-Status ReadAbortRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadAbortRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendAbortReply(const std::shared_ptr<Client> &client, ObjectID object_id);
 
@@ -126,7 +134,7 @@ Status ReadAbortReply(uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendSealRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
-Status ReadSealRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadSealRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendSealReply(const std::shared_ptr<Client> &client,
                      ObjectID object_id,
@@ -142,7 +150,7 @@ Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
                       int64_t timeout_ms,
                       bool is_from_worker);
 
-Status ReadGetRequest(uint8_t *data,
+Status ReadGetRequest(const uint8_t *data,
                       size_t size,
                       std::vector<ObjectID> &object_ids,
                       int64_t *timeout_ms,
@@ -166,22 +174,32 @@ Status ReadGetReply(uint8_t *data,
 /* Plasma Release message functions. */
 
 Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
-                          ObjectID object_id);
+                          ObjectID object_id,
+                          bool may_unmap);
 
-Status ReadReleaseRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadReleaseRequest(const uint8_t *data,
+                          size_t size,
+                          ObjectID *object_id,
+                          bool *may_unmap);
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
+                        bool should_unmap,
                         PlasmaError error);
 
-Status ReadReleaseReply(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadReleaseReply(uint8_t *data,
+                        size_t size,
+                        ObjectID *object_id,
+                        bool *should_unmap);
 
 /* Plasma Delete objects message functions. */
 
 Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,
                          const std::vector<ObjectID> &object_ids);
 
-Status ReadDeleteRequest(uint8_t *data, size_t size, std::vector<ObjectID> *object_ids);
+Status ReadDeleteRequest(const uint8_t *data,
+                         size_t size,
+                         std::vector<ObjectID> *object_ids);
 
 Status SendDeleteReply(const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids,
@@ -197,7 +215,7 @@ Status ReadDeleteReply(uint8_t *data,
 Status SendContainsRequest(const std::shared_ptr<StoreConn> &store_conn,
                            ObjectID object_id);
 
-Status ReadContainsRequest(uint8_t *data, size_t size, ObjectID *object_id);
+Status ReadContainsRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendContainsReply(const std::shared_ptr<Client> &client,
                          ObjectID object_id,
@@ -222,7 +240,7 @@ Status ReadConnectReply(uint8_t *data, size_t size, int64_t *memory_capacity);
 
 Status SendEvictRequest(const std::shared_ptr<StoreConn> &store_conn, int64_t num_bytes);
 
-Status ReadEvictRequest(uint8_t *data, size_t size, int64_t *num_bytes);
+Status ReadEvictRequest(const uint8_t *data, size_t size, int64_t *num_bytes);
 
 Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 

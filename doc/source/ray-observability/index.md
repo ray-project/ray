@@ -2,6 +2,16 @@
 
 # Monitoring and Debugging
 
+```{toctree}
+:hidden:
+
+getting-started
+ray-distributed-debugger
+key-concepts
+User Guides <user-guides/index>
+Reference <reference/index>
+```
+
 This section covers how to **monitor and debug Ray applications and clusters** with Ray's Observability features.
 
 
@@ -28,4 +38,3 @@ Monitoring and debugging Ray applications consist of 4 major steps:
 4. Form a hypothesis, implement a fix, and validate it.
 
 The remainder of this section covers the observability tools that Ray provides to accelerate your monitoring and debugging workflow.
-

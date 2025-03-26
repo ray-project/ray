@@ -20,6 +20,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 
 
 @DeveloperAPI
@@ -39,6 +40,7 @@ class GPTConfig:
     attn_pdrop: float = 0.1
 
 
+@Deprecated(error=False)
 class NewGELU(nn.Module):
     """
     Implementation of the GELU activation function currently in Google BERT
@@ -60,6 +62,7 @@ class NewGELU(nn.Module):
         )
 
 
+@Deprecated(error=False)
 class CausalSelfAttention(nn.Module):
     """
     Vanilla multi-head masked self-attention layer with a projection at the end.
@@ -119,6 +122,7 @@ class CausalSelfAttention(nn.Module):
         return y, att
 
 
+@Deprecated(error=False)
 class Block(nn.Module):
     """an unassuming Transformer block"""
 
@@ -149,7 +153,7 @@ class Block(nn.Module):
         return x, att
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 def configure_gpt_optimizer(
     model: nn.Module,
     learning_rate: float,
@@ -189,7 +193,7 @@ def configure_gpt_optimizer(
                 no_decay.add(fpn)
 
     # validate that we considered every parameter
-    param_dict = {pn: p for pn, p in model.named_parameters()}
+    param_dict = dict(model.named_parameters())
     inter_params = decay & no_decay
     union_params = decay | no_decay
     assert (
@@ -215,7 +219,7 @@ def configure_gpt_optimizer(
     return optimizer
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class GPT(nn.Module):
     """GPT Transformer Model"""
 

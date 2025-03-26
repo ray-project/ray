@@ -61,20 +61,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               MarkTaskWaitingForExecution,
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
-};
-
-}  // namespace core
-}  // namespace ray
-
-namespace ray {
-namespace core {
-
-class MockTaskResubmissionInterface : public TaskResubmissionInterface {
- public:
-  MOCK_METHOD(bool,
-              ResubmitTask,
-              (const TaskID &task_id, std::vector<ObjectID> *task_deps),
-              (override));
+  MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
 };
 
 }  // namespace core

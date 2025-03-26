@@ -48,10 +48,10 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
-    runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
+    runtime = std::make_shared<LocalModeRayRuntime>();
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
-    runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
+    runtime = std::make_shared<NativeRayRuntime>();
     RAY_LOG(INFO) << "Native ray runtime started.";
   }
   RAY_CHECK(runtime);
@@ -93,7 +93,7 @@ std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
 }
 
 std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const std::string &object_id) {
-  return object_store_->Get(ObjectID::FromBinary(object_id), -1);
+  return Get(object_id, -1);
 }
 
 inline static std::vector<ObjectID> StringIDsToObjectIDs(
@@ -107,7 +107,17 @@ inline static std::vector<ObjectID> StringIDsToObjectIDs(
 
 std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
     const std::vector<std::string> &ids) {
-  return object_store_->Get(StringIDsToObjectIDs(ids), -1);
+  return Get(ids, -1);
+}
+
+std::shared_ptr<msgpack::sbuffer> AbstractRayRuntime::Get(const std::string &object_id,
+                                                          const int &timeout_ms) {
+  return object_store_->Get(ObjectID::FromBinary(object_id), timeout_ms);
+}
+
+std::vector<std::shared_ptr<msgpack::sbuffer>> AbstractRayRuntime::Get(
+    const std::vector<std::string> &ids, const int &timeout_ms) {
+  return object_store_->Get(StringIDsToObjectIDs(ids), timeout_ms);
 }
 
 std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
@@ -379,7 +389,9 @@ std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
     const std::string &serialized_actor_handle) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   return core_worker
-      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle,
+                                         ObjectID::Nil(),
+                                         /*add_local_ref=*/true)
       .Binary();
 }
 

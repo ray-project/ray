@@ -75,13 +75,13 @@ Profiling
 ---------
 Profiling is way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
 
-- CPU profiling for Worker processes, including integration with :ref:`py-spy <dashboard-profiling>` and :ref:`cProfile <dashboard-cprofile>`
-- Memory profiling for Worker processes with :ref:`memray <memray-profiling>`
-- Built in Task and Actor profiling tool called :ref:`ray timeline <ray-core-timeline>`
+- CPU profiling for Driver and Worker processes, including integration with :ref:`py-spy <profiling-pyspy>` and :ref:`cProfile <profiling-cprofile>`
+- Memory profiling for Driver and Worker processes with :ref:`memray <profiling-memray>`
+- GPU profiling with :ref:`Pytorch Profiler <profiling-pytorch-profiler>` and :ref:`Nsight System <profiling-nsight-profiler>`
+- Built in Task and Actor profiling tool called :ref:`Ray Timeline <profiling-timeline>`
 
-Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like `Pytorch Profiler`_ without Ray to identify the issues.
+View :ref:`Profiling <profiling>` for more details. Note that this list isn't comprehensive and feel free to contribute to it if you find other useful tools.
 
-.. _`Pytorch Profiler`: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html
 
 Tracing
 -------
@@ -114,7 +114,7 @@ Ray has special support to improve the visibility of stdout and stderr produced 
 
 For the following code:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     # Initiate a driver.
@@ -124,7 +124,12 @@ For the following code:
     def task_foo():
         print("task!")
 
-    ray.get(task.remote())
+    ray.get(task_foo.remote())
+
+.. testoutput::
+    :options: +MOCK
+
+    (task_foo pid=12854) task!
 
 #. Ray Task ``task_foo`` runs on a Ray Worker process. String ``task!`` is saved into the corresponding Worker ``stdout`` log file.
 #. The Driver reads the Worker log file and sends it to its ``stdout`` (terminal) where you should be able to see the string ``task!``.

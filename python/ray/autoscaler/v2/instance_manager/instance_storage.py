@@ -1,6 +1,5 @@
+import copy
 import logging
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.autoscaler.v2.instance_manager.storage import Storage, StoreStatus
@@ -9,37 +8,17 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class InstanceUpdateEvent:
-    """Notifies the status change of an instance."""
-
-    instance_id: str
-    new_status: int
-
-
-class InstanceUpdatedSuscriber(metaclass=ABCMeta):
-    """Subscribers to instance status changes."""
-
-    @abstractmethod
-    def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        pass
-
-
 class InstanceStorage:
-    """Instance storage stores the states of instances in the storage. It also
-    allows users to subscribe to instance status changes to trigger reconciliation
-    with cloud provider."""
+    """Instance storage stores the states of instances in the storage."""
 
     def __init__(
         self,
         cluster_id: str,
         storage: Storage,
-        status_change_subscriber: Optional[InstanceUpdatedSuscriber] = None,
     ) -> None:
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
-        self._status_change_subscriber = status_change_subscriber
 
     def batch_upsert_instances(
         self,
@@ -68,6 +47,7 @@ class InstanceStorage:
             return StoreStatus(False, version)
 
         for instance in updates:
+            instance = copy.deepcopy(instance)
             # the instance version is set to 0, it will be
             # populated by the storage entry's verion on read
             instance.version = 0
@@ -76,17 +56,6 @@ class InstanceStorage:
         result, version = self._storage.batch_update(
             self._table_name, mutations, {}, expected_storage_version
         )
-
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                    )
-                    for instance in updates
-                ],
-            )
 
         return StoreStatus(result, version)
 
@@ -114,6 +83,7 @@ class InstanceStorage:
         Returns:
             StoreStatus: A tuple of (success, storage_version).
         """
+        instance = copy.deepcopy(instance)
         # the instance version is set to 0, it will be
         # populated by the storage entry's verion on read
         instance.version = 0
@@ -126,26 +96,19 @@ class InstanceStorage:
             insert_only=False,
         )
 
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                    )
-                ],
-            )
-
         return StoreStatus(result, version)
 
     def get_instances(
-        self, instance_ids: List[str] = None, status_filter: Set[int] = None
+        self,
+        instance_ids: List[str] = None,
+        status_filter: Set[int] = None,
     ) -> Tuple[Dict[str, Instance], int]:
         """Get instances from the storage.
 
         Args:
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
+            status_filter: Only instances with the specified status will be returned.
 
         Returns:
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
@@ -185,15 +148,4 @@ class InstanceStorage:
         result = self._storage.batch_update(
             self._table_name, {}, instance_ids, expected_storage_version
         )
-
-        if result[0] and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance_id,
-                        new_status=Instance.GARAGE_COLLECTED,
-                    )
-                    for instance_id in instance_ids
-                ],
-            )
         return result

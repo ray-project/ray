@@ -8,11 +8,6 @@ import pytest
 import ray
 import ray.cluster_utils
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def test_actor_deletion_with_gpus(shutdown_only):
     ray.init(num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
@@ -320,7 +315,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actors_and_tasks_with_gpus(enable_syncer_test, ray_start_cluster):
+def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
     num_gpus_per_raylet = 2
@@ -662,6 +657,25 @@ def test_creating_more_actors_than_resources(shutdown_only):
         ray.wait([object_ref])
 
     ray.get(results)
+
+
+def test_actor_cuda_visible_devices(shutdown_only):
+    """Test user can overwrite CUDA_VISIBLE_DEVICES
+    after the actor is created."""
+    ray.init(num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    class Actor:
+        def set_cuda_visible_devices(self, cuda_visible_devices):
+            os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+
+        def get_cuda_visible_devices(self):
+            return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    actor = Actor.remote()
+    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0"
+    ray.get(actor.set_cuda_visible_devices.remote("0,1"))
+    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0,1"
 
 
 if __name__ == "__main__":

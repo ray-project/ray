@@ -17,13 +17,14 @@ from ray._private.test_utils import (
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
 )
 @pytest.mark.parametrize("native", ["0", "1"])
 def test_profiler_endpoints(ray_start_with_dashboard, native):
-    # Sanity check py-spy is installed.
+    # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -44,8 +45,10 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     pid = ray.get(a.getpid.remote())
     a.do_stuff_infinite.remote()
 
+    node_ip = ray_start_with_dashboard.address_info["node_ip_address"]
+
     def get_actor_stack():
-        url = f"{webui_url}/worker/traceback?pid={pid}&native={native}"
+        url = f"{webui_url}/worker/traceback?pid={pid}&ip={node_ip}&native={native}"
         print("GET URL", url)
         response = requests.get(url)
         print("STATUS CODE", response.status_code)
@@ -70,7 +73,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
 
     def get_actor_flamegraph():
         response = requests.get(
-            f"{webui_url}/worker/cpu_profile?pid={pid}&native={native}"
+            f"{webui_url}/worker/cpu_profile?pid={pid}&ip={node_ip}&native={native}"
         )
         response.raise_for_status()
         assert response.headers["Content-Type"] == "image/svg+xml", response.headers
@@ -96,14 +99,16 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No memray on python 3.12")
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
 )
-def test_profiler_failure_message(ray_start_with_dashboard):
-    # Sanity check py-spy is installed.
-    subprocess.check_call(["py-spy", "--version"])
+@pytest.mark.parametrize("leaks", ["0", "1"])
+def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
+    # Sanity check memray are installed.
+    subprocess.check_call(["memray", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
@@ -123,8 +128,94 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     pid = ray.get(a.getpid.remote())
     a.do_stuff_infinite.remote()
 
+    node_ip = ray_start_with_dashboard.address_info["node_ip_address"]
+
+    def get_actor_memory_flamegraph():
+        response = requests.get(
+            f"{webui_url}/memory_profile?pid={pid}&ip={node_ip}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_flamegraph,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+        raise_last_ex=True,
+    )
+
+    def get_actor_memory_multiple_flamegraphs():
+        response = requests.get(
+            f"{webui_url}/memory_profile?pid={pid}&ip={node_ip}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_multiple_flamegraphs,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+        raise_last_ex=True,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+def test_profiler_failure_message(ray_start_with_dashboard):
+    # Sanity check py-spy and memray is installed.
+    subprocess.check_call(["py-spy", "--version"])
+    subprocess.check_call(["memray", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    node_ip = ray_start_with_dashboard.address_info["node_ip_address"]
+
     def get_actor_stack():
-        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}")
+        response = requests.get(f"{webui_url}/worker/traceback?pid={pid}&ip={node_ip}")
         response.raise_for_status()
         content = response.content.decode("utf-8")
         print("CONTENT", content)
@@ -139,18 +230,33 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     )
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/traceback?pid=1234567")
+    response = requests.get(f"{webui_url}/worker/traceback?pid=1234567&ip={node_ip}")
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
 
     # Check we return the right status code and error message on failure.
-    response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567")
+    response = requests.get(f"{webui_url}/worker/cpu_profile?pid=1234567&ip={node_ip}")
     content = response.content.decode("utf-8")
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
+
+    # Check we return the right status code and error message on failure.
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&ip={node_ip}")
+    content = response.content.decode("utf-8")
+    print(content)
+    assert "text/plain" in response.headers["Content-Type"], response.headers
+    assert "Failed to execute" in content, content
+
+    # Check wrong ip failure
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567&ip=1.2.3.4")
+    content = response.content.decode("utf-8")
+    print(content)
+    assert (
+        "Failed to execute: no agent address found for node IP 1.2.3.4" in content
+    ), content
 
 
 if __name__ == "__main__":

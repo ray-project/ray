@@ -1,0 +1,8 @@
+name: "forge-aarch64"
+froms:
+  - ubuntu:22.04
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+dockerfile: ci/docker/forge.Dockerfile
+srcs:
+  - ci/k8s/install-k8s-tools.sh

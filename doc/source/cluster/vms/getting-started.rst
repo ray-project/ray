@@ -1,5 +1,3 @@
-.. include:: /_includes/clusters/announcement.rst
-
 .. _vm-cluster-quick-start:
 
 Getting Started
@@ -24,7 +22,7 @@ Requirements
 To run this demo, you will need:
 
 * Python installed on your development machine (typically your laptop), and
-* an account at your preferred cloud provider (AWS, Azure or GCP).
+* an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, or vSphere).
 
 Setup
 ~~~~~
@@ -33,39 +31,102 @@ Before we start, you will need to install some Python dependencies as follows:
 
 .. tab-set::
 
-    .. tab-item:: AWS
+   .. tab-item:: Ray Team Supported
+      :sync: Ray Team Supported
 
-        .. code-block:: shell
+      .. tab-set::
 
-            $ pip install -U "ray[default]" boto3
+         .. tab-item:: AWS
+            :sync: AWS
 
-    .. tab-item:: Azure
+            .. code-block:: shell
 
-        .. code-block:: shell
+                $ pip install -U "ray[default]" boto3
 
-            $ pip install -U "ray[default]" azure-cli azure-core
+         .. tab-item:: GCP
+            :sync: GCP
 
-    .. tab-item:: GCP
+            .. code-block:: shell
 
-        .. code-block:: shell
+                $ pip install -U "ray[default]" google-api-python-client
 
-            $ pip install -U "ray[default]" google-api-python-client
+   .. tab-item:: Community Supported
+      :sync: Community Supported
+
+      .. tab-set::
+
+         .. tab-item:: Azure
+            :sync: Azure
+
+            .. code-block:: shell
+
+                $ pip install -U "ray[default]" azure-cli azure-core
+
+         .. tab-item:: Aliyun
+            :sync: Aliyun
+
+            .. code-block:: shell
+
+                $ pip install -U "ray[default]" aliyun-python-sdk-core aliyun-python-sdk-ecs
+
+            Aliyun Cluster Launcher Maintainers (GitHub handles): @zhuangzhuang131419, @chenk008
+
+         .. tab-item:: vSphere
+            :sync: vSphere
+
+            .. code-block:: shell
+
+                $ pip install -U "ray[default]" "git+https://github.com/vmware/vsphere-automation-sdk-python.git"
+
+            vSphere Cluster Launcher Maintainers (GitHub handles): @LaynePeng, @roshankathawate, @JingChen23
+
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 
 .. tab-set::
 
-    .. tab-item:: AWS
+   .. tab-item:: Ray Team Supported
+      :sync: Ray Team Supported
 
-        Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
+      .. tab-set::
 
-    .. tab-item:: Azure
+         .. tab-item:: AWS
+            :sync: AWS
 
-        Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
+            Configure your credentials in ``~/.aws/credentials`` as described in `the AWS docs <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html>`_.
 
-    .. tab-item:: GCP
+         .. tab-item:: GCP
+            :sync: GCP
 
-        Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
+            Set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable as described in `the GCP docs <https://cloud.google.com/docs/authentication/getting-started>`_.
+
+   .. tab-item:: Community Supported
+      :sync: Community Supported
+
+      .. tab-set::
+
+         .. tab-item:: Azure
+            :sync: Azure
+
+            Log in using ``az login``, then configure your credentials with ``az account set -s <subscription_id>``.
+
+         .. tab-item:: Aliyun
+            :sync: Aliyun
+
+            Obtain and set the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__.
+
+            Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file.
+            Refer to the provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ for a sample cluster config.
+
+         .. tab-item:: vSphere
+            :sync: vSphere
+
+            .. code-block:: shell
+
+                $ export VSPHERE_SERVER=192.168.0.1 # Enter your vSphere vCenter Address
+                $ export VSPHERE_USER=user # Enter your username
+                $ export VSPHERE_PASSWORD=password # Enter your password
+
 
 Create a (basic) Python application
 -----------------------------------
@@ -81,7 +142,7 @@ We will write a simple Python application that tracks the IP addresses of the ma
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     ip_addresses = [f() for _ in range(10000)]
     print(Counter(ip_addresses))
@@ -104,7 +165,7 @@ With some small changes, we can make this application run on Ray (for more infor
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)
@@ -131,7 +192,7 @@ Finally, let's add some code to make the output more interesting:
     def f():
         time.sleep(0.001)
         # Return IP address.
-        return socket.gethostbyname(socket.gethostname())
+        return socket.gethostbyname("localhost")
 
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)
@@ -160,45 +221,71 @@ A minimal sample cluster configuration file looks as follows:
 
 .. tab-set::
 
-    .. tab-item:: AWS
+   .. tab-item:: Ray Team Supported
+      :sync: Ray Team Supported
 
-        .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
-            :language: yaml
+      .. tab-set::
 
+         .. tab-item:: AWS
+            :sync: AWS
 
-    .. tab-item:: Azure
+            .. literalinclude:: ../../../../python/ray/autoscaler/aws/example-minimal.yaml
+               :language: yaml
 
-        .. code-block:: yaml
+         .. tab-item:: GCP
+            :sync: GCP
 
-            # An unique identifier for the head node and workers of this cluster.
-            cluster_name: minimal
+            .. code-block:: yaml
 
-            # Cloud-provider specific configuration.
-            provider:
-                type: azure
-                location: westus2
-                resource_group: ray-cluster
+                # A unique identifier for the head node and workers of this cluster.
+                cluster_name: minimal
 
-            # How Ray will authenticate with newly launched nodes.
-            auth:
-                ssh_user: ubuntu
-                # you must specify paths to matching private and public key pair files
-                # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
-                ssh_private_key: ~/.ssh/id_rsa
-                # changes to this should match what is specified in file_mounts
-                ssh_public_key: ~/.ssh/id_rsa.pub
+                # Cloud-provider specific configuration.
+                provider:
+                    type: gcp
+                    region: us-west1
 
-    .. tab-item:: GCP
+   .. tab-item:: Community Supported
+      :sync: Community Supported
 
-        .. code-block:: yaml
+      .. tab-set::
 
-            # A unique identifier for the head node and workers of this cluster.
-            cluster_name: minimal
+         .. tab-item:: Azure
+            :sync: Azure
 
-            # Cloud-provider specific configuration.
-            provider:
-                type: gcp
-                region: us-west1
+            .. code-block:: yaml
+
+                # An unique identifier for the head node and workers of this cluster.
+                cluster_name: minimal
+
+                # Cloud-provider specific configuration.
+                provider:
+                    type: azure
+                    location: westus2
+                    resource_group: ray-cluster
+
+                # How Ray will authenticate with newly launched nodes.
+                auth:
+                    ssh_user: ubuntu
+                    # you must specify paths to matching private and public key pair files
+                    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+                    ssh_private_key: ~/.ssh/id_rsa
+                    # changes to this should match what is specified in file_mounts
+                    ssh_public_key: ~/.ssh/id_rsa.pub
+
+         .. tab-item:: Aliyun
+            :sync: Aliyun
+
+            Please refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__.
+
+            Make sure your account balance is not less than 100 RMB, otherwise you will receive the error `InvalidAccountStatus.NotEnoughBalance`.
+
+         .. tab-item:: vSphere
+            :sync: vSphere
+
+            .. literalinclude:: ../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
+               :language: yaml
+
 
 Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
 

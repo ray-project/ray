@@ -12,9 +12,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
-import grpc
 import yaml
 
+import ray
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -26,7 +27,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -47,6 +47,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     ResourceDict,
     get_bin_pack_residual,
+    placement_groups_to_resource_demands,
 )
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.util import (
@@ -76,7 +77,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
 
@@ -96,17 +97,22 @@ NodeLaunchData = Tuple[NodeTypeConfigDict, NodeCount, Optional[NodeType]]
 @dataclass
 class AutoscalerSummary:
     active_nodes: Dict[NodeType, int]
+    idle_nodes: Optional[Dict[NodeType, int]]
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
     node_availability_summary: NodeAvailabilitySummary = field(
         default_factory=lambda: NodeAvailabilitySummary({})
     )
+    # A dictionary of node IP to a list of reasons the node is not idle.
+    node_activities: Optional[Dict[str, Tuple[NodeIP, List[str]]]] = None
     pending_resources: Dict[str, int] = field(default_factory=lambda: {})
     # A mapping from node name (the same key as `usage_by_node`) to node type.
     # Optional for deployment modes which have the concept of node types and
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
+    # Whether the autoscaler summary is v1 or v2.
+    legacy: bool = False
 
 
 class NonTerminatedNodes:
@@ -184,7 +190,7 @@ class StandardAutoscaler:
         # TODO(ekl): require config reader to be a callable always.
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
-        gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
+        gcs_client: "ray._raylet.GcsClient",
         session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -214,8 +220,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
-            gcs_node_info_stub: Stub for interactions with Ray nodes via gRPC
-                request to the GCS. Used to drain nodes before termination.
+            gcs_client: client for interactions with the GCS. Used to drain nodes
+                before termination.
         """
 
         if isinstance(config_reader, str):
@@ -303,14 +309,6 @@ class StandardAutoscaler:
         )
         logger.info(f"{WORKER_LIVENESS_CHECK_KEY}:{self.worker_liveness_check}")
 
-        # By default, before worker node termination, the autoscaler sends an RPC to the
-        # GCS asking to kill the worker node.
-        # The worker_rpc_drain flag allows disabling this behavior in settings where
-        # another component, such as a Kubernetes operator, is responsible for worker
-        # lifecycle.
-        self.worker_rpc_drain = self.config["provider"].get(WORKER_RPC_DRAIN_KEY, True)
-        logger.info(f"{WORKER_RPC_DRAIN_KEY}:{self.worker_rpc_drain}")
-
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
         self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
@@ -355,7 +353,7 @@ class StandardAutoscaler:
             for remote, local in self.config["file_mounts"].items()
         }
 
-        self.gcs_node_info_stub = gcs_node_info_stub
+        self.gcs_client = gcs_client
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -484,8 +482,11 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-        horizon = now - (60 * self.config["idle_timeout_minutes"])
+        last_used = self.load_metrics.ray_nodes_last_used_time_by_ip
+
+        idle_timeout_s = 60 * self.config["idle_timeout_minutes"]
+
+        last_used_cutoff = now - idle_timeout_s
 
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
@@ -495,11 +496,9 @@ class StandardAutoscaler:
         )
 
         # Don't terminate nodes needed by request_resources()
-        nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
-        if self.load_metrics.get_resource_requests():
-            nodes_not_allowed_to_terminate = (
-                self._get_nodes_needed_for_request_resources(sorted_node_ids)
-            )
+        nodes_not_allowed_to_terminate = self._get_nodes_needed_for_request_resources(
+            sorted_node_ids
+        )
 
         # Tracks counts of nodes we intend to keep for each node type.
         node_type_counts = defaultdict(int)
@@ -533,7 +532,8 @@ class StandardAutoscaler:
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+
+            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
@@ -609,10 +609,8 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination, unless this behavior is
-        # explicitly disabled.
-        if self.worker_rpc_drain:
-            self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Drain the nodes
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
@@ -675,36 +673,26 @@ class StandardAutoscaler:
 
         logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:
-            request = gcs_service_pb2.DrainNodeRequest(
-                drain_node_data=[
-                    gcs_service_pb2.DrainNodeData(node_id=raylet_id)
-                    for raylet_id in raylet_ids_to_drain
-                ]
-            )
-
             # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
-            response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
-
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_raylet_ids = {
-                status_item.node_id for status_item in response.drain_node_status
-            }
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
+            )
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")
-
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
         # for which DrainNode is not implemented.
-        except grpc.RpcError as e:
+        except RpcError as e:
             # If the code is UNIMPLEMENTED, pass.
-            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old gRPC error and we should log it.
+            # Otherwise, it's a plain old gRPC error and we should log it.
             else:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.exception("Failed to drain Ray nodes. Traceback follows.")
@@ -735,6 +723,7 @@ class StandardAutoscaler:
         ):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                labels = self._node_labels(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
@@ -744,6 +733,7 @@ class StandardAutoscaler:
                             setup_commands,
                             ray_start_commands,
                             resources,
+                            labels,
                             docker_config,
                         ),
                     )
@@ -829,7 +819,11 @@ class StandardAutoscaler:
         pending = []
         infeasible = []
         for bundle in unfulfilled:
-            placement_group = any("_group_" in k or k == "bundle" for k in bundle)
+            placement_group = any(
+                "_group_" in k
+                or k == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
+                for k in bundle
+            )
             if placement_group:
                 continue
             if self.resource_demand_scheduler.is_feasible(bundle):
@@ -884,8 +878,8 @@ class StandardAutoscaler:
         self, sorted_node_ids: List[NodeID]
     ) -> FrozenSet[NodeID]:
         # TODO(ameer): try merging this with resource_demand_scheduler
-        # code responsible for adding nodes for request_resources().
-        """Returns the nodes NOT allowed to terminate due to request_resources().
+        # code responsible for adding nodes for get_resource_requests() and get_pending_placement_groups().
+        """Returns the nodes NOT allowed to terminate due to get_resource_requests() and get_pending_placement_groups().
 
         Args:
             sorted_node_ids: the node ids sorted based on last used (LRU last).
@@ -898,6 +892,14 @@ class StandardAutoscaler:
         assert self.provider
 
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
+
+        resource_demands, strict_spreads = placement_groups_to_resource_demands(
+            self.load_metrics.get_pending_placement_groups()
+        )
+        resource_demands.extend(self.load_metrics.get_resource_requests())
+        if not resource_demands and not strict_spreads:
+            return frozenset(nodes_not_allowed_to_terminate)
+
         static_node_resources: Dict[
             NodeIP, ResourceDict
         ] = self.load_metrics.get_static_node_resources_by_ip()
@@ -912,7 +914,7 @@ class StandardAutoscaler:
             head_node_ip = self.provider.internal_ip(self.non_terminated_nodes.head_id)
             head_node_resources = static_node_resources.get(head_node_ip, {})
 
-        max_node_resources: List[ResourceDict] = [head_node_resources]
+        node_total_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
         # Get max resources on all the non terminated nodes.
         for node_id in sorted_node_ids:
@@ -926,26 +928,35 @@ class StandardAutoscaler:
                     # Legacy yaml might include {} in the resources field.
                     node_ip = self.provider.internal_ip(node_id)
                     node_resources = static_node_resources.get(node_ip, {})
-                max_node_resources.append(node_resources)
+                node_total_resources.append(node_resources)
                 resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
-        used_resource_requests: List[ResourceDict]
-        _, used_resource_requests = get_bin_pack_residual(
-            max_node_resources, self.load_metrics.get_resource_requests()
+        node_remaining_resources = copy.deepcopy(node_total_resources)
+
+        for strict_spread in strict_spreads:
+            unfulfilled, updated_node_remaining_resources = get_bin_pack_residual(
+                node_remaining_resources, strict_spread, strict_spread=True
+            )
+            if unfulfilled:
+                continue
+            node_remaining_resources = updated_node_remaining_resources
+
+        _, node_remaining_resources = get_bin_pack_residual(
+            node_remaining_resources, resource_demands
         )
         # Remove the first entry (the head node).
-        max_node_resources.pop(0)
+        node_total_resources.pop(0)
         # Remove the first entry (the head node).
-        used_resource_requests.pop(0)
+        node_remaining_resources.pop(0)
         for i, node_id in enumerate(resource_demand_vector_worker_node_ids):
             if (
-                used_resource_requests[i] == max_node_resources[i]
-                and max_node_resources[i]
+                node_remaining_resources[i] == node_total_resources[i]
+                and node_total_resources[i]
             ):
                 # No resources of the node were needed for request_resources().
-                # max_node_resources[i] is an empty dict for legacy yamls
+                # node_total_resources[i] is an empty dict for legacy yamls
                 # before the node is connected.
                 pass
             else:
@@ -1018,6 +1029,13 @@ class StandardAutoscaler:
         else:
             return {}
 
+    def _node_labels(self, node_id):
+        node_type = self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get("labels", {})
+        else:
+            return {}
+
     def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
@@ -1037,6 +1055,10 @@ class StandardAutoscaler:
                         "available until you upgrade ray on your cluster.",
                         exc_info=e,
                     )
+            logger.debug(
+                f"New config after validation: {new_config},"
+                f" of type: {type(new_config)}"
+            )
             (new_runtime_hash, new_file_mounts_contents_hash) = hash_runtime_conf(
                 new_config["file_mounts"],
                 new_config["cluster_synced_files"],
@@ -1241,6 +1263,7 @@ class StandardAutoscaler:
             is_head_node=False,
             docker_config=self.config.get("docker"),
             node_resources=self._node_resources(node_id),
+            node_labels=self._node_labels(node_id),
             for_recovery=True,
         )
         updater.start()
@@ -1311,7 +1334,13 @@ class StandardAutoscaler:
         )
 
     def spawn_updater(
-        self, node_id, setup_commands, ray_start_commands, node_resources, docker_config
+        self,
+        node_id,
+        setup_commands,
+        ray_start_commands,
+        node_resources,
+        node_labels,
+        docker_config,
     ):
         logger.info(
             f"Creating new (spawn_updater) updater thread for node" f" {node_id}."
@@ -1345,6 +1374,7 @@ class StandardAutoscaler:
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=node_resources,
+            node_labels=node_labels,
         )
         updater.start()
         self.updaters[node_id] = updater
@@ -1475,6 +1505,7 @@ class StandardAutoscaler:
         return AutoscalerSummary(
             # Convert active_nodes from counter to dict for later serialization
             active_nodes=dict(active_nodes),
+            idle_nodes=None,
             pending_nodes=[
                 (ip, node_type, status) for _, ip, node_type, status in pending_nodes
             ],
@@ -1483,6 +1514,7 @@ class StandardAutoscaler:
             node_availability_summary=self.node_provider_availability_tracker.summary(),
             pending_resources=pending_resources,
             node_type_mapping=node_type_mapping,
+            legacy=True,
         )
 
     def info_string(self):
