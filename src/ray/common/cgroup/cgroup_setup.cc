@@ -214,7 +214,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // known ray processes into internal cgroup.
   if (IsRootCgroup(directory)) {
     RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
-                                              /*to=*/cgroup_v2_internal_folder_));
+                                              /*to=*/cgroup_v2_internal_proc_filepath_));
   }
 
   RAY_RETURN_NOT_OK(
