@@ -14,15 +14,14 @@
 
 #pragma once
 
-#include <functional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "ray/util/concurrent_flat_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::gcs {
@@ -73,22 +72,16 @@ class InMemoryStoreClient : public StoreClient {
                      Postable<void(bool)> callback) override;
 
  private:
-  struct InMemoryTable {
-    /// Mutex to protect the records_ field and the index_keys_ field.
-    mutable absl::Mutex mutex_;
-    // Mapping from key to data.
-    // TODO(dayshah): benchmark reader/writer locks against boost::concurrent_flat_map
-    absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
-  };
-
   // The returned reference is valid as long as the InMemoryStoreClient is alive and
   // as long as no other thread erases the InMemoryTable from tables_.
-  InMemoryTable &GetOrCreateMutableTable(const std::string &table_name);
+  ConcurrentFlatMap<std::string, std::string> &GetOrCreateMutableTable(
+      const std::string &table_name);
 
   // 1) Will return nullptr if the table does not exist.
   // 2) The returned pointer is valid as long as the InMemoryStoreClient is alive and
   //    as long as no other thread erases the InMemoryTable from tables_.
-  const InMemoryTable *GetTable(const std::string &table_name);
+  const ConcurrentFlatMap<std::string, std::string> *GetTable(
+      const std::string &table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
@@ -96,7 +89,8 @@ class InMemoryStoreClient : public StoreClient {
   // mutex to be held without extra heap alloation, most operations done on this are just
   // find, for which performance is almost identical to flat_hash_map.
   // Note: Do not erase from this as it will invalidate pointer from GetTable.
-  absl::node_hash_map<std::string, InMemoryTable> tables_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<std::string, ConcurrentFlatMap<std::string, std::string>> tables_
+      ABSL_GUARDED_BY(mutex_);
 
   /// Current job id, auto-increment when request next-id.
   std::atomic<int> job_id_ = 1;

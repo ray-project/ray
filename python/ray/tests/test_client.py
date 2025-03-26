@@ -29,6 +29,7 @@ from ray.tests.client_test_utils import (
 from ray.tests.conftest import call_ray_start_context
 from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE, ClientObjectRef
 from ray.util.client.ray_client_helpers import (
+    ray_start_client_server,
     ray_start_client_server_for_address,
 )
 
@@ -545,6 +546,21 @@ def test_create_remote_before_start(call_ray_start_shared):
         assert ray.get(f.remote(3)) == 23
         a = Returner.remote()
         assert ray.get(a.doit.remote()) == "foo"
+
+
+# Regression test for https://github.com/ray-project/ray/pull/51683
+def test_runtime_env_py_executable(ray_start_regular):
+    """Test that Ray Client works with a custom py_executable."""
+
+    with ray_start_client_server(
+        ray_init_kwargs={"runtime_env": {"py_executable": sys.executable + " -q"}}
+    ) as ray:
+
+        @ray.remote
+        def f():
+            return "hi"
+
+        assert ray.get(f.remote()) == "hi"
 
 
 def test_basic_named_actor(call_ray_start_shared):

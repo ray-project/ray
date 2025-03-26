@@ -93,6 +93,7 @@ from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import datasets
     import mars
@@ -2581,6 +2582,22 @@ def read_hudi(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI
+def from_daft(df: "daft.DataFrame") -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+
+    Args:
+        df: A Daft DataFrame
+
+    Returns:
+        A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
+    """
+    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such that we can stream object references into a Ray
+    # dataset. Unfortunately this is very tricky today because of the way Ray Datasources are implemented with a fully-materialized `list`
+    # of ReadTasks, rather than an iterator which can lazily return these tasks.
+    return df.to_ray_dataset()
 
 
 @PublicAPI

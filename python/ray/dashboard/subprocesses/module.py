@@ -10,8 +10,9 @@ import setproctitle
 import multiprocessing
 
 import ray
+from ray import ray_constants
 from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.ray_logging import configure_log_file
 from ray._private.utils import open_log
 from ray.dashboard.subprocesses.utils import (
@@ -67,6 +68,7 @@ class SubprocessModule(abc.ABC):
         # Lazy init
         self._gcs_client = None
         self._gcs_aio_client = None
+        self._aiogrpc_gcs_channel = None
         self._parent_process_death_detection_task = None
         self._http_session = None
 
@@ -100,7 +102,9 @@ class SubprocessModule(abc.ABC):
         Start running the module.
         This method should be called first before the module starts receiving requests.
         """
-        app = aiohttp.web.Application()
+        app = aiohttp.web.Application(
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
+        )
         routes: list[aiohttp.web.RouteDef] = [
             aiohttp.web.get("/api/healthz", self._internal_module_health_check)
         ]
@@ -155,6 +159,14 @@ class SubprocessModule(abc.ABC):
                 ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
             self._gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
         return self._gcs_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
 
     @property
     def session_name(self):

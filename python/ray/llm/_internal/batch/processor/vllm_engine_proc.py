@@ -224,7 +224,10 @@ def build_vllm_engine_processor(
         download_model=NodeModelDownloadable.TOKENIZER_ONLY,
         download_extra_files=False,
     )
-    hf_config = transformers.AutoConfig.from_pretrained(model_path)
+    hf_config = transformers.AutoConfig.from_pretrained(
+        model_path,
+        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+    )
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
     telemetry_agent = get_or_create_telemetry_agent()

@@ -56,14 +56,12 @@ def test_invalid_gcs_address():
         JobSubmissionClient("abc:abc")
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
-)
-def test_job_isolation(call_ray_start):
+def test_job_isolation(ray_start_regular):
     # Make sure two jobs with same module name
     # don't interfere with each other
     # (https://github.com/ray-project/ray/issues/19358).
-    address = call_ray_start
+    gcs_address = ray_start_regular.address_info["gcs_address"]
+
     lib_template = """
 import ray
 
@@ -88,7 +86,7 @@ assert ray.get(lib.task.remote()) == {}
         with open(v1_lib, "w") as f:
             f.write(lib_template.format(1))
         with open(v1_driver, "w") as f:
-            f.write(driver_template.format(address, 1))
+            f.write(driver_template.format(gcs_address, 1))
 
         os.makedirs(os.path.join(tmpdir, "v2"))
         v2_lib = os.path.join(tmpdir, "v2", "lib.py")
@@ -96,10 +94,25 @@ assert ray.get(lib.task.remote()) == {}
         with open(v2_lib, "w") as f:
             f.write(lib_template.format(2))
         with open(v2_driver, "w") as f:
-            f.write(driver_template.format(address, 2))
+            f.write(driver_template.format(gcs_address, 2))
 
         subprocess.check_call([sys.executable, v1_driver])
         subprocess.check_call([sys.executable, v2_driver])
+
+    dashboard_url = ray_start_regular.dashboard_url
+    client = JobSubmissionClient(f"http://{dashboard_url}")
+    jobs = client.list_jobs()
+    assert len(jobs) == 3  # ray_start_regular, v1, v2
+
+    num_succeeded = 0
+    num_running = 0
+    for job in jobs:
+        if job.status == "SUCCEEDED":
+            num_succeeded += 1
+        elif job.status == "RUNNING":
+            num_running += 1
+    assert num_succeeded == 2
+    assert num_running == 1
 
 
 def test_job_observability(ray_start_regular):

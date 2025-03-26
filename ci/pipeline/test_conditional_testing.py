@@ -69,6 +69,7 @@ src/ray.cpp:
     - linux_wheels macos_wheels dashboard release_tests accelerated_dag
 
 .github/CODEOWNERS: lint
+README.rst: lint
 BUILD.bazel:
     - lint ml tune train data serve core_cpp cpp java
     - python doc linux_wheels macos_wheels dashboard tools

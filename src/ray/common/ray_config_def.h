@@ -916,10 +916,8 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // Costs an extra RPC.
 // TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)
-// The number of sockets between object manager.
-// The higher the number the higher throughput of the data
-// transfer it'll be, but it'll also user more sockets and
-// more CPU resources.
+
+// The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
 // The number of object manager thread. By default, it's

@@ -375,3 +375,12 @@ ray_cc_library(
         ":logging",
     ],
 )
+
+ray_cc_library(
+    name = "concurrent_flat_map",
+    hdrs = ["concurrent_flat_map.h"],
+    deps = [
+        ":mutex_protected",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)

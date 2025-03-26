@@ -4,7 +4,7 @@ NOTE: Ray's usage report is currently "on by default".
       One could opt-out, see details at https://docs.ray.io/en/master/cluster/usage-stats.html. # noqa
 
 Ray usage report follows the specification from
-https://docs.google.com/document/d/1ZT-l9YbGHh-iWRUC91jS-ssQ5Qe2UQ43Lsoc1edCalc/edit#heading=h.17dss3b9evbj. # noqa
+https://docs.ray.io/en/master/cluster/usage-stats.html#usage-stats-collection  # noqa
 
 # Module
 

@@ -7,6 +7,7 @@ from ray._private.state_api_test_utils import (
     StateAPIMetric,
     aggregate_perf_results,
     invoke_state_api,
+    invoke_state_api_n,
     GLOBAL_STATE_STATS,
 )
 
@@ -36,16 +37,6 @@ logger = logging.getLogger(__file__)
 
 GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
-
-
-def invoke_state_api_n(*args, **kwargs):
-    def verify():
-        NUM_API_CALL_SAMPLES = 10
-        for _ in range(NUM_API_CALL_SAMPLES):
-            invoke_state_api(*args, **kwargs)
-        return True
-
-    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
