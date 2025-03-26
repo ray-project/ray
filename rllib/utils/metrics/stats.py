@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 import time
 import threading
-from typing import Any, Deque, Dict, List, Optional, Tuple, Union
+from typing import Any, Deque, Dict, List, Tuple, Union
 
 import numpy as np
 
