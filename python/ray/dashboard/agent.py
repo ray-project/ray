@@ -188,9 +188,7 @@ class DashboardAgent:
                 # TODO(SongGuyang): Catch the exception here because there is
                 # port conflict issue which brought from static port. We should
                 # remove this after we find better port resolution.
-                logger.exception(
-                    "Failed to start HTTP server. Exiting immediately."
-                )
+                logger.exception("Failed to start HTTP server. Exiting immediately.")
                 raise e
 
         # Writes agent address to kv.
