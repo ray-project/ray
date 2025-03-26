@@ -9,37 +9,94 @@ DEFAULT_THROUGHPUT_EMA_COEFF = 0.05
 DEFAULT_CLEAR_ON_REDUCE = False
 DEFAULT_THROUGHPUT = False
 
+
 def test_init():
     """Test initialization of Stats objects with different parameters."""
     # Test initialization with initial value
-    stats = Stats(init_value=1.0, reduce="mean", ema_coeff=DEFAULT_EMA_COEFF, window=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=1.0,
+        reduce="mean",
+        ema_coeff=DEFAULT_EMA_COEFF,
+        window=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     assert len(stats) == 1
     assert stats.peek() == 1.0
     assert stats._ema_coeff == DEFAULT_EMA_COEFF
 
     # Test initialization with window
-    stats = Stats(init_value=None, window=3, reduce="mean", ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        window=3,
+        reduce="mean",
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     assert stats._window == 3
     assert isinstance(stats.values, deque)
 
     # Test initialization with different reduce methods
     for reduce_method in ["mean", "min", "max", "sum", None]:
-        stats = Stats(init_value=None, reduce=reduce_method, window=None, ema_coeff=DEFAULT_EMA_COEFF if reduce_method == "mean" else None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        stats = Stats(
+            init_value=None,
+            reduce=reduce_method,
+            window=None,
+            ema_coeff=DEFAULT_EMA_COEFF if reduce_method == "mean" else None,
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=DEFAULT_THROUGHPUT,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
         assert stats._reduce_method == reduce_method
 
     # Test invalid initialization parameters
     with pytest.raises(ValueError):
-        Stats(init_value=None, reduce="invalid", window=None, ema_coeff=DEFAULT_EMA_COEFF, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        Stats(
+            init_value=None,
+            reduce="invalid",
+            window=None,
+            ema_coeff=DEFAULT_EMA_COEFF,
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=DEFAULT_THROUGHPUT,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
     with pytest.raises(ValueError):
-        Stats(init_value=None, window=3, ema_coeff=0.1, reduce="mean", clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        Stats(
+            init_value=None,
+            window=3,
+            ema_coeff=0.1,
+            reduce="mean",
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=DEFAULT_THROUGHPUT,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
     with pytest.raises(ValueError):
-        Stats(init_value=None, reduce="sum", ema_coeff=0.1, window=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        Stats(
+            init_value=None,
+            reduce="sum",
+            ema_coeff=0.1,
+            window=None,
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=DEFAULT_THROUGHPUT,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
 
 
 def test_push_and_peek():
     """Test pushing values and peeking at results."""
     # Test with mean reduction
-    stats = Stats(init_value=None, reduce="mean", ema_coeff=DEFAULT_EMA_COEFF, window=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="mean",
+        ema_coeff=DEFAULT_EMA_COEFF,
+        window=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
     # EMA formula: t1 = (1.0 - ema_coeff) * t0 + ema_coeff * new_val
@@ -47,21 +104,45 @@ def test_push_and_peek():
     assert abs(stats.peek() - expected) < 1e-6
 
     # Test with window
-    stats = Stats(init_value=None, window=2, reduce="mean", ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        window=2,
+        reduce="mean",
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
     stats.push(3.0)
     assert stats.peek() == 2.5  # mean of last 2 values
 
     # Test with sum reduction
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(2)
     stats.push(3)
     assert stats.peek() == 6
 
     # Test with min reduction
-    stats = Stats(init_value=None, reduce="min", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="min",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(10)
     stats.push(20)
     stats.push(5)
@@ -69,7 +150,15 @@ def test_push_and_peek():
     assert stats.peek() == 5
 
     # Test with max reduction
-    stats = Stats(init_value=None, reduce="max", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="max",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(3)
     stats.push(2)
@@ -80,7 +169,15 @@ def test_push_and_peek():
 def test_window_behavior():
     """Test behavior with different window sizes."""
     # Test with finite window
-    stats = Stats(init_value=None, window=2, reduce="mean", ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        window=2,
+        reduce="mean",
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
     stats.push(3.0)
@@ -88,14 +185,30 @@ def test_window_behavior():
     assert stats.peek() == 2.5  # mean of [2.0, 3.0]
 
     # Test with infinite window
-    stats = Stats(init_value=None, window=None, reduce="mean", ema_coeff=DEFAULT_EMA_COEFF, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        window=None,
+        reduce="mean",
+        ema_coeff=DEFAULT_EMA_COEFF,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
     assert len(stats) == 1  # We reduce for every push
     check(stats.peek(), 1.01)  # ema coeff 0.01
 
     # Test with max reduction and window
-    stats = Stats(init_value=None, reduce="max", window=2, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="max",
+        window=2,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(2)
     stats.push(3)
     stats.push(1)
@@ -106,7 +219,15 @@ def test_window_behavior():
 def test_reduce():
     """Test the reduce method."""
     # Test with sum reduction
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(2)
     stats.push(3)
@@ -115,7 +236,15 @@ def test_reduce():
     assert len(stats) == 1  # Should keep only the reduced value
 
     # Test with clear_on_reduce
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=True, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=True,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(2)
     reduced_value = stats.reduce()
@@ -126,32 +255,80 @@ def test_reduce():
 def test_merge_operations():
     """Test merging operations between Stats objects."""
     # Test merge_on_time_axis
-    stats1 = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats1 = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats1.push(1)
     stats1.push(2)
-    stats2 = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats2 = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats2.push(3)
     stats2.push(4)
     stats1.merge_on_time_axis(stats2)
     assert stats1.peek() == 10  # sum of all values
 
     # Test merge_in_parallel
-    stats1 = Stats(init_value=None, reduce="mean", window=3, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats1 = Stats(
+        init_value=None,
+        reduce="mean",
+        window=3,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats1.push(1)
     stats1.push(2)
     stats1.push(3)
-    stats2 = Stats(init_value=None, reduce="mean", window=3, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats2 = Stats(
+        init_value=None,
+        reduce="mean",
+        window=3,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats2.push(4)
     stats2.push(5)
     stats2.push(6)
-    stats = Stats(init_value=None, reduce="mean", window=3, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="mean",
+        window=3,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.merge_in_parallel(stats1, stats2)
     assert abs(stats.peek() - 4.1666667) < 1e-6  # mean of last values
 
 
 def test_numeric_operations():
     """Test numeric operations on Stats objects."""
-    stats = Stats(init_value=None, reduce="mean", ema_coeff=DEFAULT_EMA_COEFF, window=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="mean",
+        ema_coeff=DEFAULT_EMA_COEFF,
+        window=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(2.0)
 
     # Test basic arithmetic operations
@@ -171,7 +348,15 @@ def test_numeric_operations():
 
 def test_state_serialization():
     """Test saving and loading Stats state."""
-    stats = Stats(init_value=None, reduce="sum", window=3, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=3,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(2)
     stats.push(3)
@@ -188,7 +373,15 @@ def test_state_serialization():
 def test_state_serialization_with_throughput():
     """Test saving and loading Stats state with throughput tracking."""
     # Create a Stats object with throughput tracking
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=True,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
 
     # Push some values with time delays to generate throughput data
     import time
@@ -235,7 +428,15 @@ def test_state_serialization_with_throughput():
 
 def test_similar_to():
     """Test creating similar Stats objects."""
-    original = Stats(init_value=None, reduce="sum", window=3, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    original = Stats(
+        init_value=None,
+        reduce="sum",
+        window=3,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     original.push(1)
     original.push(2)
 
@@ -251,7 +452,15 @@ def test_similar_to():
 
 def test_reduce_history():
     """Test the reduce history functionality."""
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
 
     # Initially history should contain zeros
     assert stats.get_reduce_history() == [0, 0, 0]
@@ -296,7 +505,15 @@ def test_reduce_history():
 
 def test_reduce_history_with_clear_on_reduce():
     """Test the reduce history functionality with clear_on_reduce=True."""
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=True, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=True,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
 
     # Initially history should contain zeros
     assert stats.get_reduce_history() == [0, 0, 0]
@@ -348,7 +565,15 @@ def test_reduce_history_with_clear_on_reduce():
 def test_throughput_without_reduce():
     """Test that throughput is tracked correctly without explicit reduce() calls."""
     # Create a Stats object that tracks throughput
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=1)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=True,
+        throughput_ema_coeff=1,
+    )
 
     # Push some values with time delays to simulate real usage
     import time
@@ -372,24 +597,58 @@ def test_throughput_without_reduce():
 
     # Test that throughput is only available when requested
     assert stats.peek() == 6  # Regular peek returns just the value
-    assert stats.throughput == stats.throughput  # Throughput property returns throughput
+    assert (
+        stats.throughput == stats.throughput
+    )  # Throughput property returns throughput
 
     # Test that throughput is 0 when no values are pushed
-    empty_stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    empty_stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=True,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     assert empty_stats.peek() == 0
     assert empty_stats.throughput == 0.0
 
     # Test that throughput tracking requires sum reduction
     with pytest.raises(ValueError):
-        Stats(init_value=None, reduce="mean", window=None, ema_coeff=DEFAULT_EMA_COEFF, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        Stats(
+            init_value=None,
+            reduce="mean",
+            window=None,
+            ema_coeff=DEFAULT_EMA_COEFF,
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=True,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
 
     # Test that throughput tracking requires infinite window
     with pytest.raises(ValueError):
-        Stats(init_value=None, reduce="sum", window=10, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+        Stats(
+            init_value=None,
+            reduce="sum",
+            window=10,
+            ema_coeff=None,
+            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+            throughput=True,
+            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+        )
 
     # Test that _last_push_time is properly initialized to -1
     assert stats._last_push_time >= 0  # Should be set after pushes
-    new_stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=True, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    new_stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=True,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     assert new_stats._last_push_time == -1  # Should be -1 for new instances
 
     # Test throughput tracking after loading stats
@@ -409,7 +668,15 @@ def test_throughput_without_reduce():
     assert 30 < loaded_stats.throughput < 50  # 4/0.1 = 40 values per second
 
     # Test that accessing throughput on non-throughput stats raises error
-    non_throughput_stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=False, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    non_throughput_stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=False,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     with pytest.raises(ValueError):
         non_throughput_stats.throughput  # noqa: B018
 
@@ -417,7 +684,15 @@ def test_throughput_without_reduce():
 def test_reduce_history_without_new_values():
     """Test that multiple reduce calls without new values maintain consistent history."""
     # Test with sum reduction
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
 
     # Push some initial values
     stats.push(1)
@@ -442,7 +717,15 @@ def test_reduce_history_without_new_values():
     assert third_history == [0, 0, 3]  # history should not change
 
     # Test with window-based reduction
-    stats = Stats(init_value=None, reduce="mean", window=2, ema_coeff=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="mean",
+        window=2,
+        ema_coeff=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
 
@@ -459,7 +742,15 @@ def test_reduce_history_without_new_values():
     assert second_history == [0, 0, 1.5]  # history should not change
 
     # Test with EMA reduction
-    stats = Stats(init_value=None, reduce="mean", ema_coeff=DEFAULT_EMA_COEFF, window=None, clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="mean",
+        ema_coeff=DEFAULT_EMA_COEFF,
+        window=None,
+        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1.0)
     stats.push(2.0)
 
@@ -476,7 +767,15 @@ def test_reduce_history_without_new_values():
     assert second_history == [0, 0, 1.01]  # history should not change
 
     # Test with clear_on_reduce=True
-    stats = Stats(init_value=None, reduce="sum", window=None, ema_coeff=None, clear_on_reduce=True, throughput=DEFAULT_THROUGHPUT, throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF)
+    stats = Stats(
+        init_value=None,
+        reduce="sum",
+        window=None,
+        ema_coeff=None,
+        clear_on_reduce=True,
+        throughput=DEFAULT_THROUGHPUT,
+        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
+    )
     stats.push(1)
     stats.push(2)
 

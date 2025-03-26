@@ -172,8 +172,18 @@ def test_edge_cases(logger):
     logger.log_value("clear_test", 0.1, clear_on_reduce=True)
     logger.log_value("clear_test", 0.2, clear_on_reduce=True)
     results = logger.reduce()
-    check(results["clear_test"], 0.101)
+    check(results["clear_test"].values[0], 0.101)
     check(logger.peek("clear_test"), np.nan)  # Should be cleared
+
+    # Test first call to reduce() returns Stats objects
+    logger2 = MetricsLogger()
+    logger2.log_value("clear_test", 0.1, clear_on_reduce=False)
+    logger2.log_value("clear_test", 0.2, clear_on_reduce=False)
+    results = (
+        logger2.reduce()
+    )  # Call twice because we return the Stats objects themselves on the first call
+    results = logger2.reduce()
+    check(results["clear_test"], 0.101)
 
 
 def test_merge_and_log_n_dicts(logger):
@@ -198,7 +208,40 @@ def test_merge_and_log_n_dicts(logger):
     logger.merge_and_log_n_dicts([results1, results2])
 
     # Check merged results
-    check(logger.peek("loss"), 0.4) 
+    check(logger.peek("loss"), 0.35)
+
+    # Test with longer window and different number of values in each logger
+    logger_a = MetricsLogger()
+    logger_a.log_value("mean_test", 1.0, reduce="mean", window=5)
+    logger_a.log_value("mean_test", 2.0, reduce="mean")
+    logger_a.log_value("mean_test", 3.0, reduce="mean")
+    # Mean of logger_a values: (1.0 + 2.0 + 3.0) / 3 = 2.0
+
+    logger_b = MetricsLogger()
+    logger_b.log_value("mean_test", 4.0, reduce="mean", window=5)
+    logger_b.log_value("mean_test", 5.0, reduce="mean")
+    # Mean of logger_b values: (4.0 + 5.0) / 2 = 4.5
+
+    logger_c = MetricsLogger()
+    logger_c.log_value("mean_test", 6.0, reduce="mean", window=5)
+    logger_c.log_value("mean_test", 7.0, reduce="mean")
+    logger_c.log_value("mean_test", 8.0, reduce="mean")
+    logger_c.log_value("mean_test", 9.0, reduce="mean")
+    # Mean of logger_c values: (6.0 + 7.0 + 8.0 + 9.0) / 4 = 7.5
+
+    # Reduce all loggers
+    results_a = logger_a.reduce()
+    results_b = logger_b.reduce()
+    results_c = logger_c.reduce()
+
+    # Create a new main logger for this test
+    main_logger = MetricsLogger()
+
+    # Merge results into main logger
+    main_logger.merge_and_log_n_dicts([results_a, results_b, results_c])
+
+    # Expected result: mean of the means = (2.0 + 4.5 + 7.5) / 3 = 4.67
+    check(main_logger.peek("mean_test"), (2.0 + 4.5 + 7.5) / 3, atol=0.01)
 
 
 def test_throughput_tracking(logger):
@@ -553,13 +596,13 @@ def test_reduction_method_preservation(logger):
     logger2.log_value("sum_metric", 40, reduce="sum")
     logger2.log_value("sum_metric", 50)
     results2 = logger2.reduce()
-    
+
     # Merge results into main logger
     logger.merge_and_log_n_dicts([results2])
-    
+
     # Verify it's still using sum reduction after merge
     check(logger.peek("sum_metric"), 120)  # 30 + 90
-    
+
     # Log more values to verify it's still using sum reduction
     logger.log_value("sum_metric", 100)
     check(logger.peek("sum_metric"), 220)  # 120 + 100
@@ -573,10 +616,10 @@ def test_reduction_method_preservation(logger):
     logger3 = MetricsLogger()
     logger3.log_value("mean_metric", 3, reduce="mean")
     logger3.log_value("mean_metric", 4)
-    
+
     # Merge two reduced results into
     logger.merge_and_log_n_dicts([logger3])
-    
+
     # Verify it's still using mean reduction after merge
     check(logger.peek("mean_metric"), 2.01)  # mean of [2.01, 3.01]
 
