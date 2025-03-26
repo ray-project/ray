@@ -769,17 +769,13 @@ class TestProtoToDict:
     def test_repeated_field(self):
         """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
-        config = DeploymentConfig.from_default(
+        proto = DeploymentConfigProto(
             user_configured_option_names=user_configured_option_names,
         )
-        proto_bytes = config.to_proto_bytes()
-        proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
+
         # Repeated field is filled correctly as list.
-        assert set(result["user_configured_option_names"]) == set(
-            user_configured_option_names
-        )
-        assert isinstance(result["user_configured_option_names"], list)
+        assert result["user_configured_option_names"] == user_configured_option_names
 
     def test_enum_field(self):
         """Test _proto_to_dict() to deserialize protobuf with enum field"""
