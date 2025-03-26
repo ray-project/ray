@@ -587,6 +587,12 @@ class Node:
         return self._plasma_store_socket_name
 
     @property
+    def accelerator_cpu_mask(self):
+        """Get the node's CPU affinity mask for accelerators."""
+        mask = self._ray_params.accelerator_cpu_mask
+        return mask if mask is not None else ""
+
+    @property
     def unique_id(self):
         """Get a unique identifier for this node."""
         return f"{self.node_ip_address}:{self._plasma_store_socket_name}"
@@ -1239,6 +1245,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
+            accelerator_cpu_mask=self.accelerator_cpu_mask,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

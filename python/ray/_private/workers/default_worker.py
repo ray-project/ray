@@ -197,6 +197,17 @@ parser.add_argument(
     ),
 )
 
+parser.add_argument(
+    "--accelerator-cpu-mask",
+    required=False,
+    type=str,
+    default="",
+    help=(
+        "A comma-separated list of CPU cores to use for accelerators. "
+        "This is used to set the CPU affinity of the accelerator. "
+    ),
+)
+
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
     # to a separate function, tensorflow will capture that method
@@ -238,6 +249,7 @@ if __name__ == "__main__":
         webui=args.webui,
         cluster_id=args.cluster_id,
         node_id=args.node_id,
+        accelerator_cpu_mask=args.accelerator_cpu_mask,
     )
     node = ray._private.node.Node(
         ray_params,

@@ -226,6 +226,48 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     }
 
 
+def set_cpu_affinity_mask_for_accelerator(accelerator_cpu_mask: Optional[str]) -> None:
+    """Set the cpu affinity mask for the accelerator.
+
+    Args:
+        accelerator_cpu_mask: The CPU mask for the affinity of accelerator,
+            it is a string of digits separated by commas. The mapping
+            is specified to be node specific and identical mapping is
+            applied to the tasks on each node with same accelerator id.
+            If the number of accelerators exceeds the number of elements
+            in this list, elements in the list will be reused as needed
+            starting from the beginning of the list.
+    """
+    if accelerator_cpu_mask is None or accelerator_cpu_mask.strip() == "":
+        return
+
+    # Convert values to integers
+    int_values = [int(h.strip(), 0) for h in accelerator_cpu_mask.split(",")]
+
+    # Determine the required bit-width
+    max_bits = max(val.bit_length() for val in int_values)
+
+    # Compute cpu core affinities
+    core_affinities = []
+    for acc_id in {
+        int(acc_id)
+        for sub_ids in ray.get_runtime_context().get_accelerator_ids().values()
+        for acc_id in sub_ids
+    }:
+        core_affinities.extend(
+            [
+                i
+                for i in range(max_bits)
+                if (int_values[acc_id % len(int_values)] >> i) & 1
+            ]
+        )
+
+    if core_affinities:
+        import psutil
+
+        psutil.Process().cpu_affinity(list(set(core_affinities)))
+
+
 def set_omp_num_threads_if_unset() -> bool:
     """Set the OMP_NUM_THREADS to default to num cpus assigned to the worker
 

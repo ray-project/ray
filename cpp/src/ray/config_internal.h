@@ -76,6 +76,8 @@ class ConfigInternal {
 
   std::string ray_namespace = "";
 
+  std::string accelerator_cpu_mask = "";
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;

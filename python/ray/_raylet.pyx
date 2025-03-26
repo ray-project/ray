@@ -2146,7 +2146,8 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport):
+        CTensorTransport c_tensor_transport,
+        const c_string accelerator_cpu_mask):
 
     is_retryable_error[0] = False
 
@@ -2168,6 +2169,21 @@ cdef execute_task_with_cancellation_handler(
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
         ray._private.utils.set_visible_accelerator_ids()
+
+    # Automatically set the CPU affinity to the assigned GPUs (CUDA),
+    # neuron_core, TPU accelerator runtime_ids.
+    # Once actor is created, users can change the visible accelerator ids
+    # within an actor task and we don't want to reset it.
+    if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK) and accelerator_cpu_mask.size() > 0:
+        try:
+            ray._private.utils.set_cpu_affinity_mask_for_accelerator(
+                accelerator_cpu_mask.decode("ascii"))
+        except Exception as err:
+            exception_str = (
+                "An unexpected error occurred while setting the CPU affinity "
+                "for accelerator mask {}: {}".format(
+                    accelerator_cpu_mask.decode("utf-8"), err))
+            logger.exception(exception_str)
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -2343,7 +2359,8 @@ cdef CRayStatus task_execution_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport) nogil:
+        CTensorTransport c_tensor_transport,
+        const c_string accelerator_cpu_mask) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2372,7 +2389,8 @@ cdef CRayStatus task_execution_handler(
                         is_streaming_generator,
                         should_retry_exceptions,
                         generator_backpressure_num_objects,
-                        c_tensor_transport)
+                        c_tensor_transport,
+                        accelerator_cpu_mask)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -2966,7 +2984,8 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
+                  worker_launch_time_ms, worker_launched_time_ms,
+                  debug_source, enable_resource_isolation, accelerator_cpu_mask):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3023,6 +3042,7 @@ cdef class CoreWorker:
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
         options.enable_resource_isolation = enable_resource_isolation
+        options.accelerator_cpu_mask = accelerator_cpu_mask
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None

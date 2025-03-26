@@ -2892,7 +2892,8 @@ Status CoreWorker::ExecuteTask(
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
-      /*tensor_transport=*/task_spec.TensorTransport());
+      /*tensor_transport=*/task_spec.TensorTransport(),
+      /*accelerator_cpu_mask=*/options_.accelerator_cpu_mask);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

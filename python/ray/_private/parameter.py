@@ -99,6 +99,14 @@ class RayParams:
         include_log_monitor: If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
+        accelerator_cpu_mask: The CPU mask for the affinity of accelerator, it
+            is a string of digits separated by commas. The mapping
+            is specified to be node specific and identical mapping is
+            applied to the tasks on each node with same accelerator id.
+            If provided, the CPU affinity of the accelerator will
+            be set when the task first starts. If the number of accelerators
+            exceeds the number of elements in this list, elements in the list
+            will be reused as needed starting from the beginning of the list.
         autoscaling_config: path to autoscaling config file.
         metrics_agent_port: The port to bind metrics agent.
         metrics_export_port: The port at which metrics are exposed
@@ -167,6 +175,7 @@ class RayParams:
         temp_dir: Optional[str] = None,
         runtime_env_dir_name: Optional[str] = None,
         include_log_monitor: Optional[str] = None,
+        accelerator_cpu_mask: Optional[str] = None,
         autoscaling_config: Optional[str] = None,
         ray_debugger_external: bool = False,
         _system_config: Optional[Dict[str, str]] = None,
@@ -225,6 +234,7 @@ class RayParams:
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )
         self.include_log_monitor = include_log_monitor
+        self.accelerator_cpu_mask = accelerator_cpu_mask
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
