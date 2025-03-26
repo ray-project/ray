@@ -50,7 +50,7 @@ class BenchmarkConfig(BaseModel):
     num_epochs: int = 1
     skip_train_step: bool = False
     train_step_anomaly_detection: bool = False
-    limit_training_rows: int = 1000000
+    limit_training_rows: int = 50000
 
     # Validation
     validate_every_n_steps: int = -1

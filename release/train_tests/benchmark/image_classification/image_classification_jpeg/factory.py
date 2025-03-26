@@ -1,51 +1,123 @@
-from typing import Dict, Iterator, Tuple, Optional
+# Standard library imports
 import logging
 import time
+from typing import Any, Dict, Iterator, Tuple, Optional
 
+# Third-party imports
 import torch
 import torchvision
 from torch.utils.data import IterableDataset
+import pyarrow
 
+# Ray imports
 import ray.train
+from ray.data.datasource.partitioning import Partitioning
 
+# Local imports
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
-from dataloader_factory import (
-    BaseDataLoaderFactory,
-)
+from dataloader_factory import BaseDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
-from .imagenet import (
-    get_preprocess_map_fn,
-    IMAGENET_JPEG_SPLIT_S3_DIRS,
-)
-from .torch_jpeg_image_iterable_dataset import (
-    S3Reader,
-    S3JpegImageIterableDataset,
-)
 from image_classification.factory import ImageClassificationMockDataLoaderFactory
-
+from s3_reader import AWS_REGION
+from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
+from .torch_jpeg_image_iterable_dataset import S3JpegReader, S3JpegImageIterableDataset
 
 logger = logging.getLogger(__name__)
 
 
 class ImageClassificationJpegRayDataLoaderFactory(RayDataLoaderFactory):
+    """Factory for creating Ray DataLoader for JPEG image classification.
+
+    This factory:
+    1. Sets up S3 filesystem with boto credentials
+    2. Creates Ray datasets for training and validation
+    3. Handles resource allocation for concurrent validation
+    4. Provides collation function for PyTorch tensors
+    """
+
+    def get_s3fs_with_boto_creds(
+        self, connection_timeout: int = 60, request_timeout: int = 60
+    ) -> "pyarrow.fs.S3FileSystem":
+        """Create S3 filesystem with boto credentials.
+
+        Args:
+            connection_timeout: Timeout for establishing connection in seconds
+            request_timeout: Timeout for requests in seconds
+
+        Returns:
+            Configured S3FileSystem instance
+        """
+        import boto3
+        from pyarrow import fs
+
+        credentials = boto3.Session().get_credentials()
+
+        s3fs = fs.S3FileSystem(
+            access_key=credentials.access_key,
+            secret_key=credentials.secret_key,
+            session_token=credentials.token,
+            region=AWS_REGION,
+            connect_timeout=connection_timeout,
+            request_timeout=request_timeout,
+        )
+        return s3fs
+
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+        """Get Ray datasets for training and validation.
+
+        This method:
+        1. Sets up S3 filesystem connection
+        2. Creates training dataset with random transforms
+        3. Creates validation dataset without transforms
+        4. Configures resource allocation for concurrent validation
+
+        Returns:
+            Dict with "train" and "val" Dataset objects
+
+        Note:
+            Currently using training data for validation due to partitioning structure
+        """
+        # Use a file pattern to read images more efficiently
+        s3fs = self.get_s3fs_with_boto_creds()
+
+        # Set up training dataset with partitioning by class
+        train_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        train_partitioning = Partitioning(
+            "dir", base_dir=train_pattern, field_names=["class"]
+        )
         train_ds = (
-            ray.data.read_images(IMAGENET_JPEG_SPLIT_S3_DIRS["train"], mode="RGB")
+            ray.data.read_images(
+                train_pattern,
+                mode="RGB",
+                include_paths=True,
+                partitioning=train_partitioning,
+                filesystem=s3fs,
+            )
             .limit(self.benchmark_config.limit_training_rows)
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
+            .map(get_preprocess_map_fn(random_transforms=True))
         )
 
+        # Set up validation dataset (currently using training data due to partitioning)
+        val_pattern = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
+        val_partitioning = Partitioning(
+            "dir", base_dir=val_pattern, field_names=["class"]
+        )
         val_ds = (
-            ray.data.read_images(IMAGENET_JPEG_SPLIT_S3_DIRS["train"], mode="RGB")
+            ray.data.read_images(
+                val_pattern,
+                mode="RGB",
+                include_paths=True,
+                partitioning=val_partitioning,
+                filesystem=s3fs,
+            )
             .limit(self.benchmark_config.limit_validation_rows)
-            .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
+            .map(get_preprocess_map_fn(random_transforms=False))
         )
 
+        # Configure resource allocation for concurrent validation
         if self.benchmark_config.validate_every_n_steps > 0:
-            # TODO: This runs really slowly and needs to be tuned.
-            # Maybe move this to the RayDataLoaderFactory.
             cpus_to_exclude = 16
             train_ds.context.execution_options.exclude_resources = (
                 train_ds.context.execution_options.exclude_resources.add(
@@ -56,14 +128,22 @@ class ImageClassificationJpegRayDataLoaderFactory(RayDataLoaderFactory):
                 ray.data.ExecutionResources(cpu=cpus_to_exclude)
             )
             logger.info(
-                f"[Dataloader] Reserving {cpus_to_exclude} CPUs for validation "
-                "that happens concurrently with training every "
-                f"{self.benchmark_config.validate_every_n_steps} steps. "
+                f"[ImageClassificationJpegRayDataLoaderFactory] Reserving {cpus_to_exclude} CPUs "
+                "for validation that happens concurrently with training every "
+                f"{self.benchmark_config.validate_every_n_steps} steps"
             )
 
         return {"train": train_ds, "val": val_ds}
 
-    def collate_fn(self, batch):
+    def collate_fn(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Collate batch of data into PyTorch tensors.
+
+        Args:
+            batch: Dictionary containing image and label data
+
+        Returns:
+            Tuple of (image_tensor, label_tensor) on the correct device
+        """
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )
@@ -74,7 +154,9 @@ class ImageClassificationJpegRayDataLoaderFactory(RayDataLoaderFactory):
         return batch["image"], batch["label"]
 
 
-class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Reader):
+class ImageClassificationJpegTorchDataLoaderFactory(
+    TorchDataLoaderFactory, S3JpegReader
+):
     """Factory for creating PyTorch DataLoaders for image classification tasks.
 
     This factory:
@@ -86,9 +168,9 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
 
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
-        S3Reader.__init__(self)  # Initialize S3Reader to set up _s3_client
+        S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
         self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
-        self.val_url = IMAGENET_JPEG_SPLIT_S3_DIRS["val"]
+        self.val_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
 
     def calculate_rows_per_worker(
         self, total_rows: Optional[int], num_workers: int
@@ -142,6 +224,7 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
             else None
         )
 
+        # Get file URLs for training and validation
         train_file_urls = self._get_file_urls(self.train_url)
         train_ds = S3JpegImageIterableDataset(
             file_urls=train_file_urls,
@@ -162,7 +245,8 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
             }
         )
 
-        val_file_urls = self._get_file_urls(self.val_url)
+        # TODO: IMAGENET_JPEG_SPLIT_S3_DIRS["val"] does not have partitioning as "train" does. So we use "train" for validation.
+        val_file_urls = train_file_urls
         val_ds = S3JpegImageIterableDataset(
             file_urls=val_file_urls,
             random_transforms=False,
@@ -198,7 +282,8 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
         """
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(
-            f"[ImageClassification] Worker {worker_rank}: Starting batch iteration"
+            f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+            "Starting batch iteration"
         )
 
         try:
@@ -210,15 +295,17 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
                     time_since_last_batch = current_time - last_batch_time
                     if time_since_last_batch > 10:
                         logger.warning(
-                            f"[ImageClassification] Worker {worker_rank}: "
-                            f"Long delay ({time_since_last_batch:.2f}s) between batches {batch_idx-1} and {batch_idx}"
+                            f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+                            f"Long delay ({time_since_last_batch:.2f}s) between batches "
+                            f"{batch_idx-1} and {batch_idx}"
                         )
 
                     # Move batch to device
                     images, labels = batch
                     logger.info(
-                        f"[ImageClassification] Worker {worker_rank}: Processing batch {batch_idx} "
-                        f"(shape: {images.shape}, time since last: {time_since_last_batch:.2f}s)"
+                        f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Processing batch {batch_idx} (shape: {images.shape}, "
+                        f"time since last: {time_since_last_batch:.2f}s)"
                     )
 
                     transfer_start = time.time()
@@ -233,13 +320,13 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
 
                     if transfer_time > 5:
                         logger.warning(
-                            f"[ImageClassification] Worker {worker_rank}: "
+                            f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
                             f"Slow device transfer ({transfer_time:.2f}s) for batch {batch_idx}"
                         )
 
                     logger.info(
-                        f"[ImageClassification] Worker {worker_rank}: Completed device transfer "
-                        f"for batch {batch_idx} in {transfer_time:.2f}s"
+                        f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Completed device transfer for batch {batch_idx} in {transfer_time:.2f}s"
                     )
 
                     last_batch_time = time.time()
@@ -247,14 +334,16 @@ class ImageClassificationJpegTorchDataLoaderFactory(TorchDataLoaderFactory, S3Re
 
                 except Exception as e:
                     logger.error(
-                        f"[ImageClassification] Worker {worker_rank}: Error processing batch {batch_idx}: {str(e)}",
+                        f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Error processing batch {batch_idx}: {str(e)}",
                         exc_info=True,
                     )
                     raise
 
         except Exception as e:
             logger.error(
-                f"[ImageClassification] Worker {worker_rank}: Error in batch iterator: {str(e)}",
+                f"[ImageClassificationJpegTorchDataLoaderFactory] Worker {worker_rank}: "
+                f"Error in batch iterator: {str(e)}",
                 exc_info=True,
             )
             raise
