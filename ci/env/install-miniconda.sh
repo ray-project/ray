@@ -89,6 +89,7 @@ install_miniconda() {
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
       if [[ "${PYTHON-}" == "3.13" ]]; then
         # Use free threading Python build
+        "${WORKSPACE_DIR}"/ci/suppress_output conda remove --force -y conda-content-trust
         "${WORKSPACE_DIR}"/ci/suppress_output conda install --override-channels -c conda-forge python-freethreading
       fi
     )
