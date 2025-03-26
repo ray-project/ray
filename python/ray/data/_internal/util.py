@@ -1013,7 +1013,10 @@ def make_async_gen(
                 # it back to the (main) iterating thread. To achieve that we're traversing
                 # output queues *backwards* relative to the order of iterator-thread such
                 # that they are more likely to meet w/in a single iteration.
-                result_queue.put(e)
+                failed_fut = Future()
+                failed_fut.set_exception(e)
+
+                result_queue.put(failed_fut)
 
     # Start submitting worker threads
     submitting_worker_thread = threading.Thread(
@@ -1030,14 +1033,11 @@ def make_async_gen(
         result_iter = iter(result_queue.get, SENTINEL)
 
         for res in result_iter:
-            if isinstance(res, Exception):
-                raise res
-            else:
-                assert isinstance(res, Future), f"Expected concurrent.futures.Future, got {res.__class__}"
+            assert isinstance(res, Future), f"Expected concurrent.futures.Future, got {res.__class__}"
 
-                # Yield from an eagerly collected list
-                list_: List[Any] = res.result()
-                yield from list_
+            # Yield from an eagerly collected list
+            list_: List[Any] = res.result()
+            yield from list_
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
