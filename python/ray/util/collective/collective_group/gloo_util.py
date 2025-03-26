@@ -273,7 +273,7 @@ class RayInternalKvStore:
         self._group_name = group_name
         self._job_id = ray.get_runtime_context().get_job_id()
         gcs_address = ray._private.worker._global_node.gcs_address
-        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=10)
+        self._gcs_client = GcsClient(address=gcs_address)
         internal_kv._initialize_internal_kv(self._gcs_client)
 
     def set(self, key: str, data: bytes) -> bool:

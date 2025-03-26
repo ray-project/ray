@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-multi-agent-environments-doc:
 
 Multi-Agent Environments
 ========================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 In a multi-agent environment, multiple "agents" act simultaneously, in a turn-based
 sequence, or through an arbitrary combination of both.
@@ -22,6 +22,7 @@ allowing for any policy to control more than one agent.
 
 .. figure:: images/envs/multi_agent_setup.svg
     :width: 600
+    :align: left
 
     **Multi-agent setup:** ``N`` agents live in the environment and take actions computed by ``M`` policy networks.
     The mapping from agent to policy is flexible and determined by a user-provided mapping function. Here, `agent_1`
@@ -177,6 +178,7 @@ their observations in the returned observations dict.
 
 .. figure:: images/envs/multi_agent_episode_simultaneous.svg
     :width: 600
+    :align: left
 
     **Env with simultaneously acting agents:** Both agents receive their observations at each
     time step, including right after `reset()`. Note that an agent must compute and send an action
@@ -202,6 +204,7 @@ returned observation dict.
 
 .. figure:: images/envs/multi_agent_episode_turn_based.svg
     :width: 600
+    :align: left
 
     **Env with agents taking turns:** The two agents act by taking alternating turns. `agent_1` receives the
     first observation after the `reset()` and thus has to compute and send an action first. Upon receiving
@@ -214,6 +217,7 @@ environments where all agents always act simultaneously, to any arbitrarily comp
 
 .. figure:: images/envs/multi_agent_episode_complex_order.svg
     :width: 600
+    :align: left
 
     **Env with a complex order of turns:** Three agents act in a seemingly chaotic order. `agent_1` and `agent_3` receive their
     initial observation after the `reset()` and thus has to compute and send actions first. Upon receiving

@@ -18,10 +18,13 @@
 #include <boost/bind/bind.hpp>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -34,11 +37,7 @@ struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
 
-namespace ray {
-
-namespace gcs {
-
-using rpc::TablePrefix;
+namespace ray::gcs {
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -189,6 +188,4 @@ class RedisContext {
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 };
 
-}  // namespace gcs
-
-}  // namespace ray
+}  // namespace ray::gcs

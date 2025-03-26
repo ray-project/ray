@@ -6,6 +6,7 @@ from typing import Any, Optional, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 
+import ray
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
@@ -76,7 +77,12 @@ def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
             # the user the option to run on the gpu of their choice, so we enable that
             # option here through `config.local_gpu_idx`.
             devices = get_devices()
-            if len(devices) == 1:
+            # Note, if we have a single learner and we do not run on Ray Tune, the local
+            # learner is not an Ray actor and Ray does not manage devices for it.
+            if (
+                len(devices) == 1
+                and ray._private.worker._mode() == ray._private.worker.WORKER_MODE
+            ):
                 return devices[0]
             else:
                 assert config.local_gpu_idx < torch.cuda.device_count(), (

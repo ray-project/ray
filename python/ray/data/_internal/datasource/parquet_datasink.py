@@ -6,7 +6,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
@@ -28,7 +27,7 @@ class ParquetDatasink(_FileDatasink):
         partition_cols: Optional[List[str]] = None,
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
-        num_rows_per_file: Optional[int] = None,
+        min_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -43,7 +42,7 @@ class ParquetDatasink(_FileDatasink):
 
         self.arrow_parquet_args_fn = arrow_parquet_args_fn
         self.arrow_parquet_args = arrow_parquet_args
-        self.num_rows_per_file = num_rows_per_file
+        self.min_rows_per_file = min_rows_per_file
         self.partition_cols = partition_cols
 
         super().__init__(
@@ -67,6 +66,10 @@ class ParquetDatasink(_FileDatasink):
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
             return
+
+        blocks = [
+            block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
+        ]
 
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
@@ -95,7 +98,7 @@ class ParquetDatasink(_FileDatasink):
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{filename}' to '{self.path}'",
-            match=DataContext.get_current().retried_io_errors,
+            match=self._data_context.retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
@@ -125,9 +128,15 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow as pa
         import pyarrow.parquet as pq
+        import pyarrow.compute as pc
 
-        table = concat(tables)
+        table = concat(tables, promote_types=False)
         # Create unique combinations of the partition columns
+        partition_col_values: List[Dict[str, Any]] = (
+            table.select(self.partition_cols)
+            .group_by(self.partition_cols)
+            .aggregate([])
+        ).to_pylist()
         table_fields = [
             field for field in output_schema if field.name not in self.partition_cols
         ]
@@ -135,30 +144,15 @@ class ParquetDatasink(_FileDatasink):
         output_schema = pa.schema(
             [field for field in output_schema if field.name not in self.partition_cols]
         )
-        # Group the table by partition keys
-        # For each partition key combination fetch list of values
-        # for the non partition columns
-        # Ex: Here original table contain
-        # two columns (a, b). We are paritioning by column a. The schema
-        # of `groups` grouped Table is as follows
-        # b_list: [[[0,0],[1,1],[2,2]]]
-        # a: [[1,2,3]]
-        groups = table.group_by(self.partition_cols).aggregate(
-            [(col_name, "list") for col_name in non_partition_cols]
-        )
-        grouped_keys = [groups.column(k) for k in self.partition_cols]
 
-        for i in range(groups.num_rows):
-            # See https://github.com/apache/arrow/issues/14882 for recommended approach
-            values = [
-                groups.column(f"{col.name}_list")[i].values for col in table_fields
-            ]
-            group_table = pa.Table.from_arrays(values, names=non_partition_cols)
+        for combo in partition_col_values:
+            filters = [pc.equal(table[col], value) for col, value in combo.items()]
+            combined_filter = filters[0]
+            for filter_ in filters[1:]:
+                combined_filter = pc.and_(combined_filter, filter_)
+            group_table = table.filter(combined_filter).select(non_partition_cols)
             partition_path = "/".join(
-                [
-                    f"{col}={values[i]}"
-                    for col, values in zip(self.partition_cols, grouped_keys)
-                ]
+                [f"{col}={value}" for col, value in combo.items()]
             )
             write_path = posixpath.join(self.path, partition_path)
             self._create_dir(write_path)
@@ -168,5 +162,5 @@ class ParquetDatasink(_FileDatasink):
                     writer.write_table(group_table)
 
     @property
-    def num_rows_per_write(self) -> Optional[int]:
-        return self.num_rows_per_file
+    def min_rows_per_write(self) -> Optional[int]:
+        return self.min_rows_per_file

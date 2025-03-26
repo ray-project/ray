@@ -1,14 +1,20 @@
 import logging
 from pathlib import Path
 import pyarrow.fs
+import numpy as np
 import ray
 import time
 import types
+
+from typing import Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.utils import unflatten_dict
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -130,31 +136,57 @@ class OfflineData:
         #   (b) Rematerialize the data every couple of iterations. This is
         #       is costly.
         if not self.data_is_mapped:
-            # Constructor `kwargs` for the `OfflinePreLearner`.
-            fn_constructor_kwargs = {
-                "config": self.config,
-                "learner": self.learner_handles[0],
-                "spaces": self.spaces[INPUT_ENV_SPACES],
-            }
-            # If we have multiple learners, add to the constructor `kwargs`.
-            if num_shards > 1:
+
+            # Get the RLModule state from learners.
+            if num_shards >= 1:
                 # Call here the learner to get an up-to-date module state.
                 # TODO (simon): This is a workaround as along as learners cannot
                 # receive any calls from another actor.
                 module_state = ray.get(
                     self.learner_handles[0].get_state.remote(
-                        component=COMPONENT_RL_MODULE
+                        component=COMPONENT_RL_MODULE,
                     )
-                )
-                # Add constructor `kwargs` when using remote learners.
-                fn_constructor_kwargs.update(
-                    {
-                        "learner": None,
-                        "module_spec": self.module_spec,
-                        "module_state": module_state,
-                    }
-                )
+                )[COMPONENT_RL_MODULE]
+                # Provide the `Learner`(s) GPU devices, if needed.
+                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                #     devices = ray.get(self.learner_handles[0].get_device.remote())
+                #     devices = [devices] if not isinstance(devices, list) else devices
+                #     device_strings = [
+                #         f"{device.type}:{str(device.index)}"
+                #         if device.type == "cuda"
+                #         else device.type
+                #         for device in devices
+                #     ]
+                # # Otherwise, set the GPU strings to `None`.
+                # # TODO (simon): Check inside 'OfflinePreLearner'.
+                # else:
+                #     device_strings = None
+            else:
+                # Get the module state from the `Learner`(S).
+                module_state = self.learner_handles[0].get_state(
+                    component=COMPONENT_RL_MODULE,
+                )[COMPONENT_RL_MODULE]
+                # Provide the `Learner`(s) GPU devices, if needed.
+                # if not self.map_batches_uses_gpus(self.config) and self.config._validate_config:
+                #     device = self.learner_handles[0].get_device()
+                #     device_strings = [
+                #         f"{device.type}:{str(device.index)}"
+                #         if device.type == "cuda"
+                #         else device.type
+                #     ]
+                # else:
+                #     device_strings = None
+            # Constructor `kwargs` for the `OfflinePreLearner`.
+            fn_constructor_kwargs = {
+                "config": self.config,
+                "spaces": self.spaces[INPUT_ENV_SPACES],
+                "module_spec": self.module_spec,
+                "module_state": module_state,
+                # "device_strings": self.get_devices(),
+            }
 
+            # Map the data to run the `OfflinePreLearner`s in the data pipeline
+            # for training.
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
@@ -170,6 +202,7 @@ class OfflineData:
         # returned now and we have already generated from the iterator, i.e.
         # `isinstance(self.batch_iterators, types.GeneratorType) == True`, we need
         # to create here a new iterator.
+        # TODO (simon): Check, if this iterator could potentially exhaust.
         if not self.batch_iterators or (
             return_iterator and isinstance(self.batch_iterators, types.GeneratorType)
         ):
@@ -190,27 +223,42 @@ class OfflineData:
             # Otherwise we create a simple iterator and - if necessary - initialize
             # it here.
             else:
-                # If no iterator should be returned, or if we want to return a single
-                # batch iterator, we instantiate the batch iterator once, here.
-                self.batch_iterators = self.data.iter_batches(
-                    # This is important. The batch size is now 1, because the data
-                    # is already run through the `OfflinePreLearner` and a single
-                    # instance is a single `MultiAgentBatch` of size `num_samples`.
-                    batch_size=1,
-                    **self.iter_batches_kwargs,
-                )
+                # Should an iterator be returned?
+                if return_iterator:
+                    self.batch_iterators = self.data.iterator()
+                # Otherwise, the user wants batches returned.
+                else:
+                    # Define a collate (last-mile) transformation that maps batches
+                    # to RLlib's `MultiAgentBatch`.
+                    def _collate_fn(_batch: Dict[str, np.ndarray]) -> MultiAgentBatch:
+                        _batch = unflatten_dict(_batch)
+                        return MultiAgentBatch(
+                            {
+                                module_id: SampleBatch(module_data)
+                                for module_id, module_data in _batch.items()
+                            },
+                            env_steps=sum(
+                                len(next(iter(module_data.values())))
+                                for module_data in _batch.values()
+                            ),
+                        )
 
-                # If there should be batches
-                if not return_iterator:
+                    # If no iterator should be returned, or if we want to return a single
+                    # batch iterator, we instantiate the batch iterator once, here.
+                    self.batch_iterators = self.data.iter_batches(
+                        batch_size=num_samples,
+                        _collate_fn=_collate_fn,
+                        **self.iter_batches_kwargs,
+                    )
                     self.batch_iterators = iter(self.batch_iterators)
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:
-            return self.batch_iterators
+            return force_list(self.batch_iterators)
         else:
             # Return a single batch from the iterator.
             try:
-                return next(self.batch_iterators)["batch"][0]
+                return next(self.batch_iterators)
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
                 logger.debug(

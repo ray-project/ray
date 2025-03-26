@@ -17,6 +17,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
@@ -185,12 +188,12 @@ class GrpcClient {
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
-  /// Whether to use TLS.
-  bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
+  /// Whether to use TLS.
+  bool use_tls_;
 };
 
 }  // namespace rpc

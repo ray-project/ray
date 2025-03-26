@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
-
 
 .. _rllib-checkpoints-docs:
 
 Checkpointing
 =============
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
 states of :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instances and their subcomponents
@@ -37,7 +35,7 @@ For example, you can deploy a previously trained :py:class:`~ray.rllib.core.rl_m
 any of the other RLlib components, into production.
 
 .. figure:: images/checkpointing/from_checkpoint.svg
-    :width: 500
+    :width: 750
     :align: left
 
     **Creating a new instance directly from a checkpoint**: Use the ``classmethod``
@@ -402,7 +400,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
 
         .. testcode::
 
-            from ray import train, tune
+            from ray import tune
 
             # Reuse the preceding PPOConfig (`config`).
             # Inject custom callback code that runs right after algorithm's initialization.
@@ -416,7 +414,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 config.algo_class,
                 param_space=config,
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
             ).fit()
 
     .. tab-item:: Swap out one RLModule and continue multi-agent training
@@ -456,7 +454,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 multi_agent_config.algo_class,
                 param_space=multi_agent_config,
-                run_config=train.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
             ).fit()
 
         .. testcode::

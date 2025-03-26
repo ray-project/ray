@@ -12,10 +12,37 @@ clang_format() {
 
 pre_commit() {
   # Run pre-commit on all files
-  # TODO(MortalHappiness): Run all pre-commit checks
-  # Currently, we only run the ruff format check
-  pip install -c python/requirements_compiled.txt pre-commit
-  pre-commit run ruff --all-files --show-diff-on-failure
+  # TODO(MortalHappiness): Run all pre-commit checks because currently we only run some of them.
+  pip install -c python/requirements_compiled.txt pre-commit clang-format
+
+  HOOKS=(
+    python-no-log-warn
+    ruff
+    check-added-large-files
+    check-ast
+    check-toml
+    black
+    prettier
+    mypy
+    rst-directive-colons
+    rst-inline-touching-normal
+    python-check-mock-methods
+    clang-format
+    shellcheck
+    docstyle
+    check-import-order
+    check-cpp-files-inclusion
+    end-of-file-fixer
+    check-json
+    trailing-whitespace
+    cpplint
+    buildifier
+    buildifier-lint
+  )
+
+  for HOOK in "${HOOKS[@]}"; do
+    pre-commit run "$HOOK" --all-files --show-diff-on-failure
+  done
 }
 
 code_format() {
@@ -74,6 +101,7 @@ api_policy_check() {
   # install ray and compile doc to generate API files
   make -C doc/ html
   RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+
   # validate the API files
   bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }

@@ -8,13 +8,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Union, Dict
 from unittest.mock import patch
 
 import pytest
+import requests
 import yaml
 
 import ray
+from ray import NodeID
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -22,7 +25,17 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+from ray._private.runtime_env.packaging import (
+    get_uri_for_file,
+    create_package,
+    download_and_unpack_package,
+)
+from ray.dashboard.consts import (
+    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    DASHBOARD_AGENT_ADDR_IP_PREFIX,
+)
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
+from ray.dashboard.modules.job.common import uri_to_http_components
 from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
@@ -46,11 +59,16 @@ def headers():
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client(headers) -> JobSubmissionClient:
+def ray_start_context():
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        address = ctx.address_info["webui_url"]
-        assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address), headers=headers)
+        yield ctx
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers, ray_start_context) -> JobSubmissionClient:
+    address = ray_start_context.address_info["webui_url"]
+    assert wait_until_server_available(address)
+    yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 @pytest.fixture
@@ -417,7 +435,7 @@ def test_http_bad_request(job_sdk_client):
     )
 
     assert r.status_code == 400
-    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
+    assert "__init__() got an unexpected keyword argument" in r.text
 
 
 def test_invalid_runtime_env(job_sdk_client):
@@ -736,30 +754,86 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
 
         importlib.reload(ray.dashboard.consts)
 
-        from ray.dashboard.datacenter import DataSource
+        # Fake GCS client
+        class _FakeGcsClient:
+            def __init__(self):
+                self._kv: Dict[bytes, bytes] = {}
+
+            @staticmethod
+            def ensure_bytes(key: Union[bytes, str]) -> bytes:
+                return key.encode() if isinstance(key, str) else key
+
+            async def internal_kv_put(
+                self, key: Union[bytes, str], value: bytes, **kwargs
+            ):
+                key = self.ensure_bytes(key)
+                self._kv[key] = value
+
+            async def internal_kv_get(self, key: Union[bytes, str], **kwargs):
+                key = self.ensure_bytes(key)
+                return self._kv.get(key, None)
+
+            async def internal_kv_multi_get(
+                self, keys: List[Union[bytes, str]], **kwargs
+            ):
+                return {key: self.internal_kv_get(key) for key in keys}
+
+            async def internal_kv_del(self, key: Union[bytes, str], **kwargs):
+                key = self.ensure_bytes(key)
+                self._kv.pop(key)
+
+            async def internal_kv_keys(self, prefix: Union[bytes, str], **kwargs):
+                prefix = self.ensure_bytes(prefix)
+                return [key for key in self._kv.keys() if key.startswith(prefix)]
 
         class MockJobHead(JobHead):
             def __init__(self):
                 self._agents = dict()
+                self._gcs_aio_client = _FakeGcsClient()
 
-        DataSource.agents = {}
-        DataSource.nodes = {}
+            @property
+            def gcs_aio_client(self):
+                # Overrides JobHead.gcs_aio_client
+                return self._gcs_aio_client
+
         job_head = MockJobHead()
+        job_head._gcs_aio_client = _FakeGcsClient()
 
-        def add_agent(agent):
+        async def add_agent(agent):
             node_id = agent[0]
             node_ip = agent[1]["ipAddress"]
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
-            DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
-            DataSource.agents[node_id] = (http_port, grpc_port)
 
-        def del_agent(agent):
+            await job_head._gcs_aio_client.internal_kv_put(
+                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+                json.dumps([node_ip, http_port, grpc_port]).encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            await job_head._gcs_aio_client.internal_kv_put(
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
+                json.dumps([node_id.hex(), http_port, grpc_port]).encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+
+        async def del_agent(agent):
             node_id = agent[0]
-            DataSource.nodes.pop(node_id)
-            DataSource.agents.pop(node_id)
+            node_ip = agent[1]["ipAddress"]
+            await job_head._gcs_aio_client.internal_kv_del(
+                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            await job_head._gcs_aio_client.internal_kv_del(
+                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node_ip}".encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
-        head_node_id = "node1"
+        head_node_id = NodeID.from_random()
+        await job_head._gcs_aio_client.internal_kv_put(
+            ray_constants.KV_HEAD_NODE_ID_KEY,
+            head_node_id.hex().encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+        )
 
         agent_1 = (
             head_node_id,
@@ -771,7 +845,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             ),
         )
         agent_2 = (
-            "node2",
+            NodeID.from_random(),
             dict(
                 ipAddress="2.2.2.2",
                 httpPort=2,
@@ -780,7 +854,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             ),
         )
         agent_3 = (
-            "node3",
+            NodeID.from_random(),
             dict(
                 ipAddress="3.3.3.3",
                 httpPort=3,
@@ -796,12 +870,12 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         )
 
         # Check only 1 agent present, only agent being returned
-        add_agent(agent_1)
+        await add_agent(agent_1)
         job_agent_client = await job_head.get_target_agent()
         assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
         # Remove only agent, no agents present, should time out
-        del_agent(agent_1)
+        await del_agent(agent_1)
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
 
@@ -812,19 +886,9 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         )
 
         # Add 3 agents
-        add_agent(agent_1)
-        add_agent(agent_2)
-        add_agent(agent_3)
-
-        # Mock GCS client
-        class _MockedGCSClient:
-            async def internal_kv_get(self, key: bytes, **kwargs):
-                if key == ray_constants.KV_HEAD_NODE_ID_KEY:
-                    return head_node_id.encode()
-
-                return None
-
-        job_head._gcs_aio_client = _MockedGCSClient()
+        await add_agent(agent_1)
+        await add_agent(agent_2)
+        await add_agent(agent_3)
 
         # Make sure returned agent is a head-node
         # NOTE: We run 3 tims to make sure we're not hitting branch probabilistically
@@ -853,7 +917,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         for agent in [agent_1, agent_2, agent_3]:
             if f"http://{agent[1]['httpAddress']}" in addresses_2:
                 break
-        del_agent(agent)
+        await del_agent(agent)
 
         # Theoretically, the probability of failure is 1/2^100
         addresses_3 = set()
@@ -871,12 +935,48 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         for agent in [agent_1, agent_2, agent_3]:
             if f"http://{agent[1]['httpAddress']}" in addresses_4:
                 break
-        del_agent(agent)
+        await del_agent(agent)
         address = None
         for _ in range(3):
             job_agent_client = await job_head.get_target_agent()
             assert address is None or address == job_agent_client._agent_address
             address = job_agent_client._agent_address
+
+
+@pytest.mark.asyncio
+async def test_get_upload_package(ray_start_context, tmp_path):
+    assert wait_until_server_available(ray_start_context["webui_url"])
+    webui_url = format_web_url(ray_start_context["webui_url"])
+    gcs_aio_client = GcsAioClient(address=ray_start_context["gcs_address"])
+    url = webui_url + "/api/packages/{protocol}/{package_name}"
+
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    filename = "task.py"
+
+    file_content = b"Hello world"
+    with (pkg_dir / filename).open("wb") as f:
+        f.write(file_content)
+
+    package_uri = get_uri_for_file(str(pkg_dir / filename))
+    protocol, package_name = uri_to_http_components(package_uri)
+    package_file = tmp_path / package_name
+    create_package(str(pkg_dir), package_file)
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 404
+
+    resp = requests.put(
+        url.format(protocol=protocol, package_name=package_name),
+        data=package_file.read_bytes(),
+    )
+    assert resp.status_code == 200
+
+    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    assert resp.status_code == 200
+
+    await download_and_unpack_package(package_uri, str(tmp_path), gcs_aio_client)
+    assert (package_file.with_suffix("") / filename).read_bytes() == file_content
 
 
 if __name__ == "__main__":

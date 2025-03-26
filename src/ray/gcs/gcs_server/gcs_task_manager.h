@@ -14,18 +14,26 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+
+// Forward declaration.
+class PeriodicalRunner;
+
 namespace gcs {
 
 enum GcsTaskManagerCounter {
@@ -86,18 +94,7 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
-  explicit GcsTaskManager(instrumented_io_context &io_service)
-      : io_service_(io_service),
-        stats_counter_(),
-        task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
-            RayConfig::instance().task_events_max_num_task_in_gcs(),
-            stats_counter_,
-            std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-        periodical_runner_(PeriodicalRunner::Create(io_service_)) {
-    periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
-                                          5 * 1000,
-                                          "GcsTaskManager.GcJobSummary");
-  }
+  explicit GcsTaskManager(instrumented_io_context &io_service);
 
   /// Handles a AddTaskEventData request.
   ///

@@ -1,6 +1,7 @@
+import warnings
 from pathlib import Path
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
@@ -14,6 +15,7 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -43,7 +45,7 @@ config = (
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 1},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
         iter_batches_kwargs={"prefetch_batches": 1},
@@ -51,7 +53,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1 if not args.num_learners else None,
+        dataset_num_iters_per_learner=5,
     )
     .training(
         train_batch_size_per_learner=1024,
@@ -72,10 +74,19 @@ config = (
     )
 )
 
+if not args.no_tune:
+    warnings.warn(
+        "You are running the example with Ray Tune. Offline RL uses "
+        "Ray Data, which doesn't interact seamlessly with Ray Tune. "
+        "If you encounter difficulties try to run the example without "
+        "Ray Tune using `--no-tune`."
+    )
+
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
     TRAINING_ITERATION: 350,
 }
+
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args, stop=stop)
