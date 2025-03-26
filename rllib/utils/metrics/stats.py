@@ -736,7 +736,7 @@ class Stats:
     @staticmethod
     def similar_to(
         other: "Stats",
-        init_value: Any,
+        init_value: Any = None,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 

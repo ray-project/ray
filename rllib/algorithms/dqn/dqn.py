@@ -721,8 +721,13 @@ class DQN(Algorithm):
                     for res in learner_results:
                         for module_id, module_results in res.items():
                             if TD_ERROR_KEY in module_results:
+                                module_td_errors = module_results.pop(TD_ERROR_KEY)
+                                from ray.rllib.utils.metrics.stats import Stats
+
+                                if isinstance(module_td_errors, Stats):
+                                    module_td_errors = module_td_errors.peek()
                                 td_errors[module_id].extend(
-                                    convert_to_numpy(module_results.pop(TD_ERROR_KEY))
+                                    convert_to_numpy(module_td_errors)
                                 )
                     td_errors = {
                         module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
