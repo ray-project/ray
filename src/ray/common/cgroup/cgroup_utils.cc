@@ -14,6 +14,12 @@
 
 #include "ray/common/cgroup/cgroup_utils.h"
 
+#ifndef __linux__
+namespace ray {
+Status KillAllProc(const std::string &cgroup_folder) { return Status::OK(); }
+}  // namespace ray
+#else
+
 #include <sys/wait.h>
 
 #include <fstream>
@@ -77,3 +83,5 @@ Status KillAllProc(const std::string &cgroup_folder) {
 }
 
 }  // namespace ray
+
+#endif  // __linux__
