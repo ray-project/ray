@@ -1,27 +1,26 @@
-from typing import Dict, Iterator, Tuple, Optional
+# Standard library imports
 import logging
 import time
+from typing import Any, Dict, Iterator, Tuple, Optional
 
+# Third-party imports
 import torch
 import torchvision
 from torch.utils.data import IterableDataset
 
+# Ray imports
 import ray.train
 
+# Local imports
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
-from dataloader_factory import (
-    BaseDataLoaderFactory,
-)
+from dataloader_factory import BaseDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
-from .imagenet import (
-    get_preprocess_map_fn,
-    IMAGENET_PARQUET_SPLIT_S3_DIRS,
-)
 from image_classification.factory import ImageClassificationMockDataLoaderFactory
+from .imagenet import get_preprocess_map_fn, IMAGENET_PARQUET_SPLIT_S3_DIRS
 from .torch_parquet_image_iterable_dataset import (
-    S3Reader,
+    S3ParquetReader,
     S3ParquetImageIterableDataset,
 )
 
@@ -29,7 +28,21 @@ logger = logging.getLogger(__name__)
 
 
 class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
+    """Factory for creating Ray DataLoader for Parquet image classification.
+
+    This factory:
+    1. Creates Ray datasets from Parquet files in S3
+    2. Handles preprocessing and transforms
+    3. Manages resource allocation for concurrent validation
+    4. Provides collation function for PyTorch tensors
+    """
+
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+        """Get Ray datasets for training and validation.
+
+        Returns:
+            Dict with "train" and "val" Dataset objects
+        """
         train_ds = (
             ray.data.read_parquet(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
@@ -59,14 +72,22 @@ class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
                 ray.data.ExecutionResources(cpu=cpus_to_exclude)
             )
             logger.info(
-                f"[Dataloader] Reserving {cpus_to_exclude} CPUs for validation "
-                "that happens concurrently with training every "
-                f"{self.benchmark_config.validate_every_n_steps} steps. "
+                f"[ImageClassificationParquetRayDataLoaderFactory] Reserving {cpus_to_exclude} "
+                "CPUs for validation that happens concurrently with training every "
+                f"{self.benchmark_config.validate_every_n_steps} steps"
             )
 
         return {"train": train_ds, "val": val_ds}
 
-    def collate_fn(self, batch):
+    def collate_fn(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Collate batch of data into PyTorch tensors.
+
+        Args:
+            batch: Dictionary containing image and label data
+
+        Returns:
+            Tuple of (image_tensor, label_tensor) on the correct device
+        """
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
         )
@@ -78,7 +99,7 @@ class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
 
 
 class ImageClassificationParquetTorchDataLoaderFactory(
-    TorchDataLoaderFactory, S3Reader
+    TorchDataLoaderFactory, S3ParquetReader
 ):
     """Factory for creating PyTorch DataLoaders for image classification tasks.
 
@@ -91,7 +112,9 @@ class ImageClassificationParquetTorchDataLoaderFactory(
 
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
-        S3Reader.__init__(self)  # Initialize S3Reader to set up _s3_client
+        S3ParquetReader.__init__(
+            self
+        )  # Initialize S3ParquetReader to set up _s3_client
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
 
@@ -167,7 +190,7 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             }
         )
 
-        val_file_urls = self._get_file_urls(self.val_url)
+        val_file_urls = train_file_urls
         val_ds = S3ParquetImageIterableDataset(
             file_urls=val_file_urls,
             random_transforms=False,
@@ -203,7 +226,8 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         """
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(
-            f"[ImageClassification] Worker {worker_rank}: Starting batch iteration"
+            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+            "Starting batch iteration"
         )
 
         try:
@@ -215,15 +239,17 @@ class ImageClassificationParquetTorchDataLoaderFactory(
                     time_since_last_batch = current_time - last_batch_time
                     if time_since_last_batch > 10:
                         logger.warning(
-                            f"[ImageClassification] Worker {worker_rank}: "
-                            f"Long delay ({time_since_last_batch:.2f}s) between batches {batch_idx-1} and {batch_idx}"
+                            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+                            f"Long delay ({time_since_last_batch:.2f}s) between batches "
+                            f"{batch_idx-1} and {batch_idx}"
                         )
 
                     # Move batch to device
                     images, labels = batch
                     logger.info(
-                        f"[ImageClassification] Worker {worker_rank}: Processing batch {batch_idx} "
-                        f"(shape: {images.shape}, time since last: {time_since_last_batch:.2f}s)"
+                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Processing batch {batch_idx} (shape: {images.shape}, "
+                        f"time since last: {time_since_last_batch:.2f}s)"
                     )
 
                     transfer_start = time.time()
@@ -238,13 +264,13 @@ class ImageClassificationParquetTorchDataLoaderFactory(
 
                     if transfer_time > 5:
                         logger.warning(
-                            f"[ImageClassification] Worker {worker_rank}: "
+                            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
                             f"Slow device transfer ({transfer_time:.2f}s) for batch {batch_idx}"
                         )
 
                     logger.info(
-                        f"[ImageClassification] Worker {worker_rank}: Completed device transfer "
-                        f"for batch {batch_idx} in {transfer_time:.2f}s"
+                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Completed device transfer for batch {batch_idx} in {transfer_time:.2f}s"
                     )
 
                     last_batch_time = time.time()
@@ -252,14 +278,16 @@ class ImageClassificationParquetTorchDataLoaderFactory(
 
                 except Exception as e:
                     logger.error(
-                        f"[ImageClassification] Worker {worker_rank}: Error processing batch {batch_idx}: {str(e)}",
+                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+                        f"Error processing batch {batch_idx}: {str(e)}",
                         exc_info=True,
                     )
                     raise
 
         except Exception as e:
             logger.error(
-                f"[ImageClassification] Worker {worker_rank}: Error in batch iterator: {str(e)}",
+                f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
+                f"Error in batch iterator: {str(e)}",
                 exc_info=True,
             )
             raise
