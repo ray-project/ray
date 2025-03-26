@@ -30,6 +30,7 @@ from ray._private.utils import (
     load_class,
     parse_resources_json,
     parse_node_labels_json,
+    parse_node_labels_string,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
@@ -696,6 +697,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    labels_from_file,
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
@@ -716,7 +718,14 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
+
+    # Compose labels passed in with `--labels` and `--labels-from-file`.
+    # The label value from `--labels` will overrwite the value of any duplicate keys.
+    labels_from_file_dict = parse_node_labels_json(labels_from_file, cli_logger, cf)
+    labels_dict = {
+        **labels_from_file_dict,
+        **parse_node_labels_string(labels, cli_logger, cf),
+    }
 
     if plasma_store_socket_name is not None:
         warnings.warn(
