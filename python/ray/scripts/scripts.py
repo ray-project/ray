@@ -629,9 +629,17 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
+    default="",
+    type=str,
+    help="a string list of key-value pairs mapping label name to label value.",
+)
+@click.option(
+    "--labels-from-file",
+    required=False,
+    hidden=True,
     default="{}",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
+    help="a JSON serialized dictionary mapping label name to label value sourced from a file.",
 )
 @click.option(
     "--include-log-monitor",

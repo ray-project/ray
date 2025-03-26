@@ -1,17 +1,22 @@
 # coding: utf-8
 """
-Unit/Integration Testing for python/_private/utils.py
+Unit/Integration Testing for python/ray/_private/utils.py
 
 This currently expects to work for minimal installs.
 """
 
+import click
 import pytest
 import logging
 from ray._private.utils import (
     parse_pg_formatted_resources_to_original,
     try_import_each_module,
     get_current_node_cpu_model_name,
+    parse_node_labels_string,
+    parse_node_labels_json,
+    validate_node_labels,
 )
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from unittest.mock import patch, mock_open
 import sys
 
@@ -69,6 +74,96 @@ def test_parse_pg_formatted_resources():
         }
     )
     assert out == {"CPU": 1, "memory": 100}
+
+
+def test_parse_node_labels_from_string():
+    # Empty/invalid label argument passed
+    labels_string = ""
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_string(labels_string, cli_logger, cf)
+    assert "is not a valid string of key-value pairs" in str(e)
+
+    # Valid label key with empty value
+    labels_string = "region="
+    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    assert labels_dict == {"region": ""}
+
+    # Multiple valid label keys and values
+    labels_string = "ray.io/accelerator-type=A100,region=us-west4"
+    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    assert labels_dict == {"ray.io/accelerator-type": "A100", "region": "us-west4"}
+
+    # Invalid label
+    labels_string = "ray.io/accelerator-type=type=A100"
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_string(labels_string, cli_logger, cf)
+    assert "is not a valid string of key-value pairs" in str(e)
+
+
+def test_parse_node_labels_from_json():
+    # Empty/invalid json
+    labels_json = ""
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_json(labels_json, cli_logger, cf)
+    assert "is not a valid JSON string" in str(e)
+
+    # Valid label key with empty value
+    labels_json = '{"ray.io/accelerator-type": ""}'
+    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    assert labels_dict == {"ray.io/accelerator-type": ""}
+
+    # Multiple valid label keys and values
+    labels_json = (
+        '{"ray.io/accelerator-type": "A100", "region": "us", "market-type": "spot"}'
+    )
+    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    assert labels_dict == {
+        "ray.io/accelerator-type": "A100",
+        "region": "us",
+        "market-type": "spot",
+    }
+
+    # Non-string label key
+    labels_json = '{100: "A100"}'
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_json(labels_json, cli_logger, cf)
+    assert "is not a valid JSON string" in str(e)
+
+    # Non-string label value
+    labels_json = '{"ray.io/accelerator-type": 5}'
+    with pytest.raises(click.exceptions.ClickException) as e:
+        parse_node_labels_json(labels_json, cli_logger, cf)
+    assert "is not a valid JSON string" in str(e)
+
+
+def test_validate_node_labels():
+    # Custom label starts with ray.io prefix
+    labels_dict = {"ray.io/accelerator-type": "A100"}
+    with pytest.raises(ValueError) as e:
+        validate_node_labels(labels_dict)
+    assert "This is reserved for Ray defined labels." in str(e)
+
+    # Invalid key prefix syntax
+    labels_dict = {"invalidPrefix/accelerator-type": "A100"}
+    with pytest.raises(ValueError) as e:
+        validate_node_labels(labels_dict)
+    assert "Invalid label key prefix" in str(e)
+
+    # Invalid key name syntax
+    labels_dict = {"!!accelerator-type?": "A100"}
+    with pytest.raises(ValueError) as e:
+        validate_node_labels(labels_dict)
+    assert "Invalid label key name" in str(e)
+
+    # Invalid key value syntax
+    labels_dict = {"accelerator-type": "??"}
+    with pytest.raises(ValueError) as e:
+        validate_node_labels(labels_dict)
+    assert "Invalid label key value" in str(e)
+
+    # Valid node label
+    labels_dict = {"accelerator-type": "A100"}
+    validate_node_labels(labels_dict)
 
 
 @pytest.mark.skipif(
