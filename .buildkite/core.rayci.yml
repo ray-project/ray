@@ -36,6 +36,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
@@ -166,8 +167,13 @@ steps:
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --install-mask all-ray-libraries
-        --except-tags gpu,post_wheel_build,mem_pressure,doctest,multi_gpu
+        --except-tags doctest,post_wheel_build,gpu,multi_gpu,mem_pressure
         --parallelism-per-worker 3
+        --skip-ray-installation
+      # doc memory pressure example
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --only-tags mem_pressure
+        --except-tags gpu
         --skip-ray-installation
 
   - label: ":ray: core: data tests"
@@ -282,6 +288,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
 
   # cpp tests
   - label: ":ray: core: cpp tests"
