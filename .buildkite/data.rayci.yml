@@ -254,7 +254,7 @@ steps:
     commands:
       - pip install -U boto3==1.28.70 awscli==1.29.70
       - $(python ci/env/setup_credentials.py)
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/tests/test_snowflake data
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
         --build-name datalbuild
         --only-tags needs_credentials
     depends_on: datalbuild
