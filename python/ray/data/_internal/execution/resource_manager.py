@@ -251,7 +251,7 @@ class ResourceManager:
                 usage_str += f", budget=(cpu={budget.cpu:.1f}"
                 usage_str += f",gpu={budget.gpu:.1f}"
                 usage_str += f",obj_store={budget.object_store_memory_str()}"
-                # Memory budget for reading task outputs.
+                # Remaining memory budget for producing new task outputs.
                 reserved_for_output = memory_string(
                     self._op_resource_allocator._output_budgets.get(op, 0)
                 )
@@ -410,7 +410,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Per-op budget allowed for reading task outputs.
+        # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
         # Whether each operator has reserved the minimum resources to run
         # at least one task.

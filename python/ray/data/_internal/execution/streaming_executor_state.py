@@ -274,8 +274,10 @@ class OpState:
         ):
             backpressure_types = []
             if self.op._in_task_submission_backpressure:
+                # The op is backpressured from submitting new tasks.
                 backpressure_types.append("tasks")
             if self.op._in_task_output_backpressure:
+                # The op is backpressured from producing new outputs.
                 backpressure_types.append("outputs")
             desc += f" [backpressured:{','.join(backpressure_types)}]"
 
