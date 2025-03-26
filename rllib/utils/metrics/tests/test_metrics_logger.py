@@ -466,10 +466,10 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Reduce both loggers
     results1 = logger1.reduce()
-    logger2.reduce()
+    results2 = logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts([results1, logger2])
+    logger.merge_and_log_n_dicts([results1, results2])
 
     # Check merged results
     check(logger.peek("count"), 10)  # sum of all values
@@ -510,10 +510,10 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Reduce both loggers
     results1 = logger1.reduce()
-    logger2.reduce()
+    results2 = logger2.reduce()
 
     # Merge results into main logger
-    logger.merge_and_log_n_dicts([results1, logger2])
+    logger.merge_and_log_n_dicts([results1, results2])
 
     # Check merged results
     check(logger.peek(["nested", "count"]), 10)  # sum of all values
@@ -617,8 +617,10 @@ def test_reduction_method_preservation(logger):
     logger3.log_value("mean_metric", 3, reduce="mean")
     logger3.log_value("mean_metric", 4)
 
+    results3 = logger3.reduce()
+
     # Merge two reduced results into
-    logger.merge_and_log_n_dicts([logger3])
+    logger.merge_and_log_n_dicts([results3])
 
     # Verify it's still using mean reduction after merge
     check(logger.peek("mean_metric"), 2.01)  # mean of [2.01, 3.01]

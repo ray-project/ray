@@ -512,7 +512,7 @@ class MetricsLogger:
 
     def merge_and_log_n_dicts(
         self,
-        stats_dicts_or_loggers: List[Union[Dict[str, Any], "MetricsLogger"]],
+        stats_dicts: List[Dict[str, Any]],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
@@ -635,17 +635,13 @@ class MetricsLogger:
         all_keys = set()
         # We do one pass over all the stats_dicts_or_loggers to 1. prepend the key if provided and 2. collect all the keys and 3. convert MetricsLogger to stats dict.
         stats_dicts_or_loggers_maybe_with_key_prepended = []
-        for stats_dict_or_logger in stats_dicts_or_loggers:
-            if isinstance(stats_dict_or_logger, MetricsLogger):
-                stats_dict_or_logger = stats_dict_or_logger.stats
-            if isinstance(stats_dict_or_logger, MetricsLogger):
-                stats_dict_or_logger = stats_dict_or_logger.stats
+        for stats_dict in stats_dicts:
             if key is not None:
-                stats_dict_or_logger = {key: stats_dict_or_logger}
-            stats_dicts_or_loggers_maybe_with_key_prepended.append(stats_dict_or_logger)
+                stats_dict = {key: stats_dict}
+            stats_dicts_or_loggers_maybe_with_key_prepended.append(stats_dict)
             tree.map_structure_with_path(
                 lambda path, _: all_keys.add(force_tuple(path)),
-                stats_dict_or_logger,
+                stats_dict,
             )
         stats_dicts_or_loggers = stats_dicts_or_loggers_maybe_with_key_prepended
 
