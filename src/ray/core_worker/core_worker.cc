@@ -1174,6 +1174,13 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  if (is_exit_) {
+    RAY_LOG(INFO) << "Exit signal received, but the core worker has already received a "
+                     "signal and is shutting down.";
+    return;
+  }
+  is_exit_ = true;
+
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
@@ -3741,8 +3748,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
                                             std::vector<rpc::ObjectReference> *arg_refs,
                                             std::vector<ObjectID> *borrowed_ids) {
   auto num_args = task.NumArgs();
-  args->resize(num_args);
-  arg_refs->resize(num_args);
+  args->reserve(num_args);
+  arg_refs->reserve(num_args);
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
@@ -3752,13 +3759,9 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       const auto &arg_ref = task.ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
-      auto it = by_ref_indices.find(arg_id);
-      if (it == by_ref_indices.end()) {
-        by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
-      } else {
-        it->second.push_back(i);
-      }
-      arg_refs->at(i) = arg_ref;
+      by_ref_indices[arg_id].push_back(i);
+      arg_refs->push_back(arg_ref);
+      args->emplace_back();
       // Pin all args passed by reference for the duration of the task.  This
       // ensures that when the task completes, we can retrieve metadata about
       // any borrowed ObjectIDs that were serialized in the argument's value.
@@ -3793,9 +3796,10 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      args->at(i) =
-          std::make_shared<RayObject>(data, metadata, task.ArgInlinedRefs(i), copy_data);
-      arg_refs->at(i).set_object_id(ObjectID::Nil().Binary());
+      args->push_back(std::make_shared<RayObject>(
+          std::move(data), std::move(metadata), task.ArgInlinedRefs(i), copy_data));
+      auto &arg_ref = arg_refs->emplace_back();
+      arg_ref.set_object_id(ObjectID::Nil().Binary());
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the

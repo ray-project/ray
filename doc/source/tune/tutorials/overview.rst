@@ -26,7 +26,7 @@ User Guides
 
 In this section, you can find material on how to use Tune and its various features.
 You can follow our :ref:`Tune Feature Guides <tune-feature-guides>`, but can also  look into our
-:ref:`Practical Examples <tune-recipes>`, or go through some :doc:`Exercises <../examples/exercises>` to get started.
+:ref:`Practical Examples <tune-recipes>`, or go through some :ref:`tune-examples-exercises` to get started.
 
 .. _tune-feature-guides:
 
