@@ -1421,7 +1421,7 @@ def test_write_auto_infer_nullable_fields(
     ds.write_parquet(tmp_path, min_rows_per_file=2)
 
 
-def test_seed_file_shuffle(restore_data_context, tmp_path):
+def test_seed_file_shuffle(ray_start_regular_shared, restore_data_context, tmp_path):
     def write_parquet_file(path, file_index):
         """Write a dummy Parquet file with test data."""
         # Create a dummy dataset with unique data for each file
@@ -1482,6 +1482,7 @@ def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
     ]
 
 
+@pytest.mark.skip("RayTurbo checks paths in remote tasks, so we can't easily test this")
 def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
     table = pa.Table.from_pydict({})
     pq.write_table(table, tmp_path / "no_extension")

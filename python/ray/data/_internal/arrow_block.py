@@ -21,6 +21,7 @@ from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
+from ray.anyscale.data._internal.arrow_block import ArrowBlockMixin
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
@@ -155,7 +156,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return BlockType.ARROW
 
 
-class ArrowBlockAccessor(TableBlockAccessor):
+class ArrowBlockAccessor(ArrowBlockMixin, TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
     def __init__(self, table: "pyarrow.Table"):

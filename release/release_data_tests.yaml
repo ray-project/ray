@@ -147,6 +147,18 @@
           python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
           --shuffle-strategy sort_shuffle_pull_based
 
+    - __suffix__: few_groups__hash_shuffle
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
+          --shuffle-strategy hash_shuffle
+
+    - __suffix__: many_groups__hash_shuffle
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
+          --shuffle-strategy hash_shuffle
+
 - name: map_groups
 
   cluster:
@@ -167,6 +179,18 @@
         script: >
           python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
           --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: few_groups__hash_shuffle
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
+          --shuffle-strategy hash_shuffle
+
+    - __suffix__: many_groups__hash_shuffle
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
+          --shuffle-strategy hash_shuffle
 
 #######################
 # Streaming split tests
@@ -444,7 +468,9 @@
 ##############
 
 - name: tpch_q1
-
+  # TODO: Re-enable this on RayTurbo once we've merged
+  # https://github.com/anyscale/rayturbo/pull/1339.
+  stable: False
   cluster:
     cluster_compute: all_to_all_compute.yaml
 
