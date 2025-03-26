@@ -1,0 +1,65 @@
+# Compute configuration for object detection tests
+# Hybrid cluster with both CPU and GPU nodes as specified in the notebooks
+
+cluster_name: object-detection-test
+
+max_workers: 10
+
+provider:
+  type: aws
+  region: us-west-2
+  availability_zone: us-west-2a
+  cache_stopped_nodes: False
+
+docker:
+  image: "anyscale/ray:2.41.0-slim-py312-cu123"
+  container_name: "ray_container"
+  pull_before_run: True
+
+# Head node - as specified in notebooks, CPU-only for coordination
+head_node_type:
+  name: head_node
+  instance_type: m5.2xlarge  # 8 vCPUs, 32 GB memory
+  resources:
+    CPU: 8
+    memory: 32000
+
+worker_node_types:
+  # CPU worker nodes for general processing
+  - name: cpu_worker
+    instance_type: m5.2xlarge  # 8 vCPUs, 32 GB memory
+    min_workers: 0
+    max_workers: 5
+    resources:
+      CPU: 8
+      memory: 32000
+      
+  # GPU worker nodes for ML tasks
+  - name: gpu_worker
+    instance_type: g4dn.xlarge  # 4 vCPUs, 16 GB memory, 1 T4 GPU
+    min_workers: 1
+    max_workers: 5
+    resources:
+      CPU: 4
+      GPU: 1
+      memory: 16000
+
+file_mounts: {}
+
+cluster_synced_files: []
+
+initialization_commands: []
+
+setup_commands: []
+
+head_setup_commands: []
+
+worker_setup_commands: []
+
+head_start_ray_commands:
+  - ray stop
+  - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0 --system-config='{"worker_register_timeout_seconds": 180}'
+
+worker_start_ray_commands:
+  - ray stop
+  - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076 
