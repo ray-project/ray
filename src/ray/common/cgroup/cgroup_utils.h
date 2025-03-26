@@ -26,6 +26,6 @@ namespace ray {
 // termination synchronously.
 //
 // \param cgroup_folder: cgroup folder which contains processes to kill.
-Status KillAllProc(const std::string &cgroup_folder);
+Status KillAllProcAndWait(const std::string &cgroup_folder);
 
 }  // namespace ray

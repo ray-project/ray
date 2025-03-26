@@ -16,7 +16,7 @@
 
 #ifndef __linux__
 namespace ray {
-Status KillAllProc(const std::string &cgroup_folder) { return Status::OK(); }
+Status KillAllProcAndWait(const std::string &cgroup_folder) { return Status::OK(); }
 }  // namespace ray
 #else
 
@@ -66,7 +66,7 @@ void BlockWaitProcExit(const std::vector<pid_t> &pids) {
 
 }  // namespace
 
-Status KillAllProc(const std::string &cgroup_folder) {
+Status KillAllProcAndWait(const std::string &cgroup_folder) {
   const auto existing_pids = GetAllPidsForCgroup(cgroup_folder);
 
   const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);

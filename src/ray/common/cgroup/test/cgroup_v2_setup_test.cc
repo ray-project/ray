@@ -106,7 +106,7 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
   AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
 
   // Kill testing process.
-  RAY_ASSERT_OK(KillAllProc(internal_cgroup_folder_));
+  RAY_ASSERT_OK(KillAllProcAndWait(internal_cgroup_folder_));
 }
 
 TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
@@ -117,7 +117,7 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
 
   // Child process.
   if (pid == 0) {
-    // Spawn a process running long enough, so it could be added into internal cgroup.
+    // Spawn a process running long enough, so it could be added into application cgroup.
     // It won't affect test runtime, because it will be killed later.
     execlp("sleep", "sleep", "3600", nullptr);
     perror("execlp");
@@ -130,7 +130,7 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
   AssertPidInCgroup(pid, app_cgroup_proc_filepath_);
 
   // Kill testing process.
-  RAY_ASSERT_OK(KillAllProc(app_cgroup_folder_));
+  RAY_ASSERT_OK(KillAllProcAndWait(app_cgroup_folder_));
 }
 
 #endif

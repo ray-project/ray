@@ -239,7 +239,7 @@ CgroupSetup::~CgroupSetup() { RAY_CHECK_OK(CleanupCgroups()); }
 
 Status CgroupSetup::CleanupCgroups() {
   // Kill all dangling processes.
-  RAY_RETURN_NOT_OK(KillAllProc(cgroup_v2_app_folder_));
+  RAY_RETURN_NOT_OK(KillAllProcAndWait(cgroup_v2_app_folder_));
 
   // Move all internal processes into root cgroup and delete internal cgroup.
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
