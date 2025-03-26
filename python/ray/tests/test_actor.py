@@ -649,6 +649,12 @@ def test_decorator_args(ray_start_regular_shared):
         def __init__(self):
             pass
 
+    # This is a valid way of using the decorator.
+    @ray.remote(num_cpus=1, label_selector={"ray.io/market-type": "spot"})  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
 
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote

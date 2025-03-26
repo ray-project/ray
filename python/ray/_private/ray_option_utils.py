@@ -120,6 +120,7 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 
 _common_options = {
+    "label_selector": Option((dict, type(None))),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
