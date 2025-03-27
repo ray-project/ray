@@ -222,14 +222,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--stdout-filepath",
-        required=True,
+        required=False,
         type=str,
+        default="",
         help="The filepath to dump dashboard stdout.",
     )
     parser.add_argument(
         "--stderr-filepath",
-        required=True,
+        required=False,
         type=str,
+        default="",
         help="The filepath to dump dashboard stderr.",
     )
 
