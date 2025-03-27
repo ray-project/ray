@@ -10,10 +10,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
-    DeploymentStatus,
-    DeploymentStatusTrigger,
     ReplicaID,
-    ReplicaState,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
@@ -47,6 +44,11 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
+)
+from ray.serve.schema_types import (
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    ReplicaState,
 )
 from ray.util.placement_group import validate_placement_group
 
