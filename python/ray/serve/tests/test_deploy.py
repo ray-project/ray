@@ -11,7 +11,6 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 
@@ -154,25 +153,15 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     start = time.time()
     while time.time() - start < 30:
         ready, _ = ray.wait([call.remote()], timeout=2)
-        if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-            # If the request doesn't block, it must be V2 which doesn't wait
-            # for signal. Otherwise, it must have been sent to V1 which
-            # waits on signal The request might have been sent to V1 if the
-            # long poll broadcast was delayed
-            if len(ready) == 1:
-                val, pid = ray.get(ready[0])
-                assert val == 2
-                assert pid != pid1
-                break
-        else:
-            # Any requests that go through during this time should have
-            # been sent to replicas of the old version
-            if len(ready) == 1:
-                val, pid = ray.get(ready[0])
-                assert val == 1
-                assert pid == pid1
-            else:
-                break
+        # If the request doesn't block, it must be V2 which doesn't wait
+        # for signal. Otherwise, it must have been sent to V1 which
+        # waits on signal The request might have been sent to V1 if the
+        # long poll broadcast was delayed
+        if len(ready) == 1:
+            val, pid = ray.get(ready[0])
+            assert val == 2
+            assert pid != pid1
+            break
     else:
         assert False, "Timed out waiting for new version to be called."
 
@@ -217,15 +206,9 @@ def test_redeploy_multiple_replicas(serve_instance):
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=2)
 
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # Two new replicas should be started.
-        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-        assert set(vals2) == {"v2"}
-    else:
-        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-        # Since there is one replica blocking, only one new
-        # replica should be started up.
-        assert "v1" in vals2
+    # Two new replicas should be started.
+    vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+    assert set(vals2) == {"v2"}
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
