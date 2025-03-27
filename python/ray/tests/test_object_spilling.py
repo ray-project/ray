@@ -5,7 +5,7 @@ import random
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import patch
-
+from pathlib import Path
 import numpy as np
 import pytest
 
@@ -149,7 +149,7 @@ def test_url_generation_and_parse():
 
 
 def test_default_config(shutdown_only):
-    ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     # Make sure the object spilling configuration is properly set.
     config = json.loads(
         ray._private.worker._global_node._config["object_spilling_config"]
@@ -159,8 +159,11 @@ def test_default_config(shutdown_only):
         config["params"]["directory_path"]
         == ray._private.worker._global_node._session_dir
     )
-    # Make sure the basic workload can succeed.
+    # Make sure the basic workload can succeed and the spill directory is not empty.
     run_basic_workload()
+    assert not is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
     ray.shutdown()
 
     # Make sure config is not initalized if spilling is not enabled..
@@ -231,15 +234,38 @@ def test_default_config_cluster(ray_start_cluster_enabled):
 
 
 def test_custom_spill_dir(shutdown_only):
-    # Make sure the object spilling storage path can be set by the user
-    ray.init(object_spilling_storage_path="/tmp/custom_spill_dir")
+    # Make sure the object spilling directory can be set by the user
+    ray_context = ray.init(
+        object_spilling_directory="/tmp/custom_spill_dir",
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+    )
     config = json.loads(
         ray._private.worker._global_node._config["object_spilling_config"]
     )
     assert config["type"] == "filesystem"
     assert config["params"]["directory_path"] == "/tmp/custom_spill_dir"
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
     run_basic_workload()
-    ray.shutdown()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --object-spilling-directory=/tmp/custom_spill_dir --num-cpus 0 --object-store-memory 78643200"
+    ],
+    indirect=True,
+)
+def test_custom_spill_dir_cli(call_ray_start, shutdown_only):
+    ray_context = ray.init(address=call_ray_start)
+    # Make sure the spill directory is empty before running the workload.
+    assert is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
+
+    # Make sure the basic workload can succeed and the spill directory is not empty.
+    run_basic_workload()
+    assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
 
 
 def test_node_id_in_spill_dir_name():
@@ -279,6 +305,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     ref = ray.get(ray.put(arr))  # noqa
     ref2 = ray.put(arr)  # noqa
 
+    print(type(temp_folder))
     wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
     assert_no_thrashing(ray_context["address"])
 

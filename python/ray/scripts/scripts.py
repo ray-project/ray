@@ -541,7 +541,7 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
-    "--object-spilling-storage-path",
+    "--object-spilling-directory",
     required=False,
     type=str,
     help="The path to spill objects to. The same path will be used as the object store fallback directory as well.",
@@ -680,7 +680,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
-    object_spilling_storage_path,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -774,7 +774,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
-        object_spilling_storage_path=object_spilling_storage_path,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,

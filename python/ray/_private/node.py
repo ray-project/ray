@@ -32,6 +32,7 @@ from ray._private.utils import (
     try_to_symlink,
     validate_socket_filepath,
 )
+from ray._common.utils import is_in_test
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -1799,10 +1800,7 @@ class Node:
             storage.destroy_external_storage()
 
     def validate_external_storage(self):
-        """Make sure we can setup the object spilling external storage.
-        This will also fill up the default setting for object spilling
-        if not specified.
-        """
+        """Make sure we can setup the object spilling external storage."""
 
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
@@ -1845,16 +1843,16 @@ class Node:
 
     def _get_object_spilling_config(self):
         """Consolidate the object spilling config from the ray params, environment
-        variable, and system config. The object spilling storage path specified through
+        variable, and system config. The object spilling directory specified through
         ray params will override the one specified through environment variable and
         system config."""
 
-        if self._ray_params.object_spilling_storage_path:
+        if self._ray_params.object_spilling_directory:
             return json.dumps(
                 {
                     "type": "filesystem",
                     "params": {
-                        "directory_path": self._ray_params.object_spilling_storage_path
+                        "directory_path": self._ray_params.object_spilling_directory
                     },
                 }
             )
@@ -1870,16 +1868,17 @@ class Node:
                 {"type": "filesystem", "params": {"directory_path": self._session_dir}}
             )
         else:
-            logger.warning(
-                "The object spilling config is specified from an unstable "
-                "API - system config or environment variable. This is "
-                "subject to change in the future. You can use the stable "
-                "API - --object-spilling-storage-path in ray start or "
-                "object_spilling_storage_path in ray.init() to specify the "
-                "object spilling directory instead. If you need more "
-                "advanced settings, please open a github issue with the "
-                "Ray team."
-            )
+            if not is_in_test():
+                logger.warning(
+                    "The object spilling config is specified from an unstable "
+                    "API - system config or environment variable. This is "
+                    "subject to change in the future. You can use the stable "
+                    "API - --object-spilling-directory in ray start or "
+                    "object_spilling_directory in ray.init() to specify the "
+                    "object spilling directory instead. If you need more "
+                    "advanced settings, please open a github issue with the "
+                    "Ray team."
+                )
 
         return object_spilling_config
 

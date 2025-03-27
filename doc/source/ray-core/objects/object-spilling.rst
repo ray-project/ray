@@ -9,8 +9,8 @@ Spilling to a custom directory
 -------------------------------
 
 You can specify a custom directory for spilling objects by setting the 
-``object_spilling_storage_path`` parameter in the ``ray.init`` function or the 
-``--object-spilling-storage-path`` command line option in the ``ray start`` command.
+``object_spilling_directory`` parameter in the ``ray.init`` function or the 
+``--object-spilling-directory`` command line option in the ``ray start`` command.
 
 .. tab-set::
 
@@ -18,13 +18,13 @@ You can specify a custom directory for spilling objects by setting the
 
         .. doctest::
 
-            ray.init(object_spilling_storage_path="/path/to/spill/dir")
+            ray.init(object_spilling_directory="/path/to/spill/dir")
 
     .. tab-item:: CLI
 
         .. doctest::
 
-            ray start --object-spilling-storage-path=/path/to/spill/dir
+            ray start --object-spilling-directory=/path/to/spill/dir
 
 For advanced usage and customizations, reach out to the `Ray team <https://www.ray.io/community>`_.
 
