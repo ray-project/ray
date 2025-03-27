@@ -18,14 +18,14 @@ from ray.tests.conftest import *  # noqa
 def nullify_shuffle_aggregator_num_cpus():
     ctx = ray.data.context.DataContext.get_current()
 
-    original = ctx.default_join_operator_actor_num_cpus_per_partition
+    original = ctx.join_operator_actor_num_cpus_per_partition_override
     # NOTE: We override this to reduce hardware requirements
     #       for every aggregator
-    ctx.default_join_operator_actor_num_cpus_per_partition = 0.001
+    ctx.join_operator_actor_num_cpus_per_partition_override = 0.001
 
     yield
 
-    ctx.default_join_operator_actor_num_cpus_per_partition = original
+    ctx.join_operator_actor_num_cpus_per_partition_override = original
 
 
 @pytest.mark.parametrize(

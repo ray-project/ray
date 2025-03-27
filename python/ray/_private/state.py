@@ -1,5 +1,6 @@
 import json
 import logging
+import sys
 from collections import defaultdict
 from typing import Dict, Optional
 
@@ -851,6 +852,31 @@ class GlobalState:
         if serialized_cluster_config:
             return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
         return None
+
+    def get_max_resources_from_cluster_config(self) -> Optional[int]:
+        config = self.get_cluster_config()
+        if config is None:
+            return None
+
+        def calculate_max_resource_from_cluster_config(key: str) -> Optional[int]:
+            max_value = 0
+            for node_group_config in config.node_group_configs:
+                num_cpus = node_group_config.resources.get(key, default=0)
+                num_nodes = node_group_config.max_count
+                if num_nodes == 0 or num_cpus == 0:
+                    continue
+                if num_nodes == -1 or num_cpus == -1:
+                    return sys.maxsize
+                max_value += num_nodes * num_cpus
+            if max_value == 0:
+                return None
+            max_value_limit = config.max_resources.get(key, default=sys.maxsize)
+            return min(max_value, max_value_limit)
+
+        return {
+            key: calculate_max_resource_from_cluster_config(key)
+            for key in ["CPU", "GPU", "TPU"]
+        }
 
 
 state = GlobalState()
