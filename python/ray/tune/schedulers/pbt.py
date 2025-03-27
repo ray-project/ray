@@ -615,8 +615,8 @@ class PopulationBasedTraining(FIFOScheduler):
                     for t in tune_controller.get_trials()
                 ]
                 max_last_train_time = max(all_train_times)
-                self._next_perturbation_sync = max(
-                    self._next_perturbation_sync + self._perturbation_interval,
+                self._next_perturbation_sync = self._perturbation_interval + max(
+                    self._next_perturbation_sync,
                     max_last_train_time,
                 )
                 logger.debug(f"Next perturb at time {self._next_perturbation_sync}")
