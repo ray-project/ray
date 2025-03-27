@@ -287,7 +287,7 @@ class FileBasedDatasource(Datasource):
                         read_files,
                         num_workers=num_threads,
                         preserve_ordering=True,
-                        buffer_size=max(len(read_paths) // num_threads, 1)
+                        buffer_size=max(len(read_paths) // num_threads, 1),
                     )
                 else:
                     logger.debug(f"Reading {len(read_paths)} files.")

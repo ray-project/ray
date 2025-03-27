@@ -1001,8 +1001,7 @@ def make_async_gen(
     ]
 
     output_queues = [
-        _InterruptibleQueue(buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(buffer_size, interrupted_event) for _ in range(num_workers)
     ]
 
     # Filling worker
