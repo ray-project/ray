@@ -40,6 +40,8 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
+from ray._raylet import StreamRedirector
+from ray._private.utils import open_log
 
 try:
     import prometheus_client
@@ -684,16 +686,65 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
     setup_component_logger(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
     )
+
+    # Setup stdout/stderr redirect files if redirection enabled
+    if args.stdout_filepath:
+        StreamRedirector.redirect_stdout(
+            args.stdout_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+    if args.stderr_filepath:
+        StreamRedirector.redirect_stderr(
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+
+    # Setup stdout/stderr redirect files
+    stdout_fileno = sys.stdout.fileno()
+    stderr_fileno = sys.stderr.fileno()
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
+    sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
     logger.info(f"Starting monitor using ray installation: {ray.__file__}")
     logger.info(f"Ray version: {ray.__version__}")

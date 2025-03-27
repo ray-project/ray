@@ -1302,12 +1302,14 @@ class Node:
         """
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
-        stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "monitor", unique=True, create_out=True, create_err=True
+        )
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             autoscaling_config=self._ray_params.autoscaling_config,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
