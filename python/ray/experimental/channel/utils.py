@@ -97,10 +97,7 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
 
 
 def get_cuda_devices() -> List["torch.device"]:
-    """Gets the correct torch device list configured for this process.
-
-    Returns a list of torch CUDA devices allocated for the current worker.
-    If no GPUs are assigned, then it returns a list with a single CPU device.
+    """Gets the correct torch cuda device list configured for this process.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
@@ -146,3 +143,19 @@ def get_cuda_devices() -> List["torch.device"]:
         device_ids.append(0)
 
     return [torch.device(f"cuda:{device_id}") for device_id in device_ids]
+
+
+def get_devices() -> List["torch.device"]:
+    """Gets the correct torch device list configured for this process.
+
+    Returns a list of torch devices allocated for the current worker.
+    If no devices are assigned, then it returns a list with a single CPU device.
+    """
+
+    import torch
+
+    gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+    if len(gpu_ids) > 0:
+        return get_cuda_devices()
+    else:
+        return [torch.device("cpu")]
