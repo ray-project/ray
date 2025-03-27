@@ -1071,18 +1071,9 @@ class Target(BaseModel, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class _TargetInfo(BaseModel, frozen=True):
+class TargetInfo(BaseModel, frozen=True):
     targets: List[Target] = Field(description="List of targets for the given route.")
-
-
-@PublicAPI(stability="alpha")
-class HTTPTargetInfo(_TargetInfo):
     prefix_route: str = Field(description="Prefix route of the targets.")
-
-
-@PublicAPI(stability="alpha")
-class GRPCTargetInfo(_TargetInfo):
-    app_name: str = Field(description="Name of the application.")
 
 
 @PublicAPI(stability="stable")
@@ -1124,7 +1115,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
-    target_details: Dict[str, List[_TargetInfo]] = Field(
+    target_details: Dict[str, List[TargetInfo]] = Field(
         description="Mapping from protocol to list of target details for the given route."
     )
 

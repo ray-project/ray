@@ -33,7 +33,13 @@ from ray.serve._private.utils import (
     is_grpc_enabled,
 )
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import LoggingConfig, ProxyDetails, ProxyStatus, Target
+from ray.serve.schema import (
+    LoggingConfig,
+    ProxyDetails,
+    ProxyStatus,
+    Target,
+    TargetInfo,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -606,9 +612,10 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def get_proxy_targets(self, protocol: RequestProtocol) -> List[Target]:
-        """Get proxy targets for the specified protocol.
-        Only returns targets for healthy proxies.
+    def get_target_info(self, protocol: RequestProtocol) -> TargetInfo:
+        """In Ray Serve, every proxy is responsible for routing requests to the
+        correct application. Here we curate a list of targets for the given protocol.
+        Where each target represents how to reach a proxy.
 
         Args:
             protocol: Either "http" or "grpc"
@@ -618,7 +625,10 @@ class ProxyStateManager:
             port = self._http_options.port
         elif protocol == RequestProtocol.GRPC:
             if not is_grpc_enabled(self._grpc_options):
-                return []
+                return TargetInfo(
+                    targets=[],
+                    prefix_route="/",
+                )
             port = self._grpc_options.port
         else:
             raise ValueError(f"Invalid protocol: {protocol}")
@@ -628,7 +638,14 @@ class ProxyStateManager:
                 continue
             target = Target(ip=state.actor_details.node_ip, port=port)
             targets.append(target)
-        return targets
+        # setting prefix route to "/" because in ray serve, proxy
+        # accepts requests from the client and routes them to the
+        # correct application. This is true for both HTTP and gRPC proxies.
+        target_info = TargetInfo(
+            targets=targets,
+            prefix_route="/",
+        )
+        return target_info
 
     def get_alive_proxy_actor_ids(self) -> Set[str]:
         return {state.actor_id for state in self._proxy_states.values()}

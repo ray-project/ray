@@ -196,8 +196,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "state": "RUNNING",
                                     "pid": replica.pid,
                                     "start_time_s": replica.start_time_s,
-                                    "http_port": 8000,
-                                    "grpc_port": 9000,
                                 }
                             ],
                         }
@@ -205,6 +203,14 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_details": {
+                "HTTP": [
+                    {"targets": [{"ip": node_ip, "port": 8000}], "prefix_route": "/"}
+                ],
+                "gRPC": [
+                    {"targets": [{"ip": node_ip, "port": 9000}], "prefix_route": "/"}
+                ],
+            },
         }
     )
     assert details_json == expected_json
