@@ -315,10 +315,11 @@ class VLLMEngine:
         # 2. If VLLM_USE_V1 is set to 1, then it will use v1 engine even with
         #    experimental features (such as launching vLLM on a non-main thread).
         # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
+        # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
         if not envs.is_set("VLLM_USE_V1"):
             raise AssertionError(
-                "Starting ray 2.45, VLLM_USE_V1 environmetn variable must be set "
-                "to prevent undetermined behavior"
+                "Starting from Ray 2.45, VLLM_USE_V1 environment variable must be "
+                "set to prevent undetermined behavior"
             )
         if not envs.VLLM_USE_V1:
             return await self._start_engine_v0()
