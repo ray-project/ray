@@ -13,3 +13,4 @@ pip install "ray[default]==2.41.0"
 echo "--- Run doc tests"
 cd doc/source/cluster/kubernetes
 py.test --nbval getting-started/raycluster-quick-start.ipynb --nbval-kernel-name bash --sanitize-with doc_sanitize.cfg
+py.test -vv --nbval getting-started/rayjob-quick-start.ipynb --nbval-kernel-name bash --sanitize-with doc_sanitize.cfg
