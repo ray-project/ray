@@ -539,8 +539,8 @@ class _ActorClassMetadata:
         memory: The heap memory quota for this actor.
         resources: The default resources required by the actor creation task.
         label_selector: The labels required for the node on which this actor
-            runs. Label selectors consist of a key-value pair, where the key
-            is a label name and the value is a label value with a condition.
+            can be scheduled on. The label selector consist of key-value pairs, where the keys
+            are label names and the value are expressions consisting of an operator with label values or just a value to indicate equality..
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
             See :ref:`accelerator types <accelerator_types>`.
