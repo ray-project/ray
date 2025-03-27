@@ -46,7 +46,7 @@ namespace ray {
 template <typename T>
 class StatusOr {
  public:
-  StatusOr() noexcept = default;
+  StatusOr() = default;
   // NOLINTNEXTLINE(runtime/explicit)
   StatusOr(Status status) : status_(std::move(status)) {}
   // NOLINTNEXTLINE(runtime/explicit)
