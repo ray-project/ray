@@ -2008,6 +2008,7 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
