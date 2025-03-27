@@ -6,7 +6,7 @@ import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel.utils import get_default_torch_device
+from ray.experimental.channel.utils import get_cuda_devices
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -102,7 +102,7 @@ class _NcclGroup(Communicator):
             import cupy as cp
 
             # TODO(swang): Allow default device to be overridden.
-            device = get_default_torch_device(allow_cpu=False)
+            device = get_cuda_devices()[0]
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )
