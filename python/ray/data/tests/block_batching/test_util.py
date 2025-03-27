@@ -258,7 +258,7 @@ def test_make_async_gen_non_reentrant(preserve_ordering):
         (0, 5.5),  # 5 x 1s + 0.5s buffer
         (1, 7.5),  # 3 x 1s + 2 x 2s (limited buffer delay) + 0.5s buffer
         (2, 5.5),  # 5 x 1s + 0.5s buffer
-    ]
+    ],
 )
 def test_make_async_gen_x(buffer_size: int, expected_gen_time, preserve_ordering):
     """Tests that make_async_gen overlaps compute."""
@@ -360,7 +360,9 @@ def test_make_async_gen_multiple_threads(buffer_size: int, preserve_ordering):
 
 @pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_multiple_threads_unfinished(buffer_size: int, preserve_ordering):
+def test_make_async_gen_multiple_threads_unfinished(
+    buffer_size: int, preserve_ordering
+):
     """Tests that using multiple threads can overlap compute even more.
     Do not finish iteration with break in the middle.
     """

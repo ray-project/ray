@@ -922,25 +922,25 @@ def make_async_gen(
     provided iterator applying provided transformation in parallel (using a
     thread-pool).
 
-    NOTE: There are some important constraints that needs to be carefully 
+    NOTE: There are some important constraints that needs to be carefully
           understood before using this method
-          
+
         1. If `preserve_ordering` is True
             a. This method would unroll input iterator eagerly (irrespective
                 of the speed of resulting generator being consumed). This is necessary
                 as we can not guarantee liveness of the algorithm AND preserving of the
                 original ordering at the same time.
-            
-            b. Resulting ordering of the output will "match" ordering of the input, ie 
-               that: 
+
+            b. Resulting ordering of the output will "match" ordering of the input, ie
+               that:
                     iterator = [A1, A2, ... An]
                     output iterator = [map(A1), map(A2), ..., map(An)]
 
         2. If `preserve_ordering` is False
-            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be 
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be
                 fetched from the iterator
-                
-            b. Resulting ordering of the output is unspecified (and is 
+
+            b. Resulting ordering of the output is unspecified (and is
             non-deterministic)
 
     Args:
@@ -1116,8 +1116,7 @@ def make_async_gen(
 
             if empty_queues:
                 remaining_output_queues = [
-                    q for q in remaining_output_queues
-                    if q not in empty_queues
+                    q for q in remaining_output_queues if q not in empty_queues
                 ]
 
     finally:
