@@ -34,83 +34,6 @@ import { NodeRows } from "./NodeRow";
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
 };
-const columns = [
-  { label: "" }, // Expand button
-  { label: "Host / Worker Process name" },
-  { label: "State" },
-  { label: "State Message" },
-  { label: "ID" },
-  { label: "IP / PID" },
-  { label: "Actions" },
-  {
-    label: "CPU",
-    helpInfo: (
-      <Typography>
-        Hardware CPU usage of a Node or a Worker Process.
-        <br />
-        <br />
-        Node’s CPU usage is calculated against all CPU cores. Worker Process’s
-        CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
-        usage from all Worker Processes is not equal to the Node’s CPU usage.
-      </Typography>
-    ),
-  },
-  {
-    label: "Memory",
-    helpInfo: (
-      <Typography>
-        A Node or a Worker Process's RAM usage. <br />
-        <br />
-        For a Node, Object Store holds up to 30% of RAM by default or a custom
-        value configured by users.
-        <br />
-        <br />
-        RAM is not pre-allocated for Object Store. Once memory is used by and
-        allocated to Object Store, it will hold and not release it until the Ray
-        Cluster is terminated.
-      </Typography>
-    ),
-  },
-  {
-    label: "GPU",
-    helpInfo: (
-      <Typography>
-        Usage of each GPU device. If no GPU usage is detected, here are the
-        potential root causes:
-        <br />
-        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
-        try again. <br />
-        2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are not
-        currently supported.
-        <br />
-        3. pynvml module raises an exception.
-      </Typography>
-    ),
-  },
-  { label: "GRAM" },
-  { label: "Object Store Memory" },
-  {
-    label: "Disk(root)",
-    helpInfo:
-      "For Ray Clusters on Kubernetes, multiple Ray Nodes/Pods may share the same Kubernetes Node's disk, resulting in multiple nodes having the same disk usage.",
-  },
-  { label: "Sent" },
-  { label: "Received" },
-  {
-    label: "Logical Resources",
-    helpInfo: (
-      <Typography>
-        <Link href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
-          Logical resources usage
-        </Link>{" "}
-        (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
-        command <p style={codeTextStyle}>ray status -v </p>
-        to obtain a similar result.
-      </Typography>
-    ),
-  },
-  { label: "Labels" },
-];
 
 export const brpcLinkChanger = (href: string) => {
   const { location } = window;
@@ -233,6 +156,7 @@ const Nodes = () => {
     isRefreshing,
     onSwitchChange,
     nodeList,
+    accelerators,
     changeFilter,
     page,
     setPage,
@@ -247,6 +171,86 @@ const Nodes = () => {
     constrainedPage,
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
+
+  const columns = [
+    { label: "" }, // Expand button
+    { label: "Host / Worker Process name" },
+    { label: "State" },
+    { label: "State Message" },
+    { label: "ID" },
+    { label: "IP / PID" },
+    { label: "Actions" },
+    {
+      label: "CPU",
+      helpInfo: (
+        <Typography>
+          Hardware CPU usage of a Node or a Worker Process.
+          <br />
+          <br />
+          Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+          CPU usage is calculated against 1 CPU core. As a result, the sum of
+          CPU usage from all Worker Processes is not equal to the Node’s CPU
+          usage.
+        </Typography>
+      ),
+    },
+    {
+      label: "Memory",
+      helpInfo: (
+        <Typography>
+          A Node or a Worker Process's RAM usage. <br />
+          <br />
+          For a Node, Object Store holds up to 30% of RAM by default or a custom
+          value configured by users.
+          <br />
+          <br />
+          RAM is not pre-allocated for Object Store. Once memory is used by and
+          allocated to Object Store, it will hold and not release it until the
+          Ray Cluster is terminated.
+        </Typography>
+      ),
+    },
+    { label: "Object Store Memory" },
+    {
+      label: "Disk(root)",
+      helpInfo:
+        "For Ray Clusters on Kubernetes, multiple Ray Nodes/Pods may share the same Kubernetes Node's disk, resulting in multiple nodes having the same disk usage.",
+    },
+    { label: "Sent" },
+    { label: "Received" },
+    {
+      label: "Logical Resources",
+      helpInfo: (
+        <Typography>
+          <Link href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+            Logical resources usage
+          </Link>{" "}
+          (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
+          command <p style={codeTextStyle}>ray status -v </p>
+          to obtain a similar result.
+        </Typography>
+      ),
+    },
+    { label: "Labels" },
+  ];
+  let memoryIndex = columns.findIndex((column) => column.label === "Memory");
+  if (memoryIndex !== -1) {
+    accelerators?.data.result.forEach((item) => {
+      item.columns.forEach((newColumn) => {
+        columns.splice(memoryIndex + 1, 0, newColumn);
+        memoryIndex = memoryIndex + 1;
+      });
+    });
+  }
+  const acceleratorsName: string[] = [];
+  nodeList.forEach((item) => {
+    Object.keys(item.accelerators).forEach((acceleratorType) => {
+      const accelerator = item.accelerators[acceleratorType];
+      if (accelerator.length > 0) {
+        acceleratorsName.push(acceleratorType);
+      }
+    });
+  });
 
   return (
     <Box
@@ -373,6 +377,7 @@ const Nodes = () => {
                   <NodeRows
                     key={node.raylet.nodeId}
                     node={node}
+                    acceleratorsName={acceleratorsName}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
                   />
