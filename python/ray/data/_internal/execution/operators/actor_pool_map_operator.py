@@ -743,9 +743,7 @@ class _ActorPool(AutoscalingActorPool):
 
         # First release actors and collect their shutdown hook object-refs
         for _, actor in running.items():
-            on_exit_refs.append(
-                self._release_running_actor(actor)
-            )
+            on_exit_refs.append(self._release_running_actor(actor))
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -756,7 +754,9 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ray.actor.ActorHandle) -> Optional[ObjectRef]:
+    def _release_running_actor(
+        self, actor: ray.actor.ActorHandle
+    ) -> Optional[ObjectRef]:
         """Remove the given actor from the pool and trigger its `on_exit` callback.
 
         This method returns a ``ref`` to the result
@@ -766,7 +766,7 @@ class _ActorPool(AutoscalingActorPool):
         #
         # Otherwise, actor cannot be reconstructed for the purposes of produced
         # object's lineage reconstruction.
-        if not actor in self._running_actors:
+        if actor not in self._running_actors:
             return None
 
         # Call `on_exit` to trigger `UDF.__del__` which may perform
