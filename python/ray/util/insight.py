@@ -12,10 +12,6 @@ import queue
 import threading
 from collections import deque
 
-# resources at process exit through the atexit handler.
-_async_queue_map = {}
-_async_thread_map = {}
-
 
 def get_monitor_actor():
     try:
@@ -31,11 +27,6 @@ def get_monitor_actor():
 
 def _process_async_queue(_async_queue):
     """Worker function that processes coroutines from the queue."""
-    try:
-        loop = asyncio.get_event_loop()
-    except Exception:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
     monitor_actor = get_monitor_actor()
 
     while True:
@@ -43,7 +34,7 @@ def _process_async_queue(_async_queue):
             func = _async_queue.get()
             if func is None:  # Sentinel to stop the thread
                 break
-            loop.run_until_complete(func(monitor_actor))
+            ray.get(func(monitor_actor))
         except Exception as e:
             print(f"Error processing coroutine: {e}")
         finally:
@@ -57,44 +48,31 @@ def get_current_worker_id():
     return ray._private.worker.global_worker.worker_id
 
 
-def run_async(job_id, func):
+def run_async(func):
     """
     Run a coroutine asynchronously using process-level storage for queue and thread.
     This avoids creating a new thread for each coroutine and prevents thread conflicts.
     The thread will be automatically joined at process exit via the atexit handler.
     """
-
-    global _async_queue_map, _async_thread_map
-    caller_actor = None
+    current_cls = None
     try:
-        caller_actor = ray.get_runtime_context().current_actor
+        current_cls = ray.get_runtime_context().current_actor
     except Exception:
-        caller_actor = None
+        current_cls = ray._private.worker.global_worker
 
-    if caller_actor is None:
-        if _async_thread_map.get(job_id) is None:
-            _async_queue_map[job_id] = queue.Queue()
-            _async_thread_map[job_id] = threading.Thread(
-                target=_process_async_queue,
-                daemon=True,
-                args=(_async_queue_map[job_id],),
-            )
-            _async_thread_map[job_id].start()
+    if (
+        getattr(current_cls, "_ray_flow_insight_async_thread", None) is None
+        or not current_cls._ray_flow_insight_async_thread.is_alive()
+    ):
+        current_cls._ray_flow_insight_async_queue = queue.Queue()
+        current_cls._ray_flow_insight_async_thread = threading.Thread(
+            target=_process_async_queue,
+            daemon=True,
+            args=(current_cls._ray_flow_insight_async_queue,),
+        )
+        current_cls._ray_flow_insight_async_thread.start()
 
-        _async_queue_map[job_id].put(func)
-    else:
-        if not hasattr(caller_actor, "_ray_flow_insight_async_thread"):
-            _async_queue = queue.Queue()
-            _async_thread = threading.Thread(
-                target=_process_async_queue, daemon=True, args=(_async_queue,)
-            )
-            _async_thread.start()
-            setattr(caller_actor, "_ray_flow_insight_async_thread", _async_thread)
-            setattr(caller_actor, "_ray_flow_insight_async_queue", _async_queue)
-        else:
-            _async_queue = getattr(caller_actor, "_ray_flow_insight_async_queue")
-
-        _async_queue.put(func)
+    current_cls._ray_flow_insight_async_queue.put(func)
 
 
 @ray.remote
@@ -115,7 +93,7 @@ class _ray_internal_insight_monitor:
         self.actor_counter = defaultdict(int)
         self.method_counter = defaultdict(int)
         self.function_counter = defaultdict(int)
-        self.flow_record = defaultdict(lambda: defaultdict(set))
+        self.flow_record = defaultdict(list)
 
         # Data flow tracking
         self.data_flows = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -205,17 +183,6 @@ class _ray_internal_insight_monitor:
         data = self.get_flame_graph_data(job_id)
         return aiohttp.web.json_response(data)
 
-    async def async_emit_task_enter(self, call_record):
-        job_id = call_record["job_id"]
-        caller_class = call_record["caller_class"]
-        caller_func = call_record["caller_func"]
-        current_task_id = call_record["current_task_id"]
-        node_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
-        self.flow_record[job_id][node_id].add(current_task_id)
-
-    async def async_emit_call_record(self, call_record):
-        self.emit_call_record(call_record)
-
     def emit_call_record(self, call_record):
         job_id = call_record["job_id"]
         caller_class = call_record["caller_class"]
@@ -226,6 +193,16 @@ class _ray_internal_insight_monitor:
         # Create caller and callee identifiers for parent-child relationship
         caller_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
         callee_id = f"{callee_class}.{callee_func}" if callee_class else callee_func
+        current_task_id = call_record["current_task_id"]
+
+        self.flow_record[job_id].append(
+            {
+                "type": "enter",
+                "caller_id": caller_id,
+                "callee_id": callee_id,
+                "caller_task_id": current_task_id,
+            }
+        )
 
         # Update call graph
         self.call_graph[job_id][f"{caller_id}->{callee_id}"] += call_times
@@ -426,25 +403,39 @@ class _ray_internal_insight_monitor:
         to efficiently identify all edges that can reach these target edges.
         """
         # First identify all target edges we want to reach
-        target_edges = set()
+        target_edges = {}
         reachable_nodes = set()
         reachable_methods = set()
         reachable_actors = set()
         reachable_funcs = set()
 
         # Build target edges from flow records
-        for callee_id, task_id_set in self.flow_record[job_id].items():
-            for task_id in task_id_set:
-                caller_infos = self.caller_info[job_id][task_id]
+        for flow_record in self.flow_record[job_id]:
+            if flow_record["type"] == "enter":
+                target_edges[flow_record["caller_task_id"]] = (
+                    flow_record["caller_id"],
+                    flow_record["callee_id"],
+                )
+                reachable_nodes.add(flow_record["caller_id"])
+                reachable_nodes.add(flow_record["callee_id"])
+            if flow_record["type"] == "exit":
+                caller_infos = self.caller_info[job_id][flow_record["callee_task_id"]]
                 for caller_info in caller_infos:
-                    caller_class = caller_info["class"]
-                    caller_func = caller_info["func"]
+                    caller_task_id = caller_info["task_id"]
                     caller_id = (
-                        f"{caller_class}.{caller_func}" if caller_class else caller_func
+                        f"{caller_info['class']}.{caller_info['func']}"
+                        if caller_info["class"]
+                        else caller_info["func"]
                     )
-                    target_edges.add((caller_id, callee_id))
-                    reachable_nodes.add(caller_id)
-                    reachable_nodes.add(callee_id)
+                    callee_id = flow_record["callee_id"]
+                    if caller_task_id in target_edges:
+                        del target_edges[caller_task_id]
+                    if caller_id in reachable_nodes:
+                        reachable_nodes.remove(caller_id)
+                    if callee_id in reachable_nodes:
+                        reachable_nodes.remove(callee_id)
+
+        target_edges = set(target_edges.values())
 
         # Build reverse adjacency list for efficient backwards traversal
         reverse_adj = defaultdict(set)
@@ -486,9 +477,6 @@ class _ray_internal_insight_monitor:
 
         return filtered_graph, reachable_methods, reachable_actors, reachable_funcs
 
-    async def async_emit_object_record_get(self, recv_record):
-        self.emit_object_record_get(recv_record)
-
     def emit_object_record_get(self, recv_record):
         """Record object transfer between methods/functions."""
         job_id = recv_record["job_id"]
@@ -517,9 +505,6 @@ class _ray_internal_insight_monitor:
         self.data_flows[job_id][flow_key][argpos]["size"] = size
         self.data_flows[job_id][flow_key][argpos]["duration"] = duration
         self.data_flows[job_id][flow_key][argpos]["timestamp"] = timestamp
-
-    async def async_emit_object_record_put(self, object_record):
-        self.emit_object_record_put(object_record)
 
     def emit_object_record_put(self, object_record):
         """Record object transfer between methods/functions."""
@@ -589,9 +574,6 @@ class _ray_internal_insight_monitor:
 
         return flame_data
 
-    async def async_emit_task_end(self, task_record):
-        self.emit_task_end(task_record)
-
     def emit_task_end(self, task_record):
         """Record the end of a task execution and calculate duration."""
         job_id = task_record["job_id"]
@@ -601,8 +583,13 @@ class _ray_internal_insight_monitor:
         # Create node_id from caller class and function for parent tracking
         node_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
 
-        if node_id in self.flow_record[job_id]:
-            self.flow_record[job_id][node_id].remove(current_task_id)
+        self.flow_record[job_id].append(
+            {
+                "type": "exit",
+                "callee_id": node_id,
+                "callee_task_id": current_task_id,
+            }
+        )
 
         duration = task_record["duration"]
 
@@ -621,11 +608,12 @@ class _ray_internal_insight_monitor:
     async def emit_caller_info(self, caller_info):
         """Record caller info."""
         job_id = caller_info["job_id"]
-        caller_task_id = caller_info["caller_task_id"]
-        self.caller_info[job_id][caller_task_id].append(
+        current_task_id = caller_info["current_task_id"]
+        self.caller_info[job_id][current_task_id].append(
             {
                 "class": caller_info["caller_class"],
                 "func": caller_info["caller_func"],
+                "task_id": caller_info["caller_task_id"],
             }
         )
 
@@ -662,7 +650,9 @@ def _get_caller_class():
         caller_actor = ray.get_runtime_context().current_actor
         if caller_actor is not None:
             caller_class = (
-                caller_actor._ray_actor_creation_function_descriptor.class_name
+                caller_actor._ray_actor_creation_function_descriptor.class_name.split(
+                    "."
+                )[-1]
                 + ":"
                 + caller_actor._ray_actor_id.hex()
             )
@@ -707,6 +697,7 @@ def record_control_flow(callee_class, callee_func):
     try:
         caller_class = _get_caller_class()
         caller_func = _get_current_task_name()
+        current_task_id = get_current_task_id()
 
         # Create a record for this call
         job_id = ray.get_runtime_context().get_job_id()
@@ -717,12 +708,13 @@ def record_control_flow(callee_class, callee_func):
             "callee_func": callee_func,
             "call_times": 1,
             "job_id": job_id,
+            "current_task_id": current_task_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_call_record.remote(call_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_call_record.remote(call_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording control flow: {e}")
 
@@ -758,10 +750,10 @@ def record_object_arg_get(object_id):
             "job_id": job_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_object_record_get.remote(object_recv_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_object_record_get.remote(object_recv_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording object arg get: {e}")
 
@@ -800,10 +792,10 @@ def record_object_put(object_id, size):
             "job_id": job_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_object_record_put.remote(object_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_object_record_put.remote(object_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording object put: {e}")
 
@@ -850,10 +842,10 @@ def record_object_arg_put(object_id, argpos, size, callee):
             "job_id": job_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_object_record_put.remote(object_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_object_record_put.remote(object_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording object arg put: {e}")
 
@@ -898,10 +890,10 @@ def record_object_return_put(object_id, size):
             "job_id": job_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_object_record_put.remote(object_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_object_record_put.remote(object_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording object return put: {e}")
 
@@ -941,12 +933,12 @@ def record_object_get(object_id, task_id):
         if not need_record(caller_class):
             return
 
-        async def _emit(monitor_actor):
+        def _emit(monitor_actor):
             if task_id.actor_id() == monitor_actor._ray_actor_id:
                 return
-            await monitor_actor.async_emit_object_record_get.remote(object_recv_record)
+            return monitor_actor.emit_object_record_get.remote(object_recv_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error recording object get: {e}")
 
@@ -970,8 +962,8 @@ def report_resource_usage(usage: dict):
         if not need_record(current_class):
             return
 
-        async def _emit(monitor_actor):
-            await monitor_actor.emit_resource_usage.remote(
+        def _emit(monitor_actor):
+            return monitor_actor.emit_resource_usage.remote(
                 {
                     "actor_id": actor_info[1],
                     "job_id": job_id,
@@ -979,7 +971,7 @@ def report_resource_usage(usage: dict):
                 }
             )
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error reporting resource usage: {e}")
 
@@ -1002,8 +994,8 @@ def register_current_context(context: dict):
         if not need_record(current_class):
             return
 
-        async def _emit(monitor_actor):
-            await monitor_actor.emit_context.remote(
+        def _emit(monitor_actor):
+            return monitor_actor.emit_context.remote(
                 {
                     "actor_id": actor_info[1],
                     "job_id": job_id,
@@ -1011,7 +1003,7 @@ def register_current_context(context: dict):
                 }
             )
 
-        run_async(job_id, _emit)
+        run_async(_emit)
     except Exception as e:
         print(f"Error registering current context: {e}")
 
@@ -1043,38 +1035,6 @@ def report_torch_gram():
         )
     except Exception as e:
         print(f"Error reporting torch gram: {e}")
-
-
-def record_task_enter():
-    if not is_flow_insight_enabled():
-        return None
-
-    try:
-        caller_class = _get_caller_class()
-
-        if not need_record(caller_class):
-            return
-
-        caller_func = _get_current_task_name()
-        current_task_id = get_current_task_id()
-        job_id = ray.get_runtime_context().get_job_id()
-        task_record = {
-            "caller_class": caller_class,
-            "caller_func": caller_func,
-            "job_id": job_id,
-            "current_task_id": current_task_id,
-        }
-
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_task_enter.remote(task_record)
-
-        run_async(job_id, _emit)
-
-    except Exception as e:
-        print(f"Error recording task enter: {e}")
-        return None
-
-    return time.time()
 
 
 def record_task_duration(duration):
@@ -1112,10 +1072,10 @@ def record_task_duration(duration):
             "current_task_id": current_task_id,
         }
 
-        async def _emit(monitor_actor):
-            await monitor_actor.async_emit_task_end.remote(task_record)
+        def _emit(monitor_actor):
+            return monitor_actor.emit_task_end.remote(task_record)
 
-        run_async(job_id, _emit)
+        run_async(_emit)
 
     except Exception as e:
         print(f"Error recording task duration: {e}")
@@ -1146,7 +1106,7 @@ def timeit():
                     return result
     """
     try:
-        start_time = record_task_enter()
+        start_time = time.time()
         yield
     finally:
         record_task_duration(time.time() - start_time)
@@ -1171,13 +1131,14 @@ def report_trace_info(caller_info):
         "job_id": job_id,
         "caller_class": caller_info.get("caller_class"),
         "caller_func": caller_info.get("caller_func"),
-        "caller_task_id": current_task_id,
+        "caller_task_id": caller_info.get("caller_task_id"),
+        "current_task_id": current_task_id,
     }
 
-    async def _emit(monitor_actor):
-        await monitor_actor.emit_caller_info.remote(trace_info)
+    def _emit(monitor_actor):
+        return monitor_actor.emit_caller_info.remote(trace_info)
 
-    run_async(job_id, _emit)
+    run_async(_emit)
 
 
 def get_caller_info():
@@ -1188,7 +1149,9 @@ def get_caller_info():
         return
     caller_class = _get_caller_class()
     caller_func = _get_current_task_name()
+    caller_task_id = get_current_task_id()
     return {
         "caller_class": caller_class,
         "caller_func": caller_func,
+        "caller_task_id": caller_task_id,
     }

@@ -2317,14 +2317,13 @@ cdef CRayStatus task_execution_handler(
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
         
-        from ray.util.insight import record_task_enter, record_task_duration
+        from ray.util.insight import record_task_duration
 
-        # directly use record_task_enter and record_task_duration here
+        # directly use record_task_duration here
         # rather than timeit to prevent indent change
         # to avoid diff conflict when merge new features
-        start_time = None
+        start_time = time.time()
         try:
-            start_time = record_task_enter()
             try:
                 # Exceptions, including task cancellation, should be handled
                 # internal to this call. If it does raise an exception, that
