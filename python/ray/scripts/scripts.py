@@ -122,6 +122,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="Disable the local cluster config cache.",
 )
+@add_click_logging_options
 @PublicAPI
 def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
@@ -1877,6 +1878,7 @@ def exec(
     type=str,
     help="Override the configured cluster name.",
 )
+@add_click_logging_options
 def get_head_ip(cluster_config_file, cluster_name):
     """Return the head node IP of a Ray cluster."""
     click.echo(get_head_node_ip(cluster_config_file, cluster_name))
@@ -2069,6 +2071,7 @@ def memory(
     hidden=True,
     help="Experimental: Display additional debuggging information.",
 )
+@add_click_logging_options
 @PublicAPI
 def status(address: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
