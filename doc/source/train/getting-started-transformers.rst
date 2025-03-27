@@ -7,8 +7,8 @@ This tutorial shows you how to convert an existing Hugging Face Transformers scr
 
 In this guide, learn how to:
 
-1. Configure a :ref:`training function <train-overview-training-function>` that reports metrics and saves checkpoints.
-2. Configure :ref:`scaling <train-overview-scaling-config>` and resource requirements for CPUs, GPUs or other accelerators for your distributed training job.
+1. Configure a :ref:`training function <train-overview-training-function>` that properly reports metrics and saves checkpoints.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and resource requirements for CPUs or GPUs for your distributed training job.
 3. Launch a distributed training job with :class:`~ray.train.torch.TorchTrainer`.
 
 
@@ -20,6 +20,7 @@ Install the necessary packages before you begin:
 .. code-block:: bash
 
     pip install "ray[train]" torch "transformers[torch]" datasets evaluate numpy scikit-learn
+
 
 Quickstart
 ----------
@@ -43,7 +44,7 @@ Here's a quick overview of the final code structure:
 The key components are:
 
 1. `train_func`: Python code that runs on each distributed training worker.
-2. :class:`~ray.train.ScalingConfig`: Defines the number of distributed training workers and their CPUs, GPUs, or other types of accelerator devices.
+2. :class:`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
 3. :class:`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
 
 Code Comparison: Hugging Face Transformers vs. Ray Train Integration
