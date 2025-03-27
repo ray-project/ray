@@ -946,7 +946,7 @@ ray_cc_library(
     name = "scheduling_options",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_options.h"],
     deps = [
-        # TODO(Ziy1-Tan): ray_common is a giant dependency, replace it with sub-dependencies later
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduling_context",
     ],
@@ -956,6 +956,7 @@ ray_cc_library(
     name = "scheduling_context",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_context.h"],
     deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -965,6 +966,7 @@ ray_cc_library(
     name = "scheduler_internal",
     hdrs = ["src/ray/raylet/scheduling/internal.h"],
     deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         "//src/ray/protobuf:node_manager_cc_proto",
     ],
@@ -976,6 +978,7 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/cluster_resource_manager.h"],
     deps = [
         ":local_resource_manager",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:container_util",
@@ -995,6 +998,7 @@ ray_cc_library(
         ":composite_scheduling_policy",
         ":scheduler_internal",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:container_util",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1038,6 +1042,7 @@ ray_cc_library(
     name = "local_task_manager_interface",
     hdrs = ["src/ray/raylet/scheduling/local_task_manager_interface.h"],
     deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduler_internal",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1051,6 +1056,7 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/local_resource_manager.h"],
     deps = [
         ":gcs_client_lib",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -1066,6 +1072,7 @@ ray_cc_library(
     srcs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.cc"],
     hdrs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"],
     deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduling_policy",
     ],
@@ -1077,6 +1084,7 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.h"],
     deps = [
         ":cluster_resource_manager",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduling_context",
         ":scheduling_policy",
@@ -1097,8 +1105,6 @@ ray_cc_library(
         ":node_label_scheduling_policy",
         ":random_scheduling_policy",
         ":spread_scheduling_policy",
-        "//src/ray/util",
-        "//src/ray/util:container_util",
     ],
 )
 
@@ -1108,8 +1114,6 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"],
     deps = [
         ":scheduling_policy",
-        "//src/ray/util",
-        "//src/ray/util:container_util",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_googletest//:gtest_prod",
@@ -1140,11 +1144,7 @@ ray_cc_library(
     name = "random_scheduling_policy",
     srcs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.cc"],
     hdrs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.h"],
-    deps = [
-        ":scheduling_policy",
-        "//src/ray/util",
-        "//src/ray/util:container_util",
-    ],
+    deps = [":scheduling_policy"],
 )
 
 ray_cc_library(
@@ -1154,7 +1154,6 @@ ray_cc_library(
     deps = [
         ":hybrid_scheduling_policy",
         ":scheduling_policy",
-        "//src/ray/util",
         "//src/ray/util:container_util",
     ],
 )
@@ -1163,7 +1162,10 @@ ray_cc_library(
     name = "scorer",
     srcs = ["src/ray/raylet/scheduling/policy/scorer.cc"],
     hdrs = ["src/ray/raylet/scheduling/policy/scorer.h"],
-    deps = [":ray_common"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+    ],
 )
 
 ray_cc_library(
@@ -1172,6 +1174,7 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.h"],
     deps = [
         ":local_task_manager_interface",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduler_internal",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1182,6 +1185,7 @@ ray_cc_library(
     name = "scheduling_policy",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_policy.h"],
     deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduling_options",
     ],
