@@ -268,10 +268,10 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
           auto worker_data = std::make_shared<rpc::WorkerTableData>();
           worker_data->CopyFrom(*result);
           worker_data->set_debugger_port(debugger_port);
-          Status status = gcs_table_storage_.WorkerTable().Put(
+          Status put_status = gcs_table_storage_.WorkerTable().Put(
               worker_id, *worker_data, {on_worker_update_done, io_context_});
-          if (!status.ok()) {
-            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+          if (!put_status.ok()) {
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, put_status);
           }
         }
       };
@@ -325,10 +325,10 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
           worker_data->has_num_paused_threads() ? worker_data->num_paused_threads() : 0;
       worker_data->set_num_paused_threads(current_num_paused_threads +
                                           num_paused_threads_delta);
-      Status status = gcs_table_storage_.WorkerTable().Put(
+      Status put_status = gcs_table_storage_.WorkerTable().Put(
           worker_id, *worker_data, {on_worker_update_done, io_context_});
-      if (!status.ok()) {
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      if (!put_status.ok()) {
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, put_status);
       }
     }
   };
