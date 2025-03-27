@@ -140,36 +140,58 @@ def _parse_test_definition_with_matrix(test_definition: TestDefinition) -> List[
     variables = tuple(matrix["setup"].keys())
     combinations = itertools.product(*matrix["setup"].values())
     for combination in combinations:
-        test = copy.deepcopy(test_definition)
+        test = test_definition
         for variable, value in zip(variables, combination):
-            _substitute_variable(test, variable, str(value))
+            test = _substitute_variable(test, variable, str(value))
         tests.append(Test(test))
 
     adjustments = matrix.pop("adjustments", [])
     for adjustment in adjustments:
-        test = copy.deepcopy(test_definition)
+        if not set(adjustment["with"]) == set(variables):
+            raise ReleaseTestConfigError(
+                "You need to specify all matrix variables in the adjustment."
+            )
+
+        test = test_definition
         for variable, value in adjustment["with"].items():
-            _substitute_variable(test, variable, str(value))
+            test = _substitute_variable(test, variable, str(value))
         tests.append(Test(test))
 
     return tests
 
 
-def _substitute_variable(
-    test_definition: Dict, variable: str, replacement: str
-) -> None:
-    def sub(string: str, value: str) -> str:
-        pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
-        return re.sub(pattern, value, string)
+def _substitute_variable(data: Dict, variable: str, replacement: str) -> Dict:
+    """Substitute a variable in the provided dictionary with a replacement value.
 
-    # NOTE: This function mutates the test definition in place.
-    for key, value in test_definition.items():
+    This function traverses dict and list values, and substitutes the variable in
+    string values. The syntax for variables is `{{variable}}`.
+
+    Args:
+        data: The dictionary to substitute the variable in.
+        variable: The variable to substitute.
+        replacement: The replacement value.
+
+    Returns:
+        A new dictionary with the variable substituted.
+
+    Examples:
+        >>> test_definition = {"name": "test-{{arg}}"}
+        >>> _substitute_variable(test_definition, "arg", "1")
+        {'name': 'test-1'}
+    """
+    # Create a copy to avoid mutating the original.
+    data = copy.deepcopy(data)
+
+    pattern = r"\{\{\s*" + re.escape(variable) + r"\s*\}\}"
+    for key, value in data.items():
         if isinstance(value, dict):
-            _substitute_variable(value, variable, replacement)
+            data[key] = _substitute_variable(value, variable, replacement)
         elif isinstance(value, list):
-            test_definition[key] = [sub(string, replacement) for string in value]
+            data[key] = [re.sub(pattern, replacement, string) for string in value]
         elif isinstance(value, str):
-            test_definition[key] = sub(value, replacement)
+            data[key] = re.sub(pattern, replacement, value)
+
+    return data
 
 
 def load_schema_file(path: Optional[str] = None) -> Dict:

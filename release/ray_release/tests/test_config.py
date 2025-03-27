@@ -3,6 +3,7 @@ import sys
 import pytest
 import yaml
 from ray_release.config import (
+    _substitute_variable,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -160,13 +161,6 @@ def test_parse_test_definition_with_matrix_and_adjustments():
     test_definitions = yaml.safe_load(
         """
         - name: "test-{{compute}}-{{arg}}"
-          frequency: nightly
-          team: team
-          working_dir: sample_dir
-          cluster:
-            byod:
-              type: gpu
-            cluster_compute: "{{compute}}.yaml"
           matrix:
             setup:
               compute: [fixed, autoscaling]
@@ -176,6 +170,15 @@ def test_parse_test_definition_with_matrix_and_adjustments():
                     # Only run arg 2 with fixed compute
                     compute: fixed
                     arg: 2
+          frequency: nightly
+          team: team
+          working_dir: sample_dir
+          cluster:
+            byod:
+              type: gpu
+              runtime_env:
+                - SCALING_MODE={{compute}}
+            cluster_compute: "{{compute}}.yaml"
           run:
             timeout: 100
             script: python script.py --arg "{{arg}}"
@@ -185,21 +188,50 @@ def test_parse_test_definition_with_matrix_and_adjustments():
     schema = load_schema_file()
 
     assert len(tests) == 5  # 4 from matrix, 1 from adjustments
-    assert not validate_test(tests[0], schema)
-    assert not validate_test(tests[1], schema)
-    assert not validate_test(tests[2], schema)
-    assert not validate_test(tests[3], schema)
-    assert not validate_test(tests[4], schema)
-    assert tests[0]["name"] == "test-fixed-0"
-    assert tests[1]["name"] == "test-fixed-1"
-    assert tests[2]["name"] == "test-autoscaling-0"
-    assert tests[3]["name"] == "test-autoscaling-1"
-    assert tests[4]["name"] == "test-fixed-2"
-    assert tests[0]["cluster"]["cluster_compute"] == "fixed.yaml"
-    assert tests[1]["cluster"]["cluster_compute"] == "fixed.yaml"
-    assert tests[2]["cluster"]["cluster_compute"] == "autoscaling.yaml"
-    assert tests[3]["cluster"]["cluster_compute"] == "autoscaling.yaml"
-    assert tests[4]["cluster"]["cluster_compute"] == "fixed.yaml"
+    assert not any(validate_test(test, schema) for test in tests)
+    for i, (compute, arg) in enumerate(
+        [
+            ("fixed", 0),
+            ("fixed", 1),
+            ("autoscaling", 0),
+            ("autoscaling", 1),
+            ("fixed", 2),
+        ]
+    ):
+        assert tests[i]["name"] == f"test-{compute}-{arg}"
+        assert tests[i]["cluster"]["cluster_compute"] == f"{compute}.yaml"
+        assert tests[i]["cluster"]["byod"]["runtime_env"] == [f"SCALING_MODE={compute}"]
+
+
+class TestSubstituteVariable:
+    def test_does_not_mutate_original(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted is not test_definition
+        assert test_definition == {"name": "test-{{arg}}"}
+
+    def test_substitute_variable_in_string(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"name": "test-1"}
+
+    def test_substitute_variable_in_list(self):
+        test_definition = {"items": ["item-{{arg}}"]}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"items": ["item-1"]}
+
+    def test_substitute_variable_in_dict(self):
+        test_definition = {"outer": {"inner": "item-{{arg}}"}}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"outer": {"inner": "item-1"}}
 
 
 def test_schema_validation():
