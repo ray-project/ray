@@ -464,6 +464,8 @@ class _ActorPool(AutoscalingActorPool):
     actors when the operator is done submitting work to the pool.
     """
 
+    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
+
     def __init__(
         self,
         compute_strategy: ActorPoolStrategy,
@@ -737,12 +739,21 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = dict(self._running_actors)
 
-        for _, actor in running.items():
-            self._release_running_actor(actor)
+        on_exit_refs = []
 
-            # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
-            #       hence we're only doing that if this is a forced release
-            if force:
+        # First release actors and collect their shutdown hook object-refs
+        for _, actor in running.items():
+            on_exit_refs.append(
+                self._release_running_actor(actor)
+            )
+
+        # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+        #       hence we're only doing that if this is a forced release
+        if force:
+            # Wait for all actors to shutdown gracefully before killing them
+            ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+
+            for actor in running:
                 ray.kill(actor)
 
     def _release_running_actor(self, actor: ray.actor.ActorHandle) -> Optional[ObjectRef]:
