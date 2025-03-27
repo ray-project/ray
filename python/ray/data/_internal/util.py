@@ -914,29 +914,39 @@ class _InterruptibleQueue(Queue):
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
+    preserve_ordering: bool,
     num_workers: int = 1,
     queue_buffer_size: int = 2,
 ) -> Generator[U, None, None]:
-
-    gen_id = random.randint(0, 2**31 - 1)
-
     """Returns a generator (iterator) mapping items from the
     provided iterator applying provided transformation in parallel (using a
     thread-pool).
 
-    NOTE: Even though the mapping is performed in parallel across N
-          threads, this method provides crucial guarantee of preserving the
-          ordering of the source iterator, ie that
+    NOTE: There are some important constraints that needs to be carefully 
+          understood before using this method
+          
+        1. If `preserve_ordering` is True
+            a. This method would unroll input iterator eagerly (irrespective
+                of the speed of resulting generator being consumed). This is necessary
+                as we can not guarantee liveness of the algorithm AND preserving of the
+                original ordering at the same time.
+            
+            b. Resulting ordering of the output will "match" ordering of the input, ie 
+               that: 
+                    iterator = [A1, A2, ... An]
+                    output iterator = [map(A1), map(A2), ..., map(An)]
 
-            iterator = [A1, A2, ... An]
-            mapped iterator = [map(A1), map(A2), ..., map(An)]
-
-          Preserving ordering is crucial to eliminate non-determinism in producing
-          content of the blocks.
+        2. If `preserve_ordering` is False
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be 
+                fetched from the iterator
+                
+            b. Resulting ordering of the output is unspecified (and is 
+            non-deterministic)
 
     Args:
         base_iterator: Iterator yielding elements to map
         fn: Transformation to apply to each element
+        preserve_ordering: Whether ordering has to be preserved
         num_workers: The number of threads to use in the threadpool (defaults to 1)
         buffer_size: Number of objects to be buffered in its input/output
                      queues (per queue; defaults to 2). Total number of objects held
@@ -949,8 +959,13 @@ def make_async_gen(
         elements mapped by provided transformation (while *preserving the ordering*)
     """
 
+    gen_id = random.randint(0, 2**31 - 1)
+
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
+
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
     # To apply transformations to elements in parallel *and* preserve the ordering
     # following invariants are established:
@@ -967,15 +982,22 @@ def make_async_gen(
     #     order as input queues) dequeues 1 mapped element at a time from each output
     #     queue and yields it
     #
-    # Signal handler used to interrupt workers when terminating
-    interrupted_event = threading.Event()
+    # However, in case when we're preserving the ordering we can not enforce the input
+    # queue size as this could result in deadlocks since transformations could be
+    # producing sequences of arbitrary length.
+    #
+    # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
+    # this problem.
+    input_queue_buf_size = -1 if preserve_ordering else queue_buffer_size
+    output_queue_buf_size = queue_buffer_size
 
     input_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        _InterruptibleQueue(input_queue_buf_size, interrupted_event)
         for _ in range(num_workers)
     ]
+
     output_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        _InterruptibleQueue(output_queue_buf_size, interrupted_event)
         for _ in range(num_workers)
     ]
 
@@ -1077,8 +1099,15 @@ def make_async_gen(
             # At every iteration only remaining non-empty queues
             # are traversed (to prevent blocking on exhausted queue)
             for output_queue in remaining_output_queues:
-                # NOTE: This is blocking!
-                item = output_queue.get()
+                if preserve_ordering:
+                    # NOTE: This is blocking!
+                    item = output_queue.get()
+                else:
+                    try:
+                        item = output_queue.get_nowait()
+                    except Empty:
+                        # If the queue is empty continue to the next one
+                        continue
 
                 if isinstance(item, Exception):
                     raise item
