@@ -1,20 +1,10 @@
 # Compute configuration for object detection tests on GCE
 # Hybrid cluster with both CPU and GPU nodes as specified in the notebooks
 
-cluster_name: object-detection-test-gce
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-central1
 
 max_workers: 10
-
-provider:
-  type: gcp
-  region: us-central1
-  availability_zone: us-central1-a
-  project_id: anyscale-internal
-
-docker:
-  image: "anyscale/ray:2.41.0-slim-py312-cu123"
-  container_name: "ray_container"
-  pull_before_run: True
 
 # Head node - as specified in notebooks, CPU-only for coordination
 head_node_type:
@@ -47,22 +37,9 @@ worker_node_types:
       - gcloud_accelerator_type: nvidia-tesla-t4
         gcloud_accelerator_count: 1
 
-file_mounts: {}
-
-cluster_synced_files: []
-
-initialization_commands: []
-
-setup_commands: []
-
-head_setup_commands: []
-
-worker_setup_commands: []
-
-head_start_ray_commands:
-  - ray stop
-  - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0 --system-config='{"worker_register_timeout_seconds": 180}'
-
-worker_start_ray_commands:
-  - ray stop
-  - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076 
+advanced_configurations_json:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
