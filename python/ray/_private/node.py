@@ -162,6 +162,13 @@ class Node:
         if not self.head:
             self.validate_ip_port(self.address)
             self._init_gcs_client()
+            self._cluster_metadata = self._read_cluster_info_from_kv()
+
+        # Fetch the head OS platform
+        if head:
+            self._head_os = sys.platform
+        else:
+            self._head_os = self._cluster_metadata["os"]
 
         # Register the temp dir.
         self._session_name = ray_params.session_name
@@ -414,17 +421,14 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
-        import ray._private.usage.usage_lib as ray_usage_lib
+        if not self._cluster_metadata:
+            self._cluster_metadata = self._read_cluster_info_from_kv()
 
-        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
-        if cluster_metadata is None:
-            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
-
-        if not cluster_metadata:
+        if not self._cluster_metadata:
             return
         node_ip_address = ray._private.services.get_node_ip_address()
         ray._private.utils.check_version_info(
-            cluster_metadata, f"node {node_ip_address}"
+            self._cluster_metadata, f"node {node_ip_address}"
         )
 
     def _register_shutdown_hooks(self):
@@ -454,7 +458,9 @@ class Node:
             )
             self._temp_dir = self._ray_params.temp_dir
         else:
-            if self._ray_params.temp_dir is None:
+            if self._ray_params.temp_dir is not None:
+                self._temp_dir = self._ray_params.temp_dir
+            elif self._head_os == sys.platform:
                 assert not self._default_worker
                 temp_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -464,14 +470,18 @@ class Node:
                 )
                 self._temp_dir = ray._private.utils.decode(temp_dir)
             else:
+                self._ray_params.update_if_absent(
+                    temp_dir=ray._private.utils.get_ray_temp_dir()
+                )
                 self._temp_dir = self._ray_params.temp_dir
 
+        assert self._temp_dir is not None
         try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
-            if self._temp_dir is None or self._session_name is None:
+            if self._session_name is None:
                 assert not self._default_worker
                 session_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -479,7 +489,12 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_dir = ray._private.utils.decode(session_dir)
+                if sys.platform == self._head_os:
+                    self._session_dir = ray._private.utils.decode(session_dir)
+                else:
+                    self._session_dir = os.path.join(
+                        self._temp_dir, os.path.basename(session_dir)
+                    )
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
@@ -1348,7 +1363,7 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(
+        self._cluster_metadata = ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
         )
         # Make sure GCS is up.
@@ -1396,6 +1411,16 @@ class Node:
                 True,
                 ray_constants.KV_NAMESPACE_TRACING,
             )
+
+    def _read_cluster_info_from_kv(self):
+        """Read the cluster metadata from GCS."""
+        import ray._private.usage.usage_lib as ray_usage_lib
+
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
+        if cluster_metadata is None:
+            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
+
+        return cluster_metadata
 
     def start_head_processes(self):
         """Start head processes on the node."""
