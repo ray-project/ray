@@ -9,7 +9,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray.data import Schema
@@ -46,9 +46,9 @@ def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -282,9 +282,9 @@ def test_read_json_fallback_from_pyarrow_failure(ray_start_regular_shared, local
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read_meta_provider(
@@ -323,9 +323,9 @@ def test_json_read_meta_provider(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read_with_read_options(
@@ -362,9 +362,9 @@ def test_json_read_with_read_options(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read_with_parse_options(
@@ -405,9 +405,9 @@ def test_json_read_with_parse_options(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read_partitioned_with_filter(
@@ -479,9 +479,9 @@ def test_json_read_partitioned_with_filter(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -527,12 +527,12 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -581,9 +581,9 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoint_url):

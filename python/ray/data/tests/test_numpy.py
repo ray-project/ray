@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
@@ -112,12 +112,12 @@ def test_to_numpy_refs(ray_start_regular_shared):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -264,9 +264,9 @@ def test_numpy_read_partitioned_with_filter(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):

@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 import ray.cloudpickle as pickle
@@ -365,62 +365,62 @@ def pickled_objects_array():
 
 pytest_custom_serialization_arrays = [
     # Null array
-    (lazy_fixture("null_array"), 1.0),
+    ("null_array", 1.0),
     # Int array
-    (lazy_fixture("int_array"), 0.1),
+    ("int_array", 0.1),
     # Array with nulls
-    (lazy_fixture("int_array_with_nulls"), 0.1),
+    ("int_array_with_nulls", 0.1),
     # Float array
-    (lazy_fixture("float_array"), 0.1),
+    ("float_array", 0.1),
     # Boolean array
     # Due to bit-packing, most of the pickle bytes are metadata.
-    (lazy_fixture("boolean_array"), 0.8),
+    ("boolean_array", 0.8),
     # String array
-    (lazy_fixture("string_array"), 0.1),
+    ("string_array", 0.1),
     # Large string array
-    (lazy_fixture("large_string_array"), 0.1),
+    ("large_string_array", 0.1),
     # Binary array
-    (lazy_fixture("binary_array"), 0.1),
+    ("binary_array", 0.1),
     # Fixed size binary array
-    (lazy_fixture("fixed_size_binary_array"), 0.1),
+    ("fixed_size_binary_array", 0.1),
     # Large binary array
-    (lazy_fixture("large_binary_array"), 0.1),
+    ("large_binary_array", 0.1),
     # List array with nulls
-    (lazy_fixture("list_array"), 0.1),
+    ("list_array", 0.1),
     # Large list array with nulls
-    (lazy_fixture("large_list_array"), 0.1),
+    ("large_list_array", 0.1),
     # Fixed size list array
-    (lazy_fixture("fixed_size_list_array"), 0.1),
+    ("fixed_size_list_array", 0.1),
     # Map array
-    (lazy_fixture("map_array"), 0.1),
+    ("map_array", 0.1),
     # Struct array
-    (lazy_fixture("struct_array"), 0.1),
+    ("struct_array", 0.1),
     # Union array (sparse)
-    (lazy_fixture("sparse_union_array"), 0.1),
+    ("sparse_union_array", 0.1),
     # Union array (dense)
-    (lazy_fixture("dense_union_array"), 0.1),
+    ("dense_union_array", 0.1),
     # Dictionary array
-    (lazy_fixture("dictionary_array"), 0.1),
+    ("dictionary_array", 0.1),
     # Tensor extension array
-    (lazy_fixture("tensor_array"), 0.1),
+    ("tensor_array", 0.1),
     # Boolean tensor extension array
-    (lazy_fixture("boolean_tensor_array"), 0.25),
+    ("boolean_tensor_array", 0.25),
     # Variable-shaped tensor extension array
-    (lazy_fixture("variable_shaped_tensor_array"), 0.1),
+    ("variable_shaped_tensor_array", 0.1),
     # Boolean variable-shaped tensor extension array
-    (lazy_fixture("boolean_variable_shaped_tensor_array"), 0.25),
+    ("boolean_variable_shaped_tensor_array", 0.25),
     # List of struct array
-    (lazy_fixture("list_of_struct_array"), 0.1),
+    ("list_of_struct_array", 0.1),
     # List of empty struct array
-    (lazy_fixture("list_of_empty_struct_array"), 0.1),
+    ("list_of_empty_struct_array", 0.1),
     # Complex nested array
-    (lazy_fixture("complex_nested_array"), 0.1),
+    ("complex_nested_array", 0.1),
 ]
 
 if _object_extension_type_allowed():
     pytest_custom_serialization_arrays.append(
         # Array of pickled objects
-        (lazy_fixture("pickled_objects_array"), 0.1),
+        ("pickled_objects_array", 0.1),
     )
 
 

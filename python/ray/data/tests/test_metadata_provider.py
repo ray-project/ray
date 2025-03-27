@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
-from pytest_lazyfixture import lazy_fixture
+
 
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -74,16 +74,16 @@ def test_file_metadata_providers_not_implemented():
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -125,18 +125,18 @@ def test_default_parquet_metadata_provider(fs, data_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
+            "s3_server",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
+            "s3_server",
         ),
     ],
 )
@@ -189,8 +189,8 @@ def test_default_file_metadata_provider(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
@@ -227,8 +227,8 @@ def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_default_file_metadata_provider_many_files_basic(
@@ -285,8 +285,8 @@ def test_default_file_metadata_provider_many_files_basic(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_default_file_metadata_provider_many_files_partitioned(
@@ -357,8 +357,8 @@ def test_default_file_metadata_provider_many_files_partitioned(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_default_file_metadata_provider_many_files_diff_dirs(
@@ -433,18 +433,18 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
+            "s3_server",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
+            "s3_server",
         ),
     ],
 )

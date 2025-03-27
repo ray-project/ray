@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 
@@ -80,7 +80,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "source", [*REMOTE_URIS, S3_WHL_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+    "source", [*REMOTE_URIS, S3_WHL_PACKAGE_URI, "tmp_working_dir"]
 )
 def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
@@ -112,7 +112,7 @@ def test_multi_node(start_cluster, option: str, source: str):
     assert len(set(ray.get(object_refs))) == NUM_NODES
 
 
-@pytest.mark.parametrize("working_dir", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("working_dir", [*REMOTE_URIS, "tmp_working_dir"])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster

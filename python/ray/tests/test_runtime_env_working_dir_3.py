@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 import ray.experimental.internal_kv as kv
@@ -96,7 +96,7 @@ class TestGC:
     @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
-        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+        "source", [S3_PACKAGE_URI, "tmp_working_dir"]
     )
     def test_job_level_gc(
         self,
@@ -254,7 +254,7 @@ class TestGC:
 
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
-        "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
+        "source", [S3_PACKAGE_URI, "tmp_working_dir"]
     )
     def test_detached_actor_gc(
         self,
@@ -432,7 +432,7 @@ def skip_local_gc():
 
 @pytest.mark.skip("#23617 must be resolved for skip_local_gc to work.")
 class TestSkipLocalGC:
-    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    @pytest.mark.parametrize("source", ["tmp_working_dir"])
     def test_skip_local_gc_env_var(
         self,
         skip_local_gc,
@@ -461,7 +461,7 @@ class TestSkipLocalGC:
 
 
 @pytest.mark.parametrize("expiration_s", [0, TEMP_URI_EXPIRATION_S])
-@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("source", ["tmp_working_dir"])
 def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     """Test that temporary GCS URI references are deleted after expiration_s."""
     monkeypatch.setenv(RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR, str(expiration_s))

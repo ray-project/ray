@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray.data import Schema
@@ -51,18 +51,18 @@ def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
+            "s3_server",
         ),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
+            "s3_server",
         ),
     ],
 )
@@ -240,9 +240,9 @@ def test_csv_ignore_missing_paths(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_read_meta_provider(
@@ -284,9 +284,9 @@ def test_csv_read_meta_provider(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_read_many_files_basic(
@@ -319,9 +319,9 @@ def test_csv_read_many_files_basic(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_read_many_files_partitioned(
@@ -388,9 +388,9 @@ def test_csv_read_many_files_partitioned(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_read_many_files_diff_dirs(
@@ -433,13 +433,13 @@ def test_csv_read_many_files_diff_dirs(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
+            "s3_server",
         ),
     ],
 )
@@ -478,13 +478,13 @@ def test_csv_read_partitioned_hive_implicit(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
+            "s3_server",
         ),
     ],
 )
@@ -533,9 +533,9 @@ def test_csv_read_partitioned_styles_explicit(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 @pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
@@ -590,9 +590,9 @@ def test_csv_read_partitioned_with_filter(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 @pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
@@ -653,9 +653,9 @@ def test_csv_read_partitioned_with_filter_multikey(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -690,9 +690,9 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
     ],
 )
 def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):

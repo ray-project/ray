@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray._private.test_utils import (
@@ -25,7 +25,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 # TODO(architkulkarni): Deflake and reenable this test.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+@pytest.mark.parametrize("source", [S3_PACKAGE_URI, "tmp_working_dir"])
 def test_default_large_cache(start_cluster, option: str, source: str):
     """Check small files aren't GC'ed when using the default large cache."""
     NUM_NODES = 3

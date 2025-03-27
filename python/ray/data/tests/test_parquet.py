@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray.air.util.tensor_extensions.arrow import (
@@ -110,7 +110,7 @@ def test_include_paths(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        ("local_fs", "local_path"),
     ],
 )
 def test_parquet_deserialize_fragments_with_retry(
@@ -174,16 +174,16 @@ def test_parquet_deserialize_fragments_with_retry(
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -237,12 +237,12 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -299,16 +299,16 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -349,16 +349,16 @@ def test_parquet_read_random_shuffle(
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -435,16 +435,16 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -493,12 +493,12 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -577,12 +577,12 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -621,12 +621,12 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -758,13 +758,13 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
+        ("s3_fs_with_space", "s3_path_with_space"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -873,9 +873,9 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -944,9 +944,9 @@ def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_parquet_write_create_dir(
@@ -1071,12 +1071,12 @@ def test_parquet_write_create_dir(
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -1137,7 +1137,7 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        ("local_fs", "local_path"),
     ],
 )
 def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):

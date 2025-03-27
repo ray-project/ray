@@ -4,7 +4,7 @@ import lance
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -16,16 +16,16 @@ from ray.data.datasource.path_util import _unwrap_protocol
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
+            "s3_fs_with_space",
+            "s3_path_with_space",
         ),  # Path contains space.
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
         ),
     ],
 )
@@ -90,7 +90,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
     assert ds.schema().names == ["one", "two", "three", "four"]
 
 
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+@pytest.mark.parametrize("data_path", ["local_path"])
 def test_lance_read_many_files(data_path):
     # NOTE: Lance only works with PyArrow 12 or above.
     pyarrow_version = get_pyarrow_version()
@@ -110,7 +110,7 @@ def test_lance_read_many_files(data_path):
     wait_for_condition(test_lance, timeout=10)
 
 
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+@pytest.mark.parametrize("data_path", ["local_path"])
 def test_lance_write(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 

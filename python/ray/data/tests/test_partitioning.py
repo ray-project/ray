@@ -8,7 +8,7 @@ import pyarrow
 import pyarrow as pa
 import pytest
 from pyarrow.fs import FileType
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray.data.block import Block
@@ -486,11 +486,11 @@ def test_path_partition_encoder_errors():
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -521,11 +521,11 @@ def test_path_partition_encoder_hive(fs, base_dir):
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -615,11 +615,11 @@ def test_path_partition_parser_errors():
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -670,11 +670,11 @@ def test_path_partition_parser_hive(fs, base_dir):
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -739,11 +739,11 @@ def test_path_partition_parser_dir(fs, base_dir):
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )
@@ -813,11 +813,11 @@ def test_path_partition_filter_hive(fs, base_dir):
     "fs,base_dir",
     [
         (None, None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
         (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
+            "s3_fs_with_special_chars",
+            "s3_path_with_special_chars",
         ),
     ],
 )

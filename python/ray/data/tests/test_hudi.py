@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
@@ -38,8 +38,8 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
     ],
 )
 def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
