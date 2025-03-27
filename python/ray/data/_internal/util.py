@@ -988,16 +988,20 @@ def make_async_gen(
     #
     # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
     # this problem.
-    input_queue_buf_size = -1 if preserve_ordering else queue_buffer_size
-    output_queue_buf_size = queue_buffer_size
+    if preserve_ordering:
+        input_queue_buf_size = -1
+        num_input_queues = num_workers
+    else:
+        input_queue_buf_size = (queue_buffer_size + 1) * num_workers
+        num_input_queues = 1
 
     input_queues = [
         _InterruptibleQueue(input_queue_buf_size, interrupted_event)
-        for _ in range(num_workers)
+        for _ in range(num_input_queues)
     ]
 
     output_queues = [
-        _InterruptibleQueue(output_queue_buf_size, interrupted_event)
+        _InterruptibleQueue(queue_buffer_size, interrupted_event)
         for _ in range(num_workers)
     ]
 
@@ -1007,11 +1011,16 @@ def make_async_gen(
             # First, round-robin elements from the iterator into
             # corresponding input queues (one by one)
             for idx, item in enumerate(base_iterator):
-                input_queues[idx % num_workers].put(item)
+                input_queues[idx % num_input_queues].put(item)
 
-            # Enqueue sentinel objects to signal end of the line
+            # NOTE: We have to Enqueue sentinel objects for every transforming
+            #       worker:
+            #   - In case of preserving order of ``num_queues`` == ``num_workers``
+            #     we will enqueue 1 sentinel per queue
+            #   - In case of NOT preserving order all ``num_workers`` sentinels
+            #     will be enqueued into a single queue
             for idx in range(num_workers):
-                input_queues[idx].put(SENTINEL)
+                input_queues[idx % num_input_queues].put(SENTINEL)
 
         except InterruptedError:
             pass
@@ -1026,10 +1035,7 @@ def make_async_gen(
                 output_queue.put(e)
 
     # Transforming worker
-    def _run_transforming_worker(worker_id: int):
-        input_queue = input_queues[worker_id]
-        output_queue = output_queues[worker_id]
-
+    def _run_transforming_worker(input_queue, output_queue):
         try:
             # Create iterator draining the queue, until it receives sentinel
             #
@@ -1063,11 +1069,11 @@ def make_async_gen(
     transforming_worker_threads = [
         threading.Thread(
             target=_run_transforming_worker,
-            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
-            args=(worker_idx,),
+            name=f"map_tp_transforming_worker-{gen_id}-{idx}",
+            args=(input_queues[idx % num_input_queues], output_queues[idx]),
             daemon=True,
         )
-        for worker_idx in range(num_workers)
+        for idx in range(num_workers)
     ]
 
     for t in transforming_worker_threads:
@@ -1097,15 +1103,8 @@ def make_async_gen(
             # At every iteration only remaining non-empty queues
             # are traversed (to prevent blocking on exhausted queue)
             for output_queue in remaining_output_queues:
-                if preserve_ordering:
-                    # NOTE: This is blocking!
-                    item = output_queue.get()
-                else:
-                    try:
-                        item = output_queue.get_nowait()
-                    except Empty:
-                        # If the queue is empty continue to the next one
-                        continue
+                # NOTE: This is blocking!
+                item = output_queue.get()
 
                 if isinstance(item, Exception):
                     raise item
