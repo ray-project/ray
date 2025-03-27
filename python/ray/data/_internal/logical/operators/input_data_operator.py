@@ -1,5 +1,5 @@
 import functools
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Iterator
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -17,15 +17,18 @@ class InputData(LogicalOperator):
     def __init__(
         self,
         input_data: Optional[List[RefBundle]] = None,
+        input_data_iter: Optional[Iterator[RefBundle]] = None,
         input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
     ):
-        assert (input_data is None) != (
-            input_data_factory is None
-        ), "Only one of input_data and input_data_factory should be set."
+        if (input_data is not None) ^ (input_data_factory is not None) ^ (input_data_iter is not None):
+            raise ValueError("Only one of input_data, input_data_iter or input_data_factory has to be provided.")
+
         super().__init__(
             "InputData", [], len(input_data) if input_data is not None else None
         )
+
         self.input_data = input_data
+        self.input_data_iter = input_data_iter
         self.input_data_factory = input_data_factory
 
     def output_data(self) -> Optional[List[RefBundle]]:
