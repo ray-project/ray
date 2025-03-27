@@ -250,6 +250,8 @@ GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
+_RAY_STREAMING_GEN_NUM_EXECUTORS = int(os.environ.get("_RAY_STREAMING_GEN_NUM_EXECUTORS", "1"))
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task
@@ -1421,50 +1423,58 @@ async def execute_streaming_generator_async(
     Args:
         context: The context to execute streaming generator.
     """
+    worker = ray._private.worker.global_worker
+
     cdef:
         int64_t cur_generator_index = 0
-        CRayStatus return_status
+
+        CObjectID generator_id = context.generator_id
 
     assert context.is_initialized()
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
 
-    gen = context.generator
-
     loop = asyncio.get_running_loop()
-    worker = ray._private.worker.global_worker
 
     executor = worker.core_worker.get_event_loop_executor()
     interrupt_signal_event = threading.Event()
 
+    futures = []
     try:
         try:
-            async for output in gen:
-                # NOTE: Report of streaming generator output is done in a
-                # standalone thread-pool to avoid blocking the event loop,
-                # since serializing and actual RPC I/O is done with "nogil". We
-                # still wait for the report to finish to ensure that the task
-                # does not modify the output before we serialize it.
-                #
-                # Note that the RPC is sent asynchronously, and we do not wait
-                # for the reply here. The exception is if the user specified a
-                # backpressure threshold for the streaming generator, and we
-                # are currently under backpressure. Then we need to wait for an
-                # ack from the caller (the reply for a possibly previous report
-                # RPC) that they have consumed more ObjectRefs.
-                await loop.run_in_executor(
-                    executor,
-                    report_streaming_generator_output,
-                    context,
-                    output,
-                    cur_generator_index,
-                    interrupt_signal_event,
+            async for output in context.generator:
+                # NOTE: Reporting generator output in a streaming fashion,
+                #       is done in a standalone thread-pool fully *asynchronously*
+                #       to avoid blocking the event-loop and allow it to *concurrently*
+                #       make progress, since serializing and actual RPC I/O is done
+                #       with "nogil".
+                futures.append(
+                    loop.run_in_executor(
+                        executor,
+                        report_streaming_generator_output,
+                        context,
+                        output,
+                        cur_generator_index,
+                        interrupt_signal_event,
+                    )
                 )
                 cur_generator_index += 1
         except Exception as e:
             # Report the exception to the owner of the task.
-            report_streaming_generator_exception(context, e, cur_generator_index, None)
+            futures.append(
+                loop.run_in_executor(
+                    executor,
+                    report_streaming_generator_exception,
+                    context,
+                    e,
+                    cur_generator_index,
+                    interrupt_signal_event,
+                )
+            )
+
+        # Make sure all RPC I/O completes before returning
+        await asyncio.gather(*futures)
 
     except BaseException as be:
         # NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
@@ -1485,15 +1495,6 @@ async def execute_streaming_generator_async(
         interrupt_signal_event.set()
 
         raise
-
-    # The caller gets object values through the reports. If we finish the task
-    # before sending the report is complete, then we may fail before the report
-    # is sent to the caller. Then, the caller would never be able to ray.get
-    # the yield'ed ObjectRef. Therefore, we must wait for all in-flight object
-    # reports to complete before finishing the task.
-    with nogil:
-        return_status = context.waiter.get().WaitAllObjectsReported()
-    check_status(return_status)
 
 
 cdef create_generator_return_obj(
@@ -3042,7 +3043,7 @@ cdef class CoreWorker:
         self.current_runtime_env = None
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
-        self.event_loop_executor = None
+        self.event_loop_executors = []
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
@@ -4499,16 +4500,24 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
-    def get_event_loop_executor(self) -> ThreadPoolExecutor:
-        if self.event_loop_executor is None:
+    def get_event_loop_executor(self):
+        if len(self.event_loop_executors) == 0:
+            assert _RAY_STREAMING_GEN_NUM_EXECUTORS >= 1, f"Number of executors should be >= 1 (got {_RAY_STREAMING_GEN_NUM_EXECUTORS})"
+
             # NOTE: We're deliberately allocating thread-pool executor with
             #       a single thread, provided that many of its use-cases are
             #       not thread-safe yet (for ex, reporting streaming generator output)
-            self.event_loop_executor = ThreadPoolExecutor(max_workers=1)
-        return self.event_loop_executor
+            self.event_loop_executors = [
+                ThreadPoolExecutor(max_workers=1) for _ in range(_RAY_STREAMING_GEN_NUM_EXECUTORS)
+            ]
+            self.next_executor_idx = 0
 
-    def reset_event_loop_executor(self, executor: ThreadPoolExecutor):
-        self.event_loop_executor = executor
+        self.next_executor_idx = (self.next_executor_idx + 1) % len(self.event_loop_executors)
+
+        return self.event_loop_executors[self.next_executor_idx]
+
+    def reset_event_loop_executor(self, executors: typing.List[ThreadPoolExecutor]):
+        self.event_loop_executors = executors
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4622,9 +4631,8 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
-        if self.event_loop_executor:
-            self.event_loop_executor.shutdown(
-                wait=True, cancel_futures=True)
+        for executor in self.event_loop_executors:
+            executor.shutdown(wait=True, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:

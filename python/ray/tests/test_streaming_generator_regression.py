@@ -46,7 +46,7 @@ class EndpointActor:
 
             executor = DelayedThreadPoolExecutor(max_workers=max_workers)
             ray._private.worker.global_worker.core_worker.reset_event_loop_executor(
-                executor
+                [executor]
             )
 
 
