@@ -31,6 +31,7 @@ PYX_COPTS = select({
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
+        "-Wno-shadow",
     ],
 }) + select({
     "@platforms//os:windows": [
