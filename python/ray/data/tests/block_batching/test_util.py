@@ -115,8 +115,9 @@ def test_finalize():
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_fail(buffer_size: int):
+def test_make_async_gen_fail(buffer_size: int, preserve_ordering):
     """Tests that any errors raised in async threads are propagated to the main
     thread."""
 
@@ -126,6 +127,7 @@ def test_make_async_gen_fail(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter([1]),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         queue_buffer_size=buffer_size,
     )
 
@@ -136,53 +138,8 @@ def test_make_async_gen_fail(buffer_size: int):
     assert e.match("Fail")
 
 
-@pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_preserve_ordering(buffer_size: int):
-    """Tests that iterators of varying lengths are handled appropriately"""
-
-    seq_set = set()
-
-    # Roll the dice 50 times
-    for i in range(50):
-        seed = time.time_ns()
-        r = random.Random(seed)
-
-        def _gen(base_iterator):
-            worker_id = next(base_iterator)
-
-            # Make workers produce sequences increasing the same order
-            # as worker-ids (so that for left workers sequences run out first)
-            target_length = worker_id + 1
-
-            def _jittery_iter():
-                for i in range(target_length):
-                    # Generate random duration to sleep for in range [0, 0.001s)
-                    sleep_s = r.random() / 1000
-                    time.sleep(sleep_s)
-
-                    yield f"worker_{worker_id}:{i}"
-
-            return _jittery_iter()
-
-        num_seqs = 32
-
-        iterator = make_async_gen(
-            base_iterator=iter(list(range(num_seqs))),
-            fn=_gen,
-            # Make sure individual elements are handle by diff workers
-            num_workers=4,
-            queue_buffer_size=buffer_size,
-        )
-
-        seq = tuple(list(iterator))
-
-        seq_set.add(seq)
-
-    # Assert ordering doesn't change
-    assert len(seq_set) == 1, seq_set
-
-
-def test_make_async_gen_varying_seq_length_stress_test():
+@pytest.mark.parametrize("preserve_ordering", [True, False])
+def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
     """This test executes make_async_gen against a function generating variable
     length sequences to stress test its concurrency control.
     """
@@ -216,13 +173,20 @@ def test_make_async_gen_varying_seq_length_stress_test():
                 print(f">>> Flattening: {l}")
                 yield from l
 
-        it = make_async_gen(iter(source), flatten, 4, queue_buffer_size=1)
+        it = make_async_gen(
+            iter(source),
+            flatten,
+            preserve_ordering=preserve_ordering,
+            num_workers=4,
+            queue_buffer_size=1,
+        )
 
         for i in it:
             print(i)
 
 
-def test_make_async_gen_non_reentrant():
+@pytest.mark.parametrize("preserve_ordering", [True, False])
+def test_make_async_gen_non_reentrant(preserve_ordering):
     """This test is asserting that make_async_gen iterating over the
     sequence as a whole and not re-entering provided transformation,
     as this might have substantial performance impact in extreme case
@@ -260,6 +224,7 @@ def test_make_async_gen_non_reentrant():
     for _ in make_async_gen(
         iter(range(3)),
         _transform_b,
+        preserve_ordering=preserve_ordering,
     ):
         pass
 
@@ -277,8 +242,9 @@ def test_make_async_gen_non_reentrant():
     ] == logs
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen(buffer_size: int):
+def test_make_async_gen(buffer_size: int, preserve_ordering):
     """Tests that make_async_gen overlaps compute."""
 
     num_items = 5
@@ -303,6 +269,7 @@ def test_make_async_gen(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=1,
         queue_buffer_size=buffer_size,
     )
@@ -329,8 +296,9 @@ def test_make_async_gen(buffer_size: int):
     assert outputs == list(range(num_items))
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_multiple_threads(buffer_size: int):
+def test_make_async_gen_multiple_threads(buffer_size: int, preserve_ordering):
     """Tests that using multiple threads can overlap compute even more."""
 
     num_items = 5
@@ -351,6 +319,7 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=5,
         queue_buffer_size=buffer_size,
     )
@@ -364,7 +333,8 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     end_time = time.time()
 
     # Assert ordering is preserved
-    assert elements == list(range(num_items))
+    if preserve_ordering:
+        assert elements == list(range(num_items))
 
     # - 2 second for every worker to handle their single element
     # - 3 seconds for overlapping one
@@ -372,8 +342,9 @@ def test_make_async_gen_multiple_threads(buffer_size: int):
     assert end_time - start_time < gen_sleep + iter_sleep + 0.5
 
 
+@pytest.mark.parametrize("preserve_ordering", [True, False])
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_multiple_threads_unfinished(buffer_size: int):
+def test_make_async_gen_multiple_threads_unfinished(buffer_size: int, preserve_ordering):
     """Tests that using multiple threads can overlap compute even more.
     Do not finish iteration with break in the middle.
     """
@@ -393,6 +364,7 @@ def test_make_async_gen_multiple_threads_unfinished(buffer_size: int):
     iterator = make_async_gen(
         base_iterator=iter(range(num_items)),
         fn=gen,
+        preserve_ordering=preserve_ordering,
         num_workers=5,
         queue_buffer_size=buffer_size,
     )
