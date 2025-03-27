@@ -204,12 +204,13 @@ def test_parse_test_definition_with_matrix_and_adjustments():
 
 
 class TestSubstituteVariable:
-    def test_returns_new_test_definition(self):
+    def test_does_not_mutate_original(self):
         test_definition = {"name": "test-{{arg}}"}
 
         substituted = _substitute_variable(test_definition, "arg", "1")
 
         assert substituted is not test_definition
+        assert test_definition == {"name": "test-{{arg}}"}
 
     def test_substitute_variable_in_string(self):
         test_definition = {"name": "test-{{arg}}"}
