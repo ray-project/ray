@@ -274,6 +274,8 @@ class _GPULoaderThread(threading.Thread):
 
         # Load the batch onto the GPU device.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
+            torch.distributed.barrier()
+            torch.cuda.synchronize()
             ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=False)#, use_stream=True)
 
         if isinstance(self._out_queue, CircularBuffer):
