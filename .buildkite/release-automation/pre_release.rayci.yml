@@ -56,6 +56,7 @@ steps:
     trigger: "ray-ecosystem-ci-kuberay-ci"
     key: trigger-kuberay
     depends_on: trigger-postmerge-nightly
+    allow_dependency_failure: true
     build:
       branch: "release-1.3"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
