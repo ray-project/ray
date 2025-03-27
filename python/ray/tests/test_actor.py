@@ -691,11 +691,45 @@ def test_decorator_args(ray_start_regular_shared):
         def __init__(self):
             pass
 
-    # This is a valid way of using the decorator.
-    @ray.remote(num_cpus=1, label_selector={"ray.io/market-type": "spot"})  # noqa: F811
+
+def test_decorator_label_selector_args(ray_start_regular_shared):
+    # This is a valid way of using the decorator - multiple labels with implicit 'equals' condition
+    @ray.remote(
+        label_selector={"ray.io/market-type": "spot", "ray.io/accelerator-type": "H100"}
+    )  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass
+
+    # This is a valid way of using the decorator - not equals condition
+    @ray.remote(label_selector={"ray.io/market-type": "!spot)"})  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is a valid way of using the decorator - in condition
+    @ray.remote(
+        label_selector={"ray.io/accelerator-type": "in(H100, B200)"}
+    )  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is a valid way of using the decorator - not in condition
+    @ray.remote(
+        label_selector={"ray.io/accelerator-type": "!in(H100, B200)"}
+    )  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is an invalid way of using the decorator - label_selector expects a dict
+    with pytest.raises(TypeError):
+
+        @ray.remote(label_selector="")  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
 
 
 def test_random_id_generation(ray_start_regular_shared):
