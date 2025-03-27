@@ -275,7 +275,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def shutdown(self):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
-        self._actor_pool.kill_all_actors()
+        self._actor_pool.shutdown()
         super().shutdown()
 
         # Warn if the user specified a batch or block size that prevents full
@@ -547,7 +547,7 @@ class _ActorPool(AutoscalingActorPool):
     def scale_down(self, num_actors: int) -> int:
         num_killed = 0
         for _ in range(num_actors):
-            if self.kill_inactive_actor():
+            if self._kill_inactive_actor():
                 num_killed += 1
         return num_killed
 
@@ -692,7 +692,7 @@ class _ActorPool(AutoscalingActorPool):
             for running_actor in self._running_actors.values()
         )
 
-    def kill_inactive_actor(self) -> bool:
+    def _kill_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
 
         Returns whether an inactive actor was actually killed.
@@ -724,30 +724,20 @@ class _ActorPool(AutoscalingActorPool):
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
 
-    def kill_all_actors(self):
+    def shutdown(self, force: bool = False):
         """Kills all actors, including running/active actors.
 
         This is called once the operator is shutting down.
         """
-        self._kill_all_pending_actors()
-        self._kill_all_running_actors()
+        self._release_pending_actors()
+        self._release_running_actors()
 
-    def _kill_all_pending_actors(self):
+    def _release_pending_actors(self):
         for _, actor in self._pending_actors.items():
             self._remove_actor(actor)
         self._pending_actors.clear()
 
-    def _kill_all_idle_actors(self):
-        idle_actors = [
-            actor
-            for actor, running_actor in self._running_actors.items()
-            if running_actor.num_tasks_in_flight == 0
-        ]
-        for actor in idle_actors:
-            self._remove_actor(actor)
-        self._should_kill_idle_actors = True
-
-    def _kill_all_running_actors(self):
+    def _release_running_actors(self):
         actors = list(self._running_actors.keys())
         for actor in actors:
             self._remove_actor(actor)

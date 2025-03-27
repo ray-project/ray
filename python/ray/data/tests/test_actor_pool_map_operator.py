@@ -283,7 +283,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor, _ = self._add_pending_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -305,7 +305,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -329,7 +329,7 @@ class TestActorPool(unittest.TestCase):
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was NOT killed.
         assert not killed
         # Check that the active actor is still in the pool.
@@ -344,7 +344,7 @@ class TestActorPool(unittest.TestCase):
         # Add idle worker.
         idle_actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that the idle actor is still in the pool.
@@ -372,7 +372,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.pick_actor() == active_actor
         idle_actor = self._add_ready_actor(pool)
         # Kill all actors, including active actors.
-        pool.kill_all_actors()
+        pool.shutdown()
         # Check that the pool is empty.
         assert pool.pick_actor() is None
 
