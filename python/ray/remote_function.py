@@ -57,8 +57,7 @@ class RemoteFunction:
             remote function.
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
-        _label_selector: The label requirements on a node for invocations of
-            this remote function.
+        _label_selector: The label requirements on a node for scheduling of the task or actor.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
