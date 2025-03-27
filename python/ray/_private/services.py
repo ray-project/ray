@@ -1281,7 +1281,6 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
-            f"--logging-filename={logdir}/dashboard.log",
         ]
 
         if stdout_filepath:
