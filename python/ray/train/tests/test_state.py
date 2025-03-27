@@ -63,7 +63,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "pid": 76071,
         "gpu_ids": [0],
         "status": "ALIVE",
-        "resources": {"CPU": 1},
+        "resources": {"CPU": 1}
         },
         {
         "actor_id": "8f162dd8365346d1b5c98ebd7338c4f9",
@@ -75,7 +75,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "pid": 76072,
         "gpu_ids": [1],
         "status": "ALIVE",
-        "resources": {"CPU": 1},
+        "resources": {"CPU": 1}
         }
     ],
     "datasets": [
