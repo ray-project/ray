@@ -15,10 +15,12 @@ from google.protobuf import text_format
 import ray
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
+import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
     fetch_prometheus,
     format_web_url,
     wait_for_condition,
+    wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
@@ -946,6 +948,21 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=10)
+
+
+def test_get_cluster_metadata(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    url = f"{webui_url}/api/v0/cluster_metadata"
+
+    resp = requests.get(url)
+    assert resp.status_code == 200
+    resp_data = resp.json()["data"]
+    meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=True)
+    assert len(resp_data) == len(meta)
+    assert resp_data["pythonVersion"] == meta["python_version"]
+    assert resp_data["rayVersion"] == meta["ray_version"]
+    assert resp_data["rayInitCluster"] == meta["ray_init_cluster"]
 
 
 if __name__ == "__main__":
