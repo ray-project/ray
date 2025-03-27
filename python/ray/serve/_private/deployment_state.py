@@ -37,7 +37,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
@@ -1876,11 +1875,6 @@ class DeploymentState:
 
         elif delta_replicas > 0:
             to_add = delta_replicas
-            if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-                # Don't ever exceed target_num_replicas.
-                stopping_replicas = self._replicas.count(states=[ReplicaState.STOPPING])
-                to_add = max(delta_replicas - stopping_replicas, 0)
-
             if to_add > 0 and not self._terminally_failed():
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
                 for _ in range(to_add):
