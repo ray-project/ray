@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import sys
 
 import ray
 from ray.data._internal.block_batching.interfaces import Batch
