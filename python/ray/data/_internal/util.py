@@ -1036,8 +1036,7 @@ def make_async_gen(
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
 
-            mapped_iter = fn(input_queue_iter)
-            for result in mapped_iter:
+            for result in fn(input_queue_iter):
                 # Enqueue result of the transformation
                 output_queue.put(result)
 
@@ -1093,7 +1092,6 @@ def make_async_gen(
             #     order and one single element is dequeued (in a blocking way!) at a
             #     time from every individual output queue
             #
-            non_empty_queues = []
             empty_queues = []
 
             # At every iteration only remaining non-empty queues
@@ -1115,10 +1113,13 @@ def make_async_gen(
                 if item is SENTINEL:
                     empty_queues.append(output_queue)
                 else:
-                    non_empty_queues.append(output_queue)
                     yield item
 
-            remaining_output_queues = non_empty_queues
+            if empty_queues:
+                remaining_output_queues = [
+                    q for q in remaining_output_queues
+                    if q not in empty_queues
+                ]
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
