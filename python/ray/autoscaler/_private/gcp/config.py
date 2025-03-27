@@ -764,6 +764,7 @@ def _create_service_account(account_id, account_config, config, iam):
 
 
 def _add_iam_policy_binding(service_account, roles, crm):
+    return
     """Add new IAM roles for the service account."""
     project_id = service_account["projectId"]
     email = service_account["email"]
