@@ -1351,7 +1351,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
 
   // Evict all of them with tasks with single attempt, no parent, same job, no worker id.
   {
-    auto task_ids = GenTaskIDs(num_limit);
+    task_ids = GenTaskIDs(num_limit);
     auto job_id = 0;
     auto attempt_number = 0;
     for (size_t i = 0; i < num_limit; i++) {
