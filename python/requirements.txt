@@ -14,7 +14,8 @@ jsonschema
 msgpack<2.0.0,>=1.0.0
 packaging
 protobuf!=3.19.5,>=3.15.3
-pyyaml
+# Following Pyyaml versions are incompatible with Cython 3.0.0
+pyyaml!=6.0.0,!=5.4.0,!=5.4.1
 aiosignal
 frozenlist
 requests
@@ -25,10 +26,8 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.20
 
-# pyarrow 18 causes macos build failures.
-# See https://github.com/ray-project/ray/pull/48300
-pyarrow >= 9.0.0
-pyarrow <18; sys_platform == "darwin" and platform_machine == "x86_64"
+# TODO revert
+pyarrow >= 19.0.0
 
 # ray[all]
 smart_open
