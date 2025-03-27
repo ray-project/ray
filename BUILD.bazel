@@ -142,8 +142,8 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/grpc_client.h"],
     deps = [
         ":grpc_common_base",
-        ":rpc_client_call",
         ":rpc_chaos",
+        ":rpc_client_call",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
@@ -157,9 +157,9 @@ ray_cc_library(
     deps = [
         ":stats_metric",
         "//src/ray/common:asio",
-        "//src/ray/common:ray_config",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -170,8 +170,8 @@ ray_cc_library(
     srcs = ["src/ray/rpc/retryable_grpc_client.cc"],
     hdrs = ["src/ray/rpc/retryable_grpc_client.h"],
     deps = [
-        ":rpc_client_call",
         ":grpc_client",
+        ":rpc_client_call",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -184,8 +184,8 @@ ray_cc_library(
     deps = [
         ":grpc_client",
         "//src/ray/common:status",
-        "//src/ray/util:logging",
         "//src/ray/protobuf:reporter_cc_proto",
+        "//src/ray/util:logging",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -198,8 +198,8 @@ ray_cc_library(
         ":grpc_common_base",
         ":rpc_server_call",
         "//src/ray/common:asio",
-        "//src/ray/common:status",
         "//src/ray/common:ray_config",
+        "//src/ray/common:status",
         "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
@@ -216,9 +216,9 @@ ray_cc_library(
     ],
     # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
     deps = [
+        "//src/ray/common:network",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
-        "//src/ray/common:network",
     ] + [
         ":grpc_client",
         ":grpc_common_base",
@@ -459,9 +459,9 @@ ray_cc_library(
     }),
     linkopts = PLASMA_LINKOPTS,
     deps = [
+        ":object_manager_common",
         ":plasma_fbs",
         ":ray_common",
-        ":object_manager_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:compat",
@@ -526,13 +526,13 @@ ray_cc_library(
     name = "ray_mock",
     hdrs = glob(
         ["src/mock/**/*.h"],
-        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
+        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
     ),
 )
 
 ray_cc_library(
     name = "ray_mock_syncer",
-    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
+    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"],
 )
 
 cc_grpc_library(
@@ -573,8 +573,8 @@ ray_cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
-        "//src/ray/util:stream_redirection_options",
         "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -799,8 +799,8 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         ":stats_lib",
-        "//src/ray/util:stream_redirection_options",
         "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -853,8 +853,8 @@ ray_cc_library(
     name = "stats_opentelemetry",
     srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
     deps = [
-        "@io_opentelemetry_cpp//sdk/src/logs:logs",
-        "@io_opentelemetry_cpp//sdk/src/trace:trace",
+        "@io_opentelemetry_cpp//sdk/src/logs",
+        "@io_opentelemetry_cpp//sdk/src/trace",
     ],
 )
 
@@ -1058,8 +1058,8 @@ ray_cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
@@ -1082,16 +1082,16 @@ ray_cc_library(
     srcs = ["src/ray/raylet_client/raylet_client.cc"],
     hdrs = ["src/ray/raylet_client/raylet_client.h"],
     deps = [
-        ":raylet_client_connection_lib",
         ":node_manager_rpc",
-        "//src/ray/common:id",
+        ":raylet_client_connection_lib",
         "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
-        "//src/ray/common:network",
         "//src/ray/common:task_common",
-        "//src/ray/util:logging",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
     ],
 )
 
@@ -1180,8 +1180,8 @@ ray_cc_library(
         "//src/ray/util:mutex_protected",
         "//src/ray/util:process",
         "//src/ray/util:shared_lru",
-        "//src/ray/util:stream_redirection_options",
         "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -2503,10 +2503,10 @@ ray_cc_library(
     deps = [
         ":chunk_object_reader",
         ":object_buffer_pool",
-        ":object_manager_common",
         ":object_directory",
-        ":ownership_based_object_directory",
+        ":object_manager_common",
         ":object_manager_rpc",
+        ":ownership_based_object_directory",
         ":plasma_store_server_lib",
         ":pull_manager",
         ":push_manager",
@@ -2551,8 +2551,8 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
-        "//src/ray/util:counter_map",
         "//src/ray/util:container_util",
+        "//src/ray/util:counter_map",
         "@boost//:asio",
         "@boost//:bind",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -2926,11 +2926,11 @@ ray_cc_library(
     name = "gcs",
     deps = [
         ":gcs_callback",
+        ":gcs_pb_util",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        ":gcs_pb_util",
         ":redis_client",
-    ]
+    ],
 )
 
 ray_cc_test(
@@ -3044,7 +3044,7 @@ pyx_library(
     cc_kwargs = dict(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
-        copts = COPTS + PYX_COPTS + ["-Wno-shadow"],
+        copts = COPTS + PYX_COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
@@ -3071,8 +3071,8 @@ pyx_library(
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
-        "//src/ray/util:stream_redirection_options",
         "//src/ray/util:stream_redirection",
+        "//src/ray/util:stream_redirection_options",
     ],
 )
 
