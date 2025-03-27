@@ -920,6 +920,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                        /*pin_object=*/pin_object));
       });
 
+  // The driver will almost always be a task submitter so we should always make node info
+  // subscription from it.
+  if (options_.worker_type == WorkerType::DRIVER) {
+    subscribe_to_node_changes();
+  }
+
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
 
