@@ -57,7 +57,7 @@ class GrpcStubManager {
   GrpcClient<T> *GetGrpcClient() {
     // Get grpc stub doesn't require sequential consistency, atomicity is enough.
     const size_t idx = client_index_.load(std::memory_order::memory_order_relaxed);
-    const size_t next_idx = (idx + 1) / grpc_clients_.size();
+    const size_t next_idx = (idx + 1) % grpc_clients_.size();
     client_index_.store(next_idx, std::memory_order::memory_order_relaxed);
     return grpc_clients_[next_idx].get();
   }
