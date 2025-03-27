@@ -544,7 +544,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 @pytest.mark.parametrize(
     "serve_start_shutdown",
     [
-        10,
+        1,
     ],
     indirect=True,
 )
@@ -730,7 +730,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
         code = int((await request.body()).decode("utf-8"))
         return PlainTextResponse("", status_code=code)
 
-    serve.run(return_status_code.bind(), route_prefix="/", name="status_code")
+    serve.run(return_status_code.bind())
 
     # 200 is not an error.
     r = requests.get("http://127.0.0.1:8000/", data=b"200")
