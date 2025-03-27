@@ -990,8 +990,6 @@ py_test(
     ],
 )
 
-
-
 py_test(
     name = "vsphere/test_vmray_node_provider",
     size = "small",
