@@ -3,6 +3,7 @@ import sys
 import pytest
 import yaml
 from ray_release.config import (
+    _substitute_variable,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -200,6 +201,36 @@ def test_parse_test_definition_with_matrix_and_adjustments():
         assert tests[i]["name"] == f"test-{compute}-{arg}"
         assert tests[i]["cluster"]["cluster_compute"] == f"{compute}.yaml"
         assert tests[i]["cluster"]["byod"]["runtime_env"] == [f"SCALING_MODE={compute}"]
+
+
+class TestSubstituteVariable:
+    def test_returns_new_test_definition(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted is not test_definition
+
+    def test_substitute_variable_in_string(self):
+        test_definition = {"name": "test-{{arg}}"}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"name": "test-1"}
+
+    def test_substitute_variable_in_list(self):
+        test_definition = {"items": ["item-{{arg}}"]}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"items": ["item-1"]}
+
+    def test_substitute_variable_in_dict(self):
+        test_definition = {"outer": {"inner": "item-{{arg}}"}}
+
+        substituted = _substitute_variable(test_definition, "arg", "1")
+
+        assert substituted == {"outer": {"inner": "item-1"}}
 
 
 def test_schema_validation():
