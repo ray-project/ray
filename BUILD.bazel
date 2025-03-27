@@ -3055,7 +3055,10 @@ pyx_library(
     cc_kwargs = dict(
         srcs = PYX_SRCS,
         # cython code is auto-generated, which is out of our control.
-        copts = COPTS + PYX_COPTS + ["-Wno-shadow"],
+        copts = COPTS + PYX_COPTS + select({
+            "@platforms//os:windows": [],
+            "//conditions:default": ["-Wno-shadow"],
+        }),
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
             "@platforms//os:osx": [
