@@ -34,6 +34,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/cgroup/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
@@ -381,11 +382,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
-  // Place current application process into the corresponding cgroup right after process
-  // starts.
+  // Move worker process into cgroup on startup.
   AppProcCgroupMetadata app_cgroup_metadata;
   app_cgroup_metadata.pid = pid_;
-  app_cgroup_metadata.max_memory = 0;  // which means no limitation nor reservation
+  app_cgroup_metadata.max_memory = kUnlimitedMemory;
   GetCgroupSetup(options_.enable_resource_isolation)
       .ApplyCgroupContext(app_cgroup_metadata);
 

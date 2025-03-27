@@ -14,6 +14,7 @@ ray_cc_library(
     name = "cgroup_context",
     hdrs = ["cgroup_context.h"],
     deps = [
+        ":constants",
         "//src/ray/util:compat",
     ],
 )
@@ -28,6 +29,11 @@ ray_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
+)
+
+ray_cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
 )
 
 ray_cc_library(
