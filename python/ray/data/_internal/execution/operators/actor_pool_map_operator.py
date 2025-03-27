@@ -745,12 +745,12 @@ class _ActorPool(AutoscalingActorPool):
         for _, actor in running.items():
             on_exit_refs.append(self._release_running_actor(actor))
 
+        # Wait for all actors to shutdown gracefully before killing them
+        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
         if force:
-            # Wait for all actors to shutdown gracefully before killing them
-            ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-
             for actor in running:
                 ray.kill(actor)
 
