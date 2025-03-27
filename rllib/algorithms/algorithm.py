@@ -1510,7 +1510,7 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=time_out
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
@@ -1553,7 +1553,7 @@ class Algorithm(Checkpointable, Trainable):
                     remote_worker_ids=selected_eval_worker_ids,
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=time_out
                 )
                 # Make sure we properly time out if we have not received any results
                 # for more than `time_out` seconds.
