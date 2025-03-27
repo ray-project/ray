@@ -724,17 +724,6 @@ class _ActorPool(AutoscalingActorPool):
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
 
-    def kill_all_inactive_actors(self):
-        """Kills all currently inactive actors and ensures that all actors that become
-        idle in the future will be eagerly killed.
-
-        This is called once the operator is done submitting work to the pool, and this
-        function is idempotent. Adding new pending actors after calling this function
-        will raise an error.
-        """
-        self._kill_all_pending_actors()
-        self._kill_all_idle_actors()
-
     def kill_all_actors(self):
         """Kills all actors, including running/active actors.
 
