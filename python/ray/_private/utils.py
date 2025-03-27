@@ -82,6 +82,21 @@ PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]
 # Match the standard alphabet used for UUIDs.
 RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
+# Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+# Regex for mandatory name (DNS label) or value
+LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
+# Regex for optional prefix (DNS subdomain)
+LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
+# Supported operators for label selector conditions. Not (!) conditions are handled separately.
+LABEL_OPERATORS = {"in"}
+# Create a pattern string dynamically based on the LABEL_OPERATORS
+OPERATOR_PATTERN = "|".join([re.escape(operator) for operator in LABEL_OPERATORS])
+# Regex to match valid label selector operators and values
+LABEL_SELECTOR_REGEX = re.compile(
+    rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, {LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
+)
+
 
 def get_random_alphanumeric_string(length: int):
     """Generates random string of length consisting exclusively of
@@ -1831,13 +1846,65 @@ def parse_node_labels_json(
 def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
-    for key in labels.keys():
+    for key, value in labels.keys():
         if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
             raise ValueError(
                 f"Custom label keys `{key}` cannot start with the prefix "
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            raise ValueError(possible_error_message)
+        if value is not None:
+            possible_error_message = validate_label_value(value)
+            if possible_error_message:
+                raise ValueError(possible_error_message)
+
+
+def validate_label_key(key: str) -> Optional[str]:
+    if "/" in key:
+        prefix, name = key.rsplit("/", 1)
+        if len(prefix) > 253 or not re.match(LABEL_PREFIX_REGEX, prefix):
+            return str(
+                f"Invalid label key prefix `{prefix}`. Prefix must be a series of DNS labels "
+                f"separated by dots (.), not longer than 253 characters in total."
+            )
+    else:
+        name = key
+    if not re.match(LABEL_REGEX, name):
+        return str(
+            f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
+            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
+            f"dots (.), and alphanumerics between."
+        )
+    return None
+
+
+def validate_label_value(value: str) -> Optional[str]:
+    if value == "":
+        return None
+    if len(value) > 63 or not re.match(LABEL_REGEX, value):
+        return str(
+            f"Invalid label key value `{value}`. Value must be 63 chars or less beginning and ending "
+            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
+            f"dots (.), and alphanumerics between."
+        )
+    return None
+
+
+def validate_label_selector_value(selector: str) -> Optional[str]:
+    if selector == "":
+        return None
+    if not re.match(LABEL_SELECTOR_REGEX, selector):
+        return str(
+            f"Invalid label selector value `{selector}`. Supported operators are: ! and {LABEL_OPERATORS}. "
+            f"Value must be 63 chars or less beginning and ending "
+            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
+            f"dots (.), and alphanumerics between."
+        )
+
+    return None
 
 
 def parse_pg_formatted_resources_to_original(
