@@ -34,6 +34,8 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
 
+    NOTE: This class is NOT thread-safe
+
     This class manages the state of a pool of actors used for task execution, as well
     as dispatch of tasks to those actors.
 
@@ -698,7 +700,6 @@ class _ActorPool(AutoscalingActorPool):
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
-            self._release_running_actor(self._pending_actors[ready_ref])
             del self._pending_actors[ready_ref]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
@@ -708,6 +709,7 @@ class _ActorPool(AutoscalingActorPool):
         for actor, running_actor in self._running_actors.items():
             if running_actor.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
+                # NOTE: This is a fire-and-forget op
                 self._release_running_actor(actor)
                 return True
         # No idle actors, so indicate to the caller that no actors were killed.
