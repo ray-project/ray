@@ -675,9 +675,6 @@ class MetricsLogger:
                     )
 
                     if existing_stats is None:
-                        breakpoint()
-                        self._get_key(key, key_error=True)
-                        self._key_in_stats(key)
                         raise ValueError(
                             f"Found a non-Stats value under key {key} but no existing Stats "
                             "object to get settings from. All values under the same key must "
