@@ -1278,3 +1278,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_daft",
+    size = "small",
+    srcs = ["tests/test_daft.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
