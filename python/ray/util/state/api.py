@@ -1297,7 +1297,6 @@ def get_log(
             # indicator of success or failure. This seems to be an uncommon pattern,
             # and it doesn't seem important for the client side.
             if bytes.startswith(b"0"):
-                assert bytes.startswith(b"0")
                 error_msg = bytes.decode("utf-8")
                 raise RayStateApiException(error_msg)
             else:
