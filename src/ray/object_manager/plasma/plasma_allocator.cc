@@ -142,7 +142,7 @@ absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
     return absl::nullopt;
   }
   MEMFD_TYPE fd;
-  int64_t mmap_size;
+  size_t mmap_size;
   ptrdiff_t offset;
 
   if (internal::GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
