@@ -44,7 +44,7 @@ class TaskArg {
   virtual ~TaskArg(){};
 };
 
-class TaskArgByReference : public TaskArg {
+class TaskArgByReference : public ray::TaskArg {
  public:
   /// Create a pass-by-reference task argument.
   ///
@@ -69,13 +69,13 @@ class TaskArgByReference : public TaskArg {
   const std::string call_site_;
 };
 
-class TaskArgByValue : public TaskArg {
+class TaskArgByValue : public ray::TaskArg {
  public:
   /// Create a pass-by-value task argument.
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  explicit TaskArgByValue(const std::shared_ptr<RayObject> &value) : value_(value) {
+  explicit TaskArgByValue(const std::shared_ptr<ray::RayObject> &value) : value_(value) {
     RAY_CHECK(value) << "Value can't be null.";
   }
 
@@ -95,7 +95,7 @@ class TaskArgByValue : public TaskArg {
 
  private:
   /// Value of the argument.
-  const std::shared_ptr<RayObject> value_;
+  const std::shared_ptr<ray::RayObject> value_;
 };
 
 /// Helper class for building a `TaskSpecification` object.
@@ -217,7 +217,7 @@ class TaskSpecBuilder {
   }
 
   /// Add an argument to the task.
-  TaskSpecBuilder &AddArg(const TaskArg &arg) {
+  TaskSpecBuilder &AddArg(const ray::TaskArg &arg) {
     auto ref = message_->add_args();
     arg.ToProto(ref);
     return *this;
@@ -239,7 +239,7 @@ class TaskSpecBuilder {
       std::string name = "",
       std::string ray_namespace = "",
       bool is_asyncio = false,
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      const std::vector<ray::ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
       bool execute_out_of_order = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {

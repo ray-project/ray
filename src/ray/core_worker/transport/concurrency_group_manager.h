@@ -24,6 +24,9 @@
 namespace ray {
 namespace core {
 
+using ray::ConcurrencyGroup;
+using ray::FunctionDescriptor;
+
 /// A manager that manages a set of concurrency group executors, which will perform
 /// the methods defined in one concurrency group.
 ///
@@ -53,7 +56,7 @@ class ConcurrencyGroupManager final {
   /// if concurrency_group_name is given.
   /// Otherwise return the corresponding executor by the given function descriptor.
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
-                                            const ray::FunctionDescriptor &fd);
+                                            const FunctionDescriptor &fd);
 
   /// Initialize the executor for specific language runtime.
   ///

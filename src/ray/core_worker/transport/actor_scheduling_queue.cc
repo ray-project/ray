@@ -30,7 +30,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
     int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups,
+    const std::vector<ray::ConcurrencyGroup> &concurrency_groups,
     int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
       wait_timer_(main_io_service),

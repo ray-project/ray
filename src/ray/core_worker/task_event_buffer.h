@@ -31,6 +31,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
+#include "ray/core_worker/event_aggregator_exporter.h"
 #include "src/ray/protobuf/export_api/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -303,7 +304,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  explicit TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client);
+  explicit TaskEventBufferImpl(
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<EventAggregatorClientImpl> event_aggregator_client);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -450,6 +453,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
+
+  std::unique_ptr<EventAggregatorExporter> event_aggregator_exporter_;
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;

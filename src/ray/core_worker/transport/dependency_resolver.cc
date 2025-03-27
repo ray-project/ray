@@ -23,6 +23,8 @@ namespace core {
 
 namespace {
 
+using ray::RayObject;
+
 void InlineDependencies(
     const absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &dependencies,
     TaskSpecification &task,
