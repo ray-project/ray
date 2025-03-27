@@ -708,8 +708,8 @@ class _ActorPool(AutoscalingActorPool):
         return False
 
     def _maybe_kill_idle_actor(self) -> bool:
-        for actor, running_actor in self._running_actors.items():
-            if running_actor.num_tasks_in_flight == 0:
+        for actor, state in self._running_actors.items():
+            if state.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
                 # NOTE: This is a fire-and-forget op
                 self._release_running_actor(actor)
@@ -737,12 +737,12 @@ class _ActorPool(AutoscalingActorPool):
                 ray.kill(actor)
 
     def _release_running_actors(self, force: bool):
-        running = dict(self._running_actors)
+        running = list(self._running_actors.keys())
 
         on_exit_refs = []
 
         # First release actors and collect their shutdown hook object-refs
-        for _, actor in running.items():
+        for actor in running:
             on_exit_refs.append(self._release_running_actor(actor))
 
         # Wait for all actors to shutdown gracefully before killing them
