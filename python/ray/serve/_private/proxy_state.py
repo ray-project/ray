@@ -643,6 +643,7 @@ class ProxyStateManager:
         # correct application. This is true for both HTTP and gRPC proxies.
         target_info = TargetInfo(
             targets=targets,
+            # TODO(abrar): incase of gRPC, the prefix route should be the service name.
             prefix_route="/",
         )
         return target_info
