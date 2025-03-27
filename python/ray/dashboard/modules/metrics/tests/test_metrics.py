@@ -23,8 +23,7 @@ def webui_url(ray_dashboard):
     """
     Returns the formatted Web UI URL after ensuring it is available.
     """
-    url = ray_dashboard["webui_url"]
-    return format_web_url(url)
+    return format_web_url(ray_dashboard["webui_url"])
 
 
 def is_service_ready(url):
