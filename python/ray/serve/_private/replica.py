@@ -76,7 +76,6 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
-from ray.serve._private.utils import get_component_file_name  # noqa: F401
 from ray.serve._private.utils import parse_import_path
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig

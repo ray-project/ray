@@ -226,6 +226,7 @@ class Filter(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
+        filter_expr_strs: Optional[List[str]] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -234,7 +235,7 @@ class Filter(AbstractUDFMap):
         if not ((fn is None) ^ (filter_expr is None)):
             raise ValueError("Exactly one of 'fn' or 'filter_expr' must be provided")
         self._filter_expr = filter_expr
-
+        self._filter_expr_strs = filter_expr_strs or []
         super().__init__(
             "Filter",
             input_op,
@@ -251,6 +252,14 @@ class Filter(AbstractUDFMap):
     @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+    def is_expression_based(self) -> bool:
+        return self._filter_expr is not None
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            return f"{op_name}(<expression>)"
+        return super()._get_operator_name(op_name, fn)
 
 
 class Project(AbstractMap):

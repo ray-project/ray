@@ -6,8 +6,9 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
+from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray.anyscale.serve._private.constants import ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
 )
@@ -244,6 +245,10 @@ def test_nested_deployment_response_error(serve_instance):
 
 
 @pytest.mark.skipif(
+    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
+@pytest.mark.skipif(
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't support _to_object_ref",
 )
@@ -299,6 +304,10 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
+@pytest.mark.skipif(
+    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Cannot get object ref when using gRPC.",
+)
 @pytest.mark.skipif(
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't support _to_object_ref",

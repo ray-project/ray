@@ -16,6 +16,8 @@ _ALL_TAGS = set(
     data serve ml tune train llm rllib rllib_gpu rllib_directly
     linux_wheels macos_wheels docker doc python_dependencies tools
     release_tests compiled_python
+
+    gotools core-turbo ml-turbo data-turbo core-turbo safetensors
     """.split()
 )
 
