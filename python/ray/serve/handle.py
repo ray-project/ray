@@ -284,7 +284,7 @@ class _DeploymentResponseBase:
                     self._replica_result_future
                 )
             except asyncio.CancelledError:
-                raise RequestCancelledError(self.request_id) from None
+                raise asyncio.CancelledError from None
 
         return self._replica_result
 
