@@ -2319,15 +2319,14 @@ ray_cc_test(
 ray_cc_test(
     name = "in_memory_gcs_table_storage_test",
     size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
-    ],
+    srcs = ["src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc"],
     tags = ["team:core"],
     deps = [
         ":gcs_table_storage_lib",
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
