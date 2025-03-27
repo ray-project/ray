@@ -50,10 +50,10 @@ build:windows --enable_runfiles
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
-# Warnings should be errors
-build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
-build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
-build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
+# Warnings should be errors, excpet for deprecated protobuf CreateMessage use
+build:linux    --per_file_copt="-\\.(asm|S)$@-Werror,-Wno-deprecated-declarations"
+build:macos    --per_file_copt="-\\.(asm|S)$@-Werror,-Wno-deprecated-declarations"
+build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror,-Wno-deprecated-declarations"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
