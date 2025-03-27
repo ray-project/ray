@@ -16,9 +16,8 @@ def ray_dashboard(ray_start_cluster):
     h = ray_start_cluster.add_node(dashboard_port=dashboard_port)
     uri = f"http://localhost:{dashboard_port}"
 
-    # Ensure the dashboard is accessible
     wait_for_condition(
-        lambda: requests.get(f"{uri}/api/gcs_healthz").status_code == 200
+        lambda: requests.get(f"{uri}/api/grafana_health").status_code == 200
     )
 
     return {"webui_url": uri, "node": h}
@@ -72,12 +71,11 @@ def test_prometheus_health(webui_url):
 
 def test_grafana_health_fail(webui_url, ray_dashboard):
     """
-    Tests /api/grafana_health when Grafana is not running.
+    Tests /api/grafana_health when MetricsHead (Grafana) is not running.
     """
     url = f"{webui_url}/api/grafana_health"
 
-    # Simulate Grafana being down by killing the process
-    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_METRICS_HEAD][
         0
     ].process.kill()
 
@@ -91,12 +89,11 @@ def test_grafana_health_fail(webui_url, ray_dashboard):
 
 def test_prometheus_health_fail(webui_url, ray_dashboard):
     """
-    Tests /api/prometheus_health when Prometheus is not running.
+    Tests /api/prometheus_health when MetricsHead (Prometheus) is not running.
     """
     url = f"{webui_url}/api/prometheus_health"
 
-    # Simulate Prometheus being down by killing the process
-    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_METRICS_HEAD][
         0
     ].process.kill()
 
