@@ -10,9 +10,11 @@ def test_grafana_health(ray_start_with_dashboard):
     """
     Tests the /api/grafana_health endpoint from MetricsHead module.
     """
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    if not webui_url.startswith("http"):
+        webui_url = "http://" + webui_url
 
+    assert wait_until_server_available(webui_url)
     url = f"{webui_url}/api/grafana_health"
     assert wait_for_condition(
         lambda: requests.get(url, timeout=3).status_code == 200, timeout=10
@@ -29,9 +31,11 @@ def test_prometheus_health(ray_start_with_dashboard):
     """
     Tests the /api/prometheus_health endpoint from MetricsHead module.
     """
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    if not webui_url.startswith("http"):
+        webui_url = "http://" + webui_url
 
+    assert wait_until_server_available(webui_url)
     url = f"{webui_url}/api/prometheus_health"
     assert wait_for_condition(
         lambda: requests.get(url, timeout=3).status_code == 200, timeout=10
@@ -48,15 +52,17 @@ async def test_async_health_check(ray_start_with_dashboard):
     """
     Tests asynchronous API health check for robustness.
     """
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    if not webui_url.startswith("http"):
+        webui_url = "http://" + webui_url
 
+    assert wait_until_server_available(webui_url)
     url = f"{webui_url}/api/grafana_health"
     for _ in range(5):
         resp = await asyncio.to_thread(requests.get, url)
         if resp.status_code == 200:
             break
-        await asyncio.sleep(1)  # Retry every second
+        await asyncio.sleep(1)
     assert resp.status_code == 200
 
 
