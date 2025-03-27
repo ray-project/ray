@@ -668,7 +668,7 @@ class _ActorPool(AutoscalingActorPool):
             self._should_kill_idle_actors
             and self._running_actors[actor].num_tasks_in_flight == 0
         ):
-            self._remove_actor(actor)
+            self._release_running_actor(actor)
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
@@ -709,7 +709,7 @@ class _ActorPool(AutoscalingActorPool):
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
-            self._remove_actor(self._pending_actors[ready_ref])
+            self._release_running_actor(self._pending_actors[ready_ref])
             del self._pending_actors[ready_ref]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
@@ -719,7 +719,7 @@ class _ActorPool(AutoscalingActorPool):
         for actor, running_actor in self._running_actors.items():
             if running_actor.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
-                self._remove_actor(actor)
+                self._release_running_actor(actor)
                 return True
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
@@ -733,26 +733,28 @@ class _ActorPool(AutoscalingActorPool):
         self._release_running_actors(force=force)
 
     def _release_pending_actors(self, force: bool):
-        for _, actor in self._pending_actors.items():
-            self._remove_actor(actor)
-            # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
-            #       hence we're only doing that if this is a forced release
-            if force:
-                ray.kill(actor)
-
+        # Release pending actors from the set of pending ones
+        pending = dict(self._pending_actors)
         self._pending_actors.clear()
 
-    def _release_running_actors(self, force: bool):
-        actors = list(self._running_actors.keys())
+        if force:
+            for _, actor in pending.items():
+                # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+                #       hence we're only doing that if this is a forced release
+                ray.kill(actor)
 
-        for actor in actors:
-            self._remove_actor(actor)
+    def _release_running_actors(self, force: bool):
+        running = dict(self._running_actors)
+
+        for _, actor in running.items():
+            self._release_running_actor(actor)
+
             # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
             #       hence we're only doing that if this is a forced release
             if force:
                 ray.kill(actor)
 
-    def _remove_actor(self, actor: ray.actor.ActorHandle):
+    def _release_running_actor(self, actor: ray.actor.ActorHandle):
         """Remove the given actor from the pool."""
         # NOTE: we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
