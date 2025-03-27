@@ -702,7 +702,7 @@ def test_decorator_label_selector_args(ray_start_regular_shared):
             pass
 
     # This is a valid way of using the decorator - not equals condition
-    @ray.remote(label_selector={"ray.io/market-type": "!spot)"})  # noqa: F811
+    @ray.remote(label_selector={"ray.io/market-type": "!spot"})  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass
