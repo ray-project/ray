@@ -128,7 +128,7 @@ def test_make_async_gen_fail(buffer_size: int, preserve_ordering):
         base_iterator=iter([1]),
         fn=gen,
         preserve_ordering=preserve_ordering,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     with pytest.raises(ValueError) as e:
@@ -180,7 +180,7 @@ def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
             flatten,
             preserve_ordering=preserve_ordering,
             num_workers=4,
-            queue_buffer_size=1,
+            buffer_size=1,
         )
 
         total = 0
@@ -287,7 +287,7 @@ def test_make_async_gen_x(buffer_size: int, expected_gen_time, preserve_ordering
         fn=gen,
         preserve_ordering=preserve_ordering,
         num_workers=1,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     outputs = []
@@ -337,7 +337,7 @@ def test_make_async_gen_multiple_threads(buffer_size: int, preserve_ordering):
         fn=gen,
         preserve_ordering=preserve_ordering,
         num_workers=5,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     start_time = time.time()
@@ -384,7 +384,7 @@ def test_make_async_gen_multiple_threads_unfinished(
         fn=gen,
         preserve_ordering=preserve_ordering,
         num_workers=5,
-        queue_buffer_size=buffer_size,
+        buffer_size=buffer_size,
     )
 
     start_time = time.time()

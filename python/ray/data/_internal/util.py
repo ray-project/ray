@@ -916,7 +916,7 @@ def make_async_gen(
     fn: Callable[[Iterator[T]], Iterator[U]],
     preserve_ordering: bool,
     num_workers: int = 1,
-    queue_buffer_size: int = 2,
+    buffer_size: int = 1,
 ) -> Generator[U, None, None]:
     """Returns a generator (iterator) mapping items from the
     provided iterator applying provided transformation in parallel (using a
@@ -992,7 +992,7 @@ def make_async_gen(
         input_queue_buf_size = -1
         num_input_queues = num_workers
     else:
-        input_queue_buf_size = (queue_buffer_size + 1) * num_workers
+        input_queue_buf_size = (buffer_size + 1) * num_workers
         num_input_queues = 1
 
     input_queues = [
@@ -1001,7 +1001,7 @@ def make_async_gen(
     ]
 
     output_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
+        _InterruptibleQueue(buffer_size, interrupted_event)
         for _ in range(num_workers)
     ]
 
