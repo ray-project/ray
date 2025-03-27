@@ -190,6 +190,14 @@ parser.add_argument(
         "to import before accepting work."
     ),
 )
+parser.add_argument(
+    "--enable_resource_isolation",
+    type=bool,
+    required=False,
+    help=(
+        "If true, core worker enables resource isolation through cgroupv2 by reserving resources for ray system processes."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below

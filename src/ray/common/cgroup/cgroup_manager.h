@@ -21,6 +21,6 @@
 namespace ray {
 
 // A util function which gets cgroup setup.
-BaseCgroupSetup &GetCgroupSetup();
+BaseCgroupSetup &GetCgroupSetup(bool enable_resource_isolation);
 
 }  // namespace ray

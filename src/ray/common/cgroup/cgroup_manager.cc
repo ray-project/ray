@@ -16,17 +16,12 @@
 
 #include <gflags/gflags.h>
 
-DEFINE_bool(enable_cgroup,
-            false,
-            "A global config flag to decide whether to use cgroup, it applies for all "
-            "ray system components (like raylet and GCS) and application process.");
-
 namespace ray {
 
 // Here the possible types of cgroup setup classes are small, so we use if-else branch
 // instead of registry pattern.
-BaseCgroupSetup &GetCgroupSetup() {
-  if (FLAGS_enable_cgroup) {
+BaseCgroupSetup &GetCgroupSetup(bool enable_resource_isolation) {
+  if (enable_resource_isolation) {
     // TODO(hjiang): Enable real cgroup setup after PR:
     // https://github.com/ray-project/ray/pull/49941
     static auto noop_cgroup_setup = std::make_unique<NoopCgroupSetup>();

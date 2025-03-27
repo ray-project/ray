@@ -111,7 +111,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       std::function<absl::Time()> get_time)
+                       std::function<absl::Time()> get_time,
+                       bool enable_resource_isolation)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -132,7 +133,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
-      get_time_(std::move(get_time)) {
+      get_time_(std::move(get_time)),
+      enable_resource_isolation_(enable_resource_isolation) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -329,6 +331,11 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
+
+  // Add resource isolation flag.
+  worker_command_args.emplace_back(absl::StrFormat(
+      "--enable_resource_isolation=%s", enable_resource_isolation_ ? "true" : "false"));
+
   for (const auto &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       worker_command_args.insert(

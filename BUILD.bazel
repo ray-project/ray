@@ -573,6 +573,7 @@ ray_cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util:stream_redirection_options",
         "//src/ray/util:stream_redirection",
         "@com_github_gflags_gflags//:gflags",
