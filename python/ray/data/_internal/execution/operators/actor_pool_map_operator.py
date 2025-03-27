@@ -745,16 +745,25 @@ class _ActorPool(AutoscalingActorPool):
             if force:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ray.actor.ActorHandle):
-        """Remove the given actor from the pool."""
-        # NOTE: we remove references to the actor and let ref counting
+    def _release_running_actor(self, actor: ray.actor.ActorHandle) -> Optional[ObjectRef]:
+        """Remove the given actor from the pool and trigger its `on_exit` callback.
+
+        This method returns a ``ref`` to the result
+        """
+        # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
-        # Because otherwise the actor cannot be restarted upon lineage reconstruction.
-        if actor in self._running_actors:
-            # Call `on_exit` to trigger `UDF.__del__` which may perform
-            # cleanup operations.
-            actor.on_exit.remote()
-            del self._running_actors[actor]
+        #
+        # Otherwise, actor cannot be reconstructed for the purposes of produced
+        # object's lineage reconstruction.
+        if not actor in self._running_actors:
+            return None
+
+        # Call `on_exit` to trigger `UDF.__del__` which may perform
+        # cleanup operations.
+        ref = actor.on_exit.remote()
+        del self._running_actors[actor]
+
+        return ref
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
         """Ask Ray for the node id of the given bundle.
