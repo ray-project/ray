@@ -32,7 +32,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   num_tasks_submitted_++;
 
   // To lazily subscribe to node changes once this worker actually submits a task.
-  RAY_CHECK(subscribe_to_node_changes_);
   subscribe_to_node_changes_();
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
