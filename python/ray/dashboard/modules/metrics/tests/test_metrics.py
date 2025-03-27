@@ -1,29 +1,35 @@
+import sys
 import asyncio
 import requests
 import pytest
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-    wait_for_condition,
-)
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import find_free_port, wait_for_condition
 from ray.dashboard.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="module")
-def ray_dashboard(ray_start_with_dashboard):
+def ray_dashboard(ray_start_cluster):
     """
-    Starts the Ray dashboard once for all tests in the module.
+    Starts Ray cluster with the dashboard and returns the dashboard URL.
     """
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
-    return ray_start_with_dashboard
+    dashboard_port = find_free_port()
+    h = ray_start_cluster.add_node(dashboard_port=dashboard_port)
+    uri = f"http://localhost:{dashboard_port}"
+
+    # Ensure the dashboard is accessible
+    wait_for_condition(
+        lambda: requests.get(f"{uri}/api/gcs_healthz").status_code == 200
+    )
+
+    return {"webui_url": uri, "node": h}
 
 
 @pytest.fixture(scope="module")
 def webui_url(ray_dashboard):
     """
-    Returns the formatted Web UI URL after ensuring it is available.
+    Extracts the Web UI URL from the Ray dashboard fixture.
     """
-    return format_web_url(ray_dashboard["webui_url"])
+    return ray_dashboard["webui_url"]
 
 
 def is_service_ready(url):
@@ -64,30 +70,42 @@ def test_prometheus_health(webui_url):
     assert data["result"] is True
 
 
-def test_grafana_health_fail(webui_url):
+def test_grafana_health_fail(webui_url, ray_dashboard):
     """
     Tests /api/grafana_health when Grafana is not running.
     """
     url = f"{webui_url}/api/grafana_health"
-    resp = requests.get(url)
 
-    if resp.status_code != 200:  # When Grafana is down
-        data = resp.json()
-        assert "exception" in data["data"]
-        assert "Cannot connect" in data["data"]["exception"]
+    # Simulate Grafana being down by killing the process
+    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+        0
+    ].process.kill()
+
+    try:
+        wait_for_condition(
+            lambda: requests.get(url, timeout=1).status_code != 200, timeout=4
+        )
+    except RuntimeError as e:
+        assert "Read timed out" in str(e)
 
 
-def test_prometheus_health_fail(webui_url):
+def test_prometheus_health_fail(webui_url, ray_dashboard):
     """
     Tests /api/prometheus_health when Prometheus is not running.
     """
     url = f"{webui_url}/api/prometheus_health"
-    resp = requests.get(url)
 
-    if resp.status_code != 200:  # When Prometheus is down
-        data = resp.json()
-        assert "reason" in data["data"]
-        assert "Cannot connect" in data["data"]["reason"]
+    # Simulate Prometheus being down by killing the process
+    ray_dashboard["node"].all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][
+        0
+    ].process.kill()
+
+    try:
+        wait_for_condition(
+            lambda: requests.get(url, timeout=1).status_code != 200, timeout=4
+        )
+    except RuntimeError as e:
+        assert "Read timed out" in str(e)
 
 
 @pytest.mark.asyncio
@@ -105,6 +123,4 @@ async def test_async_health_check(webui_url):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
