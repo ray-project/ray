@@ -159,6 +159,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               RAY_CHECK(memory_store_->Put(data, object_id));
             }) {
+    ref_counter_->RegisterNodeSubscriber([]() {});
     ref_counter_->SetReleaseLineageCallback(
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
