@@ -94,6 +94,7 @@ class NormalTaskSubmitter {
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+      std::function<void()> subscribe_to_node_changes,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(std::move(rpc_address)),
         local_lease_client_(lease_client),
@@ -106,7 +107,8 @@ class NormalTaskSubmitter {
         worker_type_(worker_type),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
-        lease_request_rate_limiter_(lease_request_rate_limiter),
+        subscribe_to_node_changes_(std::move(subscribe_to_node_changes)),
+        lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.

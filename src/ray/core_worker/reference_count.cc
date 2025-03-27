@@ -323,7 +323,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   }
   // To lazily subscribe to node changes once there's at least one object this worker
   // owns.
-  RAY_CHECK(subscribe_to_node_changes_ != nullptr);
+  RAY_CHECK(subscribe_to_node_changes_);
   subscribe_to_node_changes_();
 
   if (ObjectID::IsActorID(object_id)) {
