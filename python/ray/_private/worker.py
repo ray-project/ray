@@ -1823,6 +1823,19 @@ def init(
                 )
             raise ConnectionError
 
+    job_id = connect(
+        _global_node,
+        _global_node.session_name,
+        mode=driver_mode,
+        log_to_driver=log_to_driver,
+        worker=global_worker,
+        driver_object_store_memory=_driver_object_store_memory,
+        job_id=None,
+        namespace=namespace,
+        job_config=job_config,
+        entrypoint=ray._private.utils.get_entrypoint_name(),
+    )
+
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
     if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
@@ -1832,7 +1845,7 @@ def init(
     # Add http protocol to dashboard URL if it doesn't
     # already contain a protocol.
     if dashboard_url and not urlparse(dashboard_url).scheme:
-        dashboard_url = "http://" + dashboard_url
+        dashboard_url = f"http://{dashboard_url}#/jobs/{job_id.hex()}"
 
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
@@ -1851,18 +1864,6 @@ def init(
     else:
         logger.info(info_str)
 
-    connect(
-        _global_node,
-        _global_node.session_name,
-        mode=driver_mode,
-        log_to_driver=log_to_driver,
-        worker=global_worker,
-        driver_object_store_memory=_driver_object_store_memory,
-        job_id=None,
-        namespace=namespace,
-        job_config=job_config,
-        entrypoint=ray._private.utils.get_entrypoint_name(),
-    )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -2551,6 +2552,7 @@ def connect(
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
+    return job_id
 
     # Mark the worker as connected.
     worker.set_is_connected(True)
