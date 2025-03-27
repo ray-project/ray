@@ -38,6 +38,9 @@ assert CONTROL_LOOP_INTERVAL_S >= 0, (
     "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
 )
 
+# Max len of scaling decision history to prevent a memory leak.
+MAX_SCALING_HISTORY_LENGTH = int(1e6)
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
