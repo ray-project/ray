@@ -1590,10 +1590,11 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     return;
   }
 
-  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
-       it++) {
-    if (it->worker == worker) {
-      idle_of_all_languages_.erase(it);
+  for (auto idle_worker_iter = idle_of_all_languages_.begin();
+       idle_worker_iter != idle_of_all_languages_.end();
+       idle_worker_iter++) {
+    if (idle_worker_iter->worker == worker) {
+      idle_of_all_languages_.erase(idle_worker_iter);
       break;
     }
   }
