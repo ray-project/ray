@@ -163,12 +163,6 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-            if not ray.get_gpu_ids():
-                import torch
-
-                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-                # by Ray. We instead want the default to be CPU.
-                self._torch_device = torch.device("cpu")
             self._torch_device = get_devices()[0]
 
         return self._torch_device
