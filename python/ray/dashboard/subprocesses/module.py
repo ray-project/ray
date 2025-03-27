@@ -35,6 +35,7 @@ class SubprocessModuleConfig:
     cluster_id_hex: str
     gcs_address: str
     session_name: str
+    temp_dir: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -174,6 +175,10 @@ class SubprocessModule(abc.ABC):
         Return the Ray session name. It's not related to the aiohttp session.
         """
         return self._config.session_name
+
+    @property
+    def temp_dir(self):
+        return self._config.temp_dir
 
     @property
     def log_dir(self):
