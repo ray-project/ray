@@ -146,6 +146,8 @@ def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
 
     num_workers = 4
 
+    c = 0
+
     # Roll the dice 100 times
     for i in range(100):
         # Fetch 8b seed from urandom
@@ -181,8 +183,15 @@ def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
             queue_buffer_size=1,
         )
 
+        total = 0
+
         for i in it:
-            print(i)
+            total += i
+
+        assert total == 9880
+        c += 1
+
+    assert c == 100
 
 
 @pytest.mark.parametrize("preserve_ordering", [True, False])
@@ -243,8 +252,15 @@ def test_make_async_gen_non_reentrant(preserve_ordering):
 
 
 @pytest.mark.parametrize("preserve_ordering", [True, False])
-@pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen(buffer_size: int, preserve_ordering):
+@pytest.mark.parametrize(
+    "buffer_size, expected_gen_time",
+    [
+        (0, 5.5),  # 5 x 1s + 0.5s buffer
+        (1, 7.5),  # 3 x 1s + 2 x 2s (limited buffer delay) + 0.5s buffer
+        (2, 5.5),  # 5 x 1s + 0.5s buffer
+    ]
+)
+def test_make_async_gen_x(buffer_size: int, expected_gen_time, preserve_ordering):
     """Tests that make_async_gen overlaps compute."""
 
     num_items = 5
@@ -260,7 +276,7 @@ def test_make_async_gen(buffer_size: int, preserve_ordering):
         gen_finish = time.perf_counter()
 
         # 0.5s buffer
-        assert gen_finish - gen_start < 5.5
+        assert gen_finish - gen_start < expected_gen_time
 
     def sleepy_udf(item):
         time.sleep(2)
