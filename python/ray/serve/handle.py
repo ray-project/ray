@@ -266,7 +266,10 @@ class _DeploymentResponseBase:
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:
-                raise RequestCancelledError(self.request_id) from None
+                if self._cancelled:
+                    raise RequestCancelledError(self.request_id) from None
+                else:
+                    raise concurrent.futures.CancelledError from None
 
         return self._replica_result
 
@@ -284,7 +287,10 @@ class _DeploymentResponseBase:
                     self._replica_result_future
                 )
             except asyncio.CancelledError:
-                raise RequestCancelledError(self.request_id) from None
+                if self._cancelled:
+                    raise RequestCancelledError(self.request_id) from None
+                else:
+                    raise asyncio.CancelledError from None
 
         return self._replica_result
 

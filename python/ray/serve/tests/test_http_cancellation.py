@@ -1,5 +1,7 @@
+import asyncio
 import sys
 
+import httpx
 import pytest
 import requests
 from fastapi import FastAPI
@@ -94,6 +96,70 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
     assert initial_response.result() == 1
     for i in range(2, 12):
         assert h.remote().result() == i
+
+
+async def test_exception_types_on_cancellation(serve_instance):
+    @ray.remote
+    class Collector:
+        def __init__(self):
+            self.items = []
+
+        def add(self, item):
+            self.items.append(item)
+
+        def get(self):
+            return self.items
+
+    collector = Collector.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Child:
+        async def __call__(self):
+            try:
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                await collector.add.remote("Child_CancelledError")
+                raise
+
+    @serve.deployment
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        async def __call__(self):
+            try:
+                await self.child.remote()
+            except asyncio.CancelledError:
+                await collector.add.remote("Parent_CancelledError")
+                raise
+            except ray.serve.exceptions.RequestCancelledError:
+                await collector.add.remote("Parent_RequestCancelledError")
+                raise
+
+    # Deploy and make requests
+    serve.run(Parent.bind(Child.bind()))
+
+    # Send two concurrent requests with timeout to trigger cancellation
+    async with httpx.AsyncClient(timeout=0.2) as client:
+        try:
+            await asyncio.gather(
+                client.get("http://localhost:8000/"),
+                client.get("http://localhost:8000/"),
+            )
+        except httpx.ReadTimeout:
+            pass
+
+    # Wait for exceptions to be processed
+    await asyncio.sleep(0.5)
+
+    # Verify exceptions
+    exceptions = await collector.get.remote()
+    assert sorted(exceptions) == [
+        "Child_CancelledError",
+        "Parent_CancelledError",
+        "Parent_CancelledError",
+    ]
+    assert "Parent_RequestCancelledError" not in exceptions
 
 
 if __name__ == "__main__":
