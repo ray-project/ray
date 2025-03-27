@@ -4,6 +4,10 @@ model_loading_config:
 
 accelerator_type: A10G
 
+runtime_env:
+  env_vars:
+    VLLM_USE_V1: "0"
+
 engine_kwargs:
   max_model_len: 2048
   enable_lora: true
