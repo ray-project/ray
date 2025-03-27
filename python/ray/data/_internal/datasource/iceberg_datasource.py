@@ -34,21 +34,34 @@ def _get_read_task(
     limit: Optional[int],
     schema: "Schema",
 ) -> Iterable[Block]:
-    from pyiceberg.io import pyarrow as pyi_pa_io
-
     # Use the PyIceberg API to read only a single task (specifically, a
     # FileScanTask) - note that this is not as simple as reading a single
     # parquet file, as there might be delete files, etc. associated, so we
     # must use the PyIceberg API for the projection.
-    yield pyi_pa_io.project_table(
-        tasks=tasks,
-        table_metadata=table_metadata,
-        io=table_io,
-        row_filter=row_filter,
-        projected_schema=schema,
-        case_sensitive=case_sensitive,
-        limit=limit,
-    )
+    try:
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        yield ArrowScan(
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        ).to_table(tasks=tasks)
+    # fallback to project_table that was in pyiceberg versions prior to 0.9
+    except ImportError:
+        from pyiceberg.io.pyarrow import project_table
+
+        yield project_table(
+            tasks=tasks,
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        )
 
 
 @DeveloperAPI
