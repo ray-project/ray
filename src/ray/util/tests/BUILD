@@ -367,3 +367,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "concurrent_flat_map_test",
+    size = "small",
+    srcs = ["concurrent_flat_map_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:concurrent_flat_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
