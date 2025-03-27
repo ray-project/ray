@@ -485,9 +485,6 @@ class _ActorPool(AutoscalingActorPool):
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
-        # Whether actors that become idle should be eagerly killed. This is False until
-        # the first call to kill_idle_actors().
-        self._should_kill_idle_actors = False
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
@@ -575,9 +572,6 @@ class _ActorPool(AutoscalingActorPool):
             actor: The not-yet-ready actor to add as pending to the pool.
             ready_ref: The ready future for the actor.
         """
-        # The caller shouldn't add new actors to the pool after invoking
-        # kill_inactive_actors().
-        assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:
@@ -664,11 +658,6 @@ class _ActorPool(AutoscalingActorPool):
         assert actor in self._running_actors
         assert self._running_actors[actor].num_tasks_in_flight > 0
         self._running_actors[actor].num_tasks_in_flight -= 1
-        if (
-            self._should_kill_idle_actors
-            and self._running_actors[actor].num_tasks_in_flight == 0
-        ):
-            self._release_running_actor(actor)
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
