@@ -5,7 +5,6 @@ import time
 from typing import Iterator, List, Optional, Tuple
 
 # Third-party imports
-import boto3
 import numpy as np
 from PIL import Image as PILImage
 import torch
@@ -19,60 +18,21 @@ import ray.train
 from s3_jpeg_reader import S3JpegReader
 from .imagenet import get_preprocess_map_fn
 
-# Constants
-BATCH_SIZE = 10  # Number of images to fetch in parallel
-
 logger = logging.getLogger(__name__)
-
-
-@ray.remote
-def _fetch_image_batch(
-    file_urls: List[str], batch_size: int = BATCH_SIZE
-) -> List[Tuple[str, PILImage.Image]]:
-    """Fetch a batch of images from S3 in parallel.
-
-    Args:
-        file_urls: List of S3 URLs to fetch (e.g., "s3://bucket/path/to/image.jpg")
-        batch_size: Number of images to fetch in parallel (default: 32)
-
-    Returns:
-        List of (file_url, PIL Image) tuples where:
-            - file_url: The original S3 URL
-            - PIL Image: The loaded image, or None if fetch failed
-    """
-    s3_client = boto3.client("s3")
-    results = []
-
-    for file_url in file_urls:
-        try:
-            bucket = file_url.replace("s3://", "").split("/")[0]
-            key = "/".join(file_url.replace("s3://", "").split("/")[1:])
-
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            image_data = response["Body"].read()
-            image = PILImage.open(io.BytesIO(image_data))
-            results.append((file_url, image))
-
-        except Exception as e:
-            logger.error(
-                f"[S3JpegImageIterableDataset] Error fetching image from {file_url}: {str(e)}",
-                exc_info=True,
-            )
-            results.append((file_url, None))
-
-    return results
 
 
 class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
     """An iterable dataset that loads images from S3-stored JPEG files.
 
     Features:
-    - Parallel image fetching from S3
+    - Direct image fetching from S3
     - Optional random transforms for training
     - Row limits per worker for controlled processing
     - Progress logging and performance metrics
     """
 
+    # Constants
+    BATCH_SIZE = 1  # Number of images to fetch
     LOG_FREQUENCY = 1000  # Log progress every 1000 rows
 
     def __init__(
@@ -88,7 +48,7 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             file_urls: List of S3 URLs to load
             random_transforms: Whether to use random transforms for training
             limit_rows_per_worker: Maximum number of rows to process per worker
-            batch_size: Number of images to fetch in parallel
+            batch_size: Number of images to fetch
         """
         super().__init__()
         self.file_urls = file_urls
@@ -104,10 +64,44 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             f"(batch size: {batch_size})"
         )
 
+    def _fetch_image_batch(
+        self, file_urls: List[str]
+    ) -> List[Tuple[str, PILImage.Image]]:
+        """Fetch a batch of images from S3.
+
+        Args:
+            file_urls: List of S3 URLs to fetch (e.g., "s3://bucket/path/to/image.jpg")
+
+        Returns:
+            List of (file_url, PIL Image) tuples where:
+                - file_url: The original S3 URL
+                - PIL Image: The loaded image, or None if fetch failed
+        """
+        results = []
+
+        for file_url in file_urls:
+            try:
+                bucket = file_url.replace("s3://", "").split("/")[0]
+                key = "/".join(file_url.replace("s3://", "").split("/")[1:])
+
+                response = self.s3_client.get_object(Bucket=bucket, Key=key)
+                image_data = response["Body"].read()
+                image = PILImage.open(io.BytesIO(image_data))
+                results.append((file_url, image))
+
+            except Exception as e:
+                logger.error(
+                    f"[S3JpegImageIterableDataset] Error fetching image from {file_url}: {str(e)}",
+                    exc_info=True,
+                )
+                results.append((file_url, None))
+
+        return results
+
     def _fetch_images_batch(
         self, file_urls: List[str]
     ) -> List[Tuple[str, PILImage.Image]]:
-        """Fetch a batch of images from S3 in parallel.
+        """Fetch a batch of images from S3.
 
         Args:
             file_urls: List of S3 URLs to fetch
@@ -119,8 +113,7 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             Exception: If there's an error fetching the batch
         """
         try:
-            future = _fetch_image_batch.remote(file_urls, self.batch_size)
-            results = ray.get(future)
+            results = self._fetch_image_batch(file_urls)
 
             valid_results = [(url, img) for url, img in results if img is not None]
             if len(valid_results) < len(results):
@@ -135,7 +128,7 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             raise
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        """Main iteration method that processes files and yields (image, label) tensors.
+        """Iterate through the dataset and yield (image, label) tensors.
 
         Yields:
             Tuple[torch.Tensor, torch.Tensor]: (image, label) tensors
