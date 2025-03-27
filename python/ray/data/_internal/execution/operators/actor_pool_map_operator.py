@@ -275,7 +275,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def shutdown(self, force: bool = False):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
-        self._actor_pool.shutdown()
+        self._actor_pool.shutdown(force=force)
         super().shutdown(force)
 
         # Warn if the user specified a batch or block size that prevents full
@@ -729,18 +729,28 @@ class _ActorPool(AutoscalingActorPool):
 
         This is called once the operator is shutting down.
         """
-        self._release_pending_actors()
-        self._release_running_actors()
+        self._release_pending_actors(force=force)
+        self._release_running_actors(force=force)
 
-    def _release_pending_actors(self):
+    def _release_pending_actors(self, force: bool):
         for _, actor in self._pending_actors.items():
             self._remove_actor(actor)
+            # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+            #       hence we're only doing that if this is a forced release
+            if force:
+                ray.kill(actor)
+
         self._pending_actors.clear()
 
-    def _release_running_actors(self):
+    def _release_running_actors(self, force: bool):
         actors = list(self._running_actors.keys())
+
         for actor in actors:
             self._remove_actor(actor)
+            # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+            #       hence we're only doing that if this is a forced release
+            if force:
+                ray.kill(actor)
 
     def _remove_actor(self, actor: ray.actor.ActorHandle):
         """Remove the given actor from the pool."""
