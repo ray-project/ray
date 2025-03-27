@@ -169,7 +169,10 @@ def iter_batches(
     # Run everything in a separate thread to not block the main thread when waiting
     # for streaming results.
     async_batch_iter = make_async_gen(
-        ref_bundles, fn=_async_iter_batches, num_workers=1
+        ref_bundles,
+        fn=_async_iter_batches,
+        num_workers=1,
+        preserve_ordering=False,
     )
 
     while True:
@@ -223,6 +226,7 @@ def _format_in_threadpool(
         collated_iter = make_async_gen(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
+            preserve_ordering=False,
             num_workers=num_threadpool_workers,
         )
     else:
