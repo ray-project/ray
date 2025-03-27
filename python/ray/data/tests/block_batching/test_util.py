@@ -137,7 +137,7 @@ def test_make_async_gen_fail(buffer_size: int):
 
 
 @pytest.mark.parametrize("buffer_size", [0, 1, 2])
-def test_make_async_gen_varying_seq_lengths(buffer_size: int):
+def test_make_async_gen_preserve_ordering(buffer_size: int):
     """Tests that iterators of varying lengths are handled appropriately"""
 
     seq_set = set()
@@ -182,7 +182,7 @@ def test_make_async_gen_varying_seq_lengths(buffer_size: int):
     assert len(seq_set) == 1, seq_set
 
 
-def test_make_async_gen_deadlock():
+def test_make_async_gen_varying_seq_length_stress_test():
     """This test executes make_async_gen against a function generating variable
     length sequences to stress test its concurrency control.
     """
@@ -199,7 +199,7 @@ def test_make_async_gen_deadlock():
 
         # NOTE: Number of seqs >> number of workers
         #       to saturate the input queue
-        num_seqs = num_workers * 5
+        num_seqs = num_workers * 10
 
         lens = list(range(num_seqs))
 
