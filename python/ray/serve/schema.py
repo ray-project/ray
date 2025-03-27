@@ -1116,7 +1116,8 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
     target_details: Dict[str, List[TargetInfo]] = Field(
-        description="Mapping from protocol to list of target details for the given route."
+        default_factory=dict,
+        description="Mapping from protocol to list of target details for the given route.",
     )
 
     @staticmethod
