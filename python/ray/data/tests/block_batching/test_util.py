@@ -151,7 +151,7 @@ def test_make_async_gen_varying_seq_length_stress_test(preserve_ordering):
     # Roll the dice 100 times
     for i in range(100):
         # Fetch 8b seed from urandom
-        seed = int.from_bytes(urandom(8))
+        seed = int.from_bytes(urandom(8), byteorder=sys.byteorder)
         r = random.Random(seed)
 
         print(f">>> Seed: {seed}")
