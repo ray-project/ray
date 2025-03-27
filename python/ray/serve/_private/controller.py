@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
+    RequestProtocol,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -57,9 +58,13 @@ from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, Deploym
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
+    _TargetInfo,
     ApplicationDetails,
+    ApplicationStatus,
     DeploymentDetails,
+    GRPCTargetInfo,
     HTTPOptionsSchema,
+    HTTPTargetInfo,
     LoggingConfig,
     ProxyDetails,
     ServeActorDetails,
@@ -930,6 +935,7 @@ class ServeController:
         # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
@@ -942,7 +948,37 @@ class ServeController:
                 else None
             ),
             applications=applications,
+            target_details=self.get_target_details(applications),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    def get_target_details(
+        self, applications: Dict[str, ApplicationDetails]
+    ) -> Dict[str, List[_TargetInfo]]:
+        target_details = {
+            RequestProtocol.HTTP.value: [],
+            RequestProtocol.GRPC.value: [],
+        }
+        for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]:
+            _targets = self.proxy_state_manager.get_proxy_targets(protocol)
+            if len(_targets) == 0:
+                continue
+            for application in applications.values():
+                if application.status != ApplicationStatus.RUNNING:
+                    continue
+                if protocol == RequestProtocol.HTTP:
+                    target_info = HTTPTargetInfo(
+                        prefix_route=application.route_prefix,
+                        targets=_targets,
+                    )
+                elif protocol == RequestProtocol.GRPC:
+                    target_info = GRPCTargetInfo(
+                        app_name=application.name,
+                        targets=_targets,
+                    )
+                else:
+                    raise ValueError(f"Unsupported protocol: {protocol}")
+                target_details[protocol.value].append(target_info)
+        return target_details
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
