@@ -1175,9 +1175,8 @@ def start_api_server(
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
-    redirect_logging: bool = True,
-    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
-    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1207,12 +1206,10 @@ def start_api_server(
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging: Whether we should redirect logging to
-            the provided log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump log monitor stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump log monitor stderr.
+            If None, stderr is not redirected.
 
     Returns:
         A tuple of :
@@ -1284,9 +1281,15 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
+            f"--logging-filename={logdir}/dashboard.log",
         ]
 
-        if not redirect_logging:
+        if stdout_filepath:
+            command.append(f"--stdout-filepath={stdout_filepath}")
+        if stderr_filepath:
+            command.append(f"--stderr-filepath={stderr_filepath}")
+
+        if stdout_filepath is None and stderr_filepath is None:
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
@@ -1295,10 +1298,6 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-            # Inherit stdout/stderr streams so that
-            # logs are redirected to stderr.
-            stdout_file = None
-            stderr_file = None
         if minimal:
             command.append("--minimal")
 
@@ -1312,6 +1311,14 @@ def start_api_server(
 
         if dashboard_grpc_port is not None:
             command.append(f"--grpc-port={dashboard_grpc_port}")
+
+        stdout_file = None
+        if stdout_filepath:
+            stdout_file = open(os.devnull, "w")
+
+        stderr_file = None
+        if stderr_filepath:
+            stderr_file = open(os.devnull, "w")
 
         process_info = start_ray_process(
             command,

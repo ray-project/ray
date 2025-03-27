@@ -1156,8 +1156,8 @@ class Node:
         """
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
-            "dashboard", unique=True, create_out=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "dashboard", unique=True, create_out=True, create_err=True
         )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
@@ -1174,9 +1174,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
