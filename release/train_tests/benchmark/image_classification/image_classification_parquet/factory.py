@@ -1,48 +1,52 @@
 # Standard library imports
 import logging
-import time
-from typing import Any, Dict, Iterator, Tuple, Optional
+from typing import Dict, Optional, Type
 
 # Third-party imports
 import torch
 import torchvision
 from torch.utils.data import IterableDataset
-
-# Ray imports
+import ray
+import ray.data
 import ray.train
 
 # Local imports
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
 from dataloader_factory import BaseDataLoaderFactory
-from ray_dataloader_factory import RayDataLoaderFactory
-from torch_dataloader_factory import TorchDataLoaderFactory
-from image_classification.factory import ImageClassificationMockDataLoaderFactory
-from .imagenet import get_preprocess_map_fn, IMAGENET_PARQUET_SPLIT_S3_DIRS
-from .torch_parquet_image_iterable_dataset import (
-    S3ParquetReader,
-    S3ParquetImageIterableDataset,
+from image_classification.factory import (
+    ImageClassificationRayDataLoaderFactory,
+    ImageClassificationTorchDataLoaderFactory,
+    ImageClassificationMockDataLoaderFactory,
 )
+from .imagenet import IMAGENET_PARQUET_SPLIT_S3_DIRS, get_preprocess_map_fn
+from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
+from s3_parquet_reader import S3ParquetReader
 
 logger = logging.getLogger(__name__)
 
 
-class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
+class ImageClassificationParquetRayDataLoaderFactory(
+    ImageClassificationRayDataLoaderFactory
+):
     """Factory for creating Ray DataLoader for Parquet image classification.
 
-    This factory:
-    1. Creates Ray datasets from Parquet files in S3
-    2. Handles preprocessing and transforms
-    3. Manages resource allocation for concurrent validation
-    4. Provides collation function for PyTorch tensors
+    Features:
+    - Parquet file reading with column selection
+    - Image decoding and preprocessing
+    - Resource allocation for concurrent validation
+    - Row limits based on benchmark configuration
     """
 
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation.
 
         Returns:
-            Dict with "train" and "val" Dataset objects
+            Dictionary containing:
+                - "train": Training dataset with random transforms
+                - "val": Validation dataset without transforms
         """
+        # Create training dataset with image decoding and transforms
         train_ds = (
             ray.data.read_parquet(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
@@ -51,6 +55,7 @@ class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
         )
 
+        # Create validation dataset without random transforms
         val_ds = (
             ray.data.read_parquet(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
@@ -59,9 +64,8 @@ class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 
+        # Configure resource allocation for concurrent validation
         if self.benchmark_config.validate_every_n_steps > 0:
-            # TODO: This runs really slowly and needs to be tuned.
-            # Maybe move this to the RayDataLoaderFactory.
             cpus_to_exclude = 16
             train_ds.context.execution_options.exclude_resources = (
                 train_ds.context.execution_options.exclude_resources.add(
@@ -72,108 +76,59 @@ class ImageClassificationParquetRayDataLoaderFactory(RayDataLoaderFactory):
                 ray.data.ExecutionResources(cpu=cpus_to_exclude)
             )
             logger.info(
-                f"[ImageClassificationParquetRayDataLoaderFactory] Reserving {cpus_to_exclude} "
-                "CPUs for validation that happens concurrently with training every "
-                f"{self.benchmark_config.validate_every_n_steps} steps"
+                f"[ImageClassificationParquetRayDataLoaderFactory] Reserving "
+                f"{cpus_to_exclude} CPUs for validation that happens concurrently with "
+                f"training every {self.benchmark_config.validate_every_n_steps} steps"
             )
 
         return {"train": train_ds, "val": val_ds}
 
-    def collate_fn(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Collate batch of data into PyTorch tensors.
-
-        Args:
-            batch: Dictionary containing image and label data
-
-        Returns:
-            Tuple of (image_tensor, label_tensor) on the correct device
-        """
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        device = ray.train.torch.get_device()
-        batch = convert_ndarray_batch_to_torch_tensor_batch(batch, device=device)
-
-        return batch["image"], batch["label"]
-
 
 class ImageClassificationParquetTorchDataLoaderFactory(
-    TorchDataLoaderFactory, S3ParquetReader
+    ImageClassificationTorchDataLoaderFactory, S3ParquetReader
 ):
-    """Factory for creating PyTorch DataLoaders for image classification tasks.
+    """Factory for creating PyTorch DataLoaders for Parquet image classification.
 
-    This factory:
-    1. Creates DataLoaders that read Parquet files from S3
-    2. Distributes files among Ray workers using round-robin allocation
-    3. Handles device transfer and error handling for batches
-    4. Supports row limits per worker for controlled data processing
+    Features:
+    - Parquet file reading with row count-based distribution
+    - Worker-based file distribution for balanced workloads
+    - Row limits per worker for controlled processing
+    - Dataset instance caching for efficiency
     """
 
-    def __init__(self, benchmark_config: BenchmarkConfig):
+    def __init__(self, benchmark_config: BenchmarkConfig) -> None:
+        """Initialize factory with benchmark configuration.
+
+        Args:
+            benchmark_config: Configuration for benchmark parameters
+        """
         super().__init__(benchmark_config)
         S3ParquetReader.__init__(
             self
         )  # Initialize S3ParquetReader to set up _s3_client
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        self._cached_datasets = None
-
-    def calculate_rows_per_worker(
-        self, total_rows: Optional[int], num_workers: int
-    ) -> Optional[int]:
-        """Calculate how many rows each worker should process.
-
-        Args:
-            total_rows: Total number of rows to process across all workers.
-            num_workers: Total number of workers (Ray workers × Torch workers)
-
-        Returns:
-            Number of rows each worker should process, or None if no limit.
-            If total_rows is less than num_workers, each worker will process at least 1 row.
-        """
-        if total_rows is None:
-            return None
-
-        if num_workers == 0:
-            return total_rows
-
-        return max(1, total_rows // num_workers)
+        self._cached_datasets: Optional[Dict[str, IterableDataset]] = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
-        """Get the train and validation datasets.
+        """Get train and validation datasets with worker-specific configurations.
 
         Returns:
-            A dictionary containing the train and validation datasets.
+            Dictionary containing:
+                - "train": Training dataset with random transforms
+                - "val": Validation dataset without transforms
         """
         if self._cached_datasets is not None:
             return self._cached_datasets
 
-        # Calculate row limits per worker for validation
-        dataloader_config = self.get_dataloader_config()
-        num_workers = max(1, dataloader_config.num_torch_workers)
-        total_workers = self.benchmark_config.num_workers * num_workers
+        # Get row limits for workers and total processing
+        (
+            limit_training_rows_per_worker,
+            limit_validation_rows_per_worker,
+        ) = self._get_worker_row_limits()
+        total_training_rows, total_validation_rows = self._get_total_row_limits()
 
-        limit_training_rows_per_worker = self.calculate_rows_per_worker(
-            self.benchmark_config.limit_training_rows, total_workers
-        )
-
-        limit_validation_rows_per_worker = self.calculate_rows_per_worker(
-            self.benchmark_config.limit_validation_rows, total_workers
-        )
-
-        # Calculate total rows to process
-        total_training_rows = (
-            self.benchmark_config.limit_training_rows
-            if self.benchmark_config.limit_training_rows is not None
-            else None
-        )
-        total_validation_rows = (
-            self.benchmark_config.limit_validation_rows
-            if self.benchmark_config.limit_validation_rows is not None
-            else None
-        )
-
+        # Create training dataset
         train_file_urls = self._get_file_urls(self.train_url)
         train_ds = S3ParquetImageIterableDataset(
             file_urls=train_file_urls,
@@ -194,6 +149,7 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             }
         )
 
+        # Create validation dataset
         val_file_urls = train_file_urls
         val_ds = S3ParquetImageIterableDataset(
             file_urls=val_file_urls,
@@ -217,90 +173,23 @@ class ImageClassificationParquetTorchDataLoaderFactory(
         self._cached_datasets = {"train": train_ds, "val": val_ds}
         return self._cached_datasets
 
-    def create_batch_iterator(
-        self, dataloader: torch.utils.data.DataLoader, device: torch.device
-    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        """Create a safe iterator that handles device transfer and error handling.
-
-        Args:
-            dataloader: The PyTorch DataLoader to iterate over
-            device: The device to move tensors to
-
-        Returns:
-            An iterator that yields batches moved to the specified device
-        """
-        worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(
-            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-            "Starting batch iteration"
-        )
-
-        try:
-            last_batch_time = time.time()
-            for batch_idx, batch in enumerate(dataloader):
-                try:
-                    # Check for delays between batches
-                    current_time = time.time()
-                    time_since_last_batch = current_time - last_batch_time
-                    if time_since_last_batch > 10:
-                        logger.warning(
-                            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                            f"Long delay ({time_since_last_batch:.2f}s) between batches "
-                            f"{batch_idx-1} and {batch_idx}"
-                        )
-
-                    # Move batch to device
-                    images, labels = batch
-                    logger.info(
-                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                        f"Processing batch {batch_idx} (shape: {images.shape}, "
-                        f"time since last: {time_since_last_batch:.2f}s)"
-                    )
-
-                    transfer_start = time.time()
-                    dataloader_config = self.get_dataloader_config()
-                    images = images.to(
-                        device, non_blocking=dataloader_config.torch_non_blocking
-                    )
-                    labels = labels.to(
-                        device, non_blocking=dataloader_config.torch_non_blocking
-                    )
-                    transfer_time = time.time() - transfer_start
-
-                    if transfer_time > 5:
-                        logger.warning(
-                            f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                            f"Slow device transfer ({transfer_time:.2f}s) for batch {batch_idx}"
-                        )
-
-                    logger.info(
-                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                        f"Completed device transfer for batch {batch_idx} in {transfer_time:.2f}s"
-                    )
-
-                    last_batch_time = time.time()
-                    yield images, labels
-
-                except Exception as e:
-                    logger.error(
-                        f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                        f"Error processing batch {batch_idx}: {str(e)}",
-                        exc_info=True,
-                    )
-                    raise
-
-        except Exception as e:
-            logger.error(
-                f"[ImageClassificationParquetTorchDataLoaderFactory] Worker {worker_rank}: "
-                f"Error in batch iterator: {str(e)}",
-                exc_info=True,
-            )
-            raise
-
 
 class ImageClassificationParquetFactory(BenchmarkFactory):
+    """Factory for creating Parquet-based image classification components.
+
+    Features:
+    - Support for mock, Ray, and PyTorch dataloaders
+    - ResNet50 model initialization
+    - Cross-entropy loss function
+    """
+
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
-        data_factory_cls = {
+        """Get appropriate dataloader factory based on configuration.
+
+        Returns:
+            Factory instance for the configured dataloader type
+        """
+        data_factory_cls: Type[BaseDataLoaderFactory] = {
             DataloaderType.MOCK: ImageClassificationMockDataLoaderFactory,
             DataloaderType.RAY_DATA: ImageClassificationParquetRayDataLoaderFactory,
             DataloaderType.TORCH: ImageClassificationParquetTorchDataLoaderFactory,
@@ -309,7 +198,17 @@ class ImageClassificationParquetFactory(BenchmarkFactory):
         return data_factory_cls(self.benchmark_config)
 
     def get_model(self) -> torch.nn.Module:
+        """Get ResNet50 model for image classification.
+
+        Returns:
+            ResNet50 model without pretrained weights
+        """
         return torchvision.models.resnet50(weights=None)
 
     def get_loss_fn(self) -> torch.nn.Module:
+        """Get cross-entropy loss function.
+
+        Returns:
+            CrossEntropyLoss module for training
+        """
         return torch.nn.CrossEntropyLoss()
