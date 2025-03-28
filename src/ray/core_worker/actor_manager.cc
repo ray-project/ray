@@ -263,7 +263,7 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
 
 ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
   {
-    absl::MutexLock lock(&cache_mutex_);
+    absl::MutexLock cache_lock(&cache_mutex_);
     auto it = cached_actor_name_to_ids_.find(actor_name);
     if (it != cached_actor_name_to_ids_.end()) {
       absl::MutexLock lock(&mutex_);
