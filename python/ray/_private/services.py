@@ -1206,9 +1206,9 @@ def start_api_server(
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        stdout_filepath: The file path to dump log monitor stdout.
+        stdout_filepath: The file path to dump dashboard stdout.
             If None, stdout is not redirected.
-        stderr_filepath: The file path to dump log monitor stderr.
+        stderr_filepath: The file path to dump dashboard stderr.
             If None, stderr is not redirected.
 
     Returns:
