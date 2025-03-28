@@ -4382,7 +4382,7 @@ cdef class CoreWorker:
             if num_outputs_stored is None:
                 # If num_returns=0, it is likely a mistake to return a non-None object.
 
-                task_name = CCoreWorkerProcess.GetCoreWorker().get_current_task_name()
+                task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName()
 
                 task_num_returns_warning = (
                     "Task {} has num_returns=0 but returned a non-None value {}. "
