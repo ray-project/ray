@@ -331,7 +331,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         actor_ids_qs_str = ",".join(actor_ids)
         url = f"http://{self.http_host}:{self.http_port}/logical/actors?ids={actor_ids_qs_str}&nocache=1"
         async with self._http_session.get(url) as resp:
-            assert resp.status == 200, f"Failed to get actor info: {resp.status}"
+            resp.raise_for_status()
             resp_json = await resp.json()
         return resp_json["data"]["actors"]
 
