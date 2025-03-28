@@ -35,28 +35,29 @@ class ProjectionPushdown(Rule):
         return plan
 
     def _transform_plan(self, plan: LogicalPlan) -> LogicalPlan:
-        def _combine_project_with_read(op: LogicalOperator) -> LogicalOperator:
-            if isinstance(op, Project):
-                # Push-down projections into read op
-                if isinstance(op.input_dependency, ReadFiles):
-                    project_op: Project = op
-                    read_op: ReadFiles = op.input_dependency
-
-                    return self._combine(read_op, project_op)
-
-                # Otherwise, fuse projections into a single op
-                elif isinstance(op.input_dependency, Project):
-                    outer_op: Project = op
-                    inner_op: Project = op.input_dependency
-
-                    return self._fuse(inner_op, outer_op)
-
-            return op
-
         dag = plan.dag
-        new_dag = dag._apply_transform(_combine_project_with_read)
+        new_dag = dag._apply_transform(self._pushdown_project)
 
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @classmethod
+    def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
+        if isinstance(op, Project):
+            # Push-down projections into read op
+            if isinstance(op.input_dependency, ReadFiles):
+                project_op: Project = op
+                read_op: ReadFiles = op.input_dependency
+
+                return cls._combine(read_op, project_op)
+
+            # Otherwise, fuse projections into a single op
+            elif isinstance(op.input_dependency, Project):
+                outer_op: Project = op
+                inner_op: Project = op.input_dependency
+
+                return cls._fuse(inner_op, outer_op)
+
+        return op
 
     @staticmethod
     def _fuse(inner_op: Project, outer_op: Project) -> Project:

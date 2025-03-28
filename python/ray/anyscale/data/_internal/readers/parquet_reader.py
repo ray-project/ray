@@ -255,7 +255,7 @@ class ParquetReader(FileReader):
             try:
                 return fragment.to_batches(
                     use_threads=self._use_threads,
-                    columns=None if not columns else columns,
+                    columns=columns,
                     filter=filter_expr,
                     schema=schema,
                     batch_size=self._batch_size,
