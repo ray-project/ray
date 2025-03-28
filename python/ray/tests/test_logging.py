@@ -540,8 +540,6 @@ def test_log_redirect_to_stderr(shutdown_only):
         ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         ray_constants.PROCESS_TYPE_REAPER: "",
-        # No web UI process run.
-        ray_constants.PROCESS_TYPE_WEB_UI: "",
         # Unused.
         ray_constants.PROCESS_TYPE_WORKER: "",
     }
