@@ -28,7 +28,7 @@ cc_library(
     strip_include_prefix = "include",
     copts = select({
         "//:msvc-cl": [],
-        # Ray doesn't control how third-party implementation, simply ignores certain warning errors.
+        # Ray doesn't control third-party libraries' implementation, simply ignores certain warning errors.
         "//conditions:default": [
             "-Wno-shadow",
         ],
