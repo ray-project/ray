@@ -544,7 +544,7 @@ Windows powershell users need additional escaping:
     "--object-spilling-directory",
     required=False,
     type=str,
-    help="The path to spill objects to. The same path will be used as the object store fallback directory as well.",
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
 )
 @click.option(
     "--autoscaling-config",
