@@ -1,0 +1,58 @@
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+
+proto_library(
+    name = "raft_proto",
+    srcs = ["raft.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "raft_cc_proto",
+    deps = [":raft_proto"],
+)
+
+proto_library(
+    name = "gcs_service_proto",
+    srcs = ["gcs_service.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "gcs_service_cc_proto",
+    deps = [":gcs_service_proto"],
+)
+
+proto_library(
+    name = "gcs_tables_proto",
+    srcs = ["gcs_tables.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "gcs_tables_cc_proto",
+    deps = [":gcs_tables_proto"],
+)
+
+proto_library(
+    name = "usage_proto",
+    srcs = ["usage.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "usage_cc_proto",
+    deps = [":usage_proto"],
+) 

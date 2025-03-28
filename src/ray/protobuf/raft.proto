@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package ray.gcs;
+
+import "src/ray/protobuf/gcs_tables.proto";
+
+// Raft configuration
+message RaftConfig {
+  string node_id = 1;
+  repeated string node_addresses = 2;
+  int64 election_timeout = 3;
+  int64 heartbeat_interval = 4;
+  int64 max_log_entries = 5;
+  int64 snapshot_interval = 6;
+}
+
+// State update type
+enum StateUpdateType {
+  RESOURCE_UPDATE = 0;
+  ACTOR_UPDATE = 1;
+  TASK_UPDATE = 2;
+  NODE_UPDATE = 3;
+  PLACEMENT_GROUP_UPDATE = 4;
+}
+
+// State update
+message StateUpdate {
+  StateUpdateType type = 1;
+  bytes data = 2;
+}
+
+// Consensus state
+message ConsensusState {
+  int64 current_term = 1;
+  string leader_id = 2;
+  ResourceView resource_view = 3;
+  ActorTable actor_table = 4;
+  TaskTable task_table = 5;
+  NodeTable node_table = 6;
+  PlacementGroupTable placement_group_table = 7;
+}
+
+// Resource view update
+message ResourceViewUpdate {
+  ResourceView resource_view = 1;
+}
+
+// Actor table update
+message ActorUpdate {
+  ActorTable actor_table = 1;
+}
+
+// Task table update
+message TaskUpdate {
+  TaskTable task_table = 1;
+}
+
+// Node table update
+message NodeUpdate {
+  NodeTable node_table = 1;
+}
+
+// Placement group table update
+message PlacementGroupUpdate {
+  PlacementGroupTable placement_group_table = 1;
+}
+
+// Log entry
+message LogEntry {
+  int64 term = 1;
+  int64 index = 2;
+  StateUpdate update = 3;
+}
+
+// Snapshot
+message Snapshot {
+  int64 term = 1;
+  int64 index = 2;
+  ConsensusState state = 3;
+}
+
+// Vote request
+message VoteRequest {
+  int64 term = 1;
+  string candidate_id = 2;
+  int64 last_log_index = 3;
+  int64 last_log_term = 4;
+}
+
+// Vote response
+message VoteResponse {
+  int64 term = 1;
+  bool vote_granted = 2;
+  string follower_id = 3;
+}
+
+// Append entries request
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 prev_log_index = 3;
+  int64 prev_log_term = 4;
+  repeated LogEntry entries = 5;
+  int64 leader_commit = 6;
+}
+
+// Append entries response
+message AppendEntriesResponse {
+  int64 term = 1;
+  bool success = 2;
+  string follower_id = 3;
+  int64 match_index = 4;
+}
+
+// Install snapshot request
+message InstallSnapshotRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 last_included_index = 3;
+  int64 last_included_term = 4;
+  int64 offset = 5;
+  bytes data = 6;
+  bool done = 7;
+}
+
+// Install snapshot response
+message InstallSnapshotResponse {
+  int64 term = 1;
+  bool success = 2;
+  string follower_id = 3;
+} 

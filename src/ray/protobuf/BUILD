@@ -491,3 +491,39 @@ cc_proto_library(
     name = "autoscaler_cc_proto",
     deps = [":autoscaler_proto"],
 )
+
+proto_library(
+    name = "raft_proto",
+    srcs = ["raft.proto"],
+    deps = [
+        ":gcs_tables_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "raft_cc_proto",
+    deps = [":raft_proto"],
+)
+
+python_grpc_compile(
+    name = "raft_py_proto",
+    deps = [":raft_proto"],
+)
+
+proto_library(
+    name = "gcs_tables_proto",
+    srcs = ["gcs_tables.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "gcs_tables_cc_proto",
+    deps = [":gcs_tables_proto"],
+)
+
+python_grpc_compile(
+    name = "gcs_tables_py_proto",
+    deps = [":gcs_tables_proto"],
+)
