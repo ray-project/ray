@@ -62,8 +62,8 @@ class GcsActorSchedulerMockTest : public Test {
         local_node_id,
         *cluster_resource_scheduler,
         /*get_node_info=*/
-        [this](const NodeID &node_id) {
-          auto node = gcs_node_manager->GetAliveNode(node_id);
+        [this](const NodeID &nid) {
+          auto node = gcs_node_manager->GetAliveNode(nid);
           return node.has_value() ? node.value().get() : nullptr;
         },
         /*announce_infeasible_task=*/nullptr,
