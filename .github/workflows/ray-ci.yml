@@ -211,6 +211,16 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
+    - name: Start local registry
+      if: '!cancelled()'
+      run: |
+        # Check if registry container exists and handle accordingly
+        if ! docker ps -a --format '{{.Names}}' | grep -q '^local-registry$'; then
+          docker run -d -p 5000:5000 --name local-registry registry:2
+        elif ! docker ps --format '{{.Names}}' | grep -q '^local-registry$'; then
+          docker start local-registry
+        fi
+
     - name: Check Core Image Existence
       id: check_core_image
       run: |
@@ -233,16 +243,6 @@ jobs:
           BUILDKITE=true
           DOCKER_IMAGE_BASE_BUILD=ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }}
         push: true
-
-    - name: Start local registry
-      if: '!cancelled()'
-      run: |
-        # Check if registry container exists and handle accordingly
-        if ! docker ps -a --format '{{.Names}}' | grep -q '^local-registry$'; then
-          docker run -d -p 5000:5000 --name local-registry registry:2
-        elif ! docker ps --format '{{.Names}}' | grep -q '^local-registry$'; then
-          docker start local-registry
-        fi
 
     - name: Push core build image to local registry
       if: '!cancelled()'
