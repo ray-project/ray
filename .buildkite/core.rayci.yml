@@ -207,11 +207,27 @@ steps:
         --only-tags debug_tests
         --except-tags kubernetes,manual
 
+  - label: ":ray: core: temp tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - mkdir -p /artifact-mount/ps-memories
+      - ./ci/dump-processes.sh &
+      - echo hi && sleep 200 && echo bye
+
+  - label: ":ray: core: temp1 tests"
+    tags: python
+    instance_type: medium
+    commands:
+      - mkdir -p /artifact-mount/ps-memories
+      - ./ci/run.sh
+
   - label: ":ray: core: asan tests"
     tags: python
     instance_type: medium
     commands:
-      - 'mkdir -p /artifact-mount/ps-memories && while true; do ts=$(date +%Y%m%d-%H%M%S); { echo "Timestamp: $ts"; free -h; ps aux --sort=-%mem; } > /artifact-mount/ps-memories/mem-$ts.txt; sleep 60; done &'
+      - mkdir -p /artifact-mount/ps-memories
+      - ./ci/dump-processes.sh &
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask llm,rllib,serve,train,tune,workflow
         --build-type asan
