@@ -106,21 +106,21 @@ if [[ "$AUTOSCALER" == "autoscaler" ]]; then
 fi
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sh
-echo 'export PATH=$HOME/.local/bin:$PATH' >> $HOME/.bashrc
+wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+# Set up Conda as system Python
+export PATH=$HOME/anaconda3/bin:$PATH
 
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
 # to ensure that the best match is chosen from the available indices.
-$HOME/.local/bin/uv pip install \
-    --system --no-cache-dir \
-    --index-strategy unsafe-best-match \
+uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
     -c $HOME/requirements_compiled.txt \
     "${PIP_PKGS[@]}"
 
 # To avoid the following error on Jenkins:
 # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-$HOME/.local/bin/uv pip uninstall --system dask
+uv pip uninstall --system dask
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
