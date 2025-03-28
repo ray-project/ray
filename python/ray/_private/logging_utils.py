@@ -43,7 +43,7 @@ def redirect_stdout_stderr_if_needed(
     params:
     stdout_filepath: the filepath stdout will be redirected to; if empty, stdout will not be redirected.
     stderr_filepath: the filepath stderr will be redirected to; if empty, stderr will not be redirected.
-    rotation_bytes: number of bytes for each rotation file.
+    rotation_bytes: number of bytes which triggers file rotation.
     rotation_backup_count: the max size of rotation files.
     """
 
