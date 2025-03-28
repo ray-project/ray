@@ -640,16 +640,31 @@ class MetricsLogger:
                 found in the n `stats_dicts`.
         """
         all_keys = set()
-        # We do one pass over all the stats_dicts_or_loggers to 1. prepend the key if provided and 2. collect all the keys and 3. convert MetricsLogger to stats dict.
+
+        def traverse_and_add_paths(d, path=()):
+            if isinstance(d, dict):
+                new_dict = {}
+                for key, value in d.items():
+                    new_dict[key] = traverse_and_add_paths(value, path + (key,))
+                return new_dict
+            elif isinstance(d, list):
+                all_keys.add(path)
+                if len(d) == 1:
+                    return d[0]
+                return d
+            else:
+                # For lists and values, we add the path to the set of all keys
+                all_keys.add(path)
+                return d
+
+        # We do one pass over all the stats_dicts_or_loggers to 1. prepend the key if provided and 2. collect all the keys that lead to leaves (which may be lists or values).
         stats_dicts_or_loggers_maybe_with_key_prepended = []
         for stats_dict in stats_dicts:
             if key is not None:
                 stats_dict = {key: stats_dict}
+            stats_dict = traverse_and_add_paths(stats_dict)
             stats_dicts_or_loggers_maybe_with_key_prepended.append(stats_dict)
-            tree.map_structure_with_path(
-                lambda path, _: all_keys.add(force_tuple(path)),
-                stats_dict,
-            )
+
         stats_dicts_or_loggers = stats_dicts_or_loggers_maybe_with_key_prepended
 
         tree.map_structure_with_path(
@@ -667,16 +682,21 @@ class MetricsLogger:
             all_stats = (
                 incoming_stats.copy()
             )  # copy to avoid mutating the original list
-            own_stats = self._get_key(key, stats=self.stats, key_error=False)
+            try:
+                own_stats = self._get_key(key, stats=self.stats, key_error=False)
+            except Exception as e:
+                import pdb
+
+                pdb.set_trace()
             if own_stats is not None:
                 all_stats += [own_stats]
 
             base_stats = None
             more_stats = []
-            for i, stat_or_value in enumerate(incoming_stats):
-                if not isinstance(stat_or_value, Stats):
+            for i, stats_or_values in enumerate(incoming_stats):
+                if not isinstance(stats_or_values, Stats):
                     # Create a Stats object from the non-Stats value.
-                    self._check_tensor(key, stat_or_value)
+                    self._check_tensor(key, stats_or_values)
                     existing_stats = next(
                         (s for s in all_stats if isinstance(s, Stats)), None
                     )
@@ -689,8 +709,8 @@ class MetricsLogger:
                             "settings from."
                         )
 
-                    incoming_stats[i] = stat_or_value = Stats(
-                        stat_or_value,
+                    incoming_stats[i] = stats_or_values = Stats(
+                        stats_or_values,
                         reduce=existing_stats._reduce_method,
                         window=existing_stats._window,
                         ema_coeff=existing_stats._ema_coeff,
@@ -702,16 +722,15 @@ class MetricsLogger:
                 # Create a new Stats object to merge everything into as parallel,
                 # equally weighted Stats.
                 if base_stats is None:
-                    base_stats = stat_or_value
+                    base_stats = stats_or_values
                 else:
-                    more_stats.append(stat_or_value)
+                    more_stats.append(stats_or_values)
 
             if base_stats is None:
                 if not self._key_in_stats(key):
                     raise ValueError(
                         f"Trying to merge metrics for a key {key} where the merging MetricsLogger {self} has not Stats object for the key and no Stats object was found in the incoming values {incoming_stats}."
                     )
-                base_stats = self._get_key(key, key_error=True)
                 base_stats = self._get_key(key, key_error=True)
 
             # If reduce method is "mean", calculate mean of all values and create new base_stats
@@ -765,14 +784,7 @@ class MetricsLogger:
             if len(more_stats) > 0:
                 base_stats.merge_in_parallel(*more_stats)
 
-            # `key` not in self yet -> Store merged stats under the new key.
-            if not self._key_in_stats(key):
-                self._set_key(key, base_stats)
-            # `key` already exists in `self` -> Merge `base_stats` into self's entry
-            # on time axis, meaning give the incoming values priority over already
-            # existing ones.
-            else:
-                self._get_key(key).merge_on_time_axis(base_stats)
+            self._set_key(key, base_stats)
 
     def log_time(
         self,

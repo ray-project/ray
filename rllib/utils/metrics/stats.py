@@ -916,9 +916,20 @@ class Stats:
                 else:
                     reduced = reduce_meth(values)
 
+            def safe_isnan(value):
+                if torch and isinstance(value, torch.Tensor):
+                    return torch.isnan(value)
+                if tf and tf.is_tensor(value):
+                    return tf.math.is_nan(value)
+                return np.isnan(value)
+
             # Convert from numpy to primitive python types, if original `values` are
             # python types.
-            if reduced.shape == () and isinstance(values[0], (int, float)):
+            if (
+                not safe_isnan(reduced)
+                and reduced.shape == ()
+                and isinstance(values[0], (int, float))
+            ):
                 if reduced.dtype in [np.int32, np.int64, np.int8, np.int16]:
                     reduced = int(reduced)
                 else:
