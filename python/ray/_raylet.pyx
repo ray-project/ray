@@ -4382,16 +4382,14 @@ cdef class CoreWorker:
             if num_outputs_stored is None:
                 # If num_returns=0, it is likely a mistake to return a non-None object.
 
-                task_name = async_task_name.get()
+                task_name = CCoreWorkerProcess.GetCoreWorker().get_current_task_name()
 
                 task_num_returns_warning = (
                     "Task {} has num_returns=0 but returned a non-None value {}. "
                     "The return value will be ignored.\n"
                 ).format(task_name.replace("()", ""), repr(num_outputs_stored))
 
-                # Flush log to both .out and .err
-                print(task_num_returns_warning, end="")
-                print(task_num_returns_warning, file=sys.stderr, end="")
+                warnings.warn(task_num_returns_warning)
 
             return num_outputs_stored
 
