@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from typing import List, Tuple, Optional, TYPE_CHECKING
-from ray._common.utils import is_in_test
+from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
     import pyarrow

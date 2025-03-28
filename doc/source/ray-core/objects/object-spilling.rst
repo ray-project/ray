@@ -3,7 +3,7 @@ Object Spilling
 .. _object-spilling:
 
 Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray 
-spills objects to the temporary directory. 
+spills objects to the temporary directory (for example, ``/tmp/ray/session_2025-03-28_00-05-20_204810_2814690``). 
 
 Spilling to a custom directory
 -------------------------------

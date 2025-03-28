@@ -32,7 +32,7 @@ from ray._private.utils import (
     try_to_symlink,
     validate_socket_filepath,
 )
-from ray._common.utils import is_in_test
+from ray._private.utils import is_in_test
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -1847,13 +1847,22 @@ class Node:
         ray params will override the one specified through environment variable and
         system config."""
 
-        if self._ray_params.object_spilling_directory:
+        object_spilling_directory = self._ray_params.object_spilling_directory
+        if not object_spilling_directory:
+            object_spilling_directory = self._config.get(
+                "object_spilling_directory", ""
+            )
+
+        if not object_spilling_directory:
+            object_spilling_directory = os.environ.get(
+                "RAY_object_spilling_directory", ""
+            )
+
+        if object_spilling_directory:
             return json.dumps(
                 {
                     "type": "filesystem",
-                    "params": {
-                        "directory_path": self._ray_params.object_spilling_directory
-                    },
+                    "params": {"directory_path": object_spilling_directory},
                 }
             )
 
