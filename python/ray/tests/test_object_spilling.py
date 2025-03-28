@@ -427,8 +427,6 @@ def test_node_id_in_spill_dir_name():
         file_system_object_spilling_config, node_id, session_dir
     )
 
-    import os
-
     dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
     expected_dir_name = f"{dir_prefix}_{node_id}"
     for path in storage._directory_paths:
@@ -797,8 +795,6 @@ def test_spill_worker_failure(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
