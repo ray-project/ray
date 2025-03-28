@@ -94,7 +94,7 @@ LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
 # Regex for optional prefix (DNS subdomain)
 # Examples:
 #   Valid matches: "abc", "sub.domain.example", "my-label", "123.456.789"
-#   Invalid matches: "-abc", "prefix_", "sub..domain", "a" * 257
+#   Invalid matches: "-abc", "prefix_", "sub..domain", sub.$$.example
 LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
 # Supported operators for label selector conditions. Not (!) conditions are handled separately.
