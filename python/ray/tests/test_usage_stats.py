@@ -44,6 +44,7 @@ schema = {
         "collect_timestamp_ms": {"type": "integer"},
         "session_start_timestamp_ms": {"type": "integer"},
         "cloud_provider": {"type": ["null", "string"]},
+        "cloud_provider_alt": {"type": ["null", "string"]},
         "min_workers": {"type": ["null", "integer"]},
         "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
