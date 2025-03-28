@@ -25,6 +25,7 @@ def connection_parameters():
         "password": os.getenv("SNOWFLAKE_PASSWORD"),
         "database": os.getenv("SNOWFLAKE_DATABASE"),
         "schema": os.getenv("SNOWFLAKE_SCHEMA"),
+        "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
         "private_key": private_key_bytes,
     }
 
