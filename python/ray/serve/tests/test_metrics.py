@@ -1,4 +1,4 @@
-import asyncio
+import http
 import os
 import random
 import sys
@@ -16,7 +16,6 @@ from websockets.sync.client import connect
 from ray.serve.generated import serve_pb2_grpc
 from ray.serve.generated import serve_pb2
 import threading
-import time
 
 import ray
 import ray.util.state as state_api
@@ -550,10 +549,12 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 )
 def test_proxy_timeout_metrics(serve_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
+    signal = SignalActor.options(name="signal123").remote()
 
     @serve.deployment
     async def return_status_code_with_timeout(request: Request):
-        await asyncio.sleep(10)
+        signal = ray.get_actor("signal123")
+        await signal.wait.remote()
         return
 
     serve.run(
@@ -564,6 +565,7 @@ def test_proxy_timeout_metrics(serve_start_shutdown):
 
     r = requests.get("http://127.0.0.1:8000/status_code_timeout")
     assert r.status_code == 408
+    ray.get(signal.send.remote(clear=True))
 
     # make grpc call
     channel = grpc.insecure_channel("localhost:9000")
@@ -588,21 +590,29 @@ def test_proxy_timeout_metrics(serve_start_shutdown):
 def test_proxy_disconnect_metrics(serve_start_shutdown):
     """Test that disconnect metrics are reported correctly."""
 
+    signal = SignalActor.options(name="signal123").remote()
+
     @serve.deployment
-    async def return_status_code_with_disconnect(request: Request):
-        await asyncio.sleep(10)
-        return
+    class Disconnect:
+        async def __call__(self, request: Request):
+            signal = ray.get_actor("signal123")
+            await signal.wait.remote()
+            return
 
     serve.run(
-        return_status_code_with_disconnect.bind(),
+        Disconnect.bind(),
         route_prefix="/disconnect",
         name="disconnect",
     )
 
-    try:
-        requests.get("http://127.0.0.1:8000/disconnect", timeout=0.5)
-    except requests.exceptions.ReadTimeout:
-        pass
+    # Simulate an HTTP disconnect
+    conn = http.client.HTTPConnection("127.0.0.1", 8000)
+    conn.request("GET", "/disconnect")
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+    conn.close()  # Forcefully close the connection
+    ray.get(signal.send.remote(clear=True))
 
     # make grpc call
     channel = grpc.insecure_channel("localhost:9000")
@@ -623,10 +633,12 @@ def test_proxy_disconnect_metrics(serve_start_shutdown):
     thread.start()
 
     # Wait briefly, then forcefully close the channel
-    time.sleep(0.01)  # Give some time for the call to be initiated
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
     channel.close()  # Forcefully close the channel, simulating a client disconnect
-
     thread.join()
+    ray.get(signal.send.remote(clear=True))
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
