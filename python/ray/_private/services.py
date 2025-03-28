@@ -2209,9 +2209,9 @@ def start_monitor(
     Args:
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
-        stdout_filepath: The file path to dump log monitor stdout.
+        stdout_filepath: The file path to dump monitor stdout.
             If None, stdout is not redirected.
-        stderr_filepath: The file path to dump log monitor stderr.
+        stderr_filepath: The file path to dump monitor stderr.
             If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
         max_bytes: Log rotation parameter. Corresponding to

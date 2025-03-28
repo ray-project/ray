@@ -267,14 +267,14 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default="",
-        help="The filepath to dump dashboard stdout.",
+        help="The filepath to dump monitor stdout.",
     )
     parser.add_argument(
         "--stderr-filepath",
         required=False,
         type=str,
         default="",
-        help="The filepath to dump dashboard stderr.",
+        help="The filepath to dump monitor stderr.",
     )
 
     args = parser.parse_args()
