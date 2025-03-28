@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import async_wait_for_condition
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -89,10 +89,6 @@ class FakeReplica(RunningReplica):
     @property
     def replica_id(self) -> ReplicaID:
         return self._replica_id
-
-    @property
-    def max_ongoing_requests(self) -> int:
-        return 5
 
     @property
     def is_cross_language(self) -> bool:

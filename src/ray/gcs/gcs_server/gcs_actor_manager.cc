@@ -14,8 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <algorithm>
 #include <boost/regex.hpp>
+#include <limits>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -1289,7 +1294,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(node_id) << "Node failed, reconstructing actors.";
+  RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {

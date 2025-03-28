@@ -16,6 +16,8 @@
 
 #include <boost/fiber/all.hpp>
 #include <chrono>
+#include <memory>
+#include <utility>
 
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"

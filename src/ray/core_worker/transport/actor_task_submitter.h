@@ -16,10 +16,13 @@
 
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
+#include <deque>
 #include <list>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"

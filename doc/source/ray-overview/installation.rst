@@ -107,7 +107,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
         `Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
         `Linux Python 3.11 (x86_64)`_                    `Linux Python 3.11 (aarch64)`_
         `Linux Python 3.12 (x86_64)`_                    `Linux Python 3.12 (aarch64)`_
-	`Linux Python 3.13 (x86_64)`_ (alpha)            `Linux Python 3.13 (aarch64)`_ (alpha)
+        `Linux Python 3.13 (x86_64)`_ (beta)            `Linux Python 3.13 (aarch64)`_ (beta)
         =============================================== ================================================
 
     .. tab-item:: MacOS
@@ -119,7 +119,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
         `MacOS Python 3.10 (x86_64)`_                  `MacOS Python 3.10 (arm64)`_
         `MacOS Python 3.11 (x86_64)`_                  `MacOS Python 3.11 (arm64)`_
         `MacOS Python 3.12 (x86_64)`_                  `MacOS Python 3.12 (arm64)`_
-        `MacOS Python 3.13 (x86_64)`_ (alpha)          `MacOS Python 3.13 (arm64)`_ (alpha)
+        `MacOS Python 3.13 (x86_64)`_ (beta)          `MacOS Python 3.13 (arm64)`_ (beta)
         ============================================  ==============================================
 
     .. tab-item:: Windows (beta)
@@ -435,7 +435,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`41ddf49 <https://github.com/ray-project/ray/commit/41ddf49f40bb0a9fa188575bc6565075b9adbf18>`_)
+        Ray version: nightly (`8ee3f00 <https://github.com/ray-project/ray/commit/8ee3f0017f9036a262675821cef3c67f89d0c0e6>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

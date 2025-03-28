@@ -68,6 +68,10 @@
 
 # ==== Libraries and frameworks ====
 
+# Common directory shared by core and the libraries.
+# @edoakes is the czar for now because the pattern is new.
+/python/ray/_common/ @edoakes @aslonnie
+
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
 /doc/source/data/ @ray-project/ray-data
@@ -81,7 +85,7 @@
 /doc/source/rllib/ @sven1977 @maxpumperla @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+/doc/source/cluster/ @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
 /python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
