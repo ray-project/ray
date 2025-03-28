@@ -119,9 +119,8 @@ class TorchRecRunner:
                 with self._metrics["train/step"].timer():
                     out = pipeline.progress(batch_iterator)
 
-                print(out)
                 self._train_batch_idx += 1
-                self._metrics["train/rows_processed"].add(len(out))
+                self._metrics["train/rows_processed"].add(len(out[-1]))
 
                 # lr_scheduler.step()
             except StopIteration:
