@@ -1269,7 +1269,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {"format": "leading_1"}
+    options_dict = {}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:
@@ -1282,30 +1282,10 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        for bytes in r.iter_content(chunk_size=None):
-            bytes = bytearray(bytes)
-            # Note that each iteration of the loop doesn't always get
-            # the entire chunk yielded from the server side.
-            # That is, the first byte isn't always 0 or 1.
-            #
-            # 1. If a server chunk starting with b"0" is split into two client chunks,
-            # an error will be raised during iteration of the first client chunk.
-            #
-            # 2. If a client chunk starts with b"1" or any other bytes, it succeeds.
-            #
-            # TODO (kevin85421): We should consider not using the first byte as an
-            # indicator of success or failure. This seems to be an uncommon pattern,
-            # and it doesn't seem important for the client side.
-            if bytes.startswith(b"0"):
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
-            else:
-                if bytes.startswith(b"1"):
-                    bytes.pop(0)
-                logs = bytes
-                if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            yield logs
+        for chunk in r.iter_content(chunk_size=None):
+            if encoding is not None:
+                chunk = chunk.decode(encoding=encoding, errors=errors)
+            yield chunk
 
 
 @DeveloperAPI
