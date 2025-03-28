@@ -1898,7 +1898,7 @@ def validate_label_selector_value(selector: str) -> Optional[str]:
         return None
     if not re.match(LABEL_SELECTOR_REGEX, selector):
         return str(
-            f"Invalid label selector value `{selector}`. Supported operators are: ! and {LABEL_OPERATORS}. "
+            f"Invalid label selector value `{selector}`. The label selector value should contain optional operators and a label value. Supported operators are: ! and {LABEL_OPERATORS}. "
             f"Value must be 63 chars or less beginning and ending "
             f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
             f"dots (.), and alphanumerics between."
