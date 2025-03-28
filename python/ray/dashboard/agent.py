@@ -5,7 +5,6 @@ import logging
 import logging.handlers
 import os
 import pathlib
-from platform import node
 import signal
 import sys
 
