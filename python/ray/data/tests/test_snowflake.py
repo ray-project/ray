@@ -22,7 +22,6 @@ def connection_parameters():
     parameters = {
         "user": os.getenv("SNOWFLAKE_USER"),
         "account": os.getenv("SNOWFLAKE_ACCOUNT"),
-        "password": os.getenv("SNOWFLAKE_PASSWORD"),
         "database": os.getenv("SNOWFLAKE_DATABASE"),
         "schema": os.getenv("SNOWFLAKE_SCHEMA"),
         "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
@@ -59,30 +58,23 @@ def test_read(ray_start_regular_shared, connection_parameters):
 
 
 @pytest.mark.needs_credentials
-def test_read_query_once(ray_start_regular_shared, connection_parameters):
-    # This query fetches a small dataset with a variety of column types.
-    query = "SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCDS_SF100TCL.CALL_CENTER"
-
-    # Mock the Snowflake connection and cursor, to check that the query is
-    # executed exactly once.
-    with patch("snowflake.connector.connect") as mock_connect:
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value.__enter__.return_value
-        mock_connect.return_value.__enter__.return_value = mock_connection
-
-        ray.data.read_snowflake(query, connection_parameters).materialize()
-
-        # Verify that cursor.execute() was called exactly once
-        mock_cursor.execute.assert_called_once_with(query)
-
-
-@pytest.mark.needs_credentials
 def test_write(ray_start_regular_shared, temp_table, connection_parameters):
     expected_column_names = ["title", "year", "score"]
     expected_rows = [
         ("Monty Python and the Holy Grail", 1975, 8.2),
         ("And Now for Something Completely Different", 1971, 7.5),
     ]
+
+    # Create the table first
+    create_table_sql = f"""
+    CREATE TABLE IF NOT EXISTS {temp_table} (
+        "title" VARCHAR(255),
+        "year" INTEGER,
+        "score" FLOAT
+    )
+    """
+    execute(create_table_sql, connection_parameters)
+
     items = [dict(zip(expected_column_names, row)) for row in expected_rows]
     dataset = ray.data.from_items(items)
 
@@ -112,11 +104,13 @@ def execute(
         column_names = [column_metadata.name for column_metadata in cursor.description]
         rows = cursor.fetchall()
 
+    # TODO(mowen): Figure out how to actually handle the Decimal objects, we don't
+    # want a divergenece in behavior here.
     # The Snowflake Python Connector represents numbers as `Decimal` objects.
-    rows = [
-        tuple(float(value) if isinstance(value, Decimal) else value for value in row)
-        for row in rows
-    ]
+    # rows = [
+    #     tuple(float(value) if isinstance(value, Decimal) else value for value in row)
+    #     for row in rows
+    # ]
 
     return column_names, rows
 

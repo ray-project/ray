@@ -28,7 +28,6 @@ SERVICES = {
     "snowflake_schema": "SNOWFLAKE_SCHEMA",
     "snowflake_database": "SNOWFLAKE_DATABASE",
     "snowflake_user": "SNOWFLAKE_USER",
-    "snowflake_password": "SNOWFLAKE_PASSWORD",
     "snowflake_account": "SNOWFLAKE_ACCOUNT",
     "snowflake_warehouse": "SNOWFLAKE_WAREHOUSE",
     "snowflake_private_key": "SNOWFLAKE_PRIVATE_KEY",
