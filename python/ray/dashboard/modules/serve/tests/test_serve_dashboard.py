@@ -480,8 +480,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     for target in target_details["gRPC"][0].targets:
         assert target.ip in proxy_ips
         assert target.port == grpc_port
-    assert target_details["HTTP"][0].prefix_route == "/"
-    assert target_details["gRPC"][0].prefix_route == "/"
+    assert target_details["HTTP"][0].route_prefix == "/"
+    assert target_details["gRPC"][0].route_prefix == "/"
 
 
 @pytest.mark.skipif(

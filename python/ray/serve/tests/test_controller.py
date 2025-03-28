@@ -205,10 +205,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
             "target_capacity": None,
             "target_details": {
                 "HTTP": [
-                    {"targets": [{"ip": node_ip, "port": 8000}], "prefix_route": "/"}
+                    {"targets": [{"ip": node_ip, "port": 8000}], "route_prefix": "/"}
                 ],
                 "gRPC": [
-                    {"targets": [{"ip": node_ip, "port": 9000}], "prefix_route": "/"}
+                    {"targets": [{"ip": node_ip, "port": 9000}], "route_prefix": "/"}
                 ],
             },
         }

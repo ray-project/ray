@@ -678,13 +678,13 @@ def test_proxy_state_manager_get_target_info(all_nodes):
     manager._proxy_states[all_nodes[-1][0]].try_update_status(ProxyStatus.DRAINED)
 
     target_info = manager.get_target_info(RequestProtocol.HTTP)
-    assert target_info.prefix_route == "/"
+    assert target_info.route_prefix == "/"
     assert len(target_info.targets) == len(all_nodes) - 1
     assert target_info.targets[0].ip == "mock_node_ip"
     assert target_info.targets[0].port == 8000
 
     target_info = manager.get_target_info(RequestProtocol.GRPC)
-    assert target_info.prefix_route == "/"
+    assert target_info.route_prefix == "/"
     assert len(target_info.targets) == 0
 
     with pytest.raises(ValueError):

@@ -58,7 +58,7 @@ from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, Deploym
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
-    TargetInfo,
+    TargetGroup,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -948,20 +948,18 @@ class ServeController:
             target_details=self.get_target_details(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_details(self) -> Dict[str, List[TargetInfo]]:
+    def get_target_details(self) -> Dict[str, List[TargetGroup]]:
         """Target details contains information about IP
         addresses and ports of all proxies in the cluster.
 
         This information is used to setup the load balancer.
         """
-        target_details = {
-            RequestProtocol.HTTP.value: [],
-            RequestProtocol.GRPC.value: [],
+        if self.proxy_state_manager is None:
+            return {}
+        return {
+            protocol: [self.proxy_state_manager.get_target_info(protocol)]
+            for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
         }
-        for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]:
-            target_info = self.proxy_state_manager.get_target_info(protocol)
-            target_details[protocol.value].append(target_info)
-        return target_details
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

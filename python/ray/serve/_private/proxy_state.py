@@ -38,7 +38,7 @@ from ray.serve.schema import (
     ProxyDetails,
     ProxyStatus,
     Target,
-    TargetInfo,
+    TargetGroup,
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -612,7 +612,7 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def get_target_info(self, protocol: RequestProtocol) -> TargetInfo:
+    def get_target_info(self, protocol: RequestProtocol) -> TargetGroup:
         """In Ray Serve, every proxy is responsible for routing requests to the
         correct application. Here we curate a list of targets for the given protocol.
         Where each target represents how to reach a proxy.
@@ -625,9 +625,9 @@ class ProxyStateManager:
             port = self._http_options.port
         elif protocol == RequestProtocol.GRPC:
             if not is_grpc_enabled(self._grpc_options):
-                return TargetInfo(
+                return TargetGroup(
                     targets=[],
-                    prefix_route="/",
+                    route_prefix="/",
                 )
             port = self._grpc_options.port
         else:
@@ -641,10 +641,10 @@ class ProxyStateManager:
         # setting prefix route to "/" because in ray serve, proxy
         # accepts requests from the client and routes them to the
         # correct application. This is true for both HTTP and gRPC proxies.
-        target_info = TargetInfo(
+        target_info = TargetGroup(
             targets=targets,
             # TODO(abrar): incase of gRPC, the prefix route should be the service name.
-            prefix_route="/",
+            route_prefix="/",
         )
         return target_info
 
