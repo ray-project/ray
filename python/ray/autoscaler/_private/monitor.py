@@ -40,8 +40,6 @@ from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
 )
-from ray._raylet import StreamRedirector
-from ray._private.utils import open_log
 
 try:
     import prometheus_client
@@ -703,7 +701,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Disable log rotation for windows platform.
+    # Disable log rotation for windows, because NTFS doesn't allow file deletion when there're multiple owners or borrowers, which happens to be how ray accesses log files.
     logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
     logging_rotation_backup_count = (
         args.logging_rotate_backup_count if sys.platform != "win32" else 1
