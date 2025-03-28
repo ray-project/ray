@@ -89,7 +89,7 @@ class RuntimeEnvContext:
         try_update_ld_library_path(language, self.native_libraries)
 
         # try update ld_preload
-        try_update_ld_preload(self.native_libraries)
+        try_update_ld_preload(self.preload_libraries)
 
         # By default, raylet uses the path to default_worker.py on host.
         # However, the path to default_worker.py inside the container
