@@ -7,32 +7,33 @@ import time
 import tempfile
 from typing import Dict
 
+import torch
+from torchrec.distributed import TrainPipelineSparseDist
+from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
+from torchrec.optim.optimizers import in_backward_optimizer_filter
+
 import ray.train
+import ray.train.torch
 from ray._private.test_utils import safe_write_to_results_json
 from ray.data._internal.stats import Timer
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
-import torch
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
 from image_classification.factory import ImageClassificationFactory
 
+
 logger = logging.getLogger(__name__)
 
 
 # TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
-class TrainLoopRunner:
+class TorchRecRunner:
     def __init__(self, factory: BenchmarkFactory):
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
 
-        model = factory.get_model()
-        self.model = ray.train.torch.prepare_model(model)
-
-        self.loss_fn = factory.get_loss_fn()
-
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        self.setup()
 
         # Training progress state.
         self._train_batch_idx: int = 0
@@ -64,6 +65,25 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
+    def setup(self):
+        device = ray.train.torch.get_device()
+
+        self.model = self.factory.get_model()
+
+        dense_optimizer = KeyedOptimizerWrapper(
+            dict(in_backward_optimizer_filter(self.model.named_parameters())),
+            lambda params: torch.optim.Adagrad(params, lr=15.0, eps=1e-8),
+        )
+        self.optimizer = CombinedOptimizer([self.model.fused_optimizer, dense_optimizer])
+        # lr_scheduler = LRPolicyScheduler(
+        #     optimizer, args.lr_warmup_steps, args.lr_decay_start, args.lr_decay_steps
+        # )
+
+        self.pipeline = TrainPipelineSparseDist(
+            self.model, self.optimizer, device, execute_all_batches=True
+        )
+
+
     def run(self):
         logger.info(
             f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
@@ -89,40 +109,26 @@ class TrainLoopRunner:
             logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
+        batch_iterator = iter(train_dataloader)
 
-        # NOTE: Time the first batch separately since it includes the dataset
-        # pipeline warmup time.
-        with self._metrics["train/iter_first_batch"].timer():
-            batch = self.get_next_batch(train_dataloader)
+        pipeline = self.pipeline
+        pipeline._model.train()
 
-        # Skip through batches if we restored to a middle of the epoch.
-        # TODO: Compare this baseline to the data checkpointing approach once we have it.
-        if self._train_batch_idx > 0:
-            if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+        while True:
+            try:
+                with self._metrics["train/step"].timer():
+                    out = pipeline.progress(batch_iterator)
 
-            for _ in range(self._train_batch_idx):
-                with self._metrics["train/iter_skip_batch"].timer():
-                    self.get_next_batch(train_dataloader)
+                print(out)
+                self._train_batch_idx += 1
+                self._metrics["train/rows_processed"].add(len(out))
 
-        while batch:
-            input_batch, labels = batch
-
-            with self._metrics["train/step"].timer():
-                if not self.benchmark_config.skip_train_step:
-                    self.train_step(input_batch, labels)
-
-            self._train_batch_idx += 1
-            self._metrics["train/rows_processed"].add(len(labels))
-
-            if self._should_validate_during_epoch():
-                self.validate_and_checkpoint()
+                # lr_scheduler.step()
+            except StopIteration:
+                break
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
-
-            with self._metrics["train/iter_batch"].timer():
-                batch = self.get_next_batch(train_dataloader)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -144,18 +150,10 @@ class TrainLoopRunner:
         )
 
     def get_next_batch(self, dataloader):
-        try:
-            return next(dataloader)
-        except StopIteration:
-            return None
+        pass
 
     def train_step(self, input_batch, labels):
-        self.model.train()
-        out = self.model(input_batch)
-        loss = self.loss_fn(out, labels)
-        loss.backward()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        pass
 
     def validate_and_checkpoint(self):
         with self._metrics["validation/epoch"].timer():
@@ -180,36 +178,10 @@ class TrainLoopRunner:
                 f"batch={self._train_batch_idx}"
             )
 
-        val_dataloader = self.factory.get_val_dataloader()
-
-        self.model.eval()
-
-        total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
-        num_rows = 0
-
-        with self._metrics["validation/iter_first_batch"].timer():
-            batch = self.get_next_batch(val_dataloader)
-
-        while batch:
-            input_batch, labels = batch
-
-            with self._metrics["validation/step"].timer():
-                if not self.benchmark_config.skip_validation_step:
-                    total_loss += self.validate_step(input_batch, labels)
-
-            num_rows += len(labels)
-            self._metrics["validation/rows_processed"].add(len(labels))
-
-            with self._metrics["validation/iter_batch"].timer():
-                batch = self.get_next_batch(val_dataloader)
-
-        return {"validation/loss": total_loss.item() / num_rows}
+        return {}
 
     def validate_step(self, input_batch, labels):
-        with torch.no_grad():
-            out = self.model(input_batch)
-            loss = self.loss_fn(out, labels)
-        return loss
+        pass
 
     def report_checkpoint(self, metrics, checkpoint):
         checkpoint_dir_name = (
@@ -324,72 +296,3 @@ class TrainLoopRunner:
 
         return metrics
 
-
-METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
-
-
-def train_fn_per_worker(config):
-    factory = config["factory"]
-
-    if factory.benchmark_config.task == "recsys":
-        from recsys.torchrec_runner import TorchRecRunner
-        runner = TorchRecRunner(factory)
-    else:
-        runner = TrainLoopRunner(factory)
-
-    runner.run()
-
-    metrics = runner.get_metrics()
-    if ray.train.get_context().get_world_rank() == 0:
-        with open(METRICS_OUTPUT_PATH, "w") as f:
-            json.dump(metrics, f)
-
-
-def main():
-    benchmark_config: BenchmarkConfig = cli_to_config()
-    logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
-
-    if benchmark_config.task == "image_classification":
-        factory = ImageClassificationFactory(benchmark_config)
-    elif benchmark_config.task == "recsys":
-        from recsys.recsys_factory import RecsysFactory
-
-        factory = RecsysFactory(benchmark_config)
-    else:
-        raise ValueError
-
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_fn_per_worker,
-        train_loop_config={"factory": factory},
-        scaling_config=ray.train.ScalingConfig(
-            num_workers=benchmark_config.num_workers,
-            use_gpu=not benchmark_config.mock_gpu,
-            resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
-        ),
-        run_config=ray.train.RunConfig(
-            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
-            name=date_str(include_ms=True),
-            failure_config=ray.train.FailureConfig(
-                max_failures=benchmark_config.max_failures
-            ),
-        ),
-        datasets=factory.get_ray_datasets(),
-    )
-    trainer.fit()
-
-    with open(METRICS_OUTPUT_PATH, "r") as f:
-        metrics = json.load(f)
-
-    final_metrics_str = (
-        "Final metrics:\n" + "-" * 80 + "\n" + pprint.pformat(metrics) + "\n" + "-" * 80
-    )
-    logger.info(final_metrics_str)
-
-    # Write metrics as a release test result.
-    safe_write_to_results_json(metrics)
-
-
-if __name__ == "__main__":
-    # Workers need to access the working directory module.
-    ray.init(runtime_env={"working_dir": os.path.dirname(__file__)})
-    main()
