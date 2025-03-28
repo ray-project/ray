@@ -1577,6 +1577,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pull_manager",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2957,6 +2958,7 @@ ray_cc_test(
     deps = [
         ":gcs",
         "//src/ray/util",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
