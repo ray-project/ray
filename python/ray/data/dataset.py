@@ -792,8 +792,11 @@ class Dataset:
             if batch_format == "pandas":
                 # The index of the column must be set
                 # to align with the index of the batch.
-                if isinstance(column, pd.Series) or \
-                   isinstance(column, pd.DataFrame) or isinstance(column, pd.Index):
+                if (
+                    isinstance(column, pd.Series)
+                    or isinstance(column, pd.DataFrame)
+                    or isinstance(column, pd.Index)
+                ):
                     column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
@@ -5153,9 +5156,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[ObjectRef["pyarrow.Table"]] = (
-            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
-        )
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)

@@ -217,7 +217,9 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
 
 def test_add_column_to_pandas(ray_start_regular_shared):
     # Refer to issue https://github.com/ray-project/ray/issues/51758
-    ds = ray.data.from_pandas(pd.DataFrame({"a": list(range(20))}), override_num_blocks=2)
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"a": list(range(20))}), override_num_blocks=2
+    )
 
     ds = ds.add_column(
         "foo1", lambda df: pd.Series([1] * len(df)), batch_format="pandas"
