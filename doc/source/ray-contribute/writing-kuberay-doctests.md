@@ -30,7 +30,11 @@ For example, the `kind create cluster` code block in the image above uses the `n
 
 Before exiting Jupyter Lab, clear all run outputs and run the code blocks you want to include in the final document. The output gets saved in the notebook file and will be compared with the output when running the doctest. Don't forget to save the notebook file.
 
-.. note:: Limitations: You cannot use `tab-set` containing code blocks in Jupyter notebooks.
+```{eval-rst}
+.. note::
+
+   Limitations: You cannot use ``tab-set`` containing code blocks in Jupyter notebooks.
+```
 
 ## Running doctests locally
 
