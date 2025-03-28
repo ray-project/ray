@@ -80,7 +80,7 @@ class StandardScaler(Preprocessor):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.output_columns = _derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -94,6 +94,10 @@ class StandardScaler(Preprocessor):
         def column_standard_scaler(s: pd.Series):
             s_mean = self.stats_[f"mean({s.name})"]
             s_std = self.stats_[f"std({s.name})"]
+
+            if s_std is None or s_mean is None:
+                s[:] = np.nan
+                return s
 
             # Handle division by zero.
             # TODO: extend this to handle near-zero values.
@@ -176,7 +180,7 @@ class MinMaxScaler(Preprocessor):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.output_columns = self.output_columns = _derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -268,7 +272,7 @@ class MaxAbsScaler(Preprocessor):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         self.columns = columns
-        self.output_columns = _derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -374,7 +378,7 @@ class RobustScaler(Preprocessor):
         self.columns = columns
         self.quantile_range = quantile_range
 
-        self.output_columns = _derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -435,20 +439,3 @@ class RobustScaler(Preprocessor):
             f"quantile_range={self.quantile_range!r}), "
             f"output_columns={self.output_columns!r})"
         )
-
-
-def _derive_and_validate_output_columns(
-    columns: List[str], output_columns: Optional[List[str]]
-) -> List[str]:
-    """
-    Returns the output columns, checking if they are explicitely set, otherwise defaulting to
-    the input columns. Throws an error when the length of the output columns does not match the
-    length of the input columns.
-    """
-
-    if output_columns and len(columns) != len(output_columns):
-        raise ValueError(
-            "Invalid output_columns: Got len(columns) != len(output_columns)."
-            "The length of columns and output_columns must match."
-        )
-    return output_columns or columns

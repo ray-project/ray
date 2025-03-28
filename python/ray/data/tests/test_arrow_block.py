@@ -13,13 +13,137 @@ from pyarrow import parquet as pq
 
 import ray
 from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorArray,
+)
 from ray.data import DataContext
-from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
+from ray.data._internal.arrow_block import (
+    ArrowBlockAccessor,
+    ArrowBlockBuilder,
+    ArrowBlockColumnAccessor,
+)
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.extensions.object_extension import _object_extension_type_allowed
+
+
+def simple_array():
+    return pa.array([1, 2, None, 6], type=pa.int64())
+
+
+def simple_chunked_array():
+    return pa.chunked_array([pa.array([1, 2]), pa.array([None, 6])])
+
+
+def _wrap_as_pa_scalar(v, dtype: pa.DataType):
+    return pa.scalar(v, type=dtype)
+
+
+@pytest.mark.parametrize("arr", [simple_array(), simple_chunked_array()])
+@pytest.mark.parametrize("as_py", [True, False])
+class TestArrowBlockColumnAccessor:
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 3),
+            (False, 4),
+        ],
+    )
+    def test_count(self, arr, ignore_nulls, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.count(ignore_nulls=ignore_nulls, as_py=as_py)
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 9),
+            (False, None),
+        ],
+    )
+    def test_sum(self, arr, ignore_nulls, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.sum(ignore_nulls=ignore_nulls, as_py=as_py)
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 1),
+            (False, None),
+        ],
+    )
+    def test_min(self, arr, ignore_nulls, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.min(ignore_nulls=ignore_nulls, as_py=as_py)
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 6),
+            (False, None),
+        ],
+    )
+    def test_max(self, arr, ignore_nulls, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.max(ignore_nulls=ignore_nulls, as_py=as_py)
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 3),
+            (False, None),
+        ],
+    )
+    def test_mean(self, arr, ignore_nulls, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.mean(ignore_nulls=ignore_nulls, as_py=as_py)
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.float64())
+
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "provided_mean, expected",
+        [
+            (3.0, 14.0),
+            (None, 14.0),
+        ],
+    )
+    def test_sum_of_squared_diffs_from_mean(self, arr, provided_mean, as_py, expected):
+        accessor = ArrowBlockColumnAccessor(arr)
+        result = accessor.sum_of_squared_diffs_from_mean(
+            ignore_nulls=True, mean=provided_mean, as_py=as_py
+        )
+
+        if not as_py:
+            expected = _wrap_as_pa_scalar(expected, dtype=pa.float64())
+
+        assert result == expected
+
+    def test_to_pylist(self, arr, as_py):
+        accessor = ArrowBlockColumnAccessor(arr)
+        assert accessor.to_pylist() == arr.to_pylist()
 
 
 @pytest.fixture(scope="module")
@@ -273,6 +397,31 @@ def test_append_column(ray_start_regular_shared):
 
     expected_block = pa.Table.from_pydict({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
+
+
+def test_random_shuffle(ray_start_regular_shared):
+    TOTAL_ROWS = 10000
+    table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
+    block_accessor = ArrowBlockAccessor(table)
+
+    # Perform the random shuffle
+    shuffled_table = block_accessor.random_shuffle(random_seed=None)
+    assert shuffled_table.num_rows == TOTAL_ROWS
+
+    # Access the shuffled data
+    block_accessor = ArrowBlockAccessor(shuffled_table)
+    shuffled_data = block_accessor.to_pandas()["id"].tolist()
+    original_data = list(range(TOTAL_ROWS))
+
+    # Ensure the shuffled data is not identical to the original
+    assert (
+        shuffled_data != original_data
+    ), "Shuffling should result in a different order"
+
+    # Ensure the entire set of original values is still in the shuffled dataset
+    assert (
+        sorted(shuffled_data) == original_data
+    ), "The shuffled data should contain all the original values"
 
 
 def test_register_arrow_types(tmp_path):

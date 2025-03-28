@@ -16,30 +16,19 @@
 
 #include <google/protobuf/map.h>
 
+#include <algorithm>
 #include <boost/range/join.hpp>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
-
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
-  // Check whether the resource is CPU resource or CPU resource inside PG.
-  if (resource_id == ResourceID::CPU()) {
-    return true;
-  }
-
-  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                       /*for_wildcard_resource*/ true,
-                                                       /*for_indexed_resource*/ true);
-  if (possible_pg_resource.has_value() &&
-      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
-    return true;
-  }
-
-  return false;
-}
 
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
@@ -183,14 +172,14 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // requests.
     size_t num_classes_with_cpu = 0;
     for (const auto &entry : tasks_to_dispatch_) {
-      const auto &dispatch_queue = entry.second;
-      for (const auto &work : dispatch_queue) {
+      const auto &cur_dispatch_queue = entry.second;
+      for (const auto &work : cur_dispatch_queue) {
         const auto &task_spec = work->task.GetTaskSpecification();
         auto cpu_request_ =
             task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
         if (cpu_request_ > 0) {
           num_classes_with_cpu++;
-          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
+          total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
           break;
         }
       }
@@ -212,9 +201,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       size_t total_cpu_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
-        const auto &sched_cls_desc =
+        const auto &cur_sched_cls_desc =
             TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
+        if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
+            0) {
           total_cpu_running_tasks += entry.second.running_tasks.size();
         }
       }
@@ -823,13 +813,12 @@ void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
   // version of the task has not yet been canceled.
-  auto inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
-  if (inserted) {
+  auto executed_task_inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
+  if (executed_task_inserted) {
     for (size_t i = 0; i < deps.size(); i++) {
-      auto inserted =
+      auto [it, pinned_task_inserted] =
           pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      auto it = inserted.first;
-      if (inserted.second) {
+      if (pinned_task_inserted) {
         // This is the first task that needed this argument.
         pinned_task_arguments_bytes_ += it->second.first->GetSize();
       }

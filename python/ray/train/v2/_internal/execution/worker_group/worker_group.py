@@ -38,6 +38,7 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -80,6 +81,7 @@ class WorkerGroupContext:
     This stores the context that is shared when starting a worker group.
 
     Attributes:
+        run_attempt_id: The ID of the run attempt.
         train_fn: The training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
@@ -87,6 +89,7 @@ class WorkerGroupContext:
         checkpoint: Optional checkpoint to restore from.
     """
 
+    run_attempt_id: str
     train_fn: Callable[[], None]
     num_workers: int
     resources_per_worker: Dict[str, float]
@@ -124,13 +127,14 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If worker group fails to start.
         """
 
-        worker_group = cls(train_run_context, callbacks)
-        worker_group._start(worker_group_context)
+        worker_group = cls(train_run_context, worker_group_context, callbacks)
+        worker_group._start()
         return worker_group
 
     def __init__(
         self,
         train_run_context: TrainRunContext,
+        worker_group_context: WorkerGroupContext,
         callbacks: Optional[
             List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
         ] = None,
@@ -146,6 +150,9 @@ class WorkerGroup:
             experiment_dir_name=run_config.name,
             storage_filesystem=run_config.storage_filesystem,
         )
+
+        self._worker_group_context: WorkerGroupContext = worker_group_context
+
         callbacks = callbacks or []
         # Group of callbacks that are specific to worker group itself.
         self._callbacks = [c for c in callbacks if isinstance(c, WorkerGroupCallback)]
@@ -156,11 +163,10 @@ class WorkerGroup:
             if isinstance(c, (WorkerCallback, TrainContextCallback))
         ]
 
-        self._worker_group_context: Optional[WorkerGroupContext] = None
         self._worker_group_state: Optional[WorkerGroupState] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
-
+        self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
         # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
@@ -188,15 +194,14 @@ class WorkerGroup:
 
     def _start(
         self,
-        worker_group_context: WorkerGroupContext,
     ):
         """Internal method to start the worker group."""
+
         worker_group_state_builder = WorkerGroupStateBuilder()
 
         try:
             self._start_impl(
                 worker_group_state_builder,
-                worker_group_context,
             )
         except Exception as e:
             if not self.has_started():
@@ -209,13 +214,11 @@ class WorkerGroup:
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
-        worker_group_context: WorkerGroupContext,
     ):
         """Implementation of worker group startup.
 
         Args:
             worker_group_state_builder: Builder for constructing worker group state.
-            worker_group_context: Context for the worker group.
 
         Raises:
             ValueError: If workers are already started.
@@ -223,6 +226,7 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
         self._assert_inactive()
+        worker_group_context = self._worker_group_context
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
@@ -230,6 +234,9 @@ class WorkerGroup:
         with invoke_context_managers(
             [callback.on_worker_group_start for callback in self._callbacks]
         ):
+            for callback in self._callbacks:
+                callback.before_worker_group_start(worker_group_context)
+
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
@@ -356,7 +363,10 @@ class WorkerGroup:
             )
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
-        workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
+        workers = [
+            Worker(actor, meta, resources_per_worker)
+            for actor, meta in zip(actors, actor_metadatas)
+        ]
         return WorkerGroup._assign_worker_ranks(workers)
 
     def _init_train_context_on_workers(
@@ -380,6 +390,8 @@ class WorkerGroup:
         ]
         ray_get_safe(context_init_tasks)
 
+        self._decorate_worker_log_file_paths(workers)
+
     #####################################################################################
     # Shutdown Worker Group
     #####################################################################################
@@ -402,7 +414,6 @@ class WorkerGroup:
             logger.debug("Worker group shutdown successful.")
 
     def _clear_state(self):
-        self._worker_group_context = None
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 
@@ -427,6 +438,7 @@ class WorkerGroup:
         for callback in self._callbacks:
             callback.after_worker_group_poll_status(worker_group_poll_status)
 
+        self._latest_poll_status = worker_group_poll_status
         return worker_group_poll_status
 
     def _poll_workers_and_collect_errors(
@@ -626,12 +638,15 @@ class WorkerGroup:
         return self._worker_group_state.workers
 
     def get_worker_group_context(self) -> WorkerGroupContext:
-        self._assert_active()
         return self._worker_group_context
 
     def get_worker_group_state(self) -> WorkerGroupState:
         self._assert_active()
         return self._worker_group_state
+
+    def get_latest_poll_status(self) -> Optional[WorkerGroupPollStatus]:
+        self._assert_active()
+        return self._latest_poll_status
 
     def __len__(self) -> int:
         self._assert_active()
@@ -667,6 +682,28 @@ class WorkerGroup:
                 node_rank=node_ips.index(worker.metadata.node_ip),
             )
             worker.distributed_context = distributed_context
+
+        return workers
+
+    @staticmethod
+    def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
+        """Decorate worker log file paths.
+
+        Returns:
+            workers: Workers with log file paths set.
+        """
+        # Execute all tasks in parallel and then get results
+        log_path_refs = [
+            worker.execute_async(get_train_application_worker_log_path)
+            for worker in workers
+        ]
+        log_paths = ray_get_safe(log_path_refs)
+
+        # Assign log paths to workers
+        for worker, log_path in zip(workers, log_paths):
+            if log_path is None:
+                raise ValueError("Worker log file path is not set.")
+            worker.log_file_path = log_path
 
         return workers
 

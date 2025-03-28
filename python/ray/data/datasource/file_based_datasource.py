@@ -140,9 +140,10 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._filesystem = RetryingPyFileSystem.wrap(
-            self._filesystem, context=self._data_context
+            self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
         paths, file_sizes = map(
             list,
@@ -285,6 +286,8 @@ class FileBasedDatasource(Datasource):
                         iter(read_paths),
                         read_files,
                         num_workers=num_threads,
+                        preserve_ordering=True,
+                        buffer_size=max(len(read_paths) // num_threads, 1),
                     )
                 else:
                     logger.debug(f"Reading {len(read_paths)} files.")
@@ -475,28 +478,31 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
 
     wrap_retries = False
     fs_to_be_wrapped = filesystem  # Only unwrap for S3FileSystemWrapper
-    context = None
+    retryable_errors = []
     if isinstance(fs_to_be_wrapped, RetryingPyFileSystem):
         wrap_retries = True
-        context = fs_to_be_wrapped.data_context
+        retryable_errors = fs_to_be_wrapped.retryable_errors
         fs_to_be_wrapped = fs_to_be_wrapped.unwrap()
     if isinstance(fs_to_be_wrapped, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(
-            fs_to_be_wrapped, wrap_retries=wrap_retries, context=context
+            fs_to_be_wrapped,
+            wrap_retries=wrap_retries,
+            retryable_errors=retryable_errors,
         )
     return filesystem
 
 
 def _unwrap_s3_serialization_workaround(
     filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
-    context: Optional[DataContext] = None,
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
         wrap_retries = filesystem._wrap_retries
-        context = filesystem._context
+        retryable_errors = filesystem._retryable_erros
         filesystem = filesystem.unwrap()
         if wrap_retries:
-            filesystem = RetryingPyFileSystem.wrap(filesystem, context=context)
+            filesystem = RetryingPyFileSystem.wrap(
+                filesystem, retryable_errors=retryable_errors
+            )
     return filesystem
 
 
@@ -505,11 +511,11 @@ class _S3FileSystemWrapper:
         self,
         fs: "pyarrow.fs.S3FileSystem",
         wrap_retries: bool = False,
-        context: Optional[DataContext] = None,
+        retryable_errors: List[str] = tuple(),
     ):
         self._fs = fs
         self._wrap_retries = wrap_retries
-        self._context = context
+        self._retryable_erros = retryable_errors
 
     def unwrap(self):
         return self._fs
@@ -548,7 +554,9 @@ def _resolve_kwargs(
     return kwargs
 
 
-def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+def _validate_shuffle_arg(
+    shuffle: Union[Literal["files"], FileShuffleConfig, None]
+) -> None:
     if not (
         shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
     ):

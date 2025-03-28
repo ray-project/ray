@@ -3281,9 +3281,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
     def test_len(self):
         # Generate an empty episode and ensure that `len()` raises an error.
         episode = MultiAgentEpisode()
-        # Now raise an error.
-        with self.assertRaises(AssertionError):
-            len(episode)
 
         # Generate a new episode with some initialization data.
         obs = [

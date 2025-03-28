@@ -8,6 +8,7 @@ from ray import tune
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
@@ -24,19 +25,19 @@ class EpisodeAndSampleCallbacks(RLlibCallback):
     def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
         self.counts.update({"start": 1})
 
     def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
         self.counts.update({"step": 1})
 
     def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):

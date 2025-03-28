@@ -19,7 +19,7 @@ This section discusses concepts from:
 
 Serve provides some [fault tolerance](serve-ft-detail) features out of the box. Two options to get end-to-end fault tolerance are the following:
 * tune these features and run Serve on top of [KubeRay]
-* use the [Anyscale platform](https://docs.anyscale.com/platform/services/head-node-ft), a managed Ray platform
+* use the [Anyscale platform](https://docs.anyscale.com/platform/services/head-node-ft?utm_source=ray_docs&utm_medium=docs&utm_campaign=tolerance), a managed Ray platform
 
 ### Replica health-checking
 

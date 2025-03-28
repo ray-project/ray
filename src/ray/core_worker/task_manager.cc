@@ -14,6 +14,13 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
@@ -765,7 +772,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
   auto &stream = stream_it->second;
   inserted_to_stream = stream.TemporarilyInsertToStreamIfNeeded(object_id);
 
-  // We shouldn't hold a lock when calling refernece counter API.
+  // We shouldn't hold a lock when calling reference counter API.
   if (inserted_to_stream) {
     RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
     reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);

@@ -159,6 +159,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "asan-clang",
             "ubsan",
             "tsan-clang",
+            "cgroup",
             # java build types
             "java",
             # do not build ray
@@ -166,6 +167,11 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
         ]
     ),
     default="optimized",
+)
+@click.option(
+    "--install-mask",
+    type=str,
+    help="A install mask string to install ray with",
 )
 @click.option(
     "--bisect-run-test-target",
@@ -182,6 +188,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     "--tmp-filesystem",
     type=str,
     help=("Filesystem to use for /tmp"),
+)
+@click.option(
+    "--privileged",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Run the test in a privileged Docker container",
 )
 def main(
     targets: List[str],
@@ -204,8 +217,10 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    install_mask: Optional[str],
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
+    privileged: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -234,12 +249,18 @@ def main(
         build_name=build_name,
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
+        install_mask=install_mask,
+        privileged=privileged,
     )
     if build_only:
         sys.exit(0)
     if bisect_run_test_target:
         test_targets = [bisect_run_test_target]
     else:
+        get_high_impact_tests = (
+            run_high_impact_tests or os.environ.get("RAYCI_MICROCHECK_RUN") == "1"
+        )
+        lookup_test_database = os.environ.get("RAYCI_DISABLE_TEST_DB") != "1"
         test_targets = _get_test_targets(
             container,
             targets,
@@ -248,8 +269,8 @@ def main(
             except_tags=_add_default_except_tags(except_tags),
             only_tags=only_tags,
             get_flaky_tests=run_flaky_tests,
-            get_high_impact_tests=run_high_impact_tests
-            or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
+            get_high_impact_tests=get_high_impact_tests,
+            lookup_test_database=lookup_test_database,
         )
     success = container.run_tests(
         team,
@@ -282,7 +303,9 @@ def _get_container(
     python_version: Optional[str] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
+    install_mask: Optional[str] = None,
     skip_ray_installation: bool = False,
+    privileged: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
@@ -303,6 +326,8 @@ def _get_container(
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
             tmp_filesystem=tmp_filesystem,
+            install_mask=install_mask,
+            privileged=privileged,
         )
 
     if operating_system == "windows":
@@ -373,6 +398,7 @@ def _get_test_targets(
     yaml_dir: Optional[str] = None,
     get_flaky_tests: bool = False,
     get_high_impact_tests: bool = False,
+    lookup_test_database: bool = True,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
@@ -389,12 +415,19 @@ def _get_test_targets(
         .split(os.linesep)
         if target
     }
-    flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
+    flaky_tests = set(
+        _get_flaky_test_targets(
+            team,
+            operating_system,
+            yaml_dir,
+            lookup_test_database=lookup_test_database,
+        )
+    )
 
     if get_flaky_tests:
         # run flaky test cases, so we include flaky tests in the list of targets
         # provided by users
-        final_targets = flaky_tests.intersection(test_targets)
+        final_targets = test_targets.intersection(flaky_tests)
     else:
         # normal case, we want to exclude flaky tests from the list of targets provided
         # by users
@@ -432,7 +465,10 @@ def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
 
 
 def _get_flaky_test_targets(
-    team: str, operating_system: str, yaml_dir: Optional[str] = None
+    team: str,
+    operating_system: str,
+    yaml_dir: Optional[str],
+    lookup_test_database: bool,
 ) -> List[str]:
     """
     Get all test targets that are flaky
@@ -448,14 +484,17 @@ def _get_flaky_test_targets(
             yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
 
     # load flaky tests from DB
-    s3_flaky_tests = {
-        # remove "linux:" prefix for linux tests to be consistent with the
-        # interface supported in the yaml file
-        test.get_name().lstrip("linux:")
-        for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-        if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-    }
-    all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
+    if lookup_test_database:
+        s3_flaky_tests = {
+            # remove "linux:" prefix for linux tests to be consistent with the
+            # interface supported in the yaml file
+            test.get_name().lstrip("linux:")
+            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+        }
+        all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
+    else:
+        all_flaky_tests = sorted(yaml_flaky_tests)
 
     # linux tests are prefixed with "//"
     if operating_system == "linux":

@@ -212,6 +212,7 @@ Iceberg
    :toctree: doc/
 
    read_iceberg
+   Dataset.write_iceberg
 
 Lance
 -----
@@ -231,6 +232,16 @@ ClickHouse
    :toctree: doc/
 
    read_clickhouse
+
+Daft
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_daft
+   Dataset.to_daft
 
 Dask
 ----
