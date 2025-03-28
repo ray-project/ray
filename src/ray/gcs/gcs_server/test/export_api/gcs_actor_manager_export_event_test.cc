@@ -269,8 +269,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
-  create_actor_request.mutable_task_spec()->mutable_labels()->insert(
-      {"__data_operator_id", "hi"});
+  create_actor_request.mutable_task_spec()->mutable_labels()->insert({"w00t", "hi"});
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
@@ -322,7 +321,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
               "including lineage ref count.");
         }
         if (expected_states[event_idx] == "ALIVE") {
-          ASSERT_EQ(event_data["ray_data_operator_id"], "hi");
+          ASSERT_EQ(event_data["labels"]["w00t"], "hi");
         }
       }
       return;
