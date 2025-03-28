@@ -9,8 +9,9 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition, Collector
 from ray.serve._private.test_utils import send_signal_on_cancellation
+from ray.serve.exceptions import RequestCancelledError
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -98,25 +99,18 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
         assert h.remote().result() == i
 
 
-async def test_exception_types_on_cancellation(serve_instance):
-    @ray.remote
-    class Collector:
-        def __init__(self):
-            self.items = []
-
-        def add(self, item):
-            self.items.append(item)
-
-        def get(self):
-            return self.items
-
+async def test_request_cancelled_error_on_http_client_disconnect_during_execution(
+    serve_instance,
+):
+    """Test the exception thrown for executing request on http client disconnect"""
     collector = Collector.remote()
+    child_signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=1)
     class Child:
         async def __call__(self):
             try:
-                await asyncio.sleep(0.5)
+                await child_signal.wait.remote()
             except asyncio.CancelledError:
                 await collector.add.remote("Child_CancelledError")
                 raise
@@ -132,34 +126,75 @@ async def test_exception_types_on_cancellation(serve_instance):
             except asyncio.CancelledError:
                 await collector.add.remote("Parent_CancelledError")
                 raise
-            except ray.serve.exceptions.RequestCancelledError:
+            except RequestCancelledError:
                 await collector.add.remote("Parent_RequestCancelledError")
                 raise
 
-    # Deploy and make requests
     serve.run(Parent.bind(Child.bind()))
 
-    # Send two concurrent requests with timeout to trigger cancellation
-    async with httpx.AsyncClient(timeout=0.2) as client:
-        try:
-            await asyncio.gather(
-                client.get("http://localhost:8000/"),
-                client.get("http://localhost:8000/"),
-            )
-        except httpx.ReadTimeout:
-            pass
+    # Make a request with short timeout that will cause disconnection
+    try:
+        await httpx.AsyncClient(timeout=0.1).get("http://localhost:8000/")
+    except httpx.ReadTimeout:
+        pass
 
-    # Wait for exceptions to be processed
     await asyncio.sleep(0.5)
+    exceptions = ray.get(collector.get.remote())
+    assert sorted(exceptions) == ["Child_CancelledError", "Parent_CancelledError"]
 
-    # Verify exceptions
-    exceptions = await collector.get.remote()
-    assert sorted(exceptions) == [
-        "Child_CancelledError",
-        "Parent_CancelledError",
-        "Parent_CancelledError",
-    ]
-    assert "Parent_RequestCancelledError" not in exceptions
+
+async def test_request_cancelled_error_on_http_client_disconnect_during_assignment(
+    serve_instance,
+):
+    """Test the exception thrown for queued request on http client disconnect"""
+    collector = Collector.remote()
+    child_signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Child:
+        async def __call__(self):
+            try:
+                await child_signal.wait.remote()
+            except asyncio.CancelledError:
+                await collector.add.remote("Child_CancelledError")
+                raise
+
+    @serve.deployment
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        async def __call__(self):
+            try:
+                await self.child.remote()
+            except asyncio.CancelledError:
+                await collector.add.remote("Parent_CancelledError")
+                raise
+            except RequestCancelledError:
+                await collector.add.remote("Parent_RequestCancelledError")
+                raise
+
+    h = serve.run(Parent.bind(Child.bind()))
+
+    # Block Child with first request
+    r = h.remote()
+    wait_for_condition(lambda: ray.get(child_signal.cur_num_waiters.remote()) == 1)
+
+    # Make a second request with short timeout that will cause disconnection
+    try:
+        await httpx.AsyncClient(timeout=0.1).get("http://localhost:8000/")
+    except httpx.ReadTimeout:
+        pass
+
+    await asyncio.sleep(0.5)
+    assert "Parent_CancelledError" in ray.get(collector.get.remote())
+
+    # Clean up first request
+    r.cancel()
+    try:
+        await r
+    except RequestCancelledError:
+        pass
 
 
 if __name__ == "__main__":
