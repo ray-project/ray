@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
 
 import ray
 import ray.cloudpickle as pickle
@@ -117,7 +118,6 @@ if TYPE_CHECKING:
     import dask
     import mars
     import modin
-    import pandas
     import pyarrow
     import pyspark
     import tensorflow as tf
@@ -792,7 +792,9 @@ class Dataset:
             if batch_format == "pandas":
                 # The index of the column must be set
                 # to align with the index of the batch.
-                column.index = batch.index
+                if isinstance(column, pd.Series) or \
+                   isinstance(column, pd.DataFrame) or isinstance(column, pd.Index):
+                    column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
