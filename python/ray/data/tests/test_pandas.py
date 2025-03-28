@@ -215,6 +215,17 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
     assert all(row["array"] == [1, 1, 1])
 
 
+def test_add_column_to_pandas(ray_start_regular_shared):
+    # Refer to issue https://github.com/ray-project/ray/issues/51758
+    ds = ray.data.from_pandas(pd.DataFrame({"a": list(range(20))}))
+
+    ds = ds.add_column(
+        "foo", lambda df: pd.Series([1] * len(df)), batch_format="pandas"
+    )
+    for row in ds.iter_rows():
+        assert row["foo"] == 1
+
+
 if __name__ == "__main__":
     import sys
 
