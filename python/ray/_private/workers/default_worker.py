@@ -191,9 +191,10 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--enable_resource_isolation",
+    "--enable-resource-isolation",
     type=bool,
     required=False,
+    default=False,
     help=(
         "If true, core worker enables resource isolation through cgroupv2 by reserving resources for ray system processes."
     ),
