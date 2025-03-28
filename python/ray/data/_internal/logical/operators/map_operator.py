@@ -280,8 +280,8 @@ class Project(AbstractMap):
             compute=compute,
         )
         self._batch_size = None
-        self._cols = cols or []
-        self._cols_rename = cols_rename or {}
+        self._cols = cols
+        self._cols_rename = cols_rename
         self._batch_format = "pyarrow"
         self._zero_copy_batch = True
 
