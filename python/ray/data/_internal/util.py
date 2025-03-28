@@ -914,29 +914,39 @@ class _InterruptibleQueue(Queue):
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
+    preserve_ordering: bool,
     num_workers: int = 1,
-    queue_buffer_size: int = 2,
+    buffer_size: int = 1,
 ) -> Generator[U, None, None]:
-
-    gen_id = random.randint(0, 2**31 - 1)
-
     """Returns a generator (iterator) mapping items from the
     provided iterator applying provided transformation in parallel (using a
     thread-pool).
 
-    NOTE: Even though the mapping is performed in parallel across N
-          threads, this method provides crucial guarantee of preserving the
-          ordering of the source iterator, ie that
+    NOTE: There are some important constraints that needs to be carefully
+          understood before using this method
 
-            iterator = [A1, A2, ... An]
-            mapped iterator = [map(A1), map(A2), ..., map(An)]
+        1. If `preserve_ordering` is True
+            a. This method would unroll input iterator eagerly (irrespective
+                of the speed of resulting generator being consumed). This is necessary
+                as we can not guarantee liveness of the algorithm AND preserving of the
+                original ordering at the same time.
 
-          Preserving ordering is crucial to eliminate non-determinism in producing
-          content of the blocks.
+            b. Resulting ordering of the output will "match" ordering of the input, ie
+               that:
+                    iterator = [A1, A2, ... An]
+                    output iterator = [map(A1), map(A2), ..., map(An)]
+
+        2. If `preserve_ordering` is False
+            a. No more than `num_workers * (queue_buffer_size + 1)` elements will be
+                fetched from the iterator
+
+            b. Resulting ordering of the output is unspecified (and is
+            non-deterministic)
 
     Args:
         base_iterator: Iterator yielding elements to map
         fn: Transformation to apply to each element
+        preserve_ordering: Whether ordering has to be preserved
         num_workers: The number of threads to use in the threadpool (defaults to 1)
         buffer_size: Number of objects to be buffered in its input/output
                      queues (per queue; defaults to 2). Total number of objects held
@@ -949,8 +959,13 @@ def make_async_gen(
         elements mapped by provided transformation (while *preserving the ordering*)
     """
 
+    gen_id = random.randint(0, 2**31 - 1)
+
     if num_workers < 1:
         raise ValueError("Size of threadpool must be at least 1.")
+
+    # Signal handler used to interrupt workers when terminating
+    interrupted_event = threading.Event()
 
     # To apply transformations to elements in parallel *and* preserve the ordering
     # following invariants are established:
@@ -967,16 +982,26 @@ def make_async_gen(
     #     order as input queues) dequeues 1 mapped element at a time from each output
     #     queue and yields it
     #
-    # Signal handler used to interrupt workers when terminating
-    interrupted_event = threading.Event()
+    # However, in case when we're preserving the ordering we can not enforce the input
+    # queue size as this could result in deadlocks since transformations could be
+    # producing sequences of arbitrary length.
+    #
+    # Check `test_make_async_gen_varying_seq_length_stress_test` for more context on
+    # this problem.
+    if preserve_ordering:
+        input_queue_buf_size = -1
+        num_input_queues = num_workers
+    else:
+        input_queue_buf_size = (buffer_size + 1) * num_workers
+        num_input_queues = 1
 
     input_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(input_queue_buf_size, interrupted_event)
+        for _ in range(num_input_queues)
     ]
+
     output_queues = [
-        _InterruptibleQueue(queue_buffer_size, interrupted_event)
-        for _ in range(num_workers)
+        _InterruptibleQueue(buffer_size, interrupted_event) for _ in range(num_workers)
     ]
 
     # Filling worker
@@ -985,11 +1010,16 @@ def make_async_gen(
             # First, round-robin elements from the iterator into
             # corresponding input queues (one by one)
             for idx, item in enumerate(base_iterator):
-                input_queues[idx % num_workers].put(item)
+                input_queues[idx % num_input_queues].put(item)
 
-            # Enqueue sentinel objects to signal end of the line
+            # NOTE: We have to Enqueue sentinel objects for every transforming
+            #       worker:
+            #   - In case of preserving order of ``num_queues`` == ``num_workers``
+            #     we will enqueue 1 sentinel per queue
+            #   - In case of NOT preserving order all ``num_workers`` sentinels
+            #     will be enqueued into a single queue
             for idx in range(num_workers):
-                input_queues[idx].put(SENTINEL)
+                input_queues[idx % num_input_queues].put(SENTINEL)
 
         except InterruptedError:
             pass
@@ -1004,18 +1034,14 @@ def make_async_gen(
                 output_queue.put(e)
 
     # Transforming worker
-    def _run_transforming_worker(worker_id: int):
-        input_queue = input_queues[worker_id]
-        output_queue = output_queues[worker_id]
-
+    def _run_transforming_worker(input_queue, output_queue):
         try:
             # Create iterator draining the queue, until it receives sentinel
             #
             # NOTE: `queue.get` is blocking!
             input_queue_iter = iter(input_queue.get, SENTINEL)
 
-            mapped_iter = fn(input_queue_iter)
-            for result in mapped_iter:
+            for result in fn(input_queue_iter):
                 # Enqueue result of the transformation
                 output_queue.put(result)
 
@@ -1042,11 +1068,11 @@ def make_async_gen(
     transforming_worker_threads = [
         threading.Thread(
             target=_run_transforming_worker,
-            name=f"map_tp_transforming_worker-{gen_id}-{worker_idx}",
-            args=(worker_idx,),
+            name=f"map_tp_transforming_worker-{gen_id}-{idx}",
+            args=(input_queues[idx % num_input_queues], output_queues[idx]),
             daemon=True,
         )
-        for worker_idx in range(num_workers)
+        for idx in range(num_workers)
     ]
 
     for t in transforming_worker_threads:
@@ -1071,7 +1097,6 @@ def make_async_gen(
             #     order and one single element is dequeued (in a blocking way!) at a
             #     time from every individual output queue
             #
-            non_empty_queues = []
             empty_queues = []
 
             # At every iteration only remaining non-empty queues
@@ -1086,10 +1111,12 @@ def make_async_gen(
                 if item is SENTINEL:
                     empty_queues.append(output_queue)
                 else:
-                    non_empty_queues.append(output_queue)
                     yield item
 
-            remaining_output_queues = non_empty_queues
+            if empty_queues:
+                remaining_output_queues = [
+                    q for q in remaining_output_queues if q not in empty_queues
+                ]
 
     finally:
         # Set flag to interrupt workers (to make sure no dangling
