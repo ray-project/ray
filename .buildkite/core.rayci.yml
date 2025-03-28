@@ -207,21 +207,6 @@ steps:
         --only-tags debug_tests
         --except-tags kubernetes,manual
 
-  - label: ":ray: core: temp tests"
-    tags: python
-    instance_type: medium
-    commands:
-      - mkdir -p /artifact-mount/ps-memories
-      - ./ci/dump-processes.sh &
-      - echo hi && sleep 200 && echo bye
-
-  - label: ":ray: core: temp1 tests"
-    tags: python
-    instance_type: medium
-    commands:
-      - mkdir -p /artifact-mount/ps-memories
-      - ./ci/run.sh
-
   - label: ":ray: core: asan tests"
     tags: python
     instance_type: medium
