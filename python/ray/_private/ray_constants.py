@@ -242,8 +242,6 @@ PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
-# TODO(sang): Delete it.
-PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
