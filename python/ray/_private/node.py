@@ -1122,7 +1122,7 @@ class Node:
         """Start the log monitor."""
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
+        stdout_file, stderr_file = self.get_log_file_handles(
             "log_monitor", unique=True, create_out=False
         )
         process_info = ray._private.services.start_log_monitor(
@@ -1133,7 +1133,7 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
+            stdout_file=stdout_file,
             stderr_file=stderr_file,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
