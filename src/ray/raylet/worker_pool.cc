@@ -334,7 +334,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Add resource isolation flag.
   worker_command_args.emplace_back(absl::StrFormat(
-      "--enable_resource_isolation=%s", enable_resource_isolation_ ? "true" : "false"));
+      "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
 
   for (const auto &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
