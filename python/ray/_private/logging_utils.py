@@ -57,7 +57,7 @@ def redirect_stdout_stderr_if_needed(
             False,  # tee_to_stderr
         )
     if stderr_filepath:
-        StreamRedirector.redirect_stdout(
+        StreamRedirector.redirect_stderr(
             stderr_filepath,
             rotation_bytes,
             rotation_backup_count,
