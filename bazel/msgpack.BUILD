@@ -26,8 +26,13 @@ cc_library(
         "include/",
     ],
     strip_include_prefix = "include",
-    copts = [
-    ],
+    copts = select({
+        "//:msvc-cl": [],
+        # Ray doesn't control how third-party implementation, simply ignores certain warning errors.
+        "//conditions:default": [
+            "-Wno-shadow",
+        ],
+    })
     deps = [
         ":_msgpack",
     ],
