@@ -216,7 +216,6 @@ steps:
   - label: ":ray: core: asan tests"
     tags:
       - python
-      - skip-on-premerge # currently failing
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
