@@ -59,7 +59,9 @@ message ExportTrainRunEventData {
   // in progress
   optional uint64 end_time_ns = 9;
   // The path to the log file for the Train run controller.
-  string controller_log_file_path = 10;
+  optional string controller_log_file_path = 10;
+  // Version of Ray Train
+  uint32 ray_train_version = 11;
 }
 
 // Metadata for an individual attempt to execute a Train run
@@ -123,7 +125,7 @@ message ExportTrainRunAttemptEventData {
     // The resources allocated to this Train worker
     TrainResources resources = 10;
     // The path to the log file for the Train worker
-    string log_file_path = 11;
+    optional string log_file_path = 11;
   }
 
   // Unique identifier for the parent Train run
@@ -143,4 +145,6 @@ message ExportTrainRunAttemptEventData {
   repeated TrainResources resources = 8;
   // List of Train workers participating in this attempt, sorted by global ranks
   repeated TrainWorker workers = 9;
+  // Version of Ray Train
+  uint32 ray_train_version = 10;
 }
