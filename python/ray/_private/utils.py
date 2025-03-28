@@ -94,7 +94,7 @@ LABEL_OPERATORS = {"in"}
 OPERATOR_PATTERN = "|".join([re.escape(operator) for operator in LABEL_OPERATORS])
 # Regex to match valid label selector operators and values
 LABEL_SELECTOR_REGEX = re.compile(
-    rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, {LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
+    rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
 )
 
 
