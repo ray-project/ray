@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_client.h"
 
 namespace ray::rpc {
@@ -36,15 +37,12 @@ class GrpcStubManager {
  public:
   GrpcStubManager(const std::string &address,
                   int port,
-                  ClientCallManager &client_call_manager,
-                  size_t num_connections) {
-    RAY_CHECK_GT(num_connections, static_cast<unsigned int>(0));
-    grpc_clients_.reserve(num_connections);
-    for (size_t idx = 0; idx < num_connections; ++idx) {
-      grpc::ChannelArguments args;
-      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
-      grpc_clients_.emplace_back(std::make_unique<GrpcClient<T>>(
-          address, port, client_call_manager, std::move(args)));
+                  ClientCallManager &client_call_manager) {
+    const int conn_num = ::RayConfig::instance().object_manager_client_connection_num();
+    grpc_clients_.reserve(conn_num);
+    for (size_t idx = 0; idx < conn_num; ++idx) {
+      grpc_clients_.emplace_back(
+          std::make_unique<GrpcClient<T>>(address, port, client_call_manager));
     }
   }
 

@@ -23,8 +23,8 @@
 #include <vector>
 
 #include "ray/common/status.h"
+#include "ray/object_manager/grpc_stub_manager.h"
 #include "ray/rpc/grpc_client.h"
-#include "ray/rpc/grpc_stub_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
@@ -42,10 +42,8 @@ class ObjectManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   ObjectManagerClient(const std::string &address,
                       const int port,
-                      ClientCallManager &client_call_manager,
-                      int num_connections =
-                          ::RayConfig::instance().object_manager_client_connection_num())
-      : grpc_stub_manager_(address, port, client_call_manager, num_connections) {}
+                      ClientCallManager &client_call_manager)
+      : grpc_stub_manager_(address, port, client_call_manager) {}
 
   /// Push object to remote object manager
   ///

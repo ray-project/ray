@@ -112,15 +112,6 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel_);
   }
 
-  GrpcClient(const std::string &address,
-             const int port,
-             ClientCallManager &call_manager,
-             grpc::ChannelArguments arguments)
-      : client_call_manager_(call_manager) {
-    channel_ = BuildChannel(address, port, std::move(arguments));
-    stub_ = GrpcService::NewStub(channel_);
-  }
-
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.
