@@ -7,7 +7,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    FrozenSet,
     List,
     Tuple,
     Union,
@@ -941,7 +940,7 @@ class CompiledDAG:
         # These communicators are created by Compiled Graph, rather than passed in.
         # Communicators are only created when self._create_default_communicator is True.
         self._actors_to_created_communicator_id: Dict[
-            FrozenSet["ray.actor.ActorHandle"], str
+            Tuple["ray.actor.ActorHandle"], str
         ] = {}
 
         # Set of actors involved in P2P communication using an unresolved communicator.
@@ -1329,7 +1328,8 @@ class CompiledDAG:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
-            actors = frozenset(collective_op.actor_handles)
+            # using tuple to preserve the order of actors for collective operations
+            actors = tuple(collective_op.actor_handles)
             if actors in self._actors_to_created_communicator_id:
                 communicator_id = self._actors_to_created_communicator_id[actors]
             else:
