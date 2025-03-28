@@ -2373,7 +2373,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  # https://github.com/ray-project/ray/issues/41984
+  frequency: manual
   team: rllib
   stable: False
 
@@ -2519,6 +2520,7 @@
 
   stable: false
 
+  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
