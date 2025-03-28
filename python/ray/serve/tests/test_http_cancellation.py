@@ -99,6 +99,7 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
         assert h.remote().result() == i
 
 
+@pytest.mark.asyncio
 async def test_request_cancelled_error_on_http_client_disconnect_during_execution(
     serve_instance,
 ):
@@ -134,15 +135,17 @@ async def test_request_cancelled_error_on_http_client_disconnect_during_executio
 
     # Make a request with short timeout that will cause disconnection
     try:
-        await httpx.AsyncClient(timeout=0.1).get("http://localhost:8000/")
+        await httpx.AsyncClient(timeout=0.5).get("http://localhost:8000/")
     except httpx.ReadTimeout:
         pass
 
-    await asyncio.sleep(0.5)
-    exceptions = ray.get(collector.get.remote())
-    assert sorted(exceptions) == ["Child_CancelledError", "Parent_CancelledError"]
+    wait_for_condition(
+        lambda: ray.get(collector.get.remote())
+        == ["Child_CancelledError", "Parent_CancelledError"]
+    )
 
 
+@pytest.mark.asyncio
 async def test_request_cancelled_error_on_http_client_disconnect_during_assignment(
     serve_instance,
 ):
@@ -182,12 +185,13 @@ async def test_request_cancelled_error_on_http_client_disconnect_during_assignme
 
     # Make a second request with short timeout that will cause disconnection
     try:
-        await httpx.AsyncClient(timeout=0.1).get("http://localhost:8000/")
+        await httpx.AsyncClient(timeout=0.5).get("http://localhost:8000/")
     except httpx.ReadTimeout:
         pass
 
-    await asyncio.sleep(0.5)
-    assert "Parent_CancelledError" in ray.get(collector.get.remote())
+    wait_for_condition(
+        lambda: ray.get(collector.get.remote()) == ["Parent_CancelledError"]
+    )
 
     # Clean up first request
     r.cancel()
