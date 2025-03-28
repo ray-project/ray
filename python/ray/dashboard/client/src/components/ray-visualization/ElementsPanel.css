@@ -60,6 +60,7 @@
 .elements-table-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
 }
 
@@ -67,6 +68,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
 }
 
 .elements-table th {
@@ -85,6 +87,9 @@
   padding: 8px 16px;
   border-bottom: 1px solid #eaecef;
   width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .elements-table tbody tr {
@@ -195,6 +200,9 @@
   border-bottom: 1px solid #eaecef;
   cursor: pointer;
   width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .methods-table tr:hover {

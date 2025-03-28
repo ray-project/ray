@@ -755,133 +755,119 @@ const PhysicalVisualization = forwardRef<
         const values = getUniqueContextValues(physicalViewData, contextKey);
         const colorScale = getContextColorScale(values);
 
-        const legendGroup = svg.append("g").attr("class", "legend");
-
-        legendRef.current = legendGroup.node() as SVGGElement;
-
+        // Create a foreign object to hold the HTML-based legend
+        const svgHeight = parseInt(svg.style("height"));
         const legendWidth = 200;
-        const legendItemHeight = 20;
-        const legendX = 20; // Left side position
-        const legendY = 50; // Increased from 20 to 50 to move lower
+        const legendHeight = Math.min(300, svgHeight - 70); // Cap height and allow scrolling
+        const legendX = 20;
+        const legendY = 50;
 
-        // Add one more item for search matches if there's a search term
-        const hasSearchTerm = searchTerm && searchTerm.trim() !== "";
-        const totalValues = hasSearchTerm ? values.length + 1 : values.length;
-
-        const maxItems = Math.floor(
-          (parseInt(svg.style("height")) - 70) / legendItemHeight,
-        ); // Adjusted for new top margin
-
-        // Calculate number of columns needed
-        const numColumns = Math.ceil(totalValues / maxItems);
-        const itemsPerColumn = Math.ceil(totalValues / numColumns);
-
-        // Draw legend background with increased width for longer text and multiple columns
-        legendGroup
-          .append("rect")
+        // Add legend container as a foreignObject for HTML content
+        const foreignObject = svg
+          .append("foreignObject")
           .attr("x", legendX - 10)
-          .attr("y", legendY - 25) // Adjusted to maintain proper spacing from title
-          .attr("width", legendWidth * numColumns + 20)
-          .attr(
-            "height",
-            Math.min(totalValues, itemsPerColumn) * legendItemHeight + 30,
-          ) // Increased padding
-          .attr("fill", "white")
-          .attr("stroke", "#ccc")
-          .attr("rx", 5)
-          .attr("ry", 5);
+          .attr("y", legendY - 25)
+          .attr("width", legendWidth + 20)
+          .attr("height", legendHeight + 30);
 
-        // Draw legend title
-        legendGroup
-          .append("text")
-          .attr("x", legendX)
-          .attr("y", legendY - 8) // Adjusted to maintain proper spacing
-          .attr("font-size", "12px")
-          .attr("font-weight", "bold")
+        // Keep a reference to be able to remove it later
+        legendRef.current = foreignObject.node() as SVGGElement;
+
+        // Create HTML content for the legend
+        const legendDiv = foreignObject
+          .append("xhtml:div")
+          .style("width", "100%")
+          .style("height", "100%")
+          .style("background", "white")
+          .style("border", "1px solid #ccc")
+          .style("border-radius", "5px")
+          .style("padding", "10px")
+          .style("box-sizing", "border-box");
+
+        // Add legend title
+        legendDiv
+          .append("xhtml:div")
+          .style("font-size", "12px")
+          .style("font-weight", "bold")
+          .style("margin-bottom", "10px")
           .text(contextKey === "actor_id" ? "Actor ID" : contextKey);
 
-        // Draw legend items in columns
-        values.forEach((value, index) => {
-          const columnIndex = Math.floor(index / itemsPerColumn);
-          const rowIndex = index % itemsPerColumn;
+        // Create scrollable container for legend items
+        const itemsContainer = legendDiv
+          .append("xhtml:div")
+          .style("max-height", `${legendHeight - 40}px`) // Reduce max-height to ensure scrolling works
+          .style("overflow-y", "auto")
+          .style("overflow-x", "hidden")
+          .style("padding-right", "5px") // Add padding for scrollbar
+          .style("margin-right", "-5px") // Offset padding to maintain alignment
+          .on("wheel", (event) => {
+            // Prevent scroll events from propagating to the SVG
+            event.stopPropagation();
+          })
+          .on("mousewheel", (event) => {
+            // For older browsers
+            event.stopPropagation();
+          })
+          .on("DOMMouseScroll", (event) => {
+            // For Firefox
+            event.stopPropagation();
+          });
 
-          const itemGroup = legendGroup
-            .append("g")
-            .attr(
-              "transform",
-              `translate(${legendX + columnIndex * legendWidth}, ${
-                legendY + rowIndex * legendItemHeight
-              })`,
-            );
+        // Add legend items vertically
+        values.forEach((value) => {
+          const itemDiv = itemsContainer
+            .append("xhtml:div")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("padding", "4px 0")
+            .style("white-space", "nowrap")
+            .style("text-overflow", "ellipsis");
 
           // Color box
-          itemGroup
-            .append("rect")
-            .attr("width", 15)
-            .attr("height", 15)
-            .attr("fill", colorScale(value))
-            .attr("stroke", "#ccc")
-            .attr("stroke-width", 0.5);
+          itemDiv
+            .append("xhtml:div")
+            .style("width", "15px")
+            .style("height", "15px")
+            .style("background-color", colorScale(value))
+            .style("border", "0.5px solid #ccc")
+            .style("flex-shrink", "0");
 
-          // Create a container for text clipping
-          const textClip = itemGroup
-            .append("g")
-            .attr("transform", "translate(25, 0)");
-
-          // Add clipping path for text
-          const clipId = `legend-text-clip-${index}`;
-          textClip
-            .append("clipPath")
-            .attr("id", clipId)
-            .append("rect")
-            .attr("width", legendWidth - 40)
-            .attr("height", legendItemHeight);
-
-          // Add text with clipping and tooltip
-          const text = textClip
-            .append("text")
-            .attr("y", 12)
-            .attr("font-size", "12px")
-            .attr("clip-path", `url(#${clipId})`)
+          // Text with tooltip
+          itemDiv
+            .append("xhtml:div")
+            .style("margin-left", "8px")
+            .style("overflow", "hidden")
+            .style("text-overflow", "ellipsis")
+            .style("font-size", "12px")
+            .style("width", "calc(100% - 23px)") // Fixed width to ensure overflow works
+            .attr("title", value) // Add tooltip
             .text(value);
-
-          // Add title element for tooltip on text overflow
-          const textNode = text.node();
-          if (textNode && textNode.getComputedTextLength() > legendWidth - 40) {
-            text.append("title").text(value);
-          }
         });
 
         // Add search match legend item if there's a search term
-        if (hasSearchTerm) {
-          const columnIndex = Math.floor(values.length / itemsPerColumn);
-          const rowIndex = values.length % itemsPerColumn;
-
-          const searchItemGroup = legendGroup
-            .append("g")
-            .attr(
-              "transform",
-              `translate(${legendX + columnIndex * legendWidth}, ${
-                legendY + rowIndex * legendItemHeight
-              })`,
-            );
+        if (searchTerm && searchTerm.trim() !== "") {
+          const searchItemDiv = itemsContainer
+            .append("xhtml:div")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("padding", "4px 0")
+            .style("margin-top", "5px");
 
           // Color box for search matches
-          searchItemGroup
-            .append("rect")
-            .attr("width", 15)
-            .attr("height", 15)
-            .attr("fill", "white")
-            .attr("stroke", "#4caf50") // Update to match the new highlight color
-            .attr("stroke-width", 2)
-            .attr("stroke-dasharray", "3,2");
+          searchItemDiv
+            .append("xhtml:div")
+            .style("width", "15px")
+            .style("height", "15px")
+            .style("background-color", "white")
+            .style("border", "2px solid #4caf50")
+            .style("border-style", "dashed")
+            .style("flex-shrink", "0");
 
           // Text for search matches
-          searchItemGroup
-            .append("text")
-            .attr("x", 25)
-            .attr("y", 12)
-            .attr("font-size", "12px")
+          searchItemDiv
+            .append("xhtml:div")
+            .style("margin-left", "8px")
+            .style("font-size", "12px")
             .text("Search Match");
         }
       },

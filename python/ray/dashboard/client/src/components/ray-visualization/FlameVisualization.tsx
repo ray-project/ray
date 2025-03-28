@@ -615,36 +615,70 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     const searchTree = (d: PartitionHierarchyNode, term: string) => {
       const results: PartitionHierarchyNode[] = [];
       let sum = 0;
+      const matchingPaths = new Set<string>();
 
-      const searchInner = (d: PartitionHierarchyNode, foundParent: boolean) => {
-        let found = false;
+      // First pass to find all matching nodes and their paths
+      const findMatches = (
+        node: PartitionHierarchyNode,
+        path: string[] = [],
+      ) => {
+        const currentPath = [...path, node.data.name];
+        const pathKey = currentPath.join("->");
 
-        if (searchMatch(d, term)) {
-          d.data.highlight = true;
-          found = true;
-          if (!foundParent) {
-            sum += getValue(d);
+        const isMatch = searchMatch(node, term);
+        if (isMatch) {
+          matchingPaths.add(pathKey);
+          results.push(node);
+          if (!node.parent) {
+            sum += getValue(node);
           }
-          results.push(d);
-        } else {
-          d.data.highlight = false;
-          d.data.dimmed = true; // Add dimmed flag for non-matching nodes
+
+          // Add all parent paths to the matching paths
+          for (let i = 1; i < currentPath.length; i++) {
+            matchingPaths.add(currentPath.slice(0, i).join("->"));
+          }
         }
 
-        if (d.children) {
-          d.children.forEach((child) => {
-            searchInner(child as PartitionHierarchyNode, foundParent || found);
+        if (node.children) {
+          node.children.forEach((child) => {
+            findMatches(child as PartitionHierarchyNode, currentPath);
           });
         }
       };
 
-      searchInner(d, false);
+      // Second pass to hide or show nodes based on matching paths
+      const applyVisibility = (
+        node: PartitionHierarchyNode,
+        path: string[] = [],
+      ) => {
+        const currentPath = [...path, node.data.name];
+        const pathKey = currentPath.join("->");
+
+        // Clear previous highlighting/dimming
+        node.data.highlight = false;
+        node.data.dimmed = false;
+
+        // Hide node if it's not in a matching path
+        node.data.hide = !matchingPaths.has(pathKey);
+
+        if (node.children) {
+          node.children.forEach((child) => {
+            applyVisibility(child as PartitionHierarchyNode, currentPath);
+          });
+        }
+      };
+
+      // Run the passes
+      findMatches(d);
+      applyVisibility(d);
+
       return [results, sum];
     };
 
     const clear = (d: PartitionHierarchyNode) => {
       d.data.highlight = false;
-      d.data.dimmed = false; // Clear dimmed flag
+      d.data.dimmed = false;
+      d.data.hide = false; // Make sure to unhide all nodes when clearing
       if (d.children) {
         d.children.forEach((child) => {
           clear(child as PartitionHierarchyNode);
@@ -1161,8 +1195,21 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
         return;
       }
 
-      selection.each((data: PartitionHierarchyNode) => {
-        searchTree(data, term);
+      // If search term is empty, clear the search
+      if (!term || term.trim() === "") {
+        chart.clear();
+        return;
+      }
+
+      // Reset zoom state before searching
+      selection.each((root: PartitionHierarchyNode) => {
+        // Restore all nodes to their initial state before searching
+        if (nodeHierarchy) {
+          resetNodes(root, nodeHierarchy);
+        }
+
+        // Now perform the search on the reset state
+        searchTree(root, term);
       });
 
       update();
@@ -1178,6 +1225,10 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       }
 
       selection.each((root: PartitionHierarchyNode) => {
+        // Reset to initial state if available
+        if (nodeHierarchy) {
+          resetNodes(root, nodeHierarchy);
+        }
         clear(root);
       });
 

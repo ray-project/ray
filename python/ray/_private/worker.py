@@ -1566,6 +1566,10 @@ def init(
             usage_lib.put_pre_init_usage_stats()
 
         usage_lib.record_library_usage("client")
+
+        from ray.util.insight import create_insight_monitor_actor
+
+        create_insight_monitor_actor()
         return ctx
 
     if kwargs.get("allow_multiple"):
@@ -1697,6 +1701,10 @@ def init(
         if ignore_reinit_error:
             logger.info("Calling ray.init() again after it has already been called.")
             node_id = global_worker.core_worker.get_current_node_id()
+
+            from ray.util.insight import create_insight_monitor_actor
+
+            create_insight_monitor_actor()
             return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
         else:
             raise RuntimeError(
@@ -1897,6 +1905,10 @@ def init(
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+
+    from ray.util.insight import create_insight_monitor_actor
+
+    create_insight_monitor_actor()
     return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 
