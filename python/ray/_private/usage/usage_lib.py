@@ -81,6 +81,7 @@ class ClusterConfigToReport:
     max_workers: Optional[int] = None
     head_node_instance_type: Optional[str] = None
     worker_node_instance_types: Optional[List[str]] = None
+    cloud_provider_alt: Optional[str] = None
 
 
 @dataclass(init=True)
@@ -770,6 +771,7 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
+
         # Check if we're on Kubernetes
         if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
             # Check if we're using KubeRay >= 0.4.0.
@@ -778,6 +780,25 @@ def get_cluster_config_to_report(
             # Else, we're on Kubernetes but not in either of the above categories.
             else:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
+
+        import requests
+
+        # Make internal metadata requests to all 3 clouds
+        gcp_get_res = requests.get("http://metadata.google.internal/computeMetadata/v1")
+        aws_get_res = requests.get("http://169.254.169.254/latest/meta-data/")
+        azure_get_res = requests.get(
+            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+            headers={"Metadata": "true"},
+        )
+
+        # The requests may be rejected based on pod configuration but if it's a machine on the cloud provider it should be reachable.
+        if gcp_get_res.status_code != 404:
+            result.cloud_provider_alt = "gcp"
+        elif aws_get_res.status_code != 404:
+            result.cloud_provider_alt = "aws"
+        elif azure_get_res.status_code != 404:
+            result.cloud_provider_alt = "azure"
+
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
