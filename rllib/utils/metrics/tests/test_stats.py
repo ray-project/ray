@@ -1,3 +1,4 @@
+import numpy as np
 from collections import deque
 import pytest
 from ray.rllib.utils.metrics.stats import Stats
@@ -14,7 +15,7 @@ def test_init():
     """Test initialization of Stats objects with different parameters."""
     # Test initialization with initial value
     stats = Stats(
-        init_value=1.0,
+        init_values=1.0,
         reduce="mean",
         ema_coeff=DEFAULT_EMA_COEFF,
         window=None,
@@ -23,12 +24,12 @@ def test_init():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     assert len(stats) == 1
-    assert stats.peek() == 1.0
+    assert stats.peek() == [1.0]
     assert stats._ema_coeff == DEFAULT_EMA_COEFF
 
     # Test initialization with window
     stats = Stats(
-        init_value=None,
+        init_values=None,
         window=3,
         reduce="mean",
         ema_coeff=None,
@@ -42,7 +43,7 @@ def test_init():
     # Test initialization with different reduce methods
     for reduce_method in ["mean", "min", "max", "sum", None]:
         stats = Stats(
-            init_value=None,
+            init_values=None,
             reduce=reduce_method,
             window=None,
             ema_coeff=DEFAULT_EMA_COEFF if reduce_method == "mean" else None,
@@ -55,7 +56,7 @@ def test_init():
     # Test invalid initialization parameters
     with pytest.raises(ValueError):
         Stats(
-            init_value=None,
+            init_values=None,
             reduce="invalid",
             window=None,
             ema_coeff=DEFAULT_EMA_COEFF,
@@ -65,7 +66,7 @@ def test_init():
         )
     with pytest.raises(ValueError):
         Stats(
-            init_value=None,
+            init_values=None,
             window=3,
             ema_coeff=0.1,
             reduce="mean",
@@ -75,7 +76,7 @@ def test_init():
         )
     with pytest.raises(ValueError):
         Stats(
-            init_value=None,
+            init_values=None,
             reduce="sum",
             ema_coeff=0.1,
             window=None,
@@ -89,7 +90,7 @@ def test_push_and_peek():
     """Test pushing values and peeking at results."""
     # Test with mean reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         ema_coeff=DEFAULT_EMA_COEFF,
         window=None,
@@ -101,11 +102,11 @@ def test_push_and_peek():
     stats.push(2.0)
     # EMA formula: t1 = (1.0 - ema_coeff) * t0 + ema_coeff * new_val
     expected = 1.0 * (1.0 - DEFAULT_EMA_COEFF) + 2.0 * DEFAULT_EMA_COEFF
-    assert abs(stats.peek() - expected) < 1e-6
+    assert abs(stats.peek()[0] - expected) < 1e-6
 
     # Test with window
     stats = Stats(
-        init_value=None,
+        init_values=None,
         window=2,
         reduce="mean",
         ema_coeff=None,
@@ -116,11 +117,11 @@ def test_push_and_peek():
     stats.push(1.0)
     stats.push(2.0)
     stats.push(3.0)
-    assert stats.peek() == 2.5  # mean of last 2 values
+    assert stats.peek() == [2.5]  # mean of last 2 values
 
     # Test with sum reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -131,11 +132,11 @@ def test_push_and_peek():
     stats.push(1)
     stats.push(2)
     stats.push(3)
-    assert stats.peek() == 6
+    assert stats.peek() == [6]
 
     # Test with min reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="min",
         window=None,
         ema_coeff=None,
@@ -147,11 +148,11 @@ def test_push_and_peek():
     stats.push(20)
     stats.push(5)
     stats.push(100)
-    assert stats.peek() == 5
+    assert stats.peek() == [5]
 
     # Test with max reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="max",
         window=None,
         ema_coeff=None,
@@ -163,14 +164,14 @@ def test_push_and_peek():
     stats.push(3)
     stats.push(2)
     stats.push(4)
-    assert stats.peek() == 4
+    assert stats.peek() == [4]
 
 
 def test_window_behavior():
     """Test behavior with different window sizes."""
     # Test with finite window
     stats = Stats(
-        init_value=None,
+        init_values=None,
         window=2,
         reduce="mean",
         ema_coeff=None,
@@ -182,11 +183,11 @@ def test_window_behavior():
     stats.push(2.0)
     stats.push(3.0)
     assert len(stats) == 2  # Only keeps last 2 values
-    assert stats.peek() == 2.5  # mean of [2.0, 3.0]
+    assert stats.peek() == [2.5]  # mean of [2.0, 3.0]
 
     # Test with infinite window
     stats = Stats(
-        init_value=None,
+        init_values=None,
         window=None,
         reduce="mean",
         ema_coeff=DEFAULT_EMA_COEFF,
@@ -197,11 +198,11 @@ def test_window_behavior():
     stats.push(1.0)
     stats.push(2.0)
     assert len(stats) == 1  # We reduce for every push
-    check(stats.peek(), 1.01)  # ema coeff 0.01
+    check(stats.peek()[0], 1.01)  # ema coeff 0.01
 
     # Test with max reduction and window
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="max",
         window=2,
         ema_coeff=None,
@@ -213,14 +214,14 @@ def test_window_behavior():
     stats.push(3)
     stats.push(1)
     stats.push(-1)
-    assert stats.peek() == 1  # max of last 2 values [1, -1]
+    assert stats.peek() == [1]  # max of last 2 values [1, -1]
 
 
 def test_reduce():
     """Test the reduce method."""
     # Test with sum reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -232,12 +233,12 @@ def test_reduce():
     stats.push(2)
     stats.push(3)
     reduced_value = stats.reduce()
-    assert reduced_value == 6
+    assert reduced_value == [6]
     assert len(stats) == 1  # Should keep only the reduced value
 
     # Test with clear_on_reduce
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -248,7 +249,7 @@ def test_reduce():
     stats.push(1)
     stats.push(2)
     reduced_value = stats.reduce()
-    assert reduced_value == 3
+    assert reduced_value == [3]
     assert len(stats) == 0  # Original stats should be cleared
 
 
@@ -256,7 +257,7 @@ def test_merge_operations():
     """Test merging operations between Stats objects."""
     # Test merge_on_time_axis
     stats1 = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -267,7 +268,7 @@ def test_merge_operations():
     stats1.push(1)
     stats1.push(2)
     stats2 = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -278,11 +279,11 @@ def test_merge_operations():
     stats2.push(3)
     stats2.push(4)
     stats1.merge_on_time_axis(stats2)
-    assert stats1.peek() == 10  # sum of all values
+    assert stats1.peek() == [10]  # sum of all values
 
     # Test merge_in_parallel
     stats1 = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         window=3,
         ema_coeff=None,
@@ -294,7 +295,7 @@ def test_merge_operations():
     stats1.push(2)
     stats1.push(3)
     stats2 = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         window=3,
         ema_coeff=None,
@@ -306,7 +307,7 @@ def test_merge_operations():
     stats2.push(5)
     stats2.push(6)
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         window=3,
         ema_coeff=None,
@@ -315,13 +316,13 @@ def test_merge_operations():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     stats.merge_in_parallel(stats1, stats2)
-    assert abs(stats.peek() - 4.1666667) < 1e-6  # mean of last values
+    assert abs(stats.peek()[0] - 4.1666667) < 1e-6  # mean of last values
 
 
 def test_numeric_operations():
     """Test numeric operations on Stats objects."""
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         ema_coeff=DEFAULT_EMA_COEFF,
         window=None,
@@ -349,7 +350,7 @@ def test_numeric_operations():
 def test_state_serialization():
     """Test saving and loading Stats state."""
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=3,
         ema_coeff=None,
@@ -374,7 +375,7 @@ def test_state_with_throughput_serialization():
     """Test saving and loading Stats state with throughput tracking."""
     # Create a Stats object with throughput tracking
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -409,7 +410,7 @@ def test_state_with_throughput_serialization():
     # Verify that throughput tracking continues to work after loading
     time.sleep(0.1)  # 100ms delay
     loaded_stats.push(4)
-    assert loaded_stats.peek() == 10  # sum of all values
+    assert loaded_stats.peek() == [10]  # sum of all values
     assert loaded_stats.throughput > 0  # Should have some throughput
 
     # Test that throughput tracking is preserved even after multiple reduce calls
@@ -429,7 +430,7 @@ def test_state_with_throughput_serialization():
 def test_similar_to():
     """Test creating similar Stats objects."""
     original = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=3,
         ema_coeff=None,
@@ -445,15 +446,15 @@ def test_similar_to():
     assert similar._window == original._window
     assert len(similar) == 0  # Should start empty
 
-    similar_with_value = Stats.similar_to(original, init_value=[1, 2])
+    similar_with_value = Stats.similar_to(original, init_values=[1, 2])
     assert len(similar_with_value) == 2
-    assert similar_with_value.peek() == 3  # sum of [1, 2]
+    assert similar_with_value.peek() == [3]  # sum of [1, 2]
 
 
 def test_reduce_history():
     """Test the reduce history functionality."""
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -463,50 +464,50 @@ def test_reduce_history():
     )
 
     # Initially history should contain zeros
-    assert stats.get_reduce_history() == [0, 0, 0]
+    assert stats.get_reduce_history() == [[np.nan], [np.nan], [np.nan]]
 
     # Push some values and reduce
     stats.push(1)
     stats.push(2)
     reduced_value = stats.reduce()
-    assert reduced_value == 3  # sum of [1, 2]
-    assert stats.get_reduce_history() == [0, 0, 3]
+    assert reduced_value == [3]  # sum of [1, 2]
+    check(stats.get_reduce_history(), [[np.nan], [np.nan], [3]])
 
     # Push more values and reduce again
     stats.push(3)
     stats.push(4)
     reduced_value = stats.reduce()
-    assert reduced_value == 10  # sum of [1, 2, 3, 4]
-    assert stats.get_reduce_history() == [0, 3, 10]
+    assert reduced_value == [10]  # sum of [1, 2, 3, 4]
+    check(stats.get_reduce_history(), [[np.nan], [3], [10]])
 
     # Push and reduce one more time
     stats.push(5)
     stats.push(6)
     reduced_value = stats.reduce()
-    assert reduced_value == 21  # sum of [1, 2, 3, 4, 5, 6]
-    assert stats.get_reduce_history() == [3, 10, 21]
+    assert reduced_value == [21]  # sum of [1, 2, 3, 4, 5, 6]
+    check(stats.get_reduce_history(), [[3], [10], [21]])
 
     # Test that history is preserved when creating similar stats
     similar = Stats.similar_to(stats)
-    assert similar.get_reduce_history() == [3, 10, 21]
+    check(similar.get_reduce_history(), [[3], [10], [21]])
 
     # Test that history is preserved when loading from state
     state = stats.get_state()
     loaded = Stats.from_state(state)
-    assert loaded.get_reduce_history() == [3, 10, 21]
+    check(loaded.get_reduce_history(), [[3], [10], [21]])
 
     # Push and reduce one more time
     stats.push(7)
     stats.push(8)
     reduced_value = stats.reduce()
-    assert reduced_value == 36  # sum of [1, 2, 3, 4, 5, 6, 7, 8]
-    assert stats.get_reduce_history() == [10, 21, 36]
+    assert reduced_value == [36]  # sum of [1, 2, 3, 4, 5, 6, 7, 8]
+    check(stats.get_reduce_history(), [[10], [21], [36]])
 
 
 def test_reduce_history_with_clear_on_reduce():
     """Test the reduce history functionality with clear_on_reduce=True."""
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -516,49 +517,49 @@ def test_reduce_history_with_clear_on_reduce():
     )
 
     # Initially history should contain zeros
-    assert stats.get_reduce_history() == [0, 0, 0]
+    assert stats.get_reduce_history() == [[np.nan], [np.nan], [np.nan]]
 
     # Push some values and reduce
     stats.push(1)
     stats.push(2)
     reduced_value = stats.reduce()
-    assert reduced_value == 3  # sum of [1, 2]
-    assert stats.get_reduce_history() == [0, 0, 3]
+    assert reduced_value == [3]  # sum of [1, 2]
+    assert stats.get_reduce_history() == [[np.nan], [np.nan], [3]]
     assert len(stats) == 0  # Values should be cleared
 
     # Push more values and reduce again
     stats.push(3)
     stats.push(4)
     reduced_value = stats.reduce()
-    assert reduced_value == 7  # sum of [3, 4]
-    assert stats.get_reduce_history() == [0, 3, 7]
+    assert reduced_value == [7]  # sum of [3, 4]
+    assert stats.get_reduce_history() == [[np.nan], [3], [7]]
     assert len(stats) == 0  # Values should be cleared
 
     # Push and reduce one more time
     stats.push(5)
     stats.push(6)
     reduced_value = stats.reduce()
-    assert reduced_value == 11  # sum of [5, 6]
-    assert stats.get_reduce_history() == [3, 7, 11]
+    assert reduced_value == [11]  # sum of [5, 6]
+    assert stats.get_reduce_history() == [[3], [7], [11]]
     assert len(stats) == 0  # Values should be cleared
 
     # Test that history is preserved when creating similar stats
     similar = Stats.similar_to(stats)
-    assert similar.get_reduce_history() == [3, 7, 11]
+    assert similar.get_reduce_history() == [[3], [7], [11]]
     assert similar._clear_on_reduce
 
     # Test that history is preserved when loading from state
     state = stats.get_state()
     loaded = Stats.from_state(state)
-    assert loaded.get_reduce_history() == [3, 7, 11]
+    assert loaded.get_reduce_history() == [[3], [7], [11]]
     assert loaded._clear_on_reduce
 
     # Push and reduce one more time
     loaded.push(7)
     loaded.push(8)
     reduced_value = loaded.reduce()
-    assert reduced_value == 15  # sum of [7, 8]
-    assert loaded.get_reduce_history() == [7, 11, 15]
+    assert reduced_value == [15]  # sum of [7, 8]
+    assert loaded.get_reduce_history() == [[7], [11], [15]]
     assert len(loaded) == 0  # Values should be cleared
 
 
@@ -566,7 +567,7 @@ def test_throughput_without_reduce():
     """Test that throughput is tracked correctly without explicit reduce() calls."""
     # Create a Stats object that tracks throughput
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -580,30 +581,30 @@ def test_throughput_without_reduce():
 
     # First push - throughput should be 0 initially
     stats.push(1)
-    assert stats.peek() == 1
+    assert stats.peek() == [1]
     assert stats.throughput == 0.0  # No throughput yet as we only have one value
 
     # Push second value after a delay
     time.sleep(0.1)  # 100ms delay
     stats.push(2)
-    assert stats.peek() == 3  # sum of 1 + 2
+    assert stats.peek() == [3]  # sum of 1 + 2
     assert 15 < stats.throughput < 25  # 2/0.1 = 20 values per second
 
     # Push third value after another delay
     time.sleep(0.2)  # 200ms delay
     stats.push(3)
-    assert stats.peek() == 6  # sum of 1 + 2 + 3
+    assert stats.peek() == [6]  # sum of 1 + 2 + 3
     assert 10 < stats.throughput < 20  # 3/0.3 = 10 values per second
 
     # Test that throughput is only available when requested
-    assert stats.peek() == 6  # Regular peek returns just the value
+    assert stats.peek() == [6]  # Regular peek returns just the value
     assert (
         stats.throughput == stats.throughput
     )  # Throughput property returns throughput
 
     # Test that throughput is 0 when no values are pushed
     empty_stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -611,13 +612,13 @@ def test_throughput_without_reduce():
         throughput=True,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
-    assert empty_stats.peek() == 0
+    assert empty_stats.peek() == [np.nan]
     assert empty_stats.throughput == 0.0
 
     # Test that throughput tracking requires sum reduction
     with pytest.raises(ValueError):
         Stats(
-            init_value=None,
+            init_values=None,
             reduce="mean",
             window=None,
             ema_coeff=DEFAULT_EMA_COEFF,
@@ -629,7 +630,7 @@ def test_throughput_without_reduce():
     # Test that throughput tracking requires infinite window
     with pytest.raises(ValueError):
         Stats(
-            init_value=None,
+            init_values=None,
             reduce="sum",
             window=10,
             ema_coeff=None,
@@ -641,7 +642,7 @@ def test_throughput_without_reduce():
     # Test that _last_push_time is properly initialized to -1
     assert stats._last_push_time >= 0  # Should be set after pushes
     new_stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -655,7 +656,7 @@ def test_throughput_without_reduce():
     state = stats.get_state()
     loaded_stats = Stats.from_state(state)
     assert loaded_stats._last_push_time >= 0  # Should be set after loading
-    assert loaded_stats.peek() == 6  # Value should be preserved
+    assert loaded_stats.peek() == [6]  # Value should be preserved
     assert loaded_stats.throughput == stats.throughput  # Throughput should be preserved
 
     # Test that throughput tracking works after loading
@@ -664,12 +665,12 @@ def test_throughput_without_reduce():
     loaded_stats.reduce()
     time.sleep(0.1)  # 100ms delay
     loaded_stats.push(4)
-    assert loaded_stats.peek() == 12  # sum of 6 + 4
+    assert loaded_stats.peek() == [12]  # sum of 6 + 4
     assert 30 < loaded_stats.throughput < 50  # 4/0.1 = 40 values per second
 
     # Test that accessing throughput on non-throughput stats raises error
     non_throughput_stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -685,7 +686,7 @@ def test_reduce_history_without_new_values():
     """Test that multiple reduce calls without new values maintain consistent history."""
     # Test with sum reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -701,24 +702,24 @@ def test_reduce_history_without_new_values():
     # First reduce call
     first_reduce = stats.reduce()
     first_history = stats.get_reduce_history()
-    assert first_reduce == 3  # sum of [1, 2]
-    assert first_history == [0, 0, 3]
+    assert first_reduce == [3]  # sum of [1, 2]
+    check(first_history, [[np.nan], [np.nan], [3]])
 
     # Second reduce call without new values
     second_reduce = stats.reduce()
     second_history = stats.get_reduce_history()
-    assert second_reduce == 3  # should still be 3
-    assert second_history == [0, 0, 3]  # history should not change
+    assert second_reduce == [3]  # should still be 3
+    check(second_history, [[np.nan], [np.nan], [3]])
 
     # Third reduce call without new values
     third_reduce = stats.reduce()
     third_history = stats.get_reduce_history()
-    assert third_reduce == 3  # should still be 3
-    assert third_history == [0, 0, 3]  # history should not change
+    assert third_reduce == [3]  # should still be 3
+    check(third_history, [[np.nan], [np.nan], [3]])
 
     # Test with window-based reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         window=2,
         ema_coeff=None,
@@ -732,18 +733,18 @@ def test_reduce_history_without_new_values():
     # First reduce call
     first_reduce = stats.reduce()
     first_history = stats.get_reduce_history()
-    assert first_reduce == 1.5  # mean of [1.0, 2.0]
-    assert first_history == [0, 0, 1.5]
+    assert first_reduce == [1.5]  # mean of [1.0, 2.0]
+    check(first_history, [[np.nan], [np.nan], [1.5]])
 
     # Second reduce call without new values
     second_reduce = stats.reduce()
     second_history = stats.get_reduce_history()
-    assert second_reduce == 1.5  # should still be 1.5
-    assert second_history == [0, 0, 1.5]  # history should not change
+    assert second_reduce == [1.5]  # should still be 1.5
+    check(second_history, [[np.nan], [np.nan], [1.5]])
 
     # Test with EMA reduction
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="mean",
         ema_coeff=DEFAULT_EMA_COEFF,
         window=None,
@@ -757,18 +758,18 @@ def test_reduce_history_without_new_values():
     # First reduce call
     first_reduce = stats.reduce()
     first_history = stats.get_reduce_history()
-    assert abs(first_reduce - 1.01) < 1e-6
-    assert first_history == [0, 0, 1.01]
+    assert abs(first_reduce[0] - 1.01) < 1e-6
+    check(first_history, [[np.nan], [np.nan], [1.01]])
 
     # Second reduce call without new values
     second_reduce = stats.reduce()
     second_history = stats.get_reduce_history()
-    assert abs(second_reduce - 1.01) < 1e-6
-    assert second_history == [0, 0, 1.01]  # history should not change
+    assert abs(second_reduce[0] - 1.01) < 1e-6
+    check(second_history, [[np.nan], [np.nan], [1.01]])
 
     # Test with clear_on_reduce=True
     stats = Stats(
-        init_value=None,
+        init_values=None,
         reduce="sum",
         window=None,
         ema_coeff=None,
@@ -782,15 +783,16 @@ def test_reduce_history_without_new_values():
     # First reduce call
     first_reduce = stats.reduce()
     first_history = stats.get_reduce_history()
-    assert first_reduce == 3  # sum of [1, 2]
-    assert first_history == [0, 0, 3]
+    assert first_reduce == [3]  # sum of [1, 2]
+    check(first_history, [[np.nan], [np.nan], [3]])
     assert len(stats) == 0  # values should be cleared
 
     # Second reduce call without new values
     second_reduce = stats.reduce()
     second_history = stats.get_reduce_history()
-    assert second_reduce == 0  # should be 0 as values are cleared
-    assert second_history == [0, 0, 3]  # history should not change
+    # should be [nan] as values are cleared
+    assert np.isnan(second_reduce[0])
+    check(second_history, [[np.nan], [3], [np.nan]])
     assert len(stats) == 0  # values should still be cleared
 
 

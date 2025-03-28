@@ -140,7 +140,7 @@ class MetricsLogger:
         return self._key_in_stats(key)
 
     def peek(self, key: Union[str, Tuple[str, ...], None] = None, default=None) -> Any:
-        """Returns the (reduced) value(s) found in this MetricsLogger.
+        """Returns the reduced values found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
         reduction, even though reduced values are being returned. It'll keep all
@@ -182,7 +182,10 @@ class MetricsLogger:
         # Create a reduced view of the entire stats structure.
         def _nested_peek(stats):
             return tree.map_structure(
-                lambda s: s.peek() if isinstance(s, Stats) else s,
+                # If the Stats object has a reduce method, we need to convert the list to a single value
+                lambda s: (s.peek() if s._reduce_method is not None else s.peek()[0])
+                if isinstance(s, Stats)
+                else s,
                 stats.copy(),
             )
 
@@ -196,7 +199,11 @@ class MetricsLogger:
                     stats = self._get_key(key, key_error=False)
 
                 if isinstance(stats, Stats):
-                    return stats.peek()
+                    # If the Stats object has a reduce method, we need to convert the list to a single value
+                    if stats._reduce_method is None:
+                        return stats.peek()
+                    else:
+                        return stats.peek()[0]
                 elif isinstance(stats, dict) and stats:
                     return _nested_peek(stats)
                 else:
@@ -351,7 +358,7 @@ class MetricsLogger:
                 self._set_key(
                     key,
                     (
-                        Stats.similar_to(value, init_value=value.values)
+                        Stats.similar_to(value, init_values=value.values)
                         if isinstance(value, Stats)
                         else Stats(
                             value,
@@ -720,11 +727,11 @@ class MetricsLogger:
                 # Collect all values from all available Stats objects
                 all_values = []
                 for stat in all_stats:
-                    all_values.append(stat.peek())
+                    all_values.extend(stat.peek())
 
                 # Create a temporary Stats object with all values to get the properly reduced value
                 temp_stats = Stats(
-                    init_value=all_values,
+                    init_values=all_values,
                     reduce="mean",
                     window=len(all_values),
                     ema_coeff=None,
@@ -734,7 +741,7 @@ class MetricsLogger:
                 )
 
                 # Create new base Stats object using similar_to with the reduced value
-                base_stats = Stats.similar_to(base_stats, init_value=temp_stats.peek())
+                base_stats = Stats.similar_to(base_stats, init_values=temp_stats.peek())
                 self._set_key(key, base_stats)
                 # Skip the rest of the loop since we've already processed this key
                 continue
@@ -751,7 +758,7 @@ class MetricsLogger:
                 for stat in [base_stats] + more_stats:
                     # Take the 2nd to last reduced value (from 2 calls ago)
                     reduce_history = stat.get_reduce_history()
-                    stat.push(-reduce_history[-2])
+                    stat.push(-reduce_history[-2][0])
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.
@@ -853,7 +860,7 @@ class MetricsLogger:
             self._set_key(
                 key,
                 Stats(
-                    init_value=None,
+                    init_values=None,
                     reduce=reduce,
                     window=window,
                     ema_coeff=ema_coeff,
@@ -928,17 +935,17 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-            value = stats.reduce()
+            values = stats.reduce()
             path_key = tuple(path)
 
             if path_key not in self._reduced_paths:
                 # If this is the first reduction for this path, return a Stats object
                 # such that downstream MetricsLoggers can merge on it
                 self._reduced_paths.add(path_key)
-                new_stats = Stats.similar_to(stats, init_value=value)
+                new_stats = Stats.similar_to(stats, init_values=values)
                 return new_stats
 
-            return value
+            return values
 
         try:
             with self._threading_lock:
@@ -1306,7 +1313,24 @@ class MetricsLogger:
         # Get all throughputs
         throughputs = self.throughputs()
 
-        return deep_update(values, throughputs, new_keys_allowed=True)
+        deep_update(values, throughputs, new_keys_allowed=True)
+
+        def traverse_dict(d):
+            if isinstance(d, dict):
+                new_dict = {}
+                for key, value in d.items():
+                    new_dict[key] = traverse_dict(value)
+                return new_dict
+            elif isinstance(d, list):
+                if len(d) == 1:
+                    return d[0]
+                # If value is a longer list, we should just return the list because there is no reduction method applied
+                return d
+            else:
+                # If the value is not a list, it is a single value and we can yield it
+                return d
+
+        return traverse_dict(values)
 
 
 class _DummyRLock:

@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 import torch
 
+from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 
@@ -179,11 +180,14 @@ def test_edge_cases(logger):
     logger2 = MetricsLogger()
     logger2.log_value("clear_test", 0.1, clear_on_reduce=False)
     logger2.log_value("clear_test", 0.2, clear_on_reduce=False)
-    results = (
-        logger2.reduce()
-    )  # Call twice because we return the Stats objects themselves on the first call
+    # First call to reduce() returns Stats objects, but we should still be able to compare it
     results = logger2.reduce()
-    check(results["clear_test"], 0.101)
+    assert isinstance(results["clear_test"], Stats)
+    check(results["clear_test"], [0.101])
+    # Second call to reduce() returns the reduced value
+    results = logger2.reduce()
+    assert isinstance(results["clear_test"][0], float)
+    check(results["clear_test"], [0.101])
 
 
 def test_merge_and_log_n_dicts(logger):
@@ -473,7 +477,7 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Check merged results
     check(logger.peek("count"), 10)  # sum of all values
-    check(logger.throughputs("count"), 0.0)  # Initial throughput should be 0
+    check(logger.throughputs("count"), np.nan)  # Initial throughput should be np.nan
 
     # Test nested dict merging
     logger1 = MetricsLogger()
@@ -518,8 +522,8 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
     # Check merged results
     check(logger.peek(["nested", "count"]), 10)  # sum of all values
     check(
-        logger.throughputs(["nested", "count"]), 0.0
-    )  # Initial throughput should be 0
+        logger.throughputs(["nested", "count"]), np.nan
+    )  # Initial throughput should be np.nan
 
 
 def test_compile(logger):
