@@ -84,15 +84,28 @@ RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
 # https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+
 # Regex for mandatory name (DNS label) or value
+# Examples:
+#   Valid matches: "a", "label-name", "a-._b", "123", "this_is_a_valid_label"
+#   Invalid matches: "-abc", "abc-", "my@label", "a" * 64
 LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
+
 # Regex for optional prefix (DNS subdomain)
+# Examples:
+#   Valid matches: "abc", "sub.domain.example", "my-label", "123.456.789"
+#   Invalid matches: "-abc", "prefix_", "sub..domain", "a" * 257
 LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
+
 # Supported operators for label selector conditions. Not (!) conditions are handled separately.
 LABEL_OPERATORS = {"in"}
 # Create a pattern string dynamically based on the LABEL_OPERATORS
 OPERATOR_PATTERN = "|".join([re.escape(operator) for operator in LABEL_OPERATORS])
+
 # Regex to match valid label selector operators and values
+# Examples:
+#   Valid matches: "spot", "!GPU", "213521", "in(A123, B456, C789)", "!in(spot, on-demand)", "valid-value"
+#   Invalid matches: "-spot", "spot_", "in()", "in(spot,", "in(H100, TPU!GPU)", "!!!in(H100, TPU)"
 LABEL_SELECTOR_REGEX = re.compile(
     rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
 )
