@@ -784,20 +784,37 @@ def get_cluster_config_to_report(
         import requests
 
         # Make internal metadata requests to all 3 clouds
-        gcp_get_res = requests.get("http://metadata.google.internal/computeMetadata/v1")
-        aws_get_res = requests.get("http://169.254.169.254/latest/meta-data/")
-        azure_get_res = requests.get(
-            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
-            headers={"Metadata": "true"},
-        )
+        # The requests may be rejected based on pod configuration but if it's a machine on the cloud provider it should at least be reachable.
+        try:
+            gcp_get_res = requests.get(
+                "http://metadata.google.internal/computeMetadata/v1",
+                headers={"Metadata-Flavor": "Google"},
+                timeout=1,
+            )
+            if gcp_get_res.status_code != 404:
+                result.cloud_provider_alt = "gcp"
+        except requests.exceptions.ConnectionError:
+            pass
 
-        # The requests may be rejected based on pod configuration but if it's a machine on the cloud provider it should be reachable.
-        if gcp_get_res.status_code != 404:
-            result.cloud_provider_alt = "gcp"
-        elif aws_get_res.status_code != 404:
-            result.cloud_provider_alt = "aws"
-        elif azure_get_res.status_code != 404:
-            result.cloud_provider_alt = "azure"
+        try:
+            aws_get_res = requests.get(
+                "http://169.254.169.254/latest/meta-data/", timeout=1
+            )
+            if aws_get_res.status_code != 404:
+                result.cloud_provider_alt = "aws"
+        except requests.exceptions.ConnectionError:
+            pass
+
+        try:
+            azure_get_res = requests.get(
+                "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+                headers={"Metadata": "true"},
+                timeout=1,
+            )
+            if azure_get_res.status_code != 404:
+                result.cloud_provider_alt = "azure"
+        except requests.exceptions.ConnectionError:
+            pass
 
         return result
     except Exception as e:
