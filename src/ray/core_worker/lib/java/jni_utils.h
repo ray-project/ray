@@ -303,23 +303,23 @@ extern JavaVM *jvm;
 
 #define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
   {                                                                                   \
-    jthrowable throwable = env->ExceptionOccurred();                                  \
-    if (throwable) {                                                                  \
-      jstring java_file_name = env->NewStringUTF(__FILE__);                           \
-      jstring java_function = env->NewStringUTF(__func__);                            \
-      jobject java_error_message =                                                    \
+    jthrowable __throwable = env->ExceptionOccurred();                                \
+    if (__throwable) {                                                                \
+      jstring __java_file_name = env->NewStringUTF(__FILE__);                         \
+      jstring __java_function = env->NewStringUTF(__func__);                          \
+      jobject __java_error_message =                                                  \
           env->CallStaticObjectMethod(java_jni_exception_util_class,                  \
                                       java_jni_exception_util_get_stack_trace,        \
-                                      java_file_name,                                 \
+                                      __java_file_name,                               \
                                       __LINE__,                                       \
-                                      java_function,                                  \
-                                      throwable);                                     \
+                                      __java_function,                                \
+                                      __throwable);                                   \
       std::string error_message =                                                     \
-          JavaStringToNativeString(env, static_cast<jstring>(java_error_message));    \
-      env->DeleteLocalRef(throwable);                                                 \
-      env->DeleteLocalRef(java_file_name);                                            \
-      env->DeleteLocalRef(java_function);                                             \
-      env->DeleteLocalRef(java_error_message);                                        \
+          JavaStringToNativeString(env, static_cast<jstring>(__java_error_message));  \
+      env->DeleteLocalRef(__throwable);                                               \
+      env->DeleteLocalRef(__java_file_name);                                          \
+      env->DeleteLocalRef(__java_function);                                           \
+      env->DeleteLocalRef(__java_error_message);                                      \
       RAY_LOG(FATAL) << "An unexpected exception occurred while executing Java code " \
                         "from JNI ("                                                  \
                      << __FILE__ << ":" << __LINE__ << " " << __func__ << ")."        \
