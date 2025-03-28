@@ -113,6 +113,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import mars
     import modin
@@ -4777,6 +4778,24 @@ class Dataset:
             label_type_spec=label_type_spec,
             additional_type_spec=additional_type_spec,
         )
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
+    def to_daft(self) -> "daft.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+
+        This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
+        (using Arrow as the intermediate data format).
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A `Daft DataFrame`_ created from this dataset.
+        """
+        import daft
+
+        return daft.from_ray_dataset(self)
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
