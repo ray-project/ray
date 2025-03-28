@@ -28,7 +28,9 @@ Other tags control whether the code block runs during the doctest. See [nbval do
 
 For example, the `kind create cluster` code block in the image above uses the `nbval-ignore-output` and `remove-output` tags. `remove-output` hides the block's output in the final document. `nbval-ignore-output` skips output validation during the doctest run.
 
-Before exiting Jupyter Lab, run the code blocks you want to include in the final document. The output gets saved in the notebook file and will be compared with the output when running the doctest. Don't forget to save the notebook file.
+Before exiting Jupyter Lab, clear all run outputs and run the code blocks you want to include in the final document. The output gets saved in the notebook file and will be compared with the output when running the doctest. Don't forget to save the notebook file.
+
+.. note:: Limitations: You cannot use `tab-set` containing code blocks in Jupyter notebooks.
 
 ## Running doctests locally
 
