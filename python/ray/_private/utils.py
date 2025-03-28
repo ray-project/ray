@@ -1872,7 +1872,7 @@ def validate_label_key(key: str) -> Optional[str]:
             )
     else:
         name = key
-    if not re.match(LABEL_REGEX, name):
+    if len(name) > 63 or not re.match(LABEL_REGEX, name):
         return str(
             f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
             f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
