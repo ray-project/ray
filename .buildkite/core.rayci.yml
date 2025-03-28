@@ -211,6 +211,7 @@ steps:
     tags: python
     instance_type: medium
     commands:
+      - 'mkdir -p /artifact-mount/ps-memories && while true; do ts=$(date +%Y%m%d-%H%M%S); { echo "Timestamp: $ts"; free -h; ps aux --sort=-%mem; } > /artifact-mount/ps-memories/mem-$ts.txt; sleep 60; done &'
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask llm,rllib,serve,train,tune,workflow
         --build-type asan
