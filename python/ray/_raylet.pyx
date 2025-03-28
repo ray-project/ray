@@ -4379,6 +4379,20 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
+            if num_outputs_stored is None:
+                # If num_returns=0, it is likely a mistake to return a non-None object.
+
+                task_name = async_task_name.get()
+
+                task_num_returns_warning = (
+                    "Task {} has num_returns=0 but returned a non-None value {}. "
+                    "The return value will be ignored.\n"
+                ).format(task_name.replace("()", ""), repr(num_outputs_stored))
+
+                # Flush log to both .out and .err
+                print(task_num_returns_warning, end="")
+                print(task_num_returns_warning, file=sys.stderr, end="")
+
             return num_outputs_stored
 
         task_output_inlined_bytes = 0
