@@ -333,6 +333,7 @@ def train_ppo_model():
 checkpoint_path = train_ppo_model()
 ```
 
+(jupyter-notebook-tags)=
 ### Tags for your notebook
 
 What makes this work is the `:tags: [hide-cell]` directive in the `code-cell`.
