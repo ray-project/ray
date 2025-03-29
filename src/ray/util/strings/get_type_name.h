@@ -44,6 +44,8 @@ struct TypeNameInfo {
 
 }  // namespace internal
 
+// TODO(hjiang): Use `consteval` after we upgrade to C++20.
+// Reference: https://en.cppreference.com/w/cpp/language/consteval
 template <typename T>
 constexpr std::string_view GetTypeName() {
   constexpr auto function = internal::GetFullFunctionName<T>();
