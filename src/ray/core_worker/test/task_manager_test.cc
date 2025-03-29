@@ -151,7 +151,9 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            *task_event_buffer_mock_.get()) {}
+            *task_event_buffer_mock_.get()) {
+    reference_counter_->RegisterNodeSubscriber([]() {});
+  }
 
   virtual void TearDown() { AssertNoLeaks(); }
 

@@ -48,6 +48,7 @@ class ReferenceCountTest : public ::testing::Test {
         addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
           return true;
         });
+    rc->RegisterNodeSubscriber([]() {});
   }
 
   virtual void TearDown() {
@@ -76,6 +77,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         subscriber_.get(),
         [](const NodeID &node_id) { return true; },
         /*lineage_pinning_enabled=*/true);
+    rc->RegisterNodeSubscriber([]() {});
   }
 
   virtual void TearDown() {
@@ -313,7 +315,9 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
-            /*lineage_pinning_enabled=*/false) {}
+            /*lineage_pinning_enabled=*/false) {
+    rc_.RegisterNodeSubscriber([]() {});
+  }
 
   ~MockWorkerClient() override {
     if (!failed_) {
@@ -829,6 +833,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
         return true;
       });
+  rc->RegisterNodeSubscriber([]() {});
   InstrumentedIOContextWithThread io_context("TestSimple");
   CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
