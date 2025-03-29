@@ -24,6 +24,7 @@
 namespace ray {
 
 // TODO(hjiang): Later version of abseil contains abseil string defined trait.
+// TODO(hjiang): Use concepts after we upgrade to C++20.
 template <typename T, typename = void, typename = void>
 struct is_stringifyable : std::false_type {};
 

@@ -21,6 +21,7 @@
 
 namespace ray {
 
+// TODO(hjiang): Use concepts after we upgrade to C++20.
 template <typename, typename = std::void_t<>>
 struct has_debug_string : std::false_type {};
 
