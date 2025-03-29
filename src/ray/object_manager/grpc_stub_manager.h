@@ -40,7 +40,7 @@ class GrpcStubManager {
                   ClientCallManager &client_call_manager) {
     const int conn_num = ::RayConfig::instance().object_manager_client_connection_num();
     grpc_clients_.reserve(conn_num);
-    for (size_t idx = 0; idx < conn_num; ++idx) {
+    for (int idx = 0; idx < conn_num; ++idx) {
       grpc_clients_.emplace_back(
           std::make_unique<GrpcClient<T>>(address, port, client_call_manager));
     }
