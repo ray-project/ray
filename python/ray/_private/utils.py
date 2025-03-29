@@ -1860,12 +1860,6 @@ def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
     for key, value in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
-            )
         possible_error_message = validate_label_key(key)
         if possible_error_message:
             raise ValueError(possible_error_message)
