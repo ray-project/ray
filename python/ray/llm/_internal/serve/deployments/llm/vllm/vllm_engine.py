@@ -305,12 +305,49 @@ class VLLMEngine:
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
+        from vllm import envs
+
+        # Since vLLM 0.8.0, the logic to determine v0/v1 engine is as follows:
+        # 1. If VLLM_USE_V1 is not set, then it tries to use v1 engine. However,
+        #    if any feature specified in the engine config is not supported, then
+        #    it falls back to v0. Note that launching vLLM on a non-main thread
+        #    is an experimental feature, so vLLM will fall back to v0 in this case.
+        # 2. If VLLM_USE_V1 is set to 1, then it will use v1 engine even with
+        #    experimental features (such as launching vLLM on a non-main thread).
+        # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
+        # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
+        if not envs.is_set("VLLM_USE_V1"):
+            raise AssertionError(
+                "Starting from Ray 2.45, VLLM_USE_V1 environment variable must be "
+                "set to prevent undetermined behavior"
+            )
+        if not envs.VLLM_USE_V1:
+            return await self._start_engine_v0()
+        return await self._start_engine_v1()
+
+    async def _start_engine_v1(self) -> "EngineClient":
+        """Start the vLLM v1 engine. Note that we only use _get_async_engine_args
+        to get the engine args and don't use _get_vllm_engine_config, because
+        we integrate vLLM v1 using the highest-level async engine API.
+        TODO: Refactor vLLM v0 integration to use the same async engine API
+        to simplify the code.
+        """
+        from vllm import AsyncLLMEngine
+
+        await self.initialize_node(self.llm_config)
+        engine_args = _get_async_engine_args(self.llm_config)
+
+        return AsyncLLMEngine.from_engine_args(
+            engine_args=engine_args,
+        )
+
+    async def _start_engine_v0(self) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
 
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
-        if MQLLMEngineClient.is_unsupported_config(engine_args):
+        if MQLLMEngineClient.is_unsupported_config(engine_config):
             # If the engine is not supported, we fall back to the legacy async engine.
             #
             # Note (genesu): as of 2025-02-11, this code path is only triggered when
