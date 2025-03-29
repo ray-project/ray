@@ -41,6 +41,7 @@ class GetActions(ConnectorV2):
     distribution using the given RLModule and sample from its distribution class
     (deterministically, if we are not exploring, stochastically, if we are).
     """
+    _cls = None
 
     @override(ConnectorV2)
     def __call__(
@@ -71,13 +72,18 @@ class GetActions(ConnectorV2):
         # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
         # Create a new action distribution object.
         if Columns.ACTION_DIST_INPUTS in batch:
-            if explore:
-                action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
-            else:
-                action_dist_class = sa_rl_module.get_inference_action_dist_cls()
-            action_dist = action_dist_class.from_logits(
+            
+            if self._cls is None:
+                if explore:
+                    action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
+                else:
+                    action_dist_class = sa_rl_module.get_inference_action_dist_cls()
+                self._cls = action_dist_class
+            
+            action_dist = self._cls.from_logits(
                 batch[Columns.ACTION_DIST_INPUTS],
             )
+            
             if not explore:
                 action_dist = action_dist.to_deterministic()
 
