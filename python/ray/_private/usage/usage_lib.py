@@ -785,7 +785,9 @@ def get_cluster_config_to_report(
 
         import requests
 
-        def cloud_metadata_request(url: str, headers: Dict[str, str]) -> bool:
+        def cloud_metadata_request(
+            url: str, headers: Optional[Dict[str, str]] = None
+        ) -> bool:
             try:
                 res = requests.get(url, headers=headers, timeout=1)
                 # The requests may be rejected based on pod configuration but if
