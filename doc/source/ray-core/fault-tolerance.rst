@@ -83,3 +83,4 @@ More about Ray Fault Tolerance
     fault_tolerance/objects.rst
     fault_tolerance/nodes.rst
     fault_tolerance/gcs.rst
+    fault_tolerance/head-ha.rst
