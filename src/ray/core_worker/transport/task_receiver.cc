@@ -87,11 +87,6 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
 
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask()) {
-      // Decrease to account for the dummy object id returned by the actor
-      // creation task.
-      num_returns--;
-    }
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
