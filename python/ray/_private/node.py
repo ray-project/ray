@@ -1169,8 +1169,6 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
-        # Only redirect logs to .err. .err file is only useful when the
-        # component has an unexpected output to stdout/stderr.
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "dashboard", unique=True, create_out=True, create_err=True
         )
