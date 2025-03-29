@@ -14,7 +14,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema
+from ray.data.dataset import Dataset, Schema, SinkMode
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -125,6 +125,7 @@ __all__ = [
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
+    "SinkMode",
     "from_daft",
     "from_dask",
     "from_items",
