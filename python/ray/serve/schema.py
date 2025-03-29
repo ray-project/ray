@@ -1064,6 +1064,18 @@ class ProxyDetails(ServeActorDetails, frozen=True):
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 
+@PublicAPI(stability="alpha")
+class Target(BaseModel, frozen=True):
+    ip: str = Field(description="IP address of the target.")
+    port: int = Field(description="Port of the target.")
+
+
+@PublicAPI(stability="alpha")
+class TargetInfo(BaseModel, frozen=True):
+    targets: List[Target] = Field(description="List of targets for the given route.")
+    prefix_route: str = Field(description="Prefix route of the targets.")
+
+
 @PublicAPI(stability="stable")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
@@ -1102,6 +1114,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         description="Details about all live applications running on the cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+
+    target_details: Dict[str, List[TargetInfo]] = Field(
+        default_factory=dict,
+        description="Mapping from protocol to list of target details for the given route.",
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:

@@ -203,6 +203,14 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_details": {
+                "HTTP": [
+                    {"targets": [{"ip": node_ip, "port": 8000}], "prefix_route": "/"}
+                ],
+                "gRPC": [
+                    {"targets": [{"ip": node_ip, "port": 9000}], "prefix_route": "/"}
+                ],
+            },
         }
     )
     assert details_json == expected_json

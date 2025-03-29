@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
+    RequestProtocol,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -57,6 +58,7 @@ from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, Deploym
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
+    TargetInfo,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -930,6 +932,7 @@ class ServeController:
         # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
@@ -942,7 +945,23 @@ class ServeController:
                 else None
             ),
             applications=applications,
+            target_details=self.get_target_details(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    def get_target_details(self) -> Dict[str, List[TargetInfo]]:
+        """Target details contains information about IP
+        addresses and ports of all proxies in the cluster.
+
+        This information is used to setup the load balancer.
+        """
+        target_details = {
+            RequestProtocol.HTTP.value: [],
+            RequestProtocol.GRPC.value: [],
+        }
+        for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]:
+            target_info = self.proxy_state_manager.get_target_info(protocol)
+            target_details[protocol.value].append(target_info)
+        return target_details
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

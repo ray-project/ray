@@ -11,7 +11,7 @@ from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import NodeId
+from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_DRAIN_CHECK_PERIOD_S,
@@ -26,9 +26,20 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
-from ray.serve._private.utils import Timer, TimerBase, format_actor_name
+from ray.serve._private.utils import (
+    Timer,
+    TimerBase,
+    format_actor_name,
+    is_grpc_enabled,
+)
 from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
-from ray.serve.schema import LoggingConfig, ProxyDetails, ProxyStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ProxyDetails,
+    ProxyStatus,
+    Target,
+    TargetInfo,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -600,6 +611,42 @@ class ProxyStateManager:
             node_id: state.actor_details
             for node_id, state in self._proxy_states.items()
         }
+
+    def get_target_info(self, protocol: RequestProtocol) -> TargetInfo:
+        """In Ray Serve, every proxy is responsible for routing requests to the
+        correct application. Here we curate a list of targets for the given protocol.
+        Where each target represents how to reach a proxy.
+
+        Args:
+            protocol: Either "http" or "grpc"
+        """
+        targets = []
+        if protocol == RequestProtocol.HTTP:
+            port = self._http_options.port
+        elif protocol == RequestProtocol.GRPC:
+            if not is_grpc_enabled(self._grpc_options):
+                return TargetInfo(
+                    targets=[],
+                    prefix_route="/",
+                )
+            port = self._grpc_options.port
+        else:
+            raise ValueError(f"Invalid protocol: {protocol}")
+
+        for _, state in self._proxy_states.items():
+            if state.actor_details.status != ProxyStatus.HEALTHY:
+                continue
+            target = Target(ip=state.actor_details.node_ip, port=port)
+            targets.append(target)
+        # setting prefix route to "/" because in ray serve, proxy
+        # accepts requests from the client and routes them to the
+        # correct application. This is true for both HTTP and gRPC proxies.
+        target_info = TargetInfo(
+            targets=targets,
+            # TODO(abrar): incase of gRPC, the prefix route should be the service name.
+            prefix_route="/",
+        )
+        return target_info
 
     def get_alive_proxy_actor_ids(self) -> Set[str]:
         return {state.actor_id for state in self._proxy_states.values()}
