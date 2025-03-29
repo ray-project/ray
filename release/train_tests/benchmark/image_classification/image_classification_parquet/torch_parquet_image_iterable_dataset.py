@@ -164,46 +164,71 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
             )
             raise
 
-    def _process_row(
+    def _process_file(
         self,
-        row: pd.Series,
+        file_url: str,
         preprocess_fn: Callable,
-        worker_id: int,
-        rows_processed: int,
-        last_log_time: float,
-    ) -> Tuple[torch.Tensor, torch.Tensor, int, float]:
-        """Process a single row and convert to tensors.
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Process a single file and yield processed rows.
 
         Args:
-            row: Row to process
+            file_url: URL of the file to process
+            preprocess_fn: Preprocessing function to apply
+
+        Yields:
+            Tuple of (image_tensor, label_tensor)
+        """
+        for df in self._read_parquet_file(file_url):
+            for _, row in df.iterrows():
+                try:
+                    # Process row and convert to tensors
+                    processed = preprocess_fn(row)
+                    image = torch.as_tensor(processed["image"], dtype=torch.float32)
+                    label = torch.as_tensor(processed["label"], dtype=torch.int64)
+                    yield image, label
+                except Exception:
+                    continue
+
+    def _process_files(
+        self, files_to_read: List[str], preprocess_fn: Callable, worker_id: int
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Process multiple files and yield processed rows.
+
+        Args:
+            files_to_read: List of file URLs to process
             preprocess_fn: Preprocessing function to apply
             worker_id: ID of the current worker
-            rows_processed: Total number of rows processed so far
-            last_log_time: Time of last progress log
 
-        Returns:
-            Tuple containing:
-                - image: Processed image tensor
-                - label: Processed label tensor
-                - updated rows_processed count
-                - updated last_log_time
+        Yields:
+            Tuple of (image_tensor, label_tensor)
         """
-        try:
-            # Process row and convert to tensors
-            processed = preprocess_fn(row)
-            image = torch.as_tensor(processed["image"], dtype=torch.float32)
-            label = torch.as_tensor(processed["label"], dtype=torch.int64)
+        rows_processed = 0
+        last_log_time = time.time()
+        total_start_time = time.time()
 
-            rows_processed += 1
-            last_log_time = self._log_progress(worker_id, rows_processed, last_log_time)
+        for file_url in files_to_read:
+            if self._has_reached_row_limit(rows_processed):
+                log_with_context(
+                    f"Worker {worker_id}: Reached row limit: {rows_processed}"
+                )
+                break
 
-            return image, label, rows_processed, last_log_time
+            for image, label in self._process_file(file_url, preprocess_fn):
+                if self._has_reached_row_limit(rows_processed):
+                    break
 
-        except Exception as e:
-            log_with_context(
-                f"Worker {worker_id}: Error processing row: {str(e)}", level="error"
-            )
-            raise
+                rows_processed += 1
+                last_log_time = self._log_progress(
+                    worker_id, rows_processed, last_log_time
+                )
+                yield image, label
+
+        # Log final statistics
+        total_time = time.time() - total_start_time
+        log_with_context(
+            f"Worker {worker_id}: Finished: {rows_processed} rows in {total_time:.2f}s "
+            f"({rows_processed/total_time:.2f} rows/sec)"
+        )
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Main iteration method that processes files and yields (image, label) tensors.
@@ -223,7 +248,6 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
         try:
             # Get worker info for file distribution
             worker_id, num_workers = self._get_worker_info()
-
             log_with_context(f"Worker {worker_id}/{num_workers}: Starting")
 
             # Initialize preprocessing function
@@ -242,54 +266,8 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
                 f"Worker {worker_id}: Processing {len(files_to_read)} files"
             )
 
-            # Process files and rows
-            rows_processed = 0
-            last_log_time = time.time()
-            total_start_time = time.time()
-
-            for file_url in files_to_read:
-                # Skip file if we've reached the limit
-                if self._has_reached_row_limit(rows_processed):
-                    log_with_context(
-                        f"Worker {worker_id}: Reached row limit: {rows_processed}"
-                    )
-                    break
-
-                for df in self._read_parquet_file(file_url):
-                    # Skip DataFrame if we've reached the limit
-                    if self._has_reached_row_limit(rows_processed):
-                        break
-
-                    for _, row in df.iterrows():
-                        # Skip row if we've reached the limit
-                        if self._has_reached_row_limit(rows_processed):
-                            break
-
-                        try:
-                            # Process row and get results
-                            (
-                                image,
-                                label,
-                                rows_processed,
-                                last_log_time,
-                            ) = self._process_row(
-                                row,
-                                preprocess_fn,
-                                worker_id,
-                                rows_processed,
-                                last_log_time,
-                            )
-                            yield image, label
-
-                        except Exception:
-                            continue
-
-            # Log final statistics
-            total_time = time.time() - total_start_time
-            log_with_context(
-                f"Worker {worker_id}: Finished: {rows_processed} rows in {total_time:.2f}s "
-                f"({rows_processed/total_time:.2f} rows/sec)"
-            )
+            # Process files and yield results
+            yield from self._process_files(files_to_read, preprocess_fn, worker_id)
 
         except Exception as e:
             log_with_context(
