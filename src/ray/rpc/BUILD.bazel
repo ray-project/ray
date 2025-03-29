@@ -1,0 +1,92 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:ray_cc_library.bzl", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "raft_proto",
+    srcs = ["raft.proto"],
+    deps = [
+        "//src/ray/protobuf:common_proto",
+    ],
+)
+
+cc_library(
+    name = "raft_cc_proto",
+    srcs = ["raft.proto"],
+    deps = [
+        "//src/ray/protobuf:common_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "raft_grpc_proto",
+    srcs = ["raft.proto"],
+    deps = [
+        "//src/ray/protobuf:common_grpc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "raft_server",
+    srcs = ["raft/raft_server.cc"],
+    hdrs = ["raft/raft_server.h"],
+    deps = [
+        ":raft_cc_proto",
+        ":raft_grpc_proto",
+        "//src/ray/common:status",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:server_call",
+    ],
+)
+
+ray_cc_library(
+    name = "raft_client",
+    srcs = ["raft/raft_client.cc"],
+    hdrs = ["raft/raft_client.h"],
+    deps = [
+        ":raft_cc_proto",
+        ":raft_grpc_proto",
+        "//src/ray/common:status",
+        "//src/ray/rpc:client_call",
+    ],
+)
+
+ray_cc_library(
+    name = "head_node_client",
+    srcs = ["head_node_client.cc"],
+    hdrs = ["head_node_client.h"],
+    deps = [
+        "//ray/common:status",
+        "//ray/rpc:client_call",
+        "//ray/rpc:grpc_client",
+        "//ray/protobuf:head_node_service_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "head_node_service_handler",
+    srcs = ["head_node_service_handler.cc"],
+    hdrs = ["head_node_service_handler.h"],
+    deps = [
+        "//ray/common:status",
+        "//ray/gcs/gcs_server:gcs_server",
+        "//ray/protobuf:head_node_service_cc_proto",
+        "//ray/rpc:grpc_server",
+    ],
+)
+
+ray_cc_library(
+    name = "head_node_service",
+    srcs = ["head_node_service.cc"],
+    hdrs = ["head_node_service.h"],
+    deps = [
+        ":head_node_client",
+        ":head_node_service_handler",
+        "//ray/common:status",
+        "//ray/gcs/gcs_server:gcs_server",
+        "//ray/protobuf:head_node_service_cc_proto",
+        "//ray/rpc:grpc_server",
+    ],
+) 

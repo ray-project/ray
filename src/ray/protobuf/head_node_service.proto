@@ -1,0 +1,240 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+option java_package = "io.ray.runtime.generated";
+
+// Service discovery messages
+message ServiceInfo {
+  string service_id = 1;
+  string service_type = 2;
+  string endpoint = 3;
+  map<string, string> metadata = 4;
+}
+
+message RegisterServiceRequest {
+  ServiceInfo service = 1;
+}
+
+message RegisterServiceReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message DiscoverServiceRequest {
+  string service_type = 1;
+}
+
+message DiscoverServiceReply {
+  repeated ServiceInfo services = 1;
+}
+
+// Load balancing messages
+message LoadStats {
+  string service_id = 1;
+  string service_type = 2;
+  double cpu_usage = 3;
+  double memory_usage = 4;
+  int64 request_count = 5;
+  double latency_ms = 6;
+}
+
+message BalanceLoadRequest {
+  string source_service_id = 1;
+  string target_service_id = 2;
+}
+
+message BalanceLoadReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message GetLoadStatsRequest {
+  string service_id = 1;
+}
+
+message GetLoadStatsReply {
+  bool success = 1;
+  string error_message = 2;
+  LoadStats load_stats = 3;
+}
+
+message UpdateLoadStatsRequest {
+  string service_id = 1;
+  LoadStats load_stats = 2;
+}
+
+message UpdateLoadStatsReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// State synchronization messages
+message ServiceState {
+  string service_id = 1;
+  string service_type = 2;
+  int64 version = 3;
+  bytes data = 4;
+}
+
+message SyncStateRequest {
+  string service_id = 1;
+  ServiceState state = 2;
+}
+
+message SyncStateReply {
+  bool success = 1;
+  string error_message = 2;
+  ServiceState state = 3;
+}
+
+message GetStateRequest {
+  string service_id = 1;
+}
+
+message GetStateReply {
+  bool success = 1;
+  string error_message = 2;
+  ServiceState state = 3;
+}
+
+message UpdateStateRequest {
+  string service_id = 1;
+  ServiceState state = 2;
+}
+
+message UpdateStateReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// Configuration management messages
+message ServiceConfig {
+  string service_id = 1;
+  string service_type = 2;
+  int64 version = 3;
+  map<string, string> settings = 4;
+}
+
+message GetConfigRequest {
+  string service_id = 1;
+}
+
+message GetConfigReply {
+  bool success = 1;
+  string error_message = 2;
+  ServiceConfig config = 3;
+}
+
+message UpdateConfigRequest {
+  string service_id = 1;
+  ServiceConfig config = 2;
+}
+
+message UpdateConfigReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ValidateConfigRequest {
+  string service_id = 1;
+  ServiceConfig config = 2;
+}
+
+message ValidateConfigReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ApplyConfigRequest {
+  string service_id = 1;
+}
+
+message ApplyConfigReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// Monitoring and metrics messages
+message ServiceMetrics {
+  string service_id = 1;
+  string service_type = 2;
+  map<string, double> metrics = 3;
+  int64 timestamp = 4;
+}
+
+message CollectMetricsRequest {
+  string service_id = 1;
+  ServiceMetrics metrics = 2;
+}
+
+message CollectMetricsReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message GetMetricsRequest {
+  string service_id = 1;
+}
+
+message GetMetricsReply {
+  bool success = 1;
+  string error_message = 2;
+  ServiceMetrics metrics = 3;
+}
+
+message AlertConfig {
+  string alert_id = 1;
+  string service_type = 2;
+  string condition = 3;
+  string notification_target = 4;
+}
+
+message SetAlertRequest {
+  string alert_id = 1;
+  AlertConfig alert = 2;
+}
+
+message SetAlertReply {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message GetAlertsRequest {
+  string service_type = 1;
+}
+
+message GetAlertsReply {
+  bool success = 1;
+  string error_message = 2;
+  repeated AlertConfig alerts = 3;
+}
+
+// Head node service
+service HeadNodeService {
+  // Service discovery
+  rpc RegisterService(RegisterServiceRequest) returns (RegisterServiceReply);
+  rpc DiscoverService(DiscoverServiceRequest) returns (DiscoverServiceReply);
+
+  // Load balancing
+  rpc BalanceLoad(BalanceLoadRequest) returns (BalanceLoadReply);
+  rpc GetLoadStats(GetLoadStatsRequest) returns (GetLoadStatsReply);
+  rpc UpdateLoadStats(UpdateLoadStatsRequest) returns (UpdateLoadStatsReply);
+
+  // State synchronization
+  rpc SyncState(SyncStateRequest) returns (SyncStateReply);
+  rpc GetState(GetStateRequest) returns (GetStateReply);
+  rpc UpdateState(UpdateStateRequest) returns (UpdateStateReply);
+
+  // Configuration management
+  rpc GetConfig(GetConfigRequest) returns (GetConfigReply);
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigReply);
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigReply);
+  rpc ApplyConfig(ApplyConfigRequest) returns (ApplyConfigReply);
+
+  // Monitoring and metrics
+  rpc CollectMetrics(CollectMetricsRequest) returns (CollectMetricsReply);
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsReply);
+  rpc SetAlert(SetAlertRequest) returns (SetAlertReply);
+  rpc GetAlerts(GetAlertsRequest) returns (GetAlertsReply);
+} 

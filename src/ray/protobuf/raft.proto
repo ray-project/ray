@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+// Raft configuration
+message RaftConfig {
+  string cluster_id = 1;
+  string node_id = 2;
+  repeated string peer_ids = 3;
+  int32 election_timeout_ms = 4;
+  int32 heartbeat_interval_ms = 5;
+  int32 max_log_entries_per_request = 6;
+  int32 max_snapshot_chunk_size = 7;
+}
+
+// State update type
+enum StateUpdateType {
+  RESOURCE_UPDATE = 0;
+  ACTOR_UPDATE = 1;
+  TASK_UPDATE = 2;
+  NODE_UPDATE = 3;
+  PLACEMENT_GROUP_UPDATE = 4;
+}
+
+// State update
+message StateUpdate {
+  StateUpdateType type = 1;
+  bytes data = 2;
+}
+
+// Consensus state
+message ConsensusState {
+  int64 current_term = 1;
+  string leader_id = 2;
+  ResourceView resource_view = 3;
+  ActorTable actor_table = 4;
+  TaskTable task_table = 5;
+  NodeTable node_table = 6;
+  PlacementGroupTable placement_group_table = 7;
+}
+
+// Resource view update
+message ResourceViewUpdate {
+  ResourceView resource_view = 1;
+}
+
+// Actor table update
+message ActorUpdate {
+  ActorTable actor_table = 1;
+}
+
+// Task table update
+message TaskUpdate {
+  TaskTable task_table = 1;
+}
+
+// Node table update
+message NodeUpdate {
+  NodeTable node_table = 1;
+}
+
+// Placement group table update
+message PlacementGroupUpdate {
+  PlacementGroupTable placement_group_table = 1;
+}
+
+// Log entry
+message RaftLogEntry {
+  int64 term = 1;
+  int64 index = 2;
+  bytes command = 3;
+}
+
+// Snapshot
+message Snapshot {
+  int64 term = 1;
+  int64 index = 2;
+  ConsensusState state = 3;
+}
+
+// Vote request
+message VoteRequest {
+  int64 term = 1;
+  string candidate_id = 2;
+  int64 last_log_index = 3;
+  int64 last_log_term = 4;
+}
+
+// Vote response
+message VoteResponse {
+  int64 term = 1;
+  bool vote_granted = 2;
+  string follower_id = 3;
+}
+
+// Append entries request
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 prev_log_index = 3;
+  int64 prev_log_term = 4;
+  repeated RaftLogEntry entries = 5;
+  int64 leader_commit = 6;
+}
+
+// Append entries response
+message AppendEntriesReply {
+  int64 term = 1;
+  bool success = 2;
+  int64 conflict_index = 3;
+  int64 conflict_term = 4;
+}
+
+// Install snapshot request
+message InstallSnapshotRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 last_included_index = 3;
+  int64 last_included_term = 4;
+  bytes data = 5;
+  bool done = 6;
+}
+
+// Install snapshot response
+message InstallSnapshotReply {
+  int64 term = 1;
+  bool success = 2;
+}
+
+// Raft service for GCS coordination
+service RaftService {
+  // RequestVote RPC
+  rpc RequestVote(RequestVoteRequest) returns (RequestVoteReply) {}
+  
+  // AppendEntries RPC
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesReply) {}
+  
+  // InstallSnapshot RPC
+  rpc InstallSnapshot(InstallSnapshotRequest) returns (InstallSnapshotReply) {}
+}
+
+// RequestVote RPC arguments
+message RequestVoteRequest {
+  int64 term = 1;
+  string candidate_id = 2;
+  int64 last_log_index = 3;
+  int64 last_log_term = 4;
+}
+
+// RequestVote RPC response
+message RequestVoteReply {
+  int64 term = 1;
+  bool vote_granted = 2;
+}
+
+// Log entry
+message RaftLogEntry {
+  int64 term = 1;
+  int64 index = 2;
+  bytes command = 3;
+}
+
+// AppendEntries RPC arguments
+message AppendEntriesRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 prev_log_index = 3;
+  int64 prev_log_term = 4;
+  repeated RaftLogEntry entries = 5;
+  int64 leader_commit = 6;
+}
+
+// AppendEntries RPC response
+message AppendEntriesReply {
+  int64 term = 1;
+  bool success = 2;
+  int64 conflict_index = 3;
+  int64 conflict_term = 4;
+}
+
+// InstallSnapshot RPC arguments
+message InstallSnapshotRequest {
+  int64 term = 1;
+  string leader_id = 2;
+  int64 last_included_index = 3;
+  int64 last_included_term = 4;
+  bytes data = 5;
+  bool done = 6;
+}
+
+// InstallSnapshot RPC response
+message InstallSnapshotReply {
+  int64 term = 1;
+  bool success = 2;
+} 
