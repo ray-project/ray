@@ -692,6 +692,102 @@ def test_decorator_args(ray_start_regular_shared):
             pass
 
 
+def test_decorator_label_selector_args(ray_start_regular_shared):
+    # This is a valid way of using the decorator - multiple labels with implicit 'equals' condition
+    @ray.remote(
+        label_selector={"ray.io/market-type": "spot", "ray.io/accelerator-type": "H100"}
+    )  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is a valid way of using the decorator - not equals condition
+    @ray.remote(label_selector={"ray.io/market-type": "!spot"})  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is a valid way of using the decorator - in condition
+    @ray.remote(
+        label_selector={"ray.io/accelerator-type": "in(H100, B200, TPU)"}
+    )  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is a valid way of using the decorator - not in condition
+    @ray.remote(
+        label_selector={"ray.io/accelerator-type": "!in(H100, B200)"}
+    )  # noqa: F811
+    class Actor:  # noqa: F811
+        def __init__(self):
+            pass
+
+    # This is an invalid way of using the decorator - label_selector expects a dict
+    with pytest.raises(TypeError):
+
+        @ray.remote(label_selector="")  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - Invalid label prefix
+    with pytest.raises(ValueError):
+
+        @ray.remote(label_selector={"r!a!y.io/market_type": "spot"})  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - Invalid label name
+    with pytest.raises(ValueError):
+
+        @ray.remote(label_selector={"??==ags!": "true"})  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - Invalid label value
+    with pytest.raises(ValueError):
+
+        @ray.remote(
+            label_selector={"ray.io/accelerator_type": "??==ags!"}
+        )  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - non-supported label selector condition
+    with pytest.raises(ValueError):
+
+        @ray.remote(
+            label_selector={"ray.io/accelerator_type": "matches(TPU)"}
+        )  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - in condition with incorrectly formatted string
+    with pytest.raises(ValueError):
+
+        @ray.remote(
+            label_selector={"ray.io/accelerator_type": "in(H100,, B200)"}
+        )  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+    # This is an invalid way of using the decorator - unclosed parantheses in condition
+    with pytest.raises(ValueError):
+
+        @ray.remote(
+            label_selector={"ray.io/accelerator_type": "in(TPU, H100, B200"}
+        )  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote
     class Foo:
