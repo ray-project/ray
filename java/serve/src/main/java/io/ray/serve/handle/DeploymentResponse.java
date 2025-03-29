@@ -15,6 +15,10 @@ public class DeploymentResponse {
     this.objectRef = objectRef;
   }
 
+  public ObjectRef<Object> getObjectRef() {
+    return objectRef;
+  }
+
   public Object result() {
     return objectRef.get();
   }
