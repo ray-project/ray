@@ -152,7 +152,8 @@ NodeManager::NodeManager(
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::Now(); }),
+          /*get_time=*/[]() { return absl::Now(); },
+          config.enable_resource_isolation),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
