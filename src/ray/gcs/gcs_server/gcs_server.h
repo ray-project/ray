@@ -42,6 +42,13 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "ray/util/throttler.h"
+#include "ray/rpc/raft/raft_server.h"
+#include "ray/gcs/gcs_server/service_discovery.h"
+#include "ray/gcs/gcs_server/load_balancer.h"
+#include "ray/gcs/gcs_server/state_sync.h"
+#include "ray/gcs/gcs_server/config_manager.h"
+#include "ray/gcs/gcs_server/monitoring.h"
+#include "ray/gcs/gcs_server/gcs_server_fwd.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -76,6 +83,13 @@ class GcsPlacementGroupManager;
 class GcsTaskManager;
 class GcsAutoscalerStateManager;
 
+// Forward declarations
+class ServiceDiscovery;
+class LoadBalancer;
+class StateSync;
+class ConfigManager;
+class MetricsManager;
+
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
@@ -93,10 +107,14 @@ class GcsServer {
   virtual ~GcsServer();
 
   /// Start gcs server.
-  void Start();
+  /// This will start all the components and services.
+  /// \return Status indicating success or failure.
+  Status Start();
 
   /// Stop gcs server.
-  void Stop();
+  /// This will stop all the components and services.
+  /// \return Status indicating success or failure.
+  Status Stop();
 
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
@@ -126,6 +144,18 @@ class GcsServer {
     RAY_CHECK(gcs_resource_manager_ != nullptr);
     gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
+
+  // Service getters
+  ServiceDiscovery &GetServiceDiscovery() { return *service_discovery_; }
+  LoadBalancer &GetLoadBalancer() { return *load_balancer_; }
+  StateSync &GetStateSync() { return *state_sync_; }
+  ConfigManager &GetConfigManager() { return *config_manager_; }
+  Monitoring &GetMonitoring() { return *monitoring_; }
+  MetricsManager &GetMetricsManager() { return *metrics_manager_; }
+  GcsDebugTools &GetDebugTools() { return *debug_tools_; }
+
+  // Get gRPC server
+  rpc::GrpcServer &GetGrpcServer() { return *grpc_server_; }
 
  protected:
   /// Generate the redis client options
@@ -313,6 +343,21 @@ class GcsServer {
   int task_pending_schedule_detected_ = 0;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
+  /// Raft service handler and service.
+  std::unique_ptr<rpc::RaftServiceHandler> raft_service_handler_;
+  std::unique_ptr<rpc::RaftGrpcService> raft_service_;
+
+  // Services
+  std::unique_ptr<ServiceDiscovery> service_discovery_;
+  std::unique_ptr<LoadBalancer> load_balancer_;
+  std::unique_ptr<StateSync> state_sync_;
+  std::unique_ptr<ConfigManager> config_manager_;
+  std::unique_ptr<Monitoring> monitoring_;
+  std::unique_ptr<MetricsManager> metrics_manager_;
+  std::unique_ptr<GcsDebugTools> debug_tools_;
+
+  // gRPC server
+  std::unique_ptr<rpc::GrpcServer> grpc_server_;
 };
 
 }  // namespace gcs

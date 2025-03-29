@@ -23,6 +23,8 @@
 #include "ray/common/id.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/common/status.h"
+#include "src/ray/util/logging.h"
 namespace ray {
 
 static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(

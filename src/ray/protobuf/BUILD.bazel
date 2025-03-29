@@ -1,5 +1,7 @@
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_java//java:defs.bzl", "java_proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 
 proto_library(
     name = "raft_proto",
@@ -55,4 +57,30 @@ proto_library(
 cc_proto_library(
     name = "usage_cc_proto",
     deps = [":usage_proto"],
-) 
+)
+
+proto_library(
+    name = "head_node_service_proto",
+    srcs = ["head_node_service.proto"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:descriptor_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "head_node_service_cc_proto",
+    deps = [":head_node_service_proto"],
+)
+
+java_proto_library(
+    name = "head_node_service_java_proto",
+    deps = [":head_node_service_proto"],
+)
+
+py_proto_library(
+    name = "head_node_service_py_proto",
+    deps = [":head_node_service_proto"],
+)
+
+package(default_visibility = ["//visibility:public"]) 

@@ -1,110 +1,86 @@
 syntax = "proto3";
 
-package ray.gcs;
+package ray.rpc;
 
-// Resource view represents the current state of resources in the cluster
+// Resource view for a node
 message ResourceView {
-  // Map of node ID to node resources
-  map<string, NodeResources> node_resources = 1;
-  // Map of node ID to total resources
-  map<string, NodeResources> total_resources = 2;
-  // Map of node ID to available resources
-  map<string, NodeResources> available_resources = 3;
+  map<string, double> resources = 1;
+  map<string, double> available_resources = 2;
+  map<string, double> total_resources = 3;
 }
 
-// Node resources represents the resources of a node
+// Node resources
 message NodeResources {
-  double cpu = 1;
-  double memory = 2;
-  double gpu = 3;
-  map<string, double> custom_resources = 4;
+  string node_id = 1;
+  ResourceView resources = 2;
+  bool is_alive = 3;
+  int64 last_heartbeat = 4;
 }
 
-// Actor table entry represents an actor in the cluster
+// Actor table entry
 message ActorTableEntry {
   string actor_id = 1;
   string name = 2;
-  enum State {
-    PENDING = 0;
-    RUNNING = 1;
-    DEAD = 2;
-  }
-  State state = 3;
+  string job_id = 3;
   string node_id = 4;
-  string class_name = 5;
-  int64 creation_time = 6;
-  int64 death_time = 7;
+  string worker_id = 5;
+  bool is_alive = 6;
+  int64 num_restarts = 7;
+  int64 timestamp = 8;
 }
 
-// Actor table represents the set of actors in the cluster
+// Actor table
 message ActorTable {
   map<string, ActorTableEntry> entries = 1;
 }
 
-// Task table entry represents a task in the cluster
+// Task table entry
 message TaskTableEntry {
   string task_id = 1;
-  string name = 2;
-  enum State {
-    PENDING = 0;
-    RUNNING = 1;
-    COMPLETED = 2;
-    FAILED = 3;
-  }
-  State state = 3;
-  string node_id = 4;
-  bytes arguments = 5;
-  int64 creation_time = 6;
-  int64 completion_time = 7;
+  string job_id = 2;
+  string node_id = 3;
+  string worker_id = 4;
+  bool is_alive = 5;
+  int64 timestamp = 6;
 }
 
-// Task table represents the set of tasks in the cluster
+// Task table
 message TaskTable {
   map<string, TaskTableEntry> entries = 1;
 }
 
-// Node table entry represents a node in the cluster
+// Node table entry
 message NodeTableEntry {
   string node_id = 1;
-  enum State {
-    ALIVE = 0;
-    DEAD = 1;
-  }
-  State state = 2;
-  NodeResources resources = 3;
-  string ip_address = 4;
-  int32 port = 5;
-  int64 start_time = 6;
-  int64 death_time = 7;
+  string node_ip_address = 2;
+  string node_manager_port = 3;
+  bool is_alive = 4;
+  int64 timestamp = 5;
 }
 
-// Node table represents the set of nodes in the cluster
+// Node table
 message NodeTable {
   map<string, NodeTableEntry> entries = 1;
 }
 
-// Placement group table entry represents a placement group in the cluster
+// Placement group table entry
 message PlacementGroupTableEntry {
   string placement_group_id = 1;
   string name = 2;
-  enum State {
-    PENDING = 0;
-    CREATED = 1;
-    REMOVED = 2;
-  }
-  State state = 3;
-  repeated BundleSpecification bundles = 4;
-  int64 creation_time = 5;
-  int64 removal_time = 6;
+  string job_id = 3;
+  string state = 4;
+  repeated BundleSpecification bundles = 5;
+  int64 timestamp = 6;
 }
 
-// Bundle specification represents a bundle of resources
+// Bundle specification
 message BundleSpecification {
-  NodeResources resources = 1;
-  map<string, string> placement_constraints = 2;
+  string bundle_id = 1;
+  ResourceView resources = 2;
+  repeated string node_ids = 3;
 }
 
-// Placement group table represents the set of placement groups in the cluster
+// Placement group table
 message PlacementGroupTable {
   map<string, PlacementGroupTableEntry> entries = 1;
 } 
