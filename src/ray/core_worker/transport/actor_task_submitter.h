@@ -255,17 +255,20 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  private:
   struct PendingTaskWaitingForDeathInfo {
     int64_t deadline_ms;
-    TaskSpecification task_spec;
+    TaskID task_id;
+    ActorID actor_id;
     ray::Status status;
     rpc::RayErrorInfo timeout_error_info;
     bool actor_preempted = false;
 
     PendingTaskWaitingForDeathInfo(int64_t deadline_ms,
-                                   TaskSpecification task_spec,
+                                   TaskID task_id,
+                                   ActorID actor_id,
                                    ray::Status status,
                                    rpc::RayErrorInfo timeout_error_info)
         : deadline_ms(deadline_ms),
-          task_spec(std::move(task_spec)),
+          task_id(task_id),
+          actor_id(actor_id),
           status(std::move(status)),
           timeout_error_info(std::move(timeout_error_info)) {}
   };
@@ -286,7 +289,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                 bool owned)
         : max_pending_calls(max_pending_calls),
           fail_if_actor_unreachable(fail_if_actor_unreachable),
-          owned(owned) {
+          owned(owned),
+          execute_out_of_order(execute_out_of_order) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
@@ -359,6 +363,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// Whether the current process is owner of the actor.
     bool owned;
 
+    /// Whether to execute tasks out of order.
+    bool execute_out_of_order;
+
     /// Returns debug string for class.
     ///
     /// \return string.
@@ -382,14 +389,19 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(ClientQueue &queue,
-                     const TaskSpecification &task_spec,
-                     bool skip_queue) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void PushActorTask(ClientQueue &queue, TaskSpecification task_spec, bool skip_queue)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void HandlePushTaskReply(const Status &status,
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &addr,
-                           const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mu_);
+                           const TaskID &task_id,
+                           const ActorID &actor_id,
+                           uint64_t actor_counter,
+                           bool task_skipped,
+                           bool has_out_of_order_queue,
+                           const std::optional<TaskSpecification> &task_spec)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Send all pending tasks for an actor.
   ///
