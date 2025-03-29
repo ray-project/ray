@@ -1,12 +1,12 @@
 # Standard library imports
-from typing import List, Tuple, Optional, Iterator, Callable
-import logging
 import io
+import logging
 import time
+from typing import Iterator, List, Optional, Tuple, Callable
 
 # Third-party imports
 import numpy as np
-import PIL.Image as PILImage
+from PIL import Image as PILImage
 import torch
 from torch.utils.data import IterableDataset
 
@@ -23,9 +23,17 @@ logger = logging.getLogger(__name__)
 
 
 class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
-    """An iterable dataset that loads images from S3-stored JPEG files."""
+    """An iterable dataset that loads images from S3-stored JPEG files.
+
+    Features:
+    - Direct image fetching from S3
+    - Optional random transforms for training
+    - Row limits per worker for controlled processing
+    - Progress logging and performance metrics
+    """
 
     # Constants
+    BATCH_SIZE = 1  # Number of images to fetch
     LOG_FREQUENCY = 1000  # Log progress every 1000 rows
 
     def __init__(
@@ -33,6 +41,7 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
         file_urls: List[str],
         random_transforms: bool = True,
         limit_rows_per_worker: Optional[int] = None,
+        batch_size: int = BATCH_SIZE,
     ):
         """Initialize the dataset.
 
@@ -40,44 +49,19 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             file_urls: List of S3 URLs to load
             random_transforms: Whether to use random transforms for training
             limit_rows_per_worker: Maximum number of rows to process per worker
+            batch_size: Number of images to fetch
         """
-        S3JpegReader.__init__(self)
+        super().__init__()
         self.file_urls = file_urls
         self.limit_rows_per_worker = limit_rows_per_worker
         self.random_transforms = random_transforms
+        self.batch_size = batch_size
 
         worker_rank = ray.train.get_context().get_world_rank()
         log_with_context(
             f"Worker {worker_rank}: Initialized with {len(file_urls)} files"
-            f"{f' (limit: {limit_rows_per_worker} rows)' if limit_rows_per_worker else ''}"
-        )
-
-    def _has_reached_row_limit(self, rows_processed: int) -> bool:
-        """Check if we've reached the row limit per worker.
-
-        Args:
-            rows_processed: Number of rows processed so far
-
-        Returns:
-            True if we've reached the limit, False otherwise
-        """
-        return (
-            self.limit_rows_per_worker is not None
-            and rows_processed >= self.limit_rows_per_worker
-        )
-
-    def _handle_processing_error(
-        self, worker_id: int, error: Exception, context: str
-    ) -> None:
-        """Handle processing errors with consistent logging.
-
-        Args:
-            worker_id: ID of the current worker
-            error: The exception that occurred
-            context: Description of where the error occurred
-        """
-        log_with_context(
-            f"Worker {worker_id}: Error {context}: {str(error)}", level="error"
+            f"{f' (limit: {limit_rows_per_worker} rows)' if limit_rows_per_worker else ''} "
+            f"(batch size: {batch_size})"
         )
 
     def _get_worker_info(self) -> Tuple[int, int]:
@@ -91,17 +75,18 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
         num_workers = worker_info.num_workers if worker_info else 1
         return worker_id, num_workers
 
-    def _get_files_for_worker(self) -> List[str]:
-        """Get files to process for current worker.
+    def _has_reached_row_limit(self, rows_processed: int) -> bool:
+        """Check if we've reached the row limit per worker.
+
+        Args:
+            rows_processed: Number of rows processed so far
 
         Returns:
-            List of file URLs to process
+            True if we've reached the limit, False otherwise
         """
-        worker_id, num_workers = self._get_worker_info()
         return (
-            self.file_urls[worker_id::num_workers]
-            if num_workers > 1
-            else self.file_urls
+            self.limit_rows_per_worker is not None
+            and rows_processed >= self.limit_rows_per_worker
         )
 
     def _log_progress(
@@ -130,65 +115,98 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             return current_time
         return last_log_time
 
-    def _log_completion(
-        self, worker_id: int, rows_processed: int, total_start_time: float
-    ) -> None:
-        """Log completion statistics.
+    def _fetch_image_batch(
+        self, file_urls: List[str]
+    ) -> List[Tuple[str, PILImage.Image]]:
+        """Fetch a batch of images from S3.
 
         Args:
-            worker_id: ID of the current worker
-            rows_processed: Total number of rows processed
-            total_start_time: Start time of processing
-        """
-        total_time = time.time() - total_start_time
-        log_with_context(
-            f"Worker {worker_id}: Finished: {rows_processed} rows in {total_time:.2f}s "
-            f"({rows_processed/total_time:.2f} rows/sec)"
-        )
-
-    def _fetch_image(self, file_url: str) -> Tuple[str, PILImage.Image]:
-        """Fetch a single image from S3.
-
-        Args:
-            file_url: S3 URL to fetch
+            file_urls: List of S3 URLs to fetch (e.g., "s3://bucket/path/to/image.jpg")
 
         Returns:
-            Tuple of (file_url, PIL Image)
+            List of (file_url, PIL Image) tuples where:
+                - file_url: The original S3 URL
+                - PIL Image: The loaded image, or None if fetch failed
+        """
+        results = []
+        worker_id, _ = self._get_worker_info()
+
+        for file_url in file_urls:
+            try:
+                bucket = file_url.replace("s3://", "").split("/")[0]
+                key = "/".join(file_url.replace("s3://", "").split("/")[1:])
+
+                response = self.s3_client.get_object(Bucket=bucket, Key=key)
+                image_data = response["Body"].read()
+                image = PILImage.open(io.BytesIO(image_data))
+                results.append((file_url, image))
+
+            except Exception as e:
+                log_with_context(
+                    f"Worker {worker_id}: Error fetching image from {file_url}: {str(e)}",
+                    level="error",
+                    exc_info=True,
+                )
+                results.append((file_url, None))
+
+        return results
+
+    def _fetch_images_batch(
+        self, file_urls: List[str]
+    ) -> List[Tuple[str, PILImage.Image]]:
+        """Fetch a batch of images from S3.
+
+        Args:
+            file_urls: List of S3 URLs to fetch
+
+        Returns:
+            List of (file_url, PIL Image) tuples
 
         Raises:
-            Exception: If there's an error fetching the image
+            Exception: If there's an error fetching the batch
         """
-        bucket = file_url.replace("s3://", "").split("/")[0]
-        key = "/".join(file_url.replace("s3://", "").split("/")[1:])
+        try:
+            results = self._fetch_image_batch(file_urls)
+            worker_id, _ = self._get_worker_info()
 
-        response = self.s3_client.get_object(Bucket=bucket, Key=key)
-        image_data = response["Body"].read()
-        image = PILImage.open(io.BytesIO(image_data))
-        return file_url, image
+            valid_results = [(url, img) for url, img in results if img is not None]
+            if len(valid_results) < len(results):
+                log_with_context(
+                    f"Worker {worker_id}: Failed to fetch {len(results) - len(valid_results)} images",
+                    level="warning",
+                )
+
+            return valid_results
+        except Exception as e:
+            worker_id, _ = self._get_worker_info()
+            log_with_context(
+                f"Worker {worker_id}: Error fetching batch: {str(e)}", level="error"
+            )
+            raise
 
     def _process_image(
         self,
-        file_url: str,
         image: PILImage.Image,
+        file_url: str,
         preprocess_fn: Callable,
         worker_id: int,
         rows_processed: int,
         last_log_time: float,
     ) -> Tuple[torch.Tensor, torch.Tensor, int, float]:
-        """Process a single image and return (image, label) tensors.
+        """Process a single image and convert to tensors.
 
         Args:
-            file_url: URL of the image file
             image: PIL Image to process
-            preprocess_fn: Preprocessing function to apply to image
+            file_url: URL of the image file
+            preprocess_fn: Preprocessing function to apply
             worker_id: ID of the current worker
-            rows_processed: Number of rows processed so far
+            rows_processed: Total number of rows processed so far
             last_log_time: Time of last progress log
 
         Returns:
             Tuple containing:
-                - image: Image tensor in (C, H, W) format
-                - label: Label tensor
+                - image: Processed image tensor
+                - label: Processed label tensor
                 - updated rows_processed count
                 - updated last_log_time
         """
@@ -205,25 +223,23 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
                 image_array = np.transpose(image_array, (1, 2, 0))
 
             wnid = file_url.split("/")[-2]  # Extract WNID from path
-            formatted_item = {"image": image_array, "class": wnid}
 
-            # Process image
-            processed_item = preprocess_fn([formatted_item])[0]
+            processed = preprocess_fn({"image": image_array, "class": wnid})
 
-            # Convert to PyTorch tensor with correct shape (C, H, W)
-            image = torch.as_tensor(
-                processed_item["image"], dtype=torch.float32
-            ).permute(2, 0, 1)
-            label = torch.tensor(int(processed_item["label"]), dtype=torch.int64)
+            image = torch.as_tensor(processed["image"], dtype=torch.float32)
+            label = torch.as_tensor(processed["label"], dtype=torch.int64)
 
-            # Update progress and get new last_log_time
             rows_processed += 1
             last_log_time = self._log_progress(worker_id, rows_processed, last_log_time)
 
             return image, label, rows_processed, last_log_time
 
         except Exception as e:
-            self._handle_processing_error(worker_id, e, "processing image")
+            log_with_context(
+                f"Worker {worker_id}: Error processing {file_url}: {str(e)}",
+                level="error",
+                exc_info=True,
+            )
             raise
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
@@ -236,8 +252,15 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             Exception: If there's a fatal error during iteration
         """
         try:
+            # Get worker info for file distribution
             worker_id, num_workers = self._get_worker_info()
-            files_to_read = self._get_files_for_worker()
+
+            # Distribute files among workers
+            files_to_read = (
+                self.file_urls
+                if num_workers == 1
+                else self.file_urls[worker_id::num_workers]
+            )
 
             log_with_context(
                 f"Worker {worker_id}/{num_workers}: Processing {len(files_to_read)} files"
@@ -251,33 +274,53 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             last_log_time = time.time()
             total_start_time = time.time()
 
-            for file_url in files_to_read:
+            for i in range(0, len(files_to_read), self.batch_size):
+                batch_urls = files_to_read[i : i + self.batch_size]
+
                 if self._has_reached_row_limit(rows_processed):
                     log_with_context(
-                        f"Worker {worker_id}: Reached row limit of "
-                        f"{self.limit_rows_per_worker}"
+                        f"Worker {worker_id}: Reached row limit of {self.limit_rows_per_worker}"
                     )
                     break
 
                 try:
-                    # Fetch and process one image at a time
-                    file_url, image = self._fetch_image(file_url)
-                    image, label, rows_processed, last_log_time = self._process_image(
-                        file_url,
-                        image,
-                        preprocess_fn,
-                        worker_id,
-                        rows_processed,
-                        last_log_time,
-                    )
-                    yield image, label
+                    batch_results = self._fetch_images_batch(batch_urls)
 
-                except Exception as e:
-                    self._handle_processing_error(worker_id, e, "processing file")
+                    for file_url, image in batch_results:
+                        try:
+                            # Process image and get results
+                            (
+                                image,
+                                label,
+                                rows_processed,
+                                last_log_time,
+                            ) = self._process_image(
+                                image,
+                                file_url,
+                                preprocess_fn,
+                                worker_id,
+                                rows_processed,
+                                last_log_time,
+                            )
+                            yield image, label
+
+                        except Exception:
+                            continue
+
+                except Exception:
                     continue
 
-            self._log_completion(worker_id, rows_processed, total_start_time)
+            # Log final statistics
+            total_time = time.time() - total_start_time
+            log_with_context(
+                f"Worker {worker_id}: Completed {rows_processed} rows in {total_time:.2f}s "
+                f"({rows_processed/total_time:.2f} rows/sec)"
+            )
 
         except Exception as e:
-            self._handle_processing_error(worker_id, e, "fatal error")
+            log_with_context(
+                f"Worker {worker_id}: Fatal error: {str(e)}",
+                level="error",
+                exc_info=True,
+            )
             raise
