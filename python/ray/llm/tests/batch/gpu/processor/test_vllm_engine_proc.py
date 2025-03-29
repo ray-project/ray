@@ -176,7 +176,7 @@ def test_embedding_model(gpu_type, model_opt_125m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(gpu_type, model_llava_354m):
+def test_vision_model_v0(gpu_type, model_llava_354m):
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_llava_354m,
         task_type="generate",
@@ -185,11 +185,11 @@ def test_vision_model(gpu_type, model_llava_354m):
             enforce_eager=True,
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        # runtime_env=dict(
-        #     env_vars=dict(
-        #         VLLM_USE_V1="1",
-        #     ),
-        # ),
+        runtime_env=dict(
+            env_vars=dict(
+                VLLM_USE_V1="0",
+            ),
+        ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,
