@@ -1304,6 +1304,7 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
+    accelerator_cpu_mask: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1416,6 +1417,14 @@ def init(
             be used as the object store fallback directory as well.
         storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
             be removed in a future version of Ray.
+        accelerator_cpu_mask: The CPU mask for the affinity of accelerator, it
+            is a string of digits separated by commas. The mapping
+            is specified to be node specific and identical mapping is
+            applied to the tasks on each node with same accelerator id.
+            If provided, the CPU affinity of the accelerator will
+            be set when the task first starts. If the number of accelerators
+            exceeds the number of elements in this list, elements in the list
+            will be reused as needed starting from the beginning of the list.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1742,6 +1751,7 @@ def init(
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
+            accelerator_cpu_mask=accelerator_cpu_mask,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -1765,6 +1775,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "resources must not be provided."
+            )
+        if accelerator_cpu_mask is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "accelerator_cpu_mask must not be provided."
             )
         if labels is not None:
             raise ValueError(
@@ -2501,6 +2516,7 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
         debug_source,
+        node.accelerator_cpu_mask,
     )
 
     if mode == SCRIPT_MODE:
