@@ -254,6 +254,33 @@ To deploy using either configuration file:
 
     serve run config.yaml
 
+Generate config files
+---------------------
+
+Ray Serve LLM provides a CLI to generate config files for your deployment:
+
+.. code-block:: bash
+
+    python -m ray.serve.llm.gen_config
+
+*Note*: This command requires interactive inputs. You should execute it directly in the
+terminal.
+
+This command lets you pick from a common set of OSS LLMs and helps you configure them.
+You can tune settings like GPU type, tensor parallelism, and autoscaling parameters.
+
+Note that if you're configuring a model whose architecture is different from the
+provided list of models, you should closely review the generated model config file to
+provide the correct values.
+
+This command generates two files: an LLM config file, saved in `model_config/`, and a
+Ray Serve config file, `serve_TIMESTAMP.yaml`, that you can reference and re-run in the
+future.
+
+Read and check how the generated model config looks like. Refer to
+`vLLMEngine Config <https://docs.vllm.ai/en/latest/serving/engine_args.html>`_.
+to further customize.
+
 Advanced Usage Patterns
 -----------------------
 
@@ -476,6 +503,48 @@ For multimodal models that can process both text and images:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
+Using remote storage for model weights
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use remote storage (S3 and GCS) to store your model weights instead of
+downloading them from Hugging Face.
+
+For example, if you have a model stored in S3 that looks like the below structure:
+
+.. code-block:: bash
+
+    $ aws s3 ls air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct/
+    2025-03-25 11:37:48       1519 .gitattributes
+    2025-03-25 11:37:48       7712 LICENSE.txt
+    2025-03-25 11:37:48      41742 README.md
+    2025-03-25 11:37:48       6021 USE_POLICY.md
+    2025-03-25 11:37:48        877 config.json
+    2025-03-25 11:37:48        189 generation_config.json
+    2025-03-25 11:37:48 2471645608 model.safetensors
+    2025-03-25 11:37:53        296 special_tokens_map.json
+    2025-03-25 11:37:53    9085657 tokenizer.json
+    2025-03-25 11:37:53      54528 tokenizer_config.json
+
+You can then specify the `bucket_uri` in the `model_loading_config` to point to your S3 bucket.
+
+.. code-block:: yaml
+
+    # config.yaml
+    applications:
+    - args:
+        llm_configs:
+            - accelerator_type: A10G
+              engine_kwargs:
+                max_model_len: 8192
+              model_loading_config:
+                model_id: my_llama
+                model_source:
+                  bucket_uri: s3://anonymous@air-example-data/rayllm-ossci/meta-Llama-3.2-1B-Instruct
+      import_path: ray.serve.llm:build_openai_app
+      name: llm_app
+      route_prefix: "/"
+
+
 Frequently Asked Questions
 --------------------------
 
@@ -552,3 +621,19 @@ If you are using huggingface models, you can enable fast download by setting `HF
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
+
+Usage Data Collection
+--------------------------
+We collect usage data to improve Ray Serve LLM.
+We collect data about the following features and attributes:
+
+- model architecture used for serving
+- whether JSON mode is used
+- whether LoRA is used and how many LoRA weights are loaded initially at deployment time
+- whether autoscaling is used and the min and max replicas setup
+- tensor parallel size used
+- initial replicas count
+- GPU type used and number of GPUs used
+
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to disable it.

@@ -212,6 +212,42 @@ class TestModelConfig:
         }
         assert serve_options == expected_options
 
+    def test_resources_per_bundle(self):
+        """Test that resources_per_bundle is correctly parsed."""
+
+        # Test the default resource bundle
+        serve_options = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+        ).get_serve_options(name_prefix="Test:")
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
+            {"GPU": 1} for _ in range(6)
+        ]
+
+        # Test the custom resource bundle
+        serve_options = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+            resources_per_bundle={"XPU": 1},
+        ).get_serve_options(name_prefix="Test:")
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0}] + [
+            {"XPU": 1} for _ in range(6)
+        ]
+
+    def test_engine_config_cached(self):
+        """Test that the engine config is cached and not recreated when calling
+        get_engine_config so the attributes on the engine will be persisted."""
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        old_engine_config = llm_config.get_engine_config()
+        old_engine_config.hf_model_id = "fake_hf_model_id"
+        new_engine_config = llm_config.get_engine_config()
+        assert new_engine_config is old_engine_config
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

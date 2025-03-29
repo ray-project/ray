@@ -312,9 +312,19 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
-        // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
-        boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
+        /*message_handler=*/
+        [this](std::shared_ptr<Client> client,
+               fb::MessageType message_type,
+               const std::vector<uint8_t> &message) -> Status {
+          return ProcessClientMessage(std::move(client), message_type, message);
+        },
+        /*connection_error_handler=*/
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
+            -> void { return HandleClientConnectionError(std::move(client), error); },
         std::move(socket_));
+
+    // Start receiving messages.
+    new_connection->ProcessMessages();
   }
 
   if (error != boost::asio::error::operation_aborted) {
@@ -355,14 +365,21 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
-Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
-                                   fb::MessageType type,
-                                   const std::vector<uint8_t> &message) {
+void PlasmaStore::HandleClientConnectionError(std::shared_ptr<Client> client,
+                                              const boost::system::error_code &error) {
+  absl::MutexLock lock(&mutex_);
+  RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
+                   << error.value() << ": " << error.message();
+  DisconnectClient(client);
+}
+
+Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
+                                         fb::MessageType type,
+                                         const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
-  ObjectID object_id;
 
   // Process the different types of requests.
   switch (type) {
@@ -407,6 +424,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ReplyToCreateClient(client, object_id, request->request_id());
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
     RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
                                                       "client currently using it "
@@ -425,6 +443,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
     bool may_unmap;
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     bool should_unmap = ReleaseObject(object_id, client);
     if (!may_unmap) {
@@ -450,6 +469,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(SendDeleteReply(client, object_ids, error_codes));
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
     if (object_lifecycle_mgr_.IsObjectSealed(object_id)) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
@@ -458,6 +478,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     }
   } break;
   case fb::MessageType::PlasmaSealRequest: {
+    ObjectID object_id;
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));

@@ -14,7 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -798,7 +801,7 @@ GcsPlacementGroupManager::GetBundlesOnNode(const NodeID &node_id) const {
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO).WithField(node_id)
-      << "Node failed, rescheduling the placement groups on the dead node.";
+      << "Node is dead, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetAndRemoveBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);

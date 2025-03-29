@@ -13,6 +13,7 @@ class HttpRequestUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         url: str,
         additional_header: Optional[Dict[str, Any]] = None,
         qps: Optional[int] = None,
@@ -22,11 +23,12 @@ class HttpRequestUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             url: The URL to send the HTTP request to.
             additional_header: The additional headers to send with the HTTP request.
             qps: The maximum number of requests per second.
         """
-        super().__init__(data_column)
+        super().__init__(data_column, expected_input_keys)
         self.url = url
         self.additional_header = additional_header or {}
         self.qps = qps
@@ -90,10 +92,6 @@ class HttpRequestUDF(StatefulStageUDF):
                         "http_response": resp_json,
                     }
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        return ["payload"]
-
 
 class HttpRequestStage(StatefulStage):
     """
@@ -101,3 +99,10 @@ class HttpRequestStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = HttpRequestUDF
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {
+            "payload": "The payload to send to the HTTP request. "
+            "It should be in JSON format."
+        }

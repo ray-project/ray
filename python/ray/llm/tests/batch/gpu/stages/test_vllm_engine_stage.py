@@ -109,6 +109,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=vLLMTaskType.GENERATE,
         engine_kwargs={
@@ -149,11 +150,13 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # Verify the wrapper was constructed with correct arguments
     mock_vllm_wrapper.assert_called_once_with(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
         task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
+        dynamic_lora_loading_path=None,
     )
 
 
@@ -208,6 +211,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
             model=model_llama_3_2_216M,
+            model_source=model_llama_3_2_216M,
             idx_in_batch_column="__idx_in_batch",
             disable_log_stats=True,
             max_pending_requests=max_pending_requests,
@@ -233,6 +237,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
 
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -279,6 +284,7 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
 async def test_vllm_wrapper_embed(model_opt_125m):
     wrapper = vLLMEngineWrapper(
         model=model_opt_125m,
+        model_source=model_opt_125m,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -307,6 +313,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
+        model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -366,6 +373,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
 
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_1B_instruct,
+        model_source=model_llama_3_2_1B_instruct,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,

@@ -633,6 +633,13 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
+/// The path to spill objects to. The same path will be used as the object store
+/// fallback directory as well. When both object_spilling_config and
+/// object_spilling_directory are set, object_spilling_directory will take
+/// precedence. When object_spilling_directory is set ray.init() or ray start as well,
+/// the directory set with ray.init() or ray start will take precedence.
+RAY_CONFIG(std::string, object_spilling_directory, "")
+
 /// Log an ERROR-level message about spilling every time this amount of bytes has been
 /// spilled, with exponential increase in interval. This can be set to zero to disable.
 RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
@@ -916,10 +923,8 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // Costs an extra RPC.
 // TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)
-// The number of sockets between object manager.
-// The higher the number the higher throughput of the data
-// transfer it'll be, but it'll also user more sockets and
-// more CPU resources.
+
+// The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
 
 // The number of object manager thread. By default, it's
@@ -949,3 +954,7 @@ RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 // will be waiting for the required resources to become available achieved mainly by
 // updating the cluster config to add new nodes.
 RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
+
+// Frequency at which to check all local worker & driver sockets for unexpected
+// disconnects.
+RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)

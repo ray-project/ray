@@ -298,13 +298,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "stream_redirection_utils",
-    srcs = ["stream_redirection_utils.cc"],
-    hdrs = ["stream_redirection_utils.h"],
+    name = "stream_redirection",
+    srcs = ["stream_redirection.cc"],
+    hdrs = ["stream_redirection.h"],
     deps = [
         ":pipe_logger",
+        ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
+        "//src/ray/util/internal:stream_redirection_handle",
     ],
 )
 
@@ -383,5 +385,14 @@ ray_cc_library(
     hdrs = ["visitor.h"],
     deps = [
         "@com_google_absl//absl/meta:type_traits",
+    ],
+)
+
+ray_cc_library(
+    name = "concurrent_flat_map",
+    hdrs = ["concurrent_flat_map.h"],
+    deps = [
+        ":mutex_protected",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

@@ -1,4 +1,5 @@
 import collections
+import enum
 import logging
 import threading
 import time
@@ -7,7 +8,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
-import enum
 
 import numpy as np
 
@@ -15,10 +15,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    NODE_UNKNOWN,
     MetricsGroup,
     NodeMetrics,
     OpRuntimeMetrics,
-    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -468,6 +468,7 @@ class _StatsActor:
             "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
+            "total_rows": 0,
             "start_time": time.time(),
             "end_time": None,
             "operators": {
@@ -482,8 +483,10 @@ class _StatsActor:
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
-        job_id = self.datasets[dataset_tag].get("job_id", None)
-        start_time = self.datasets[dataset_tag].get("start_time", None)
+        state = self.datasets[dataset_tag]
+
+        job_id = self.datasets[dataset_tag].get("job_id", "None")
+        start_time = str(int(self.datasets[dataset_tag].get("start_time", 0)))
 
         # Update dataset-level metrics
         dataset_tags = {
@@ -497,9 +500,9 @@ class _StatsActor:
         self.data_dataset_estimated_total_rows.set(
             state.get("total_rows", 0), dataset_tags
         )
-        self.data_dataset_state.set(
-            state.get("state", DatasetState.UNKNOWN.name), dataset_tags
-        )
+        state_string = state.get("state", DatasetState.UNKNOWN.name)
+        state_enum = DatasetState.from_string(state_string)
+        self.data_dataset_state.set(state_enum.value, dataset_tags)
 
         # Update operator-level metrics
         for operator, op_state in state.get("operators", {}).items():
@@ -1298,7 +1301,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round((e.max_uss_bytes or 0) / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),

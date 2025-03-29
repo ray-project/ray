@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <vector>
+
 // clang-format off
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -25,10 +29,6 @@
 #include "mock/ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/core_worker/reference_count.h"
-// clang-format on
-
-// clang-format off
-#include "mock/ray/core_worker/task_manager.h"
 // clang-format on
 
 namespace ray {
@@ -936,7 +936,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   // ignored normally, but here it's from a different worker and with a newer
   // timestamp, in this case it should succeed.
   {
-    auto worker_id = WorkerID::FromRandom();
+    worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
     rpc::PushTaskReply reply;
@@ -952,7 +952,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   // Push a task request with actor counter 1, but with a different worker id,
   // and a older timestamp. In this case the request should fail.
   {
-    auto worker_id = WorkerID::FromRandom();
+    worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
     rpc::PushTaskReply reply;

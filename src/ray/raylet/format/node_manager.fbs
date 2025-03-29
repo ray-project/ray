@@ -39,7 +39,10 @@ enum MessageType:int {
   AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
-  DisconnectClient,
+  DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
+  DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -84,10 +87,6 @@ table Task {
   task_specification: string;
 }
 
-table SubmitTaskRequest {
-  task_spec: string;
-}
-
 // This message describes a given resource that is reserved for a worker.
 table ResourceIdSetInfo {
   // The name of the resource.
@@ -101,13 +100,16 @@ table ResourceIdSetInfo {
 }
 
 // This message is sent from a worker to the node manager.
-table DisconnectClient {
+table DisconnectClientRequest {
+  // Populated with a WorkerExitType enum.
   disconnect_type: int;
   disconnect_detail: string;
   // Creation task exception serialized by protobuf.
   // Contains a RayException defined in common.pb
   creation_task_exception_pb: [ubyte];
 }
+
+table DisconnectClientReply {}
 
 table ResourceIdSetInfos {
   resource_infos: [ResourceIdSetInfo];
@@ -178,11 +180,6 @@ table AnnounceWorkerPortReply {
   success: bool;
   // The reason of registration failure.
   failure_reason: string;
-}
-
-table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
-  client_id: string;
 }
 
 // Mimics the Address protobuf.
@@ -270,15 +267,6 @@ table FreeObjectsRequest {
 table ConnectClient {
   // ID of the connecting client.
   client_id: string;
-}
-
-table SetResourceRequest {
-  // Name of the resource to be set.
-  resource_name: string;
-  // Capacity of the resource to be set.
-  capacity: double;
-  // Node ID where this resource will be set.
-  node_id: string;
 }
 
 table SubscribePlasmaReady {

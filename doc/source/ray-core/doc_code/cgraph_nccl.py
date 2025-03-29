@@ -1,8 +1,41 @@
+import os
+
+# CI environment is slow, set the timeout to 60 seconds
+os.environ["RAY_CGRAPH_get_timeout"] = "60"
+os.environ["RAY_CGRAPH_submit_timeout"] = "60"
+
+# __cgraph_cpu_to_gpu_actor_start__
+import torch
+import ray
+import ray.dag
+
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def process(self, tensor: torch.Tensor):
+        assert tensor.device.type == "cuda"
+        return tensor.shape
+
+
+actor = GPUActor.remote()
+# __cgraph_cpu_to_gpu_actor_end__
+
+# __cgraph_cpu_to_gpu_start__
+with ray.dag.InputNode() as inp:
+    inp = inp.with_tensor_transport(device="cuda")
+    dag = actor.process.bind(inp)
+
+cdag = dag.experimental_compile()
+print(ray.get(cdag.execute(torch.zeros(10))))
+# __cgraph_cpu_to_gpu_end__
+
 # __cgraph_nccl_setup_start__
 import torch
+import ray
+import ray.dag
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-ray.init()
+
 # Note that the following example requires at least 2 GPUs.
 assert (
     ray.available_resources().get("GPU") >= 2
