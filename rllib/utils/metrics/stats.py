@@ -1,8 +1,7 @@
 from collections import defaultdict, deque
-import copy
 import time
 import threading
-from typing import Any, Deque, Dict, List, Optional, Tuple, Union
+from typing import Any, Deque, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -144,25 +143,25 @@ class Stats:
 
     def __init__(
         self,
-        init_value: Optional[Any] = None,
-        reduce: Optional[str] = "mean",
-        window: Optional[Union[int, float]] = None,
-        ema_coeff: Optional[float] = None,
-        clear_on_reduce: bool = False,
-        throughput: Union[bool, float] = False,
+        init_values,
+        reduce,
+        window,
+        ema_coeff,
+        clear_on_reduce,
+        throughput,
+        throughput_ema_coeff,
     ):
         """Initializes a Stats instance.
 
         Args:
-            init_value: Optional initial value to be placed into `self.values`. If None,
-                `self.values` will start empty.
+            init_values: Initial values to be placed into `self.values`.
             reduce: The name of the reduce method to be used. Allowed are "mean", "min",
                 "max", and "sum". Use None to apply no reduction method (leave
                 `self.values` as-is when reducing, except for shortening it to
                 `window`). Note that if both `reduce` and `window` are None, the user of
                 this Stats object needs to apply some caution over the values list not
                 growing infinitely.
-            window: An optional window size to reduce over.
+            window: Window size to reduce over.
                 If `window` is not None, then the reduction operation is only applied to
                 the most recent `windows` items, and - after reduction - the values list
                 is shortened to hold at most `window` items (the most recent ones).
@@ -174,7 +173,7 @@ class Stats:
                 limitation, then average over these, then reset the data pool on reduce,
                 e.g. for evaluation env_runner stats, which should NOT use any window,
                 just like in the old API stack).
-            ema_coeff: An optional EMA coefficient to use if reduce is "mean"
+            ema_coeff: EMA coefficient to use if reduce is "mean"
                 and no `window` is provided. Note that if both `window` and `ema_coeff`
                 are provided, an error is thrown. Also, if `ema_coeff` is provided,
                 `reduce` must be "mean".
@@ -192,10 +191,12 @@ class Stats:
                 `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
                 then keeps track of the time passed between two consecutive calls to
                 `reduce()` and update its throughput estimate. The current throughput
-                estimate of a key can be obtained through:
-                `peeked_val, throughput_per_sec = Stats.peek([key], throughput=True)`.
+                estimate can be obtained through:
+                `throughput_per_sec = Stats.peek(throughput=True)`.
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
+            throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
+                Only used if throughput=True.
         """
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
@@ -233,38 +234,85 @@ class Stats:
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
 
-        # On each `.reduce()` call, we store the result of this call in hist[0] and the
-        # previous `reduce()` result in hist[1].
-        self._hist = deque([0, 0, 0], maxlen=3)
+        # On each `.reduce()` call, we store the result of this call in reduce_history[0] and the
+        # previous `reduce()` result in reduce_history[1].
+        self._reduce_history = deque([[np.nan], [np.nan], [np.nan]], maxlen=3)
 
-        self._throughput = throughput if throughput is not True else 0.0
-        if self._throughput is not False:
+        self._throughput_ema_coeff = throughput_ema_coeff
+        self._throughput_stats = None
+        if throughput is not False:
             if self._reduce_method != "sum" or not self._inf_window:
                 raise ValueError(
                     "Can't track throughput for a Stats that a) doesn't have "
                     "reduce='sum' and/or b) has a finite window! Set `Stats("
                     "reduce='sum', window=None)`."
                 )
-            self._throughput_last_time = -1
+            self._throughput_stats = Stats(
+                # We have to check for bool here because in Python, bool is a subclass of int
+                init_values=[throughput]
+                if (
+                    isinstance(throughput, (int, float))
+                    and not isinstance(throughput, bool)
+                )
+                else 0.0,
+                reduce="mean",
+                ema_coeff=throughput_ema_coeff,
+                window=None,
+                clear_on_reduce=False,
+                throughput=False,
+                throughput_ema_coeff=None,
+            )
+            if init_values is not None:
+                self._last_push_time = time.perf_counter()
+            else:
+                self._last_push_time = (
+                    -1
+                )  # Track last push time for throughput calculation
 
         # The actual, underlying data in this Stats object.
-        self.values: Union[List, Deque] = None
-        self._set_values(force_list(init_value))
+        self.values: List = None
+        self._set_values(force_list(init_values))
 
-    def push(self, value) -> None:
-        """Appends a new value into the internal values list.
+        # Track if new values were pushed since last reduce
+        if init_values is not None:
+            self._has_new_values = True
+        else:
+            self._has_new_values = False
+
+    def push(self, value: Any) -> None:
+        """Pushes a value into this Stats object.
 
         Args:
-            value: The value item to be appended to the internal values list
-                (`self.values`).
+            value: The value to be pushed. Can be of any type.
         """
-        self.values.append(value)
-        # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
-        # cheap and avoids long lists, which would be expensive to reduce.
-        if self._inf_window and (
-            self._ema_coeff is not None or self._reduce_method != "mean"
-        ):
-            self._set_values(self._reduced_values()[1])
+        current_time = time.time()
+
+        # If throughput tracking is enabled, calculate it based on time between pushes
+        if self._throughput_stats is not None:
+            if self._last_push_time >= 0:
+                time_diff = current_time - self._last_push_time
+                if time_diff > 0:  # Avoid division by zero
+                    current_throughput = value / time_diff
+                    self._throughput_stats.push(current_throughput)
+            self._last_push_time = current_time
+
+        # Handle different reduction methods
+        if self._window is not None:
+            # For windowed operations, append to values and trim if needed
+            self.values.append(value)
+            if len(self.values) > self._window:
+                self.values.popleft()
+        else:
+            # For non-windowed operations, use _reduced_values
+            if len(self.values) == 0:
+                self._set_values([value])
+            else:
+                self.values.append(value)
+                _, values = self._reduced_values()
+                self._set_values(values)
+
+        # Mark that we have new values
+        self._has_new_values = True
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -292,37 +340,56 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: Optional[int] = None, throughput: bool = False) -> Any:
+    def peek(self) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
-        Thus, users can call this method to get an accurate look at the reduced value
+        Thus, users can call this method to get an accurate look at the reduced values
         given the current internal values list.
 
-        Args:
-            previous: If provided (int), returns that previously (reduced) result of
-                this `Stats` object, which was generated `previous` number of `reduce()`
-                calls ago). If None (default), returns the current (reduced) value.
+        Returns:
+            The result of reducing the internal values list.
+        """
+        if self._has_new_values:
+            return self._reduced_values()[0]
+        else:
+            return self._reduce_history[-1]
+
+    def get_reduce_history(self) -> List[Any]:
+        """Returns the history of reduced values as a list.
+
+        The history contains the most recent reduced values, with the most recent value
+        at the end of the list. The length of the history is limited by the maxlen of
+        the internal history deque.
 
         Returns:
-            The result of reducing the internal values list (or the previously computed
-            reduced result, if `previous` is True).
+            A list containing the history of reduced values.
         """
-        if previous is not None and throughput:
-            raise ValueError(
-                "Can't use `previous` and `throughput` args in same `Stats.peek()` "
-                "call!"
-            )
+        # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history
+        return [sublist.copy() for sublist in list(self._reduce_history)]
 
-        # Return previously reduced value.
-        if previous is not None:
-            return self._hist[-abs(previous)]
-        # Return the last measured throughput.
-        elif throughput:
-            return self._throughput if self._throughput is not False else None
-        return self._reduced_values()[0]
+    @property
+    def throughput(self) -> float:
+        """Returns the current throughput estimate per second.
 
-    def reduce(self) -> "Stats":
+        Raises:
+            ValueError: If throughput tracking is not enabled for this Stats object.
+        """
+        if self._throughput_stats is None:
+            raise ValueError("Throughput tracking is not enabled for this Stats object")
+        # We can always return the first value here because throughput is a single value
+        return self._throughput_stats.peek()[0]
+
+    @property
+    def has_throughput(self) -> bool:
+        """Returns whether this Stats object tracks throughput.
+
+        Returns:
+            True if this Stats object has throughput tracking enabled, False otherwise.
+        """
+        return self._throughput_stats is not None
+
+    def reduce(self) -> List[Any]:
         """Reduces the internal values list according to the constructor settings.
 
         Thereby, the internal values list is changed (note that this is different from
@@ -331,46 +398,37 @@ class Stats:
         the constructor settings, such as `window`, `reduce`, etc..
 
         Returns:
-            Returns `self` (now reduced) if self._reduced_values is False.
-            Returns a new `Stats` object with an empty internal values list, but
-            otherwise the same constructor settings (window, reduce, etc..) as `self`.
+            The reduced value (can be of any type, depending on the input values and
+            reduction method).
         """
-        reduced, values = self._reduced_values()
-
-        # Keep track and update underlying throughput metric.
-        if self._throughput is not False:
-            # Take the delta between the new (upcoming) reduced value and the most
-            # recently reduced value (one `reduce()` call ago).
-            delta_sum = reduced - self._hist[-1]
-            time_now = time.perf_counter()
-            # `delta_sum` may be < 0.0 if user overrides a metric through
-            # `.set_value()`.
-            if self._throughput_last_time == -1 or delta_sum < 0.0:
-                self._throughput = np.nan
+        if self._has_new_values:
+            # Only calculate and update history if there were new values pushed since last reduce
+            reduced, _ = self._reduced_values()
+            # `clear_on_reduce` -> Clear the values list.
+            if self._clear_on_reduce:
+                self._set_values([])
+                # If we clear on reduce, following reduce calls should not return the old values.
+                self._has_new_values = True
             else:
-                delta_time = time_now - self._throughput_last_time
-                assert delta_time >= 0.0
-                self._throughput = delta_sum / delta_time
-            self._throughput_last_time = time_now
+                self._has_new_values = False
+                self._set_values(reduced)
 
-        # Reduce everything to a single (init) value.
-        self._set_values(values)
+            # Shift historic reduced valued by one in our reduce_history-tuple.
+            if self._reduce_method is not None:
+                # It only makes sense to extend the history if we are reducing to a single value, otherwise we duplicate values into the history and the history can blow up.
+                # We need to extend it with a copy because reduced values are (possibly) references to the internal values list and will be mutated by following reduce calls.
+                self._reduce_history.append(reduced.copy())
 
-        # Shift historic reduced valued by one in our hist-tuple.
-        self._hist.append(reduced)
-
-        # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
-        # (from after the reduction). Also, set `self`'s values to empty.
-        if self._clear_on_reduce:
-            values = self.values
-            self._set_values([])
-        # No reset required upon `reduce()` -> Return deepcopy of `self` values in
-        # a new Stats object.
+            return reduced
         else:
-            values = copy.deepcopy(self.values)
-        return Stats.similar_to(self, init_value=values)
+            return self._reduce_history[-1]
 
     def merge_on_time_axis(self, other: "Stats") -> None:
+        """Merges another Stats object's values into this one along the time axis.
+
+        Args:
+            other: The other Stats object to merge values from.
+        """
         # Make sure `others` have same reduction settings.
         assert self._reduce_method == other._reduce_method, (
             self._reduce_method,
@@ -384,8 +442,11 @@ class Stats:
         self.values.extend(other.values)
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput is not False:
-            self._throughput = other._throughput
+        if self._throughput_stats is not None:
+            self._throughput_stats.merge_in_parallel(other._throughput_stats)
+
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
@@ -564,6 +625,15 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
+        # Adopt `other`'s current throughput estimate (it's the newer one).
+        if self._throughput_stats is not None:
+            for other in others:
+                if other._throughput_stats is not None:
+                    self._throughput_stats.merge_in_parallel(other._throughput_stats)
+
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
+
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
 
@@ -577,6 +647,9 @@ class Stats:
         else:
             assert len(self.values) > 0
             self._set_values(force_list(numpy_values))
+
+        # Mark that we have new values since we modified the values list
+        self._has_new_values = True
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -596,66 +669,140 @@ class Stats:
         )
 
     def __int__(self):
-        return int(self.peek())
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot convert Stats object with reduce method `None` to int because it can not be reduced to a single value."
+            )
+        else:
+            return int(self.peek()[0])
 
     def __float__(self):
-        return float(self.peek())
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot convert Stats object with reduce method `None` to float because it can not be reduced to a single value."
+            )
+        else:
+            return float(self.peek()[0])
 
     def __eq__(self, other):
-        return float(self) == float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) == float(other)
 
     def __le__(self, other):
-        return float(self) <= float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) <= float(other)
 
     def __ge__(self, other):
-        return float(self) >= float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) >= float(other)
 
     def __lt__(self, other):
-        return float(self) < float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) < float(other)
 
     def __gt__(self, other):
-        return float(self) > float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot compare Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) > float(other)
 
     def __add__(self, other):
-        return float(self) + float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot add Stats object with reduce method `None` to other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) + float(other)
 
     def __sub__(self, other):
-        return float(self) - float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot subtract Stats object with reduce method `None` from other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) - float(other)
 
     def __mul__(self, other):
-        return float(self) * float(other)
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot multiply Stats object with reduce method `None` with other because it can not be reduced to a single value."
+            )
+        else:
+            return float(self) * float(other)
 
     def __format__(self, fmt):
-        return f"{float(self):{fmt}}"
+        if self._reduce_method is None:
+            raise ValueError(
+                "Cannot format Stats object with reduce method `None` because it can not be reduced to a single value."
+            )
+        else:
+            return f"{float(self):{fmt}}"
 
     def get_state(self) -> Dict[str, Any]:
-        return {
+        state = {
             "values": self.values,
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "_hist": list(self._hist),
-            "_throughput": self._throughput,
+            "_reduce_history": list(self._reduce_history),
         }
+        if self._throughput_stats is not None:
+            state["throughput_stats"] = self._throughput_stats.get_state()
+        return state
 
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "Stats":
-        stats = Stats(
-            state["values"],
-            reduce=state["reduce"],
-            window=state["window"],
-            ema_coeff=state["ema_coeff"],
-            clear_on_reduce=state["clear_on_reduce"],
-            throughput=state.get("_throughput", False),
+        if "throughput_stats" in state:
+            throughput_stats = Stats.from_state(state["throughput_stats"])
+            stats = Stats(
+                state["values"],
+                reduce=state["reduce"],
+                window=state["window"],
+                ema_coeff=state["ema_coeff"],
+                clear_on_reduce=state["clear_on_reduce"],
+                throughput=throughput_stats.peek(),
+                throughput_ema_coeff=throughput_stats._ema_coeff,
+            )
+        else:
+            stats = Stats(
+                state["values"],
+                reduce=state["reduce"],
+                window=state["window"],
+                ema_coeff=state["ema_coeff"],
+                clear_on_reduce=state["clear_on_reduce"],
+                throughput=False,
+                throughput_ema_coeff=None,
+            )
+        stats._reduce_history = deque(
+            state["_reduce_history"], maxlen=stats._reduce_history.maxlen
         )
-        stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        if "throughput_stats" in state:
+            stats._throughput_stats = Stats.from_state(state["throughput_stats"])
         return stats
 
     @staticmethod
     def similar_to(
         other: "Stats",
-        init_value: Optional[Any] = None,
+        init_values: Any = None,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 
@@ -665,22 +812,24 @@ class Stats:
 
         Args:
             other: The other Stats object to return a similar new Stats equivalent for.
-            init_value: The initial value to already push into the returned Stats. If
-                None (default), the returned Stats object will have no values in it.
+            init_value: The initial value to already push into the returned Stats.
 
         Returns:
             A new Stats object similar to `other`, with the exact same settings and
             maybe a custom initial value (if provided; otherwise empty).
         """
         stats = Stats(
-            init_value=init_value,
+            init_values=init_values,
             reduce=other._reduce_method,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
-            throughput=other._throughput,
+            throughput=other._throughput_stats.peek()
+            if other._throughput_stats is not None
+            else False,
+            throughput_ema_coeff=other._throughput_ema_coeff,
         )
-        stats._hist = other._hist
+        stats._reduce_history = other._reduce_history
         return stats
 
     def _set_values(self, new_values):
@@ -703,8 +852,8 @@ class Stats:
             values: The list of values to reduce. If not None, use `self.values`
 
         Returns:
-            A tuple containing 1) the reduced value and 2) the new internal values list
-            to be used.
+            A tuple containing 1) the reduced values and 2) the new internal values list
+            to be used. If there is no reduciton method, the reduced values will be the same as the values.
         """
         values = values if values is not None else self.values
 
@@ -712,12 +861,10 @@ class Stats:
         if self._reduce_method is None:
             return values, values
 
-        # Special case: Internal values list is empty -> return NaN or 0.0 for sum.
+        # Special case: Internal values list is empty -> return NaN
+        # This makes sure that all metrics are allways logged.
         elif len(values) == 0:
-            if self._reduce_method in ["min", "max", "mean"]:
-                return float("nan"), []
-            else:
-                return 0, []
+            return [float("nan")], []
 
         # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:
@@ -726,9 +873,9 @@ class Stats:
             for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
             if self._inf_window:
-                return mean_value, [mean_value]
+                return [mean_value], [mean_value]
             else:
-                return mean_value, values
+                return [mean_value], values
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
@@ -763,11 +910,26 @@ class Stats:
 
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
-                reduced = reduce_meth(values)
+                if np.all(np.isnan(values)):
+                    # This avoids taking a mean of an empty array.
+                    reduced = np.nan
+                else:
+                    reduced = reduce_meth(values)
+
+            def safe_isnan(value):
+                if torch and isinstance(value, torch.Tensor):
+                    return torch.isnan(value)
+                if tf and tf.is_tensor(value):
+                    return tf.math.is_nan(value)
+                return np.isnan(value)
 
             # Convert from numpy to primitive python types, if original `values` are
             # python types.
-            if reduced.shape == () and isinstance(values[0], (int, float)):
+            if (
+                not safe_isnan(reduced)
+                and reduced.shape == ()
+                and isinstance(values[0], (int, float))
+            ):
                 if reduced.dtype in [np.int32, np.int64, np.int8, np.int16]:
                     reduced = int(reduced)
                 else:
@@ -780,8 +942,8 @@ class Stats:
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch
                 #  tensor in the new `self.values`.
-                return reduced, [reduced]
-            # In all other cases, keep the values that were also used for the reduce
-            # operation.
+                return [reduced], [reduced]
             else:
-                return reduced, values
+                # In all other cases, keep the values that were also used for the reduce
+                # operation.
+                return [reduced], values
