@@ -11,11 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// TODO(hjiang): Set resource reservation for internal cgroup.
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <string>
 
+#include "ray/common/cgroup/base_cgroup_setup.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -33,21 +38,81 @@ Status CheckCgroupV2MountedRW(const std::string &directory);
 
 }  // namespace internal
 
-// Util function to initialize cgroupv2 directory for the given [node_id].
-// It's expected to call from raylet to setup node level cgroup configurations.
-//
-// If error happens, error will be logged and return false.
-// Cgroup is not supported on non-linux platforms.
-//
-// \param node_id: node indicator, used to deduce cgroupv2 directory.
-//
-// NOTE: This function is expected to be called once for each raylet instance.
-Status InitializeCgroupv2Directory(const std::string &node_id);
+class CgroupSetup : public BaseCgroupSetup {
+ public:
+  // Util class to setup cgroups to reserve resources on a ray node for ray internal
+  // processes on linux, and it works for different environments (VM, bare metal machine
+  // and docker). It's expected to call from raylet to setup node level cgroup
+  // configurations.
+  //
+  // If error happens, error will be logged and exit the process.
+  // NOTICE: This function is expected to be called once for each raylet instance.
+  //
+  // TODO(hjiang): Docker and VM/BM take different handlings, here we only implement the
+  // docker env. Impact:
+  // - Application cgroup will be created, where later worker process will be placed
+  // under;
+  // - Existing operating system processes and ray components will be placed under
+  // internal cgroup. For more details, see
+  // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
+  CgroupSetup(const std::string &directory, const std::string &node_id);
 
-// Get folder name for application cgroup v2 for current raylet instance.
-const std::string &GetCgroupV2AppFolder();
+  // On destruction, all processes (including spawned child processes) in the managed
+  // cgroup will be killed recursively via SIGKILL.
+  ~CgroupSetup() override;
 
-// Get folder name for system cgroup v2 for current raylet instance.
-const std::string &GetCgroupV2SystemFolder();
+  // Add ray system processes into the internal cgroup.
+  Status AddInternalProcess(pid_t pid) override;
+
+  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
+
+ private:
+  struct Tag {};
+  // Constructor made for unit tests, which allows [CgroupSetup] to be created for
+  // multiple times in a process.
+  CgroupSetup(const std::string &directory, const std::string &node_id, Tag);
+
+  FRIEND_TEST(Cgroupv2SetupTest, SetupTest);
+  FRIEND_TEST(Cgroupv2SetupTest, AddInternalProcessTest);
+  FRIEND_TEST(Cgroupv2SetupTest, AddAppProcessTest);
+
+  // Setup cgroup folders for the given [node_id].
+  Status InitializeCgroupV2Directory(const std::string &directory,
+                                     const std::string &node_id);
+
+  // Util function to cleanup cgroup after raylet exits.
+  // NOTICE: This function is expected to be called once for each raylet instance at its
+  // termination.
+  //
+  // Impact:
+  // - All dangling processes will be killed;
+  // - Cgroup for the current node will be deleted.
+  Status CleanupCgroups();
+
+  // Apply cgroup context which addes pid into default cgroup folder.
+  //
+  // TODO(hjiang): As of now there's a bug for returning StatusOr<> at windows, switch
+  // after the issue resolved.
+  ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
+
+  // See README under the current folder for details.
+  //
+  // File path of PIDs for root cgroup.
+  [[maybe_unused]] std::string root_cgroup_procs_filepath_;
+  // File path for subtree control for root cgroup.
+  [[maybe_unused]] std::string root_cgroup_subtree_control_filepath_;
+  // Folder for cgroup v2 application processes of the current raylet instance.
+  [[maybe_unused]] std::string cgroup_v2_app_folder_;
+  // Folder for cgroup v2 default application cgroup of the current raylet instance.
+  [[maybe_unused]] std::string cgroup_v2_default_app_folder_;
+  // Process id file for default application cgroup.
+  [[maybe_unused]] std::string cgroup_v2_default_app_proc_filepath_;
+  // Folder for cgroup v2 internal processes of the current raylet instance.
+  [[maybe_unused]] std::string cgroup_v2_internal_folder_;
+  // File path for cgroup v2 internal process pids.
+  [[maybe_unused]] std::string cgroup_v2_internal_proc_filepath_;
+  // Cgroup folder for the current ray node.
+  [[maybe_unused]] std::string cgroup_v2_folder_;
+};
 
 }  // namespace ray

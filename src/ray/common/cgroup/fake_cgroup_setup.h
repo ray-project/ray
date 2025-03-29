@@ -37,14 +37,14 @@ class FakeCgroupSetup : public BaseCgroupSetup {
   // Verify system cgroup and application cgroup has been cleaned up.
   ~FakeCgroupSetup() override;
 
-  ScopedCgroupHandler AddSystemProcess(pid_t pid) override;
+  Status AddInternalProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  protected:
-  void CleanupSystemProcess(pid_t pid) override;
+  void CleanupSystemProcess(pid_t pid);
 
-  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) override;
+  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx);
 
  private:
   // TODO(hjiang): For physical mode, as of now we only support max memory, more resource
@@ -64,7 +64,7 @@ class FakeCgroupSetup : public BaseCgroupSetup {
 
   absl::Mutex mtx_;
   // Stores process id of ray system (i.e. raylet, GCS, etc).
-  absl::flat_hash_set<pid_t> system_cgroup_ ABSL_GUARDED_BY(mtx_);
+  absl::flat_hash_set<pid_t> internal_cgroup_ ABSL_GUARDED_BY(mtx_);
   // Stores process id of application process (aka. user applications).
   // Maps from cgroup folder to its pids.
   absl::flat_hash_map<CgroupFolder, absl::flat_hash_set<pid_t>> cgroup_to_pids_

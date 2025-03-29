@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Util functions for cgroup related operations.
+// Util functions for cgroup testing.
 
 #pragma once
 
 #include <string>
 
-#include "ray/common/status.h"
+#include "ray/util/compat.h"
 
 namespace ray {
 
-// Kill all processes under the given [cgroup_folder] and wait for all processes
-// termination synchronously.
-//
-// \param cgroup_folder: cgroup folder which contains processes to kill.
-Status KillAllProcAndWait(const std::string &cgroup_folder);
+// Assert the given process id exists in cgroup pid file.
+void AssertPidInCgroup(pid_t pid, const std::string &proc_filepath);
 
 }  // namespace ray
