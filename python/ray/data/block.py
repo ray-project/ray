@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -213,7 +213,7 @@ class BlockMetadata(BlockStats):
 
     def to_stats(self):
         return BlockStats(
-            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+            **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
     def __post_init__(self):
