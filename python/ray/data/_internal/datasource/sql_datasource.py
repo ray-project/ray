@@ -53,7 +53,9 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
     _check_connection_is_dbapi2_compliant(connection)
 
     try:
-        cursor = connection.cursor()
+        # buffered=True because otherwise supports_sharding fails for mysql-connector-python with "Unread result found."
+        # https://stackoverflow.com/questions/29772337/python-mysql-connector-unread-result-found-when-using-fetchone
+        cursor = connection.cursor(buffered=True)
         _check_cursor_is_dbapi2_compliant(cursor)
         yield cursor
         connection.commit()
