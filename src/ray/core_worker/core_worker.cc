@@ -643,7 +643,16 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       cluster_size_based_rate_limiter->OnNodeChanges(data);
     }
   };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+  // Used to lazily subscribe to node_changes only if needed by reference_counter_ or
+  // lease_request_rate_limiter_.
+  auto subscribe_to_node_changes = [this, on_node_change]() {
+    bool false_val = false;
+    if (this->subscribed_to_node_changes_.compare_exchange_strong(false_val, true)) {
+      RAY_CHECK_OK(
+          gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
+    }
+  };
+  reference_counter_->RegisterNodeSubscriber(subscribe_to_node_changes);
 
   plasma_store_provider_ = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options_.store_socket,
@@ -840,7 +849,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       lease_request_rate_limiter_,
+      subscribe_to_node_changes,
       boost::asio::steady_timer(io_service_));
+
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
                                            const absl::flat_hash_set<NodeID> &locations,
@@ -908,6 +919,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                        object_id,
                        /*pin_object=*/pin_object));
       });
+
+  // The driver will almost always be a task submitter so we should always make node info
+  // subscription from it.
+  if (options_.worker_type == WorkerType::DRIVER) {
+    subscribe_to_node_changes();
+  }
 
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
