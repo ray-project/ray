@@ -22,6 +22,7 @@ from image_classification.factory import (
 from .imagenet import IMAGENET_PARQUET_SPLIT_S3_DIRS, get_preprocess_map_fn
 from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
+from logutils import log_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +76,10 @@ class ImageClassificationParquetRayDataLoaderFactory(
             val_ds.context.execution_options.resource_limits = (
                 ray.data.ExecutionResources(cpu=cpus_to_exclude)
             )
-            logger.info(
-                f"[ImageClassificationParquetRayDataLoaderFactory] Reserving "
-                f"{cpus_to_exclude} CPUs for validation that happens concurrently with "
-                f"training every {self.benchmark_config.validate_every_n_steps} steps"
+            log_with_context(
+                f"Reserving {cpus_to_exclude} CPUs for validation that happens "
+                f"concurrently with training every {self.benchmark_config.validate_every_n_steps} "
+                "steps"
             )
 
         return {"train": train_ds, "val": val_ds}

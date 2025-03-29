@@ -25,6 +25,7 @@ from s3_reader import AWS_REGION
 from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
 from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
+from logutils import log_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,9 @@ class ImageClassificationJpegRayDataLoaderFactory(
             val_ds.context.execution_options.resource_limits = (
                 ray.data.ExecutionResources(cpu=cpus_to_exclude)
             )
-            logger.info(
-                f"[ImageClassificationJpegRayDataLoaderFactory] Reserving {cpus_to_exclude} CPUs "
-                "for validation that happens concurrently with training every "
+            log_with_context(
+                f"Reserving {cpus_to_exclude} CPUs for validation that happens "
+                "concurrently with training every "
                 f"{self.benchmark_config.validate_every_n_steps} steps"
             )
 

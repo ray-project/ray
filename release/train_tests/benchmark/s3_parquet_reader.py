@@ -10,6 +10,7 @@ import ray.train
 
 # Local imports
 from s3_reader import S3Reader, AWS_REGION
+from logutils import log_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, 
         if "Records" in event:
             row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
 
-    logger.info(f"[S3ParquetReader] File {file_url} has {row_count} rows")
+    log_with_context(f"File {file_url} has {row_count} rows")
     return file_url, row_count
 
 
@@ -93,18 +94,16 @@ class S3ParquetReader(S3Reader):
 
         # Wait for all tasks to complete
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(
-            f"[S3ParquetReader] Worker {worker_rank}: Waiting for metadata from "
-            f"{len(tasks)} files..."
+        log_with_context(
+            f"Worker {worker_rank}: Waiting for metadata from {len(tasks)} files..."
         )
         results = ray.get(tasks)
 
         # Process results
         file_urls, file_rows = zip(*results) if results else ([], [])
 
-        logger.info(
-            f"[S3ParquetReader] Worker {worker_rank}: Collected metadata for "
-            f"{len(file_urls)} files"
+        log_with_context(
+            f"Worker {worker_rank}: Collected metadata for {len(file_urls)} files"
         )
         return list(file_urls), list(file_rows)
 
@@ -133,12 +132,11 @@ class S3ParquetReader(S3Reader):
             bucket, prefix = self._parse_s3_url(url)
 
             # Collect file metadata for balanced distribution
-            logger.info(
-                f"[S3ParquetReader] Worker {worker_rank}: Collecting file metadata "
-                "for balanced distribution"
+            log_with_context(
+                f"Worker {worker_rank}: Collecting file metadata for balanced distribution"
             )
             file_urls, file_rows = self._collect_file_info(bucket, prefix)
-            logger.info(f"[S3ParquetReader] Found {len(file_urls)} files in {url}")
+            log_with_context(f"Found {len(file_urls)} files in {url}")
 
             # Distribute files based on row counts
             return self._distribute_files(
