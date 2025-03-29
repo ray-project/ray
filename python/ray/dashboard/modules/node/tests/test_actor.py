@@ -9,7 +9,7 @@ import requests
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
-from ray.dashboard.modules.actor import actor_consts
+from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
