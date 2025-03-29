@@ -1021,7 +1021,13 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report == ClusterConfigToReport()
+    # can't assert cloud_provider_alt here because it will be set based on
+    # where the test is actually running
+    assert cluster_config_to_report.cloud_provider is None
+    assert cluster_config_to_report.head_node_instance_type is None
+    assert cluster_config_to_report.min_workers is None
+    assert cluster_config_to_report.max_workers is None
+    assert cluster_config_to_report.worker_node_instance_types is None
 
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "localhost")
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
@@ -1179,6 +1185,7 @@ provider:
         assert payload["source"] == "OSS"
         assert payload["session_id"] == node.cluster_id.hex()
         assert payload["cloud_provider"] == "aws"
+        assert payload["cloud_provider_alt"] is None
         assert payload["min_workers"] is None
         assert payload["max_workers"] == 1
         assert payload["head_node_instance_type"] is None

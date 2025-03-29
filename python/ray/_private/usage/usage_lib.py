@@ -785,38 +785,30 @@ def get_cluster_config_to_report(
 
         import requests
 
+        def cloud_metadata_request(url: str, headers: Dict[str, str]) -> bool:
+            try:
+                res = requests.get(url, headers=headers, timeout=1)
+                # The requests may be rejected based on pod configuration but if
+                # it's a machine on the cloud provider it should at least be reachable.s
+                if res.status_code != 404:
+                    return True
+            except requests.exceptions.ConnectionError:
+                pass
+            return False
+
         # Make internal metadata requests to all 3 clouds
-        # The requests may be rejected based on pod configuration but if it's a machine on the cloud provider it should at least be reachable.
-        try:
-            gcp_get_res = requests.get(
-                "http://metadata.google.internal/computeMetadata/v1",
-                headers={"Metadata-Flavor": "Google"},
-                timeout=1,
-            )
-            if gcp_get_res.status_code != 404:
-                result.cloud_provider_alt = "gcp"
-        except requests.exceptions.ConnectionError:
-            pass
-
-        try:
-            aws_get_res = requests.get(
-                "http://169.254.169.254/latest/meta-data/", timeout=1
-            )
-            if aws_get_res.status_code != 404:
-                result.cloud_provider_alt = "aws"
-        except requests.exceptions.ConnectionError:
-            pass
-
-        try:
-            azure_get_res = requests.get(
-                "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
-                headers={"Metadata": "true"},
-                timeout=1,
-            )
-            if azure_get_res.status_code != 404:
-                result.cloud_provider_alt = "azure"
-        except requests.exceptions.ConnectionError:
-            pass
+        if cloud_metadata_request(
+            "http://metadata.google.internal/computeMetadata/v1",
+            {"Metadata-Flavor": "Google"},
+        ):
+            result.cloud_provider_alt = "gcp"
+        elif cloud_metadata_request("http://169.254.169.254/latest/meta-data/"):
+            result.cloud_provider_alt = "aws"
+        elif cloud_metadata_request(
+            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+            {"Metadata": "true"},
+        ):
+            result.cloud_provider_alt = "azure"
 
         return result
     except Exception as e:
