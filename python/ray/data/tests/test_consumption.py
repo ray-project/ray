@@ -478,7 +478,7 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
@@ -500,7 +500,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
 
     assert repr(ds) == (
-        "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
+        "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
@@ -531,7 +531,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
-        "MapBatches(my_dummy_fn)\n" "+- Dataset(num_rows=10, schema={id: int64})"
+        "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
 
 

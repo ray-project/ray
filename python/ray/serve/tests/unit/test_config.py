@@ -312,7 +312,7 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=("Bundles must be a non-empty list " "of resource dictionaries."),
+            match=("Bundles must be a non-empty list of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,

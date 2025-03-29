@@ -196,7 +196,7 @@ def test_task_using_pg_observability(ray_start_cluster):
             return False
 
         expected_demand_str = (
-            "{'CPU': 1.0}: 1+ pending tasks/actors " "(1+ using placement groups)"
+            "{'CPU': 1.0}: 1+ pending tasks/actors (1+ using placement groups)"
         )
         assert expected_demand_str in result.stdout, result.stdout
         return True

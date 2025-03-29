@@ -128,7 +128,7 @@ def test_with_rest_api(ray_start_stop):
                 "name": "app",
                 "route_prefix": "/",
                 "import_path": (
-                    "ray.serve.tests." "test_request_timeout:hangs_on_first_request_app"
+                    "ray.serve.tests.test_request_timeout:hangs_on_first_request_app"
                 ),
             }
         ],
