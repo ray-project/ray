@@ -13,12 +13,13 @@ from ray._private.utils import (
     try_import_each_module,
     get_current_node_cpu_model_name,
     parse_node_labels_string,
-    parse_node_labels_json,
+    parse_node_labels_from_yaml_file,
     validate_node_labels,
 )
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from unittest.mock import patch, mock_open
 import sys
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -99,40 +100,50 @@ def test_parse_node_labels_from_string():
     assert "is not a valid string of key-value pairs" in str(e)
 
 
-def test_parse_node_labels_from_json():
-    # Empty/invalid json
-    labels_json = ""
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+def test_parse_node_labels_from_yaml_file():
+    # Empty/invalid yaml
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write("")
+        test_file.flush()  # Ensure data is written
+        with pytest.raises(click.exceptions.ClickException) as e:
+            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
+            assert "is not a valid YAML string" in str(e)
 
     # Valid label key with empty value
-    labels_json = '{"ray.io/accelerator-type": ""}'
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
-    assert labels_dict == {"ray.io/accelerator-type": ""}
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('"ray.io/accelerator-type": ""')
+        test_file.flush()  # Ensure data is written
+        labels_dict = parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
+        assert labels_dict == {"ray.io/accelerator-type": ""}
 
     # Multiple valid label keys and values
-    labels_json = (
-        '{"ray.io/accelerator-type": "A100", "region": "us", "market-type": "spot"}'
-    )
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
-    assert labels_dict == {
-        "ray.io/accelerator-type": "A100",
-        "region": "us",
-        "market-type": "spot",
-    }
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write(
+            '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"'
+        )
+        test_file.flush()  # Ensure data is written
+        labels_dict = parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
+        assert labels_dict == {
+            "ray.io/accelerator-type": "A100",
+            "region": "us",
+            "market-type": "spot",
+        }
 
     # Non-string label key
-    labels_json = '{100: "A100"}'
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('{100: "A100"}')
+        test_file.flush()  # Ensure data is written
+        with pytest.raises(click.exceptions.ClickException) as e:
+            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
+            assert "is not a valid YAML string" in str(e)
 
     # Non-string label value
-    labels_json = '{"ray.io/accelerator-type": 5}'
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('{100: "A100"}')
+        test_file.flush()  # Ensure data is written
+        with pytest.raises(click.exceptions.ClickException) as e:
+            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
+            assert "is not a valid YAML string" in str(e)
 
 
 def test_validate_node_labels():

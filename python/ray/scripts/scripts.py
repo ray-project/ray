@@ -29,7 +29,7 @@ from ray._private.utils import (
     check_ray_client_dependencies_installed,
     load_class,
     parse_resources_json,
-    parse_node_labels_json,
+    parse_node_labels_from_yaml_file,
     parse_node_labels_string,
 )
 from ray._private.internal_api import memory_summary
@@ -635,12 +635,12 @@ Windows powershell users need additional escaping:
     help="a string list of key-value pairs mapping label name to label value.",
 )
 @click.option(
-    "--labels-from-file",
+    "--labels-file",
     required=False,
     hidden=True,
-    default="{}",
+    default="",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value sourced from a file.",
+    help="a path to a YAML file containing a serialized dictionary mapping of labels.",
 )
 @click.option(
     "--include-log-monitor",
@@ -697,7 +697,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
-    labels_from_file,
+    labels_file,
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
@@ -721,7 +721,9 @@ def start(
 
     # Compose labels passed in with `--labels` and `--labels-from-file`.
     # The label value from `--labels` will overrwite the value of any duplicate keys.
-    labels_from_file_dict = parse_node_labels_json(labels_from_file, cli_logger, cf)
+    labels_from_file_dict = parse_node_labels_from_yaml_file(
+        labels_file, cli_logger, cf
+    )
     labels_from_string = parse_node_labels_string(labels, cli_logger, cf)
     labels_dict = (
         {**labels_from_file_dict, **labels_from_string}
