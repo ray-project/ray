@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
 
 import aiohttp.web
 
@@ -262,7 +262,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        actors = await DataOrganizer.get_actor_infos()
+        actor_ids: Optional[List[str]] = None
+        if "ids" in req.query:
+            actor_ids = req.query["ids"].split(",")
+        actors = await DataOrganizer.get_actor_infos(actor_ids=actor_ids)
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="All actors fetched.",

@@ -141,74 +141,74 @@ struct hash<ray::rpc::LabelOperator> {
 template <>
 struct hash<ray::rpc::LabelMatchExpression> {
   size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
-    size_t hash = std::hash<std::string>()(expression.key());
-    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
-    return hash;
+    size_t hash_val = std::hash<std::string>()(expression.key());
+    hash_val ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::LabelMatchExpressions> {
   size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
-    size_t hash = 0;
+    size_t hash_val = 0;
     for (const auto &expression : expressions.expressions()) {
-      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+      hash_val ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::rpc::SchedulingStrategy> {
   size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
-    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    size_t hash_val = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
     if (scheduling_strategy.scheduling_strategy_case() ==
         ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
       // soft returns a bool
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
-      hash ^= static_cast<size_t>(
+      hash_val ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
+      hash_val ^= std::hash<std::string>()(
           scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_bundle_index();
+      hash_val ^= scheduling_strategy.placement_group_scheduling_strategy()
+                      .placement_group_bundle_index();
       // placement_group_capture_child_tasks returns a bool
-      hash ^=
+      hash_val ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
     } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
       if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("hard");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("hard");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().hard());
       }
       if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
           0) {
-        hash ^= std::hash<std::string>()("soft");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+        hash_val ^= std::hash<std::string>()("soft");
+        hash_val ^= std::hash<ray::rpc::LabelMatchExpressions>()(
             scheduling_strategy.node_label_scheduling_strategy().soft());
       }
     }
-    return hash;
+    return hash_val;
   }
 };
 
 template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash ^= sched_cls.function_descriptor->Hash();
-    hash ^= sched_cls.depth;
-    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    return hash;
+    size_t hash_val = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash_val ^= sched_cls.function_descriptor->Hash();
+    hash_val ^= sched_cls.depth;
+    hash_val ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
+    return hash_val;
   }
 };
 }  // namespace std
