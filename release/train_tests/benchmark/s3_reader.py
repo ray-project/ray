@@ -7,6 +7,9 @@ import boto3
 import ray
 import ray.train
 
+# Local imports
+from logutils import log_with_context
+
 # AWS configuration
 AWS_REGION = "us-west-2"
 
@@ -162,8 +165,8 @@ class S3Reader:
             # Handle empty results
             if not batch_results:
                 if not file_urls:  # Only warn on first request
-                    logger.warning(
-                        f"[S3Reader] No files found in s3://{bucket}/{prefix}"
+                    log_with_context(
+                        f"No files found in s3://{bucket}/{prefix}", level="warning"
                     )
                 break
 
@@ -173,8 +176,8 @@ class S3Reader:
             file_sizes.extend(batch_sizes)
 
             # Log progress
-            logger.info(
-                f"[S3Reader] Listed {len(file_urls)} files from s3://{bucket}/{prefix}"
+            log_with_context(
+                f"Listed {len(file_urls)} files from s3://{bucket}/{prefix}"
             )
 
             # Continue if there are more files
@@ -217,8 +220,8 @@ class S3Reader:
 
         # Handle single worker case
         if num_workers <= 1 or not file_urls:
-            logger.info(
-                f"[S3Reader] Worker {worker_rank}: Single worker or no files, "
+            log_with_context(
+                f"Worker {worker_rank}: Single worker or no files, "
                 f"returning all {len(file_urls)} files with total {sum(file_weights)} "
                 f"{weight_unit}"
             )
@@ -227,8 +230,8 @@ class S3Reader:
         # Calculate target weight per worker
         total_weight = sum(file_weights)
         target_weight_per_worker = total_weight / num_workers
-        logger.info(
-            f"[S3Reader] Worker {worker_rank}: Total {weight_unit}: {total_weight}, "
+        log_with_context(
+            f"Worker {worker_rank}: Total {weight_unit}: {total_weight}, "
             f"Target per worker: {target_weight_per_worker:.0f} {weight_unit}"
         )
 
@@ -246,8 +249,8 @@ class S3Reader:
         my_files = worker_files[worker_rank]
         my_weight = worker_weights[worker_rank]
 
-        logger.info(
-            f"[S3Reader] Worker {worker_rank}: Assigned {len(my_files)}/{len(file_urls)} "
+        log_with_context(
+            f"Worker {worker_rank}: Assigned {len(my_files)}/{len(file_urls)} "
             f"files with {my_weight}/{total_weight} {weight_unit} "
             f"({my_weight/total_weight*100:.1f}%)"
         )

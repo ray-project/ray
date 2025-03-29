@@ -22,6 +22,7 @@ from image_classification.image_classification_parquet.factory import (
 from image_classification.image_classification_jpeg.factory import (
     ImageClassificationJpegFactory,
 )
+from logutils import log_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,8 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
-        logger.info(
-            f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
-            f"{ray.train.get_context().get_world_rank()}"
+        log_with_context(
+            f"Restoring from checkpoint: {checkpoint} for worker {ray.train.get_context().get_world_rank()}"
         )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
@@ -70,9 +70,8 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
-        logger.info(
-            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
-            f"epochs for worker {ray.train.get_context().get_world_rank()}"
+        log_with_context(
+            f"Starting training for {self.benchmark_config.num_epochs} epochs for worker {ray.train.get_context().get_world_rank()}"
         )
         starting_epoch = self._train_epoch_idx
 
@@ -83,7 +82,7 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(pprint.pformat(self.get_metrics(), indent=2))
+                log_with_context(pprint.pformat(self.get_metrics(), indent=2))
 
     def train_epoch(self):
         with self._metrics["train/epoch"].timer():
@@ -91,7 +90,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+            log_with_context(f"Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -104,7 +103,7 @@ class TrainLoopRunner:
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
         if self._train_batch_idx > 0:
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+                log_with_context(f"Skipping {self._train_batch_idx} batches...")
 
             for _ in range(self._train_batch_idx):
                 with self._metrics["train/iter_skip_batch"].timer():
@@ -124,7 +123,7 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
             if self._should_log_metrics():
-                logger.info(pprint.pformat(self.get_metrics(), indent=2))
+                log_with_context(pprint.pformat(self.get_metrics(), indent=2))
 
             with self._metrics["train/iter_batch"].timer():
                 batch = self.get_next_batch(train_dataloader)
@@ -180,9 +179,8 @@ class TrainLoopRunner:
 
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
+            log_with_context(
+                f"Starting @ epoch={self._train_epoch_idx}, batch={self._train_batch_idx}"
             )
 
         val_dataloader = self.factory.get_val_dataloader()
@@ -246,10 +244,9 @@ class TrainLoopRunner:
             self._metrics[k].__dict__.update(v)
 
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-                f"{ray.train.get_checkpoint()}"
+            log_with_context(
+                f"Restored to epoch={self._train_epoch_idx}, train_batch_idx={self._train_batch_idx} "
+                f"from checkpoint: {ray.train.get_checkpoint()}"
             )
 
     def save_checkpoint(self, local_dir: str):
@@ -266,9 +263,8 @@ class TrainLoopRunner:
             json.dump(metrics_json, f)
 
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
+            log_with_context(
+                f"Saved @ epoch={self._train_epoch_idx}, train_batch_idx={self._train_batch_idx}"
             )
 
     def get_metrics(self) -> Dict[str, float]:
@@ -346,9 +342,9 @@ def train_fn_per_worker(config):
 
 def main():
     benchmark_config: BenchmarkConfig = cli_to_config()
-    logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
+    log_with_context(pprint.pformat(benchmark_config.__dict__, indent=2))
 
-    if benchmark_config.task == "image_classification":
+    if benchmark_config.task == "image_classification_parquet":
         factory = ImageClassificationParquetFactory(benchmark_config)
     elif benchmark_config.task == "image_classification_jpeg":
         factory = ImageClassificationJpegFactory(benchmark_config)
@@ -380,7 +376,7 @@ def main():
     final_metrics_str = (
         "Final metrics:\n" + "-" * 80 + "\n" + pprint.pformat(metrics) + "\n" + "-" * 80
     )
-    logger.info(final_metrics_str)
+    log_with_context(final_metrics_str)
 
     # Write metrics as a release test result.
     safe_write_to_results_json(metrics)
