@@ -31,7 +31,7 @@ class CircularBuffer:
         # N from the paper (buffer size).
         self.num_batches = num_batches
         # K ("replay coefficient") from the paper.
-        self.iterations_per_batch = iterations_per_batch
+        self.iterations_per_batch = iterations_per_batch - 1
 
         self._NxK = self.num_batches * self.iterations_per_batch
         self._num_added = 0
