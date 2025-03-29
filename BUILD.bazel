@@ -713,17 +713,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gcs_autoscaler_state_manager",
-    srcs = ["src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"],
-    deps = [
-        ":gcs_init_data",
-        ":gcs_kv_manager",
-        ":gcs_service_rpc",
-    ],
-)
-
-ray_cc_library(
     name = "gcs_worker_manager",
     srcs = ["src/ray/gcs/gcs_server/gcs_worker_manager.cc"],
     hdrs = ["src/ray/gcs/gcs_server/gcs_worker_manager.h"],
@@ -890,9 +879,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@com_google_googletest//:gtest_prod",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
     ],
@@ -926,49 +913,6 @@ ray_cc_library(
 
 ray_cc_library(
     name = "scheduler",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_resource_manager.cc",
-        "src/ray/raylet/scheduling/cluster_resource_scheduler.cc",
-        "src/ray/raylet/scheduling/cluster_task_manager.cc",
-        "src/ray/raylet/scheduling/local_resource_manager.cc",
-        "src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/bundle_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/composite_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/node_label_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/random_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/policy/scorer.cc",
-        "src/ray/raylet/scheduling/policy/spread_scheduling_policy.cc",
-        "src/ray/raylet/scheduling/scheduler_resource_reporter.cc",
-        "src/ray/raylet/scheduling/scheduler_stats.cc",
-        "src/ray/raylet/scheduling/scheduling_policy.cc",
-    ],
-    hdrs = [
-        "src/ray/core_worker/common.h",
-        "src/ray/raylet/scheduling/cluster_resource_manager.h",
-        "src/ray/raylet/scheduling/cluster_resource_scheduler.h",
-        "src/ray/raylet/scheduling/cluster_task_manager.h",
-        "src/ray/raylet/scheduling/cluster_task_manager_interface.h",
-        "src/ray/raylet/scheduling/internal.h",
-        "src/ray/raylet/scheduling/local_resource_manager.h",
-        "src/ray/raylet/scheduling/local_task_manager_interface.h",
-        "src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/bundle_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/composite_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/node_label_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/random_scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/scheduling_context.h",
-        "src/ray/raylet/scheduling/policy/scheduling_options.h",
-        "src/ray/raylet/scheduling/policy/scheduling_policy.h",
-        "src/ray/raylet/scheduling/policy/scorer.h",
-        "src/ray/raylet/scheduling/policy/spread_scheduling_policy.h",
-        "src/ray/raylet/scheduling/scheduler_resource_reporter.h",
-        "src/ray/raylet/scheduling/scheduler_stats.h",
-        "src/ray/raylet/scheduling/scheduling_policy.h",
-    ],
     linkopts = select({
         "@platforms//os:windows": [
         ],
@@ -981,24 +925,267 @@ ray_cc_library(
         "//conditions:default": [],
     }),
     deps = [
-        ":gcs_client_lib",
+        ":affinity_with_bundle_scheduling_policy",
+        ":bundle_scheduling_policy",
+        ":cluster_resource_manager",
+        ":cluster_resource_scheduler",
+        ":cluster_task_manager",
+        ":composite_scheduling_policy",
+        ":hybrid_scheduling_policy",
+        ":local_resource_manager",
+        ":node_affinity_scheduling_policy",
+        ":node_label_scheduling_policy",
+        ":random_scheduling_policy",
+        ":spread_scheduling_policy",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_options",
+    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_options.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
-        ":stats_lib",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util",
-        "@boost//:asio",
-        "@boost//:system",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
+        ":scheduling_context",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_context",
+    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_context.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduler_internal",
+    hdrs = ["src/ray/raylet/scheduling/internal.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        "//src/ray/protobuf:node_manager_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_resource_manager",
+    srcs = ["src/ray/raylet/scheduling/cluster_resource_manager.cc"],
+    hdrs = ["src/ray/raylet/scheduling/cluster_resource_manager.h"],
+    deps = [
+        ":local_resource_manager",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:container_util",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_resource_scheduler",
+    srcs = ["src/ray/raylet/scheduling/cluster_resource_scheduler.cc"],
+    hdrs = ["src/ray/raylet/scheduling/cluster_resource_scheduler.h"],
+    deps = [
+        ":cluster_resource_manager",
+        ":composite_scheduling_policy",
+        ":scheduler_internal",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:container_util",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_task_manager",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_task_manager.cc",
+        "src/ray/raylet/scheduling/scheduler_stats.cc",
+    ],
+    hdrs = [
+        "src/ray/raylet/scheduling/cluster_task_manager.h",
+        "src/ray/raylet/scheduling/scheduler_stats.h",
+    ],
+    deps = [
+        ":cluster_resource_scheduler",
+        ":cluster_task_manager_interface",
+        ":local_task_manager_interface",
+        ":scheduler_internal",
+        ":scheduler_resource_reporter",
+        ":stats_lib",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "cluster_task_manager_interface",
+    hdrs = ["src/ray/raylet/scheduling/cluster_task_manager_interface.h"],
+    deps = [
+        ":rpc_server_call",
+        "//src/ray/protobuf:node_manager_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "local_task_manager_interface",
+    hdrs = ["src/ray/raylet/scheduling/local_task_manager_interface.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        ":scheduler_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "local_resource_manager",
+    srcs = ["src/ray/raylet/scheduling/local_resource_manager.cc"],
+    hdrs = ["src/ray/raylet/scheduling/local_resource_manager.h"],
+    deps = [
+        ":gcs_client_lib",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "affinity_with_bundle_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        ":scheduling_policy",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.h"],
+    deps = [
+        ":cluster_resource_manager",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        ":scheduling_context",
+        ":scheduling_policy",
+        ":scorer",
+    ],
+)
+
+ray_cc_library(
+    name = "composite_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/composite_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/composite_scheduling_policy.h"],
+    deps = [
+        ":affinity_with_bundle_scheduling_policy",
+        ":bundle_scheduling_policy",
+        ":cluster_resource_manager",
+        ":hybrid_scheduling_policy",
+        ":node_affinity_scheduling_policy",
+        ":node_label_scheduling_policy",
+        ":random_scheduling_policy",
+        ":spread_scheduling_policy",
+    ],
+)
+
+ray_cc_library(
+    name = "hybrid_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"],
+    deps = [
+        ":scheduling_policy",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/random:bit_gen_ref",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "node_affinity_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"],
+    deps = [
+        ":hybrid_scheduling_policy",
+        ":scheduling_policy",
+    ],
+)
+
+ray_cc_library(
+    name = "node_label_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/node_label_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/node_label_scheduling_policy.h"],
+    deps = [
+        ":scheduling_context",
+        ":scheduling_policy",
+    ],
+)
+
+ray_cc_library(
+    name = "random_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.h"],
+    deps = [":scheduling_policy"],
+)
+
+ray_cc_library(
+    name = "spread_scheduling_policy",
+    srcs = ["src/ray/raylet/scheduling/policy/spread_scheduling_policy.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/spread_scheduling_policy.h"],
+    deps = [
+        ":hybrid_scheduling_policy",
+        ":scheduling_policy",
+        "//src/ray/util:container_util",
+    ],
+)
+
+ray_cc_library(
+    name = "scorer",
+    srcs = ["src/ray/raylet/scheduling/policy/scorer.cc"],
+    hdrs = ["src/ray/raylet/scheduling/policy/scorer.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduler_resource_reporter",
+    srcs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.cc"],
+    hdrs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.h"],
+    deps = [
+        ":local_task_manager_interface",
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        ":scheduler_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_policy",
+    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_policy.h"],
+    deps = [
+        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
+        ":ray_common",
+        ":scheduling_options",
     ],
 )
 
@@ -2010,6 +2197,7 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2841,7 +3029,8 @@ ray_cc_library(
     name = "store_client_test_lib",
     hdrs = ["src/ray/gcs/store_client/test/store_client_test_base.h"],
     deps = [
-        "redis_store_client",
+        ":redis_store_client",
+        "//src/ray/common:test_util",
     ],
 )
 
