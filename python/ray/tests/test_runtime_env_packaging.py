@@ -554,6 +554,11 @@ class TestParseUri:
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
+            ),
         ],
     )
     def test_parse_uris_with_disallowed_chars(self, parsing_tuple):
