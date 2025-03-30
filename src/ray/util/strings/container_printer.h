@@ -129,7 +129,7 @@ struct ContainerPrinter {
   void PrintArray(std::ostream &os, const C &container) const {
     static_assert(is_container_v<C>);
     os << "[";
-    for (int idx = 0; idx < container.size(); ++idx) {
+    for (size_t idx = 0; idx < container.size(); ++idx) {
       PrintArg(os, container[idx]);
       if (idx != container.size() - 1) {
         os << ", ";
