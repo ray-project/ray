@@ -15,6 +15,8 @@ COPTS = select({
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
+        # TODO(dayshah): Try removing after protobuf/absl upgrade
+        "-Wno-deprecated-enum-enum-conversion",
     ],
 }) + select({
     "//:clang-cl": [
