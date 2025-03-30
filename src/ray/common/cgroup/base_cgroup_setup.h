@@ -15,11 +15,11 @@
 // Interface to setup and cleanup node-wise cgroup folder, which is managed by raylet.
 //
 // It defines a few interfaces to manage cgroup:
-// 1. Setup node-wise cgroup folder, and internal system cgroup and application to hold
-// ray internal components and user application processes.
+// 1. Setup node-wise cgroup folder, and ray system cgroup and application to hold
+// ray system components and user application processes.
 // 2. Configure cgroup to enable new processes added into cgroup and control on resource
 // (i.e. memory).
-// 2. Remove ray internal component and user application processes out of cgroup managed
+// 2. Remove ray system component and user application processes out of cgroup managed
 // processes.
 // 3. Take a cgroup context and add the it into the corresponding cgroup, and return a
 // scoped cgroup resource handled for later cleanup.
@@ -42,7 +42,7 @@ class BaseCgroupSetup {
   BaseCgroupSetup &operator=(const BaseCgroupSetup &) = delete;
 
   // Add system process into system cgroup.
-  virtual Status AddInternalProcess(pid_t pid) = 0;
+  virtual Status AddSystemProcess(pid_t pid) = 0;
 
   // Apply cgroup context, which adds the process id into the corresponding cgroup.
   virtual ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
@@ -55,7 +55,7 @@ class NoopCgroupSetup : public BaseCgroupSetup {
   NoopCgroupSetup() = default;
   ~NoopCgroupSetup() override = default;
 
-  Status AddInternalProcess(pid_t pid) override { return Status::OK(); }
+  Status AddSystemProcess(pid_t pid) override { return Status::OK(); }
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override {
     return {};

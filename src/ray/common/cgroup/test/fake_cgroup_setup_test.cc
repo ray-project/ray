@@ -29,7 +29,7 @@ namespace {
 TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
   {
     FakeCgroupSetup fake_cgroup_setup{"node-id"};
-    RAY_ASSERT_OK(fake_cgroup_setup.AddInternalProcess(0));
+    RAY_ASSERT_OK(fake_cgroup_setup.AddSystemProcess(0));
 
     AppProcCgroupMetadata meta1;
     meta1.pid = 1;
@@ -54,7 +54,7 @@ TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
     FakeCgroupSetup fake_cgroup_setup{"node-id"};
     std::vector<std::thread> thds;
     thds.reserve(kThdNum);
-    RAY_ASSERT_OK(fake_cgroup_setup.AddInternalProcess(0));
+    RAY_ASSERT_OK(fake_cgroup_setup.AddSystemProcess(0));
     for (int idx = 0; idx < kThdNum; ++idx) {
       thds.emplace_back([pid = idx, &fake_cgroup_setup]() {
         AppProcCgroupMetadata meta;

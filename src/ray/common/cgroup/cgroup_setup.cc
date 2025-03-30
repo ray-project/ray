@@ -19,7 +19,7 @@ namespace ray {
 CgroupSetup::CgroupSetup() {
   RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
 }
-Status CgroupSetup::AddInternalProcess(pid_t pid) { return Status::OK(); }
+Status CgroupSetup::AddSystemProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   return {};
 }
@@ -267,7 +267,7 @@ Status CgroupSetup::CleanupCgroups() {
   return Status::OK();
 }
 
-Status CgroupSetup::AddInternalProcess(pid_t pid) {
+Status CgroupSetup::AddSystemProcess(pid_t pid) {
   std::ofstream out_file(cgroup_v2_internal_proc_filepath_,
                          std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(out_file.good())

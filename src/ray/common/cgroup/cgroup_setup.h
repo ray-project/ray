@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// TODO(hjiang): Set resource reservation for internal cgroup.
+// TODO(hjiang): Set resource reservation for system cgroup.
 
 #pragma once
 
@@ -53,7 +53,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // - Application cgroup will be created, where later worker process will be placed
   // under;
   // - Existing operating system processes and ray components will be placed under
-  // internal cgroup. For more details, see
+  // system cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
   CgroupSetup(const std::string &directory, const std::string &node_id);
 
@@ -61,8 +61,8 @@ class CgroupSetup : public BaseCgroupSetup {
   // cgroup will be killed recursively via SIGKILL.
   ~CgroupSetup() override;
 
-  // Add ray system processes into the internal cgroup.
-  Status AddInternalProcess(pid_t pid) override;
+  // Add ray system processes into the system cgroup.
+  Status AddSystemProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
@@ -73,7 +73,7 @@ class CgroupSetup : public BaseCgroupSetup {
   CgroupSetup(const std::string &directory, const std::string &node_id, Tag);
 
   FRIEND_TEST(Cgroupv2SetupTest, SetupTest);
-  FRIEND_TEST(Cgroupv2SetupTest, AddInternalProcessTest);
+  FRIEND_TEST(Cgroupv2SetupTest, AddSystemProcessTest);
   FRIEND_TEST(Cgroupv2SetupTest, AddAppProcessTest);
 
   // Setup cgroup folders for the given [node_id].
