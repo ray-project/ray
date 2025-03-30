@@ -11,9 +11,9 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12
+apt-get install -y curl zip clang-18
 
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-18 /usr/bin/clang
 
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-aarch64.sh > /tmp/miniconda.sh

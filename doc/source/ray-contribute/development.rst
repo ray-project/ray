@@ -128,7 +128,7 @@ To build Ray on Ubuntu, run the following commands:
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y build-essential curl clang-12 pkg-config psmisc unzip
+  sudo apt-get install -y build-essential curl clang-18 pkg-config psmisc unzip
 
   # Install Bazelisk.
   ci/env/install-bazel.sh

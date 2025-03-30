@@ -29,10 +29,10 @@ RUN apt-get install -y -qq \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
-    clang-tidy-12 clang-12
+    clang-tidy-18 clang-18
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
-    ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
-    ln -s /usr/bin/clang-12 /usr/bin/clang
+    ln -s /usr/bin/clang-tidy-18 /usr/bin/clang-tidy && \
+    ln -s /usr/bin/clang-18 /usr/bin/clang
 
 RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
