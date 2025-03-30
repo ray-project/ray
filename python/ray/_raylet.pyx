@@ -4380,7 +4380,7 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
-            if num_outputs_stored is None:
+            if num_outputs_stored is not None:
                 # If num_returns=0, it is likely a mistake to return a non-None object.
 
                 task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName()
