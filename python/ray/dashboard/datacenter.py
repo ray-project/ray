@@ -223,21 +223,26 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_npu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
                     actor_process_stats = process_stats
                     break
-
-            for gpu_stats in node_physical_stats.get("gpus", []):
-                # gpu_stats.get("processes") can be None, an empty list or a
-                # list of dictionaries.
-                for process in gpu_stats.get("processesPids") or []:
-                    if process["pid"] == pid:
-                        actor_process_gpu_stats.append(gpu_stats)
-                        break
-
-        actor["gpus"] = actor_process_gpu_stats
+            resources = node_physical_stats.get("resources", {})
+            for device_type in ["gpus", "npus"]:
+                for device_stats in resources.get(device_type, []):
+                    for process in device_stats.get("processes") or []:
+                        if process["pid"] == pid:
+                            if device_type == "gpus":
+                                actor_process_gpu_stats.append(device_stats)
+                            elif device_type == "npus":
+                                actor_process_npu_stats.append(device_stats)
+                            break
+        actor["accelerators"] = {
+            "gpus": actor_process_gpu_stats,
+            "npus": actor_process_npu_stats,
+        }
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
 
