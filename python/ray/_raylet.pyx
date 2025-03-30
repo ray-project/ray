@@ -4388,7 +4388,6 @@ cdef class CoreWorker:
                 task_num_returns_warning = (
                     "Task {} has num_returns=0 but returned a non-None value {}. "
                     "The return value will be ignored.\n"
-                ).format(task_name.replace("()", ""), repr(num_outputs_stored))
                 ).format(task_name, repr(num_outputs_stored))
 
                 warnings.warn(task_num_returns_warning)
