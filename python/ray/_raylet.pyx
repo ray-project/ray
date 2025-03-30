@@ -23,6 +23,7 @@ import time
 import traceback
 import _thread
 import typing
+import warnings
 from typing import (
     Any,
     AsyncGenerator,
@@ -4379,6 +4380,18 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
+            if num_outputs_stored is not None:
+                # If num_returns=0, it is likely a mistake to return a non-None object.
+
+                task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName()
+
+                task_num_returns_warning = (
+                    "Task {} has num_returns=0 but returned a non-None value {}. "
+                    "The return value will be ignored.\n"
+                ).format(task_name, repr(num_outputs_stored))
+
+                warnings.warn(task_num_returns_warning)
+
             return num_outputs_stored
 
         task_output_inlined_bytes = 0
