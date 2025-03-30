@@ -230,6 +230,10 @@ def ray_deps_setup():
         urls = [
             "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
         ],
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:abseil-gcc-undefined-sanitizer-compilation-fix.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
