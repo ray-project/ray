@@ -223,16 +223,6 @@ def ray_deps_setup():
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
     )
 
-    http_archive(
-        name = "com_github_opentelemetry_proto",
-        build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
-        sha256 = "08f40636adbc5f33d2084bd8e7b64e491dd0239d1a95021dbffbdf1ca8cea454",
-        strip_prefix = "opentelemetry-proto-1.5.0",
-        urls = [
-            "https://github.com/open-telemetry/opentelemetry-proto/archive/v1.5.0.tar.gz",
-        ],
-    )
-
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     #
