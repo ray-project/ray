@@ -1775,6 +1775,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pull_manager",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2456,23 +2457,17 @@ ray_cc_test(
 
 ray_cc_library(
     name = "gcs_table_storage_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_server/gcs_table_storage.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_server/gcs_table_storage.h",
-        ],
-    ),
+    srcs = ["src/ray/gcs/gcs_server/gcs_table_storage.cc"],
+    hdrs = ["src/ray/gcs/gcs_server/gcs_table_storage.h"],
     deps = [
         ":gcs",
         ":gcs_in_memory_store_client",
         ":observable_store_client",
         ":pubsub_lib",
-        ":ray_common",
         ":redis_store_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
     ],
 )
 
@@ -2513,15 +2508,14 @@ ray_cc_test(
 ray_cc_test(
     name = "in_memory_gcs_table_storage_test",
     size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
-    ],
+    srcs = ["src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc"],
     tags = ["team:core"],
     deps = [
         ":gcs_table_storage_lib",
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2588,8 +2582,9 @@ ray_cc_library(
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":pubsub_lib",
-        ":ray_common",
         ":redis_store_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
         "//src/ray/protobuf:usage_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:sequencer",
@@ -2960,7 +2955,9 @@ ray_cc_library(
     ],
     deps = [
         ":hiredis",
-        ":ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
+        "//src/ray/common:ray_config",
         ":stats_lib",
         "//src/ray/util",
         "//src/ray/util:exponential_backoff",
@@ -3110,15 +3107,15 @@ ray_cc_test(
 
 ray_cc_library(
     name = "gcs_pb_util",
-    srcs = [
-        "//:src/ray/gcs/pb_utils.cc",
-    ],
-    hdrs = [
-        "//:src/ray/gcs/pb_util.h",
-    ],
+    srcs = ["//:src/ray/gcs/pb_utils.cc"],
+    hdrs = ["//:src/ray/gcs/pb_util.h"],
     deps = [
-        ":ray_common",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:export_task_event_cc_proto",
     ],
 )
 
@@ -3160,6 +3157,7 @@ ray_cc_test(
     deps = [
         ":gcs",
         "//src/ray/util",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

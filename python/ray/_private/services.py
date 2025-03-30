@@ -1135,7 +1135,6 @@ def start_log_monitor(
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--logging-filename={logs_dir}/log_monitor.log",
     ]
 
     if stdout_filepath:
