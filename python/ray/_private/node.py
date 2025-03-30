@@ -1138,10 +1138,8 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        # Only redirect logs to .err. .err file is only useful when the
-        # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
-            "log_monitor", unique=True, create_out=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "log_monitor", unique=True, create_out=True, create_err=True
         )
         process_info = ray._private.services.start_log_monitor(
             self.get_session_dir_path(),
@@ -1150,9 +1148,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -1322,12 +1319,14 @@ class Node:
         """
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
-        stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "monitor", unique=True, create_out=True, create_err=True
+        )
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             autoscaling_config=self._ray_params.autoscaling_config,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
