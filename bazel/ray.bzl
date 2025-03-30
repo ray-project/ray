@@ -15,8 +15,6 @@ COPTS_WITHOUT_LOG = select({
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
-        # [[deprecated]] shouldn't be treated as compilation error.
-        "-Wno-error=deprecated-declarations",
         # [[maybe_unused]] shouldn't be treated as compilation error.
         "-Wno-error=attributes",
     ],
