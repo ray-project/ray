@@ -734,10 +734,8 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc",
         "src/ray/gcs/gcs_server/gcs_health_check_manager.cc",
         "src/ray/gcs/gcs_server/gcs_job_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_node_manager.cc",
         "src/ray/gcs/gcs_server/gcs_placement_group_manager.cc",
         "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
-        "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
         "src/ray/gcs/gcs_server/gcs_server.cc",
         "src/ray/gcs/gcs_server/gcs_task_manager.cc",
     ],
@@ -747,10 +745,8 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
         "src/ray/gcs/gcs_server/gcs_health_check_manager.h",
         "src/ray/gcs/gcs_server/gcs_job_manager.h",
-        "src/ray/gcs/gcs_server/gcs_node_manager.h",
         "src/ray/gcs/gcs_server/gcs_placement_group_manager.h",
         "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.h",
-        "src/ray/gcs/gcs_server/gcs_resource_manager.h",
         "src/ray/gcs/gcs_server/gcs_server.h",
         "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
         "src/ray/gcs/gcs_server/gcs_task_manager.h",
@@ -787,6 +783,27 @@ ray_cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
+    ],
+)
+
+# TODO(hjiang): Split node manager and resource manager with a base class for node manager and resource manager,
+# so resource manager depends on base node manager, and node manager depends on base resource manager.
+ray_cc_library(
+    name = "gcs_node_and_resource_manager"
+    hdrs = [
+        "src/ray/gcs/gcs_server/gcs_node_manager.h",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.h",
+    ],
+    srcs = [
+        "src/ray/gcs/gcs_server/gcs_node_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
+    ],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/util:event",
+        "//src/ray/util:logging",
+        "//src/ray/protobuf:gcs_cc_proto",
+        ":stats_lib",
     ],
 )
 
