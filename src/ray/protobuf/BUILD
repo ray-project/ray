@@ -137,7 +137,7 @@ proto_library(
     srcs = ["reporter.proto"],
     deps = [
         ":common_proto",
-        "@com_github_opentelemetry_proto//:metrics_service_proto",
+        "@com_github_opentelemetry_proto//:metrics_proto",
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
     ],
 )
