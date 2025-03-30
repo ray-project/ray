@@ -65,7 +65,10 @@ def main(
             exit_code = pytest.main(
                 [
                     "./probes",
-                    "--timeout=30",
+                    # Some tests (e.g. test_json_mode) take a long time to run,
+                    # so we set a relative long timeout. See
+                    # https://github.com/vllm-project/vllm/issues/14151
+                    "--timeout=90",
                     "--durations=10",
                     "-s",
                     "-vv",

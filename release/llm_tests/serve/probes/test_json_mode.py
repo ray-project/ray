@@ -121,7 +121,6 @@ async def query_json_model(
     querier = TextGenerationProbeQuerier(openai_async_client, {"temperature": 0.0})
 
     params, expected_type = get_params_and_expected_type(response_type)
-    print(f"{params=}")
     response = await querier.query(model, stream=stream, **params)
     response_str = response.full()
 
