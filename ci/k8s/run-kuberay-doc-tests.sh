@@ -10,6 +10,9 @@ pip install -c python/requirements_compiled.txt pytest nbval bash_kernel
 python -m bash_kernel.install
 pip install "ray[default]==2.41.0"
 
+echo "--- Install tools for doctest"
+sudo apt-get install jq
+
 echo "--- Run a deliberate failure test to ensure the test script fails on error"
 # The following Jupyter notebook only contains a single cell that runs the `date` command.
 # The test script should fail because the output of the `date` command is different everytime.
@@ -64,6 +67,7 @@ cd doc/source/cluster/kubernetes
 TESTS=(
   "getting-started/raycluster-quick-start.ipynb"
   "getting-started/rayjob-quick-start.ipynb"
+  "getting-started/rayservice-quick-start.ipynb"
 )
 for test in "${TESTS[@]}"; do
   echo "Running test: ${test}"
