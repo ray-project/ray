@@ -137,9 +137,9 @@ def convert_to_pyarrow_array(
             _object_extension_type_allowed,
         )
 
-        enable_fallback_config: Optional[bool] = (
-            DataContext.get_current().enable_fallback_to_arrow_object_ext_type
-        )
+        enable_fallback_config: Optional[
+            bool
+        ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
         if not _object_extension_type_allowed():
             object_ext_type_fallback_allowed = False
