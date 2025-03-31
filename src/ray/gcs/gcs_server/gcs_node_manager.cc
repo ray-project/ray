@@ -170,7 +170,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [=](const Status &status) {
+  auto on_put_done = [=, this](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
   };

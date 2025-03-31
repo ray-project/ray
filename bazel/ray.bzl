@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
@@ -15,16 +15,16 @@ COPTS_WITHOUT_LOG = select({
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
+        # TODO(dayshah): Try removing after protobuf/absl upgrade
+        "-Wno-deprecated-enum-enum-conversion",
     ],
 }) + select({
     "//:clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ],
-    "//conditions:default": [],
+    "//conditions:default": ["-Wno-missing-constinit"],
 })
-
-COPTS = COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
     "//:msvc-cl": [],
@@ -32,6 +32,8 @@ PYX_COPTS = select({
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
         "-Wno-shadow",
+        # Ignore this because the generated code uses volatile which is deprecated with C++20
+        "-Wno-deprecated-volatile",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -122,7 +124,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
     )
 
 def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
+    # Copy native binary file to different path based on operating systems
     copy_file(
         name = name + "_darwin",
         src = native_binary_name,

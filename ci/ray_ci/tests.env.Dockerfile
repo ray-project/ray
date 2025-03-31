@@ -8,7 +8,7 @@ ARG BUILDKITE_CACHE_READONLY
 ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-18
 
 RUN mkdir /rayci
 WORKDIR /rayci

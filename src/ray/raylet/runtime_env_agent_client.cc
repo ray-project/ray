@@ -18,14 +18,12 @@
 #include <boost/beast/http.hpp>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <queue>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
@@ -328,7 +326,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                          SuccCallback<T> succ_callback,
                                          FailCallback fail_callback,
                                          int64_t deadline_ms) {
-    try_invoke_once(succ_callback, [=](ray::Status status) {
+    try_invoke_once(succ_callback, [=, this](ray::Status status) {
       if ((!status.IsNotFound()) && (!status.IsDisconnected())) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
@@ -343,7 +341,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                          "Scheduling a retry in "
                       << agent_manager_retry_interval_ms_ << "ms...";
         this->delay_executor_(
-            [=]() {
+            [=, this]() {
               RetryInvokeOnNotFoundWithDeadline(
                   try_invoke_once, succ_callback, fail_callback, deadline_ms);
             },
@@ -360,8 +358,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
-        [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
-            FailCallback fail_callback) {
+        [=, this](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
+                  FailCallback fail_callback) {
           return TryGetOrCreateRuntimeEnv(job_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
@@ -444,8 +442,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
-        [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
-            FailCallback fail_callback) {
+        [=, this](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
+                  FailCallback fail_callback) {
           return TryDeleteRuntimeEnvIfPossible(
               serialized_runtime_env, std::move(succ_callback), std::move(fail_callback));
         },

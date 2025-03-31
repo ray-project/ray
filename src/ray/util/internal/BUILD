@@ -6,6 +6,7 @@ ray_cc_library(
     name = "stream_redirection_handle",
     srcs = ["stream_redirection_handle.cc"],
     hdrs = ["stream_redirection_handle.h"],
+    copts = ["-Wno-array-bounds"],
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:pipe_logger",

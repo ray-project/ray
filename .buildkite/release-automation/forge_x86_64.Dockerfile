@@ -11,13 +11,13 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12 git
+apt-get install -y curl zip clang-18 git
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
 addgroup --gid 993 docker
 
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-18 /usr/bin/clang
 
 # Install miniconda
 curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-x86_64.sh > /tmp/miniconda.sh
@@ -39,6 +39,6 @@ EOF
 
 USER forge
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-18
 
 CMD ["echo", "ray release-automation forge"]

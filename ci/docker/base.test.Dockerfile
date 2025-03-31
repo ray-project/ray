@@ -8,7 +8,7 @@ ARG PYTHON=3.9
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
-ENV RAY_BUILD_ENV=ubuntu20.04_py$PYTHON
+ENV RAY_BUILD_ENV=ubuntu22.04_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
@@ -28,11 +28,11 @@ apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     liblz4-dev libunwind-dev libncurses5 \
     clang-format-12 jq \
-    clang-tidy-12 clang-12
+    clang-tidy-18 clang-18
 
 ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
-ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-tidy-18 /usr/bin/clang-tidy
+ln -s /usr/bin/clang-18 /usr/bin/clang
 
 EOF
 

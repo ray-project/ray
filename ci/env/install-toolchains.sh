@@ -2,7 +2,7 @@
 
 set -euxo pipefail
 
-LLVM_VERSION="9.0.0"  # This is not necessarily guaranteed (e.g. we might use the system compiler)
+LLVM_VERSION="18.1.8"  # This is not necessarily guaranteed (e.g. we might use the system compiler)
 
 install_clang() {
   local cc="clang++" osversion="" url="" urlbase="https://releases.llvm.org" targetdir="/usr/local"
