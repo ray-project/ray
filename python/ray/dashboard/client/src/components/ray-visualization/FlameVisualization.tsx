@@ -41,6 +41,7 @@ type GraphData = {
     source: string;
     target: string;
     count: number;
+    startTime: number;
   }>;
   dataFlows: Array<{
     source: string;
@@ -85,7 +86,9 @@ type FlameNode = {
     callerNodeId: string;
     duration: number;
     count: number;
+    startTime: number;
   }>;
+  startTime?: number;
   originalValue?: number; // Store original value for display
   count?: number;
   children?: FlameNode[];
@@ -96,6 +99,7 @@ type FlameNode = {
   actorName?: string;
   value?: number;
   delta?: number;
+  isRunning?: boolean;
   extras?: {
     v8_jit?: boolean;
     javascript?: boolean;
@@ -879,6 +883,7 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
           .domain([0, maxDepth])
           .range([0, (height || totalHeight) - cellHeight]);
 
+        // Calculate the maximum time span for scaling
         g.attr(
           "transform",
           (d) =>
@@ -1522,11 +1527,16 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
           actorId = matchActorId;
         }
 
+        let durationLabel = "Duration";
+        if (d.data.isRunning) {
+          durationLabel = "Duration (running)";
+        }
+
         tooltip.style("visibility", "visible").html(`
             <div style="font-family: Verdana, sans-serif;">
               <strong>${displayName}</strong><br/>
               ${actorId ? `Actor ID: ${actorId}<br/>` : ""}
-              Duration: ${formattedValue}s<br/>
+              ${durationLabel}: ${formattedValue}s<br/>
               ${d.data.count ? `Count: ${d.data.count}<br/>` : ""}
               ${
                 d.parent
@@ -1702,7 +1712,12 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
   }, [searchTerm, flameData]);
 
   const transformFlameData = (data: FlameGraphData): FlameNode => {
-    if (!data || !data.aggregated || !Array.isArray(data.aggregated)) {
+    if (
+      !data ||
+      !data.aggregated ||
+      !data.parentStartTimes ||
+      !Array.isArray(data.aggregated)
+    ) {
       console.warn("Invalid flame graph data format:", data);
       return { name: "_root", customValue: 0, children: [] };
     }
@@ -1730,7 +1745,25 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     // First pass: create all nodes with normalized values
     data.aggregated.forEach((node) => {
       // Store the original value for display
-      const originalValue = node.value || 0;
+      let originalValue = node.value || 0;
+
+      // For nodes with original value of 0, try to calculate from startTime if available
+      if (
+        originalValue === 0 &&
+        node.totalInParent &&
+        node.totalInParent.length > 0
+      ) {
+        // Find the earliest startTime across all parents
+        const earliestStartTime = Math.min(
+          ...node.totalInParent
+            .filter((entry) => entry.startTime > 0)
+            .map((entry) => entry.startTime),
+        );
+
+        if (earliestStartTime > 0 && isFinite(earliestStartTime)) {
+          originalValue = Date.now() / 1000 - earliestStartTime;
+        }
+      }
 
       // Calculate normalized value for sizing
       // For flame graphs, we want to preserve the relative proportions
@@ -1775,46 +1808,134 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
     };
     nodeMap.set("_main", mainNode);
 
+    const fillParent = (
+      nodeMap: Map<string, FlameNode>,
+      data: FlameGraphData,
+      nodeData: FlameNode,
+      callerNodeId: string,
+      startTime: number,
+      duration: number,
+      count: number,
+      isRunning: boolean,
+    ) => {
+      addedAsChild.add(nodeData.name);
+      const parentNode = nodeMap.get(callerNodeId);
+
+      const nodeDataCopy: FlameNode = {
+        name: nodeData.name,
+        customValue: nodeData.customValue,
+        originalValue: duration,
+        count: count,
+        startTime: startTime,
+        children: nodeData.children ? [...nodeData.children] : [],
+        actorName: nodeData.actorName,
+        hide: nodeData.hide,
+        fade: nodeData.fade,
+        highlight: nodeData.highlight,
+        dimmed: nodeData.dimmed,
+        value: nodeData.value,
+        delta: nodeData.delta,
+        totalInParent: nodeData.totalInParent,
+        isRunning: isRunning,
+        extras: nodeData.extras ? { ...nodeData.extras } : undefined,
+      };
+      if (parentNode) {
+        // Only add if not already added as a child
+        if (!parentNode.children) {
+          parentNode.children = [];
+        }
+
+        parentNode.children.push(nodeDataCopy);
+        return;
+      } else {
+        const startTimes = data.parentStartTimes.find(
+          (item) => item.calleeId === callerNodeId,
+        )?.startTimes;
+        if (startTimes) {
+          for (const { callerId, startTime } of startTimes) {
+            let originalValue = 0;
+            if (startTime > 0) {
+              originalValue = Date.now() / 1000 - startTime; // Convert to seconds since startTime is in seconds
+            }
+            const parentDataCopy: FlameNode = {
+              name: callerNodeId,
+              customValue: originalValue,
+              count: 1,
+              originalValue: originalValue,
+              startTime: startTime,
+              value: originalValue,
+              children: [nodeDataCopy],
+              totalInParent: [],
+              isRunning: true,
+            };
+            nodeMap.set(callerNodeId, parentDataCopy);
+            const ancester = nodeMap.get(callerId);
+            if (ancester) {
+              addedAsChild.add(callerNodeId);
+              ancester.children?.push(parentDataCopy);
+            } else {
+              fillParent(
+                nodeMap,
+                data,
+                parentDataCopy,
+                callerId,
+                startTime,
+                originalValue,
+                1,
+                true,
+              );
+            }
+          }
+        }
+      }
+    };
+
     // Second pass: build the hierarchy
     nodeMap.forEach((nodeData) => {
       const parentData = nodeData.totalInParent || [];
 
       // If this node has parents, add it as a child to each parent
-      parentData.forEach(({ callerNodeId, duration, count }) => {
-        addedAsChild.add(nodeData.name);
-        const parentNode = nodeMap.get(callerNodeId);
-        const nodeDataCopy: FlameNode = {
-          name: nodeData.name,
-          customValue: nodeData.customValue,
-          originalValue: duration,
-          count: count,
-          children: nodeData.children ? [...nodeData.children] : [],
-          actorName: nodeData.actorName,
-          hide: nodeData.hide,
-          fade: nodeData.fade,
-          highlight: nodeData.highlight,
-          dimmed: nodeData.dimmed,
-          value: nodeData.value,
-          delta: nodeData.delta,
-          totalInParent: nodeData.totalInParent,
-          extras: nodeData.extras ? { ...nodeData.extras } : undefined,
-        };
-        if (parentNode) {
-          // Only add if not already added as a child
-          if (!parentNode.children) {
-            parentNode.children = [];
-          }
+      parentData.forEach(({ callerNodeId, duration, count, startTime }) => {
+        fillParent(
+          nodeMap,
+          data,
+          nodeData,
+          callerNodeId,
+          startTime,
+          duration,
+          count,
+          false,
+        );
+      });
+    });
 
-          parentNode.children.push(nodeDataCopy);
-        } else {
-          nodeMap.set(callerNodeId, {
-            name: callerNodeId,
-            customValue: 0,
-            originalValue: 0,
-            children: [nodeDataCopy],
-            actorName: nodeData.actorName,
-            totalInParent: [],
-          });
+    data.parentStartTimes.forEach(({ calleeId, startTimes }) => {
+      startTimes.forEach(({ callerId, startTime }) => {
+        let originalValue = 0;
+        if (startTime > 0) {
+          originalValue = Date.now() / 1000 - startTime; // Convert to seconds since startTime is in seconds
+        }
+        const nodeDataCopy: FlameNode = {
+          name: calleeId,
+          customValue: originalValue,
+          originalValue: originalValue,
+          startTime: startTime,
+          children: [],
+          totalInParent: [],
+          isRunning: true,
+        };
+        if (!nodeMap.has(calleeId)) {
+          nodeMap.set(calleeId, nodeDataCopy);
+          fillParent(
+            nodeMap,
+            data,
+            nodeDataCopy,
+            callerId,
+            startTime,
+            originalValue,
+            1,
+            true,
+          );
         }
       });
     });
@@ -1864,8 +1985,7 @@ export const FlameVisualization: React.FC<FlameVisualizationProps> = ({
       ...(mainNode.children || []),
       ...Array.from(nodeMap.values()).filter(
         (node) =>
-          node.totalInParent &&
-          node.totalInParent.length === 0 &&
+          !addedAsChild.has(node.name) &&
           node.name !== "_main" &&
           !childrens.has(node.name),
       ),

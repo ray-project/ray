@@ -8,6 +8,7 @@ export type FlameGraphNode = {
     callerNodeId: string;
     duration: number;
     count: number;
+    startTime: number;
   }>;
   actorName?: string;
 };
@@ -26,6 +27,13 @@ export type FlameGraphData = {
     parentId?: string;
   }>;
   aggregated: FlameGraphNode[];
+  parentStartTimes: Array<{
+    calleeId: string;
+    startTimes: Array<{
+      callerId: string;
+      startTime: number;
+    }>;
+  }>;
 };
 
 export type FlameGraphResponse = {

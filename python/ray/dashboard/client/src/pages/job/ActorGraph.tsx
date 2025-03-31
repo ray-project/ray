@@ -56,7 +56,12 @@ type GraphData = {
   actors: Actor[];
   methods: Method[];
   functions: FunctionNode[];
-  callFlows: { source: string; target: string; count: number }[];
+  callFlows: {
+    source: string;
+    target: string;
+    count: number;
+    startTime: number;
+  }[];
   dataFlows: {
     source: string;
     target: string;
@@ -388,6 +393,7 @@ const ActorGraph = () => {
             graphData={graphData!}
             physicalViewData={physicalViewData}
             flameData={flameData}
+            viewType={currentViewType}
             onElementClick={handleElementClick}
             showInfoCard={true}
             selectedElementId={selectedElementId}
@@ -404,6 +410,7 @@ const ActorGraph = () => {
             graphData={stackGraphData!}
             physicalViewData={physicalViewData}
             flameData={flameData}
+            viewType={currentViewType}
             onElementClick={handleElementClick}
             showInfoCard={true}
             selectedElementId={selectedElementId}

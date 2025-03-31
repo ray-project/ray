@@ -16,6 +16,7 @@ import "./RayVisualization.css";
 
 type RayVisualizationProps = {
   graphData: GraphData;
+  viewType: "logical" | "physical" | "flame" | "call_stack";
   physicalViewData: PhysicalViewData | null;
   flameData: FlameGraphData | null;
   onElementClick: (data: any, skip_zoom?: boolean) => void;
@@ -120,7 +121,12 @@ type GraphData = {
   actors: Actor[];
   methods: Method[];
   functions: FunctionNode[];
-  callFlows: { source: string; target: string; count: number }[];
+  callFlows: {
+    source: string;
+    target: string;
+    count: number;
+    startTime: number;
+  }[];
   dataFlows: {
     source: string;
     target: string;
@@ -151,6 +157,7 @@ const RayVisualization = forwardRef<
       onElementClick,
       showInfoCard,
       selectedElementId,
+      viewType,
       jobId,
       updating = false,
       searchTerm,
@@ -899,11 +906,18 @@ const RayVisualization = forwardRef<
             subgraph.includes(flow.source) &&
             subgraph.includes(flow.target)
           ) {
+            let label = `${flow.count} times`;
+            if (viewType === "call_stack") {
+              const duration = Date.now() / 1000 - flow.startTime;
+              label = `${
+                flow.count
+              } times [since last call:  ${duration.toFixed(2)}s]`;
+            }
             subG.setEdge(
               flow.source,
               flow.target,
               {
-                label: `${flow.count}次`,
+                label: label,
                 style: "stroke: #000; stroke-width: 2px; fill: none;",
                 arrowheadStyle: "fill: #000; stroke: none;",
                 curve: d3.curveBasis,
@@ -1383,6 +1397,14 @@ const RayVisualization = forwardRef<
 
               // Add a label if needed (only for call flows)
               if (!isDataFlow) {
+                let label = `${flow.count} times`;
+                if (viewType === "call_stack") {
+                  const duration = Date.now() / 1000 - flow.startTime;
+                  label = `${
+                    flow.count
+                  } times [since last call:  ${duration.toFixed(2)}s]`;
+                }
+
                 // For call flows, always add the count label
                 const callFlowLabel = mainContainer
                   .append("text")
@@ -1391,7 +1413,7 @@ const RayVisualization = forwardRef<
                   .attr("fill", "#000")
                   .attr("font-size", "12px")
                   .attr("font-weight", "bold")
-                  .text(`${flow.count}次`);
+                  .text(label);
 
                 // Position the label after rendering
                 positionEdgeLabel(

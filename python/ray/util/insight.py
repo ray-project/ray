@@ -79,7 +79,9 @@ def emit_request(endpoint, payload):
 class _ray_internal_insight_monitor:
     def __init__(self):
         # {job_id: {caller_class.caller_func -> callee_class.callee_func: count}}
-        self.call_graph = defaultdict(lambda: defaultdict(int))
+        self.call_graph = defaultdict(
+            lambda: defaultdict(lambda: {"count": 0, "start_time": 0})
+        )
         # Maps to track unique actors and methods per job
         self.actors = defaultdict(set)
         self.actor_id_map = defaultdict(dict)  # {job_id: {actor_class: actor_id}}
@@ -94,6 +96,7 @@ class _ray_internal_insight_monitor:
         self.method_counter = defaultdict(int)
         self.function_counter = defaultdict(int)
         self.flow_record = defaultdict(list)
+        self.start_time_record = defaultdict(lambda: defaultdict(dict))
 
         # Data flow tracking
         self.data_flows = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -210,6 +213,9 @@ class _ray_internal_insight_monitor:
         caller_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
         callee_id = f"{callee_class}.{callee_func}" if callee_class else callee_func
         current_task_id = call_record["current_task_id"]
+        start_time = call_record["start_time"]
+        if caller_id not in self.start_time_record[job_id][callee_id]:
+            self.start_time_record[job_id][callee_id][caller_id] = start_time
 
         self.flow_record[job_id].append(
             {
@@ -221,7 +227,8 @@ class _ray_internal_insight_monitor:
         )
 
         # Update call graph
-        self.call_graph[job_id][f"{caller_id}->{callee_id}"] += call_times
+        self.call_graph[job_id][f"{caller_id}->{callee_id}"]["count"] += call_times
+        self.call_graph[job_id][f"{caller_id}->{callee_id}"]["start_time"] = start_time
 
         # Track actors and methods
         if caller_class:
@@ -329,7 +336,7 @@ class _ray_internal_insight_monitor:
                 )
 
         # Add call flows
-        for call_edge, count in call_graph.items():
+        for call_edge, info in call_graph.items():
             caller, callee = call_edge.split("->")
             # Get source ID
             source_id = None
@@ -347,7 +354,12 @@ class _ray_internal_insight_monitor:
 
             if source_id and target_id:
                 graph_data["callFlows"].append(
-                    {"source": source_id, "target": target_id, "count": count}
+                    {
+                        "source": source_id,
+                        "target": target_id,
+                        "count": info["count"],
+                        "start_time": info["start_time"],
+                    }
                 )
 
         # Add data flows with merged statistics
@@ -474,7 +486,7 @@ class _ray_internal_insight_monitor:
 
         # Filter call_graph to only keep edges between reachable nodes that lead to target edges
         filtered_graph = {}
-        for edge, count in call_graph.items():
+        for edge, info_dict in call_graph.items():
             src, dst = edge.split("->")
             if src in reachable_nodes and dst in reachable_nodes:
                 if "." in src:
@@ -489,7 +501,7 @@ class _ray_internal_insight_monitor:
                     reachable_actors.add(info[0])
                 if "." not in dst:
                     reachable_funcs.add(dst)
-                filtered_graph[edge] = count
+                filtered_graph[edge] = info_dict
 
         return filtered_graph, reachable_methods, reachable_actors, reachable_funcs
 
@@ -559,6 +571,7 @@ class _ray_internal_insight_monitor:
                 total_in_parent = visited[func_id]
             else:
                 total_in_parent = defaultdict(lambda: {"duration": 0, "count": 0})
+            start_times = self.start_time_record[job_id][func_id]
             for current_task_id, duration in func_data["durations"].items():
                 caller_infos = self.caller_info[job_id][current_task_id]
                 for caller_info in caller_infos:
@@ -569,6 +582,10 @@ class _ray_internal_insight_monitor:
                     )
                     total_in_parent[caller_node_id]["duration"] += duration
                     total_in_parent[caller_node_id]["count"] += 1
+                    if "start_time" not in total_in_parent[caller_node_id]:
+                        total_in_parent[caller_node_id]["start_time"] = start_times.get(
+                            caller_node_id, 0
+                        )
             visited[func_id] = total_in_parent
 
             flame_data["aggregated"].append(
@@ -582,11 +599,26 @@ class _ray_internal_insight_monitor:
                             "caller_node_id": k,
                             "duration": v["duration"],
                             "count": v["count"],
+                            "start_time": v["start_time"],
                         }
                         for k, v in total_in_parent.items()
                     ],
                 }
             )
+
+        parent_start_times = []
+        for callee_id, start_times in self.start_time_record.get(job_id, {}).items():
+            if callee_id not in visited:
+                start_times = [
+                    {"caller_id": k, "start_time": v}
+                    for k, v in start_times.items()
+                    if v > 0
+                ]
+                parent_start_times.append(
+                    {"callee_id": callee_id, "start_times": start_times}
+                )
+
+        flame_data["parent_start_times"] = parent_start_times
 
         return flame_data
 
@@ -817,6 +849,7 @@ def record_control_flow(callee_class, callee_func):
             "call_times": 1,
             "job_id": job_id,
             "current_task_id": current_task_id,
+            "start_time": time.time(),
         }
 
         emit_request("emit-call-record", call_record)

@@ -39,6 +39,7 @@ type CallFlow = {
   source: string;
   target: string;
   count: number;
+  startTime: number;
 };
 
 type DataFlow = {
