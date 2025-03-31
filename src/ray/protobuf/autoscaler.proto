@@ -70,7 +70,7 @@ message LabelConstraint {
   repeated string label_values = 3;
 }
 
-// A list of node label constraints to be used for specify the label requirements in a
+// A list of node label constraints to specify the label requirements in a
 // resource request.
 message LabelSelector {
   // The list of node label constraints with AND semantics.
