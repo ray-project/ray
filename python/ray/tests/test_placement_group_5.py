@@ -653,7 +653,18 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
     )
 
 
-def test_remove_placement_group_when_a_actor_queued(ray_start_cluster):
+# Test deleting a detached-pg created by other jobs.
+# details: https://github.com/ray-project/ray/pull/51125
+# Specific test steps:
+#   1. Launch a detached placement group with only 1 bundle.
+#   2. Create two detached actors using the aforementioned pg. At this point,
+#      the latter actor will definitely be pending in scheduling due to insufficient pg
+#      bundle resources.
+#   3. Use ray.shutdown and ray.init to transform the current process into the
+#      driver of another ray-job.
+#   4. Remove the pg while one actor is pending in scheduling. Before the current PR,
+#      the observed phenomenon will be that the raylet crashes due to a failed check.
+def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -687,11 +698,12 @@ def test_remove_placement_group_when_a_actor_queued(ray_start_cluster):
             placement_group=pg, placement_group_bundle_index=0
         ),
     ).remote()
-    print("1:", actor, _)
 
     assert raylet.is_running()
 
     ray.shutdown()
+
+    # In a new ray-job.
     ray.init(address=cluster.address, namespace="test")
     pg = ray.util.get_placement_group("test")
     ray.util.remove_placement_group(pg)
