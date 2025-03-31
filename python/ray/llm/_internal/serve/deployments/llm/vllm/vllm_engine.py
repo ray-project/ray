@@ -72,15 +72,19 @@ time_in_queue_histogram = metrics.Histogram(
 
 
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    model = llm_config.model_id
+    engine_config = llm_config.get_engine_config()
+
+    # This `model` is the local path on disk, or the hf model id.
+    # If it is the hf_model_id, vLLM automatically downloads the correct model from HF.
+    # We want this to be the local path on the disk when we already downloaded the
+    # model artifacts from a remote storage during node initialization,
+    # so vLLM will not require HF token for it and try to download it again.
+    model = engine_config.actual_hf_model_id
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
 
-    engine_config = llm_config.get_engine_config()
     return vllm.engine.arg_utils.AsyncEngineArgs(
         **{
-            # This is the local path on disk, or the hf model id
-            # If it is the hf_model_id, vllm automatically downloads the correct model.
             "model": model,
             "distributed_executor_backend": "ray",
             "disable_log_stats": False,

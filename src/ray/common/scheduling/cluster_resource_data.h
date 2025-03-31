@@ -266,9 +266,9 @@ class TaskResourceInstances {
         buffer << resource[0];
       } else {
         buffer << "[";
-        for (size_t i = 0; i < resource.size(); i++) {
-          buffer << resource[i];
-          if (i < resource.size() - 1) {
+        for (size_t j = 0; j < resource.size(); j++) {
+          buffer << resource[j];
+          if (j < resource.size() - 1) {
             buffer << ", ";
           }
         }

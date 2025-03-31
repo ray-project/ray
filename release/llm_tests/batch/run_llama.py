@@ -33,6 +33,7 @@ def main(args):
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
+            trust_remote_code=True,
         ),
         runtime_env=runtime_env,
         tokenize=tokenize,

@@ -9,7 +9,7 @@ import requests
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
-from ray.dashboard.modules.actor import actor_consts
+from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -23,7 +23,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
     - alive actors
     - infeasible actors
     - dead actors
-    - pg acrors (with pg_id set and required_resources formatted)
+    - pg actors (with pg_id set and required_resources formatted)
     """
 
     @ray.remote
@@ -144,6 +144,84 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
                     pg_actor_response = a
             assert pg_actor_response["placementGroupId"] == placement_group_id
             assert pg_actor_response["requiredResources"] == {"CPU": 1.0}
+
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_actor_with_ids(disable_aiohttp_cache, ray_start_with_dashboard):
+    """
+    Tests the REST API dashboard calls with actor ids in the URL
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self, num):
+            self.num = num
+
+        def do_task(self):
+            return self.num
+
+        def get_actor_id(self):
+            return ray.get_runtime_context().get_actor_id()
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+    actors = [Actor.options(name=f"Actor{i}").remote(i) for i in range(5)]
+    for actor in actors:
+        actor.do_task.remote()
+
+    actor_ids = [ray.get(actor.get_actor_id.remote()) for actor in actors]
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            actor_idx = 2
+            resp = requests.get(f"{webui_url}/logical/actors/{actor_ids[actor_idx]}")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actor_detail = resp_data["detail"]
+            assert actor_detail["state"] == "ALIVE"
+            assert actor_detail["name"] == f"Actor{actor_idx}"
+            assert actor_detail["numRestarts"] == "0"
+            assert actor_detail["startTime"] > 0
+            assert actor_detail["requiredResources"] == {}
+            assert actor_detail["endTime"] == 0
+            assert actor_detail["exitDetail"] == "-"
+
+            actor_idxs = [0, 1, 4]
+            actor_idxs_to_id_str = ",".join([str(actor_ids[i]) for i in actor_idxs])
+            resp = requests.get(
+                f"{webui_url}/logical/actors?ids={actor_idxs_to_id_str}"
+            )
+            resp_json = resp.json()
+            resp_actors = resp_json["data"]["actors"]
+            assert len(resp_actors) == len(actor_idxs)
+            for actor_idx in actor_idxs:
+                actor_detail = resp_actors[str(actor_ids[actor_idx])]
+                assert actor_detail["state"] == "ALIVE"
+                assert actor_detail["name"] == f"Actor{actor_idx}"
+                assert actor_detail["numRestarts"] == "0"
+                assert actor_detail["startTime"] > 0
+                assert actor_detail["requiredResources"] == {}
+                assert actor_detail["endTime"] == 0
+                assert actor_detail["exitDetail"] == "-"
 
             break
         except Exception as ex:
