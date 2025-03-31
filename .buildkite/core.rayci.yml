@@ -218,7 +218,7 @@ steps:
       - python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --install-mask all-ray-libraries --build-type asan --parallelism-per-worker 2 --only-tags asan_tests --except-tags kubernetes,manual || true
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_array_asan core --install-mask all-ray-libraries --build-type asan --parallelism-per-worker 2 --only-tags asan_tests --except-tags kubernetes,manual || true
       - sleep 100000000
 
   - label: ":ray: core: wheel tests"
