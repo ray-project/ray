@@ -10,9 +10,9 @@ import ray.train
 
 # Local imports
 from s3_reader import S3Reader, AWS_REGION
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 @ray.remote(num_cpus=0.25)
@@ -51,7 +51,7 @@ def _fetch_parquet_metadata(bucket: str, key: str, file_url: str) -> Tuple[str, 
         if "Records" in event:
             row_count = int(event["Records"]["Payload"].decode("utf-8").strip())
 
-    log_with_context(f"File {file_url} has {row_count} rows")
+    logger.info(f"File {file_url} has {row_count} rows")
     return file_url, row_count
 
 
@@ -94,7 +94,7 @@ class S3ParquetReader(S3Reader):
 
         # Wait for all tasks to complete
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Waiting for metadata from {len(tasks)} files..."
         )
         results = ray.get(tasks)
@@ -102,7 +102,7 @@ class S3ParquetReader(S3Reader):
         # Process results
         file_urls, file_rows = zip(*results) if results else ([], [])
 
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Collected metadata for {len(file_urls)} files"
         )
         return list(file_urls), list(file_rows)
@@ -132,11 +132,11 @@ class S3ParquetReader(S3Reader):
             bucket, prefix = self._parse_s3_url(url)
 
             # Collect file metadata for balanced distribution
-            log_with_context(
+            logger.info(
                 f"Worker {worker_rank}: Collecting file metadata for balanced distribution"
             )
             file_urls, file_rows = self._collect_file_info(bucket, prefix)
-            log_with_context(f"Found {len(file_urls)} files in {url}")
+            logger.info(f"Found {len(file_urls)} files in {url}")
 
             # Distribute files based on row counts
             return self._distribute_files(

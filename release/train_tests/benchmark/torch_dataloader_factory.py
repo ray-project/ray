@@ -11,19 +11,19 @@ import ray
 
 from config import BenchmarkConfig, TorchConfig
 from dataloader_factory import BaseDataLoaderFactory
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 if torch.cuda.is_available():
     try:
         multiprocessing.set_start_method("spawn", force=True)
-        log_with_context(
+        logger.info(
             "Set multiprocessing start method to 'spawn' for CUDA compatibility"
         )
     except RuntimeError:
-        log_with_context("Multiprocessing start method already set")
+        logger.info("Multiprocessing start method already set")
 
 
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
@@ -43,7 +43,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             torch.cuda.manual_seed(worker_seed)
             torch.cuda.manual_seed_all(worker_seed)
 
-        log_with_context(f"Initialized worker {worker_id} with seed {worker_seed}")
+        logger.info(f"Initialized worker {worker_id} with seed {worker_seed}")
 
     def __init__(
         self,
@@ -65,7 +65,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         self.num_ray_workers = benchmark_config.num_workers
 
         # Log configuration without worker rank since context may not be initialized
-        log_with_context(
+        logger.info(
             f"Configuration: {self.num_ray_workers * self.num_torch_workers} total workers "
             f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
             f"across {num_gpus} GPUs"
@@ -79,7 +79,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(f"Worker {worker_rank}: Using device: {device}")
+        logger.info(f"Worker {worker_rank}: Using device: {device}")
         return device
 
     @abstractmethod
@@ -113,7 +113,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for training
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(f"Worker {worker_rank}: Creating train dataloader")
+        logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
@@ -134,7 +134,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
 
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Creating train DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
@@ -162,7 +162,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for validation
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(f"Worker {worker_rank}: Creating validation dataloader")
+        logger.info(f"Worker {worker_rank}: Creating validation dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
@@ -185,7 +185,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
 
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Creating validation DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "

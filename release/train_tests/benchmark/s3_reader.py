@@ -8,12 +8,12 @@ import ray
 import ray.train
 
 # Local imports
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
 # AWS configuration
 AWS_REGION = "us-west-2"
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 @ray.remote(num_cpus=0.25)
@@ -165,7 +165,7 @@ class S3Reader:
             # Handle empty results
             if not batch_results:
                 if not file_urls:  # Only warn on first request
-                    log_with_context(
+                    logger.info(
                         f"No files found in s3://{bucket}/{prefix}", level="warning"
                     )
                 break
@@ -176,9 +176,7 @@ class S3Reader:
             file_sizes.extend(batch_sizes)
 
             # Log progress
-            log_with_context(
-                f"Listed {len(file_urls)} files from s3://{bucket}/{prefix}"
-            )
+            logger.info(f"Listed {len(file_urls)} files from s3://{bucket}/{prefix}")
 
             # Continue if there are more files
             if not next_token:
@@ -220,7 +218,7 @@ class S3Reader:
 
         # Handle single worker case
         if num_workers <= 1 or not file_urls:
-            log_with_context(
+            logger.info(
                 f"Worker {worker_rank}: Single worker or no files, "
                 f"returning all {len(file_urls)} files with total {sum(file_weights)} "
                 f"{weight_unit}"
@@ -230,7 +228,7 @@ class S3Reader:
         # Calculate target weight per worker
         total_weight = sum(file_weights)
         target_weight_per_worker = total_weight / num_workers
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Total {weight_unit}: {total_weight}, "
             f"Target per worker: {target_weight_per_worker:.0f} {weight_unit}"
         )
@@ -249,7 +247,7 @@ class S3Reader:
         my_files = worker_files[worker_rank]
         my_weight = worker_weights[worker_rank]
 
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Assigned {len(my_files)}/{len(file_urls)} "
             f"files with {my_weight}/{total_weight} {weight_unit} "
             f"({my_weight/total_weight*100:.1f}%)"

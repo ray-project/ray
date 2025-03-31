@@ -14,9 +14,9 @@ from config import BenchmarkConfig
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
 from ray_dataloader_factory import RayDataLoaderFactory
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 def mock_dataloader(
@@ -125,7 +125,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
             Iterator yielding (image_tensor, label_tensor) on target device
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(f"Worker {worker_rank}: Starting batch iteration")
+        logger.info(f"Worker {worker_rank}: Starting batch iteration")
 
         try:
             last_batch_time = time.time()
@@ -135,7 +135,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
                     current_time = time.time()
                     time_since_last_batch = current_time - last_batch_time
                     if time_since_last_batch > 10:
-                        log_with_context(
+                        logger.info(
                             f"Worker {worker_rank}: Long delay ({time_since_last_batch:.2f}s) "
                             f"between batches {batch_idx-1} and {batch_idx}",
                             level="warning",
@@ -143,7 +143,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 
                     # Process and transfer batch to device
                     images, labels = batch
-                    log_with_context(
+                    logger.info(
                         f"Worker {worker_rank}: Processing batch {batch_idx} (shape: {images.shape}, "
                         f"time since last: {time_since_last_batch:.2f}s)"
                     )
@@ -161,13 +161,13 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 
                     # Monitor device transfer performance
                     if transfer_time > 5:
-                        log_with_context(
+                        logger.info(
                             f"Worker {worker_rank}: Slow device transfer ({transfer_time:.2f}s) "
                             f"for batch {batch_idx}",
                             level="warning",
                         )
 
-                    log_with_context(
+                    logger.info(
                         f"Worker {worker_rank}: Completed device transfer for batch {batch_idx} in "
                         f"{transfer_time:.2f}s"
                     )
@@ -176,7 +176,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
                     yield images, labels
 
                 except Exception as e:
-                    log_with_context(
+                    logger.info(
                         f"Worker {worker_rank}: Error processing batch {batch_idx}: {str(e)}",
                         level="error",
                         exc_info=True,
@@ -184,7 +184,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
                     raise
 
         except Exception as e:
-            log_with_context(
+            logger.info(
                 f"Worker {worker_rank}: Error in batch iterator: {str(e)}",
                 level="error",
                 exc_info=True,

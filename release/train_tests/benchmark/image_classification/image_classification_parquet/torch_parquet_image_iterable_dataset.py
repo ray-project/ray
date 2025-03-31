@@ -17,9 +17,9 @@ import ray.train
 # Local imports
 from s3_parquet_reader import S3ParquetReader
 from .imagenet import get_preprocess_map_fn
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 # TODO Look into https://github.com/webdataset/webdataset for more canonical way to do data
@@ -57,7 +57,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
         self.random_transforms = random_transforms
 
         worker_rank = ray.train.get_context().get_world_rank()
-        log_with_context(
+        logger.info(
             f"Worker {worker_rank}: Initialized with {len(file_urls)} files"
             f"{f' (limit: {limit_rows_per_worker} rows)' if limit_rows_per_worker else ''}"
         )
@@ -106,7 +106,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
             rows_per_second = (
                 self.LOG_FREQUENCY / elapsed_time if elapsed_time > 0 else 0
             )
-            log_with_context(
+            logger.info(
                 f"Worker {worker_id}: Processed {rows_processed} rows "
                 f"({rows_per_second:.2f} rows/sec)"
             )
@@ -133,7 +133,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
         try:
             start_time = time.time()
             worker_id, _ = self._get_worker_info()
-            log_with_context(f"Worker {worker_id}: Reading Parquet file: {file_url}")
+            logger.info(f"Worker {worker_id}: Reading Parquet file: {file_url}")
 
             # Get parquet file metadata
             bucket, key = self._parse_s3_url(file_url)
@@ -141,7 +141,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
             parquet_file = pq.ParquetFile(io.BytesIO(response["Body"].read()))
             num_row_groups = parquet_file.num_row_groups
 
-            log_with_context(
+            logger.info(
                 f"Worker {worker_id}: Found {num_row_groups} row groups in {file_url}"
             )
 
@@ -152,13 +152,13 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
                 yield df
 
             total_time = time.time() - start_time
-            log_with_context(
+            logger.info(
                 f"Worker {worker_id}: Completed reading {file_url} in {total_time:.2f}s"
             )
 
         except Exception as e:
             worker_id, _ = self._get_worker_info()
-            log_with_context(
+            logger.info(
                 f"Worker {worker_id}: Error reading file {file_url}: {str(e)}",
                 level="error",
             )
@@ -208,9 +208,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
 
         for file_url in files_to_read:
             if self._has_reached_row_limit(rows_processed):
-                log_with_context(
-                    f"Worker {worker_id}: Reached row limit: {rows_processed}"
-                )
+                logger.info(f"Worker {worker_id}: Reached row limit: {rows_processed}")
                 break
 
             for image, label in self._process_file(file_url, preprocess_fn):
@@ -225,7 +223,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
 
         # Log final statistics
         total_time = time.time() - total_start_time
-        log_with_context(
+        logger.info(
             f"Worker {worker_id}: Finished: {rows_processed} rows in {total_time:.2f}s "
             f"({rows_processed/total_time:.2f} rows/sec)"
         )
@@ -248,7 +246,7 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
         try:
             # Get worker info for file distribution
             worker_id, num_workers = self._get_worker_info()
-            log_with_context(f"Worker {worker_id}/{num_workers}: Starting")
+            logger.info(f"Worker {worker_id}/{num_workers}: Starting")
 
             # Initialize preprocessing function
             preprocess_fn = get_preprocess_map_fn(
@@ -262,15 +260,13 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
                 else self.file_urls[worker_id::num_workers]
             )
 
-            log_with_context(
-                f"Worker {worker_id}: Processing {len(files_to_read)} files"
-            )
+            logger.info(f"Worker {worker_id}: Processing {len(files_to_read)} files")
 
             # Process files and yield results
             yield from self._process_files(files_to_read, preprocess_fn, worker_id)
 
         except Exception as e:
-            log_with_context(
+            logger.info(
                 f"Worker {worker_id}: Fatal error: {str(e)}",
                 level="error",
                 exc_info=True,

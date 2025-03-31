@@ -25,9 +25,9 @@ from s3_reader import AWS_REGION
 from .imagenet import get_preprocess_map_fn, IMAGENET_JPEG_SPLIT_S3_DIRS
 from .torch_jpeg_image_iterable_dataset import S3JpegImageIterableDataset
 from s3_jpeg_reader import S3JpegReader
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 class ImageClassificationJpegRayDataLoaderFactory(
@@ -119,23 +119,6 @@ class ImageClassificationJpegRayDataLoaderFactory(
             .map(get_preprocess_map_fn(random_transforms=False))
         )
 
-        # Configure resource allocation for concurrent validation
-        if self.benchmark_config.validate_every_n_steps > 0:
-            cpus_to_exclude = 16
-            train_ds.context.execution_options.exclude_resources = (
-                train_ds.context.execution_options.exclude_resources.add(
-                    ray.data.ExecutionResources(cpu=cpus_to_exclude)
-                )
-            )
-            val_ds.context.execution_options.resource_limits = (
-                ray.data.ExecutionResources(cpu=cpus_to_exclude)
-            )
-            log_with_context(
-                f"Reserving {cpus_to_exclude} CPUs for validation that happens "
-                "concurrently with training every "
-                f"{self.benchmark_config.validate_every_n_steps} steps"
-            )
-
         return {"train": train_ds, "val": val_ds}
 
 
@@ -155,7 +138,6 @@ class ImageClassificationJpegTorchDataLoaderFactory(
         super().__init__(benchmark_config)
         S3JpegReader.__init__(self)  # Initialize S3JpegReader to set up _s3_client
         self.train_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
-        self.val_url = IMAGENET_JPEG_SPLIT_S3_DIRS["train"]
         self._cached_datasets = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -202,19 +184,6 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             file_urls=val_file_urls,
             random_transforms=False,
             limit_rows_per_worker=limit_validation_rows_per_worker,
-        )
-
-        # Report validation dataset configuration
-        ray.train.report(
-            {
-                "validation_dataset": {
-                    "file_urls": val_file_urls,
-                    "random_transforms": False,
-                    "limit_rows_per_worker": limit_validation_rows_per_worker,
-                    "total_rows": total_validation_rows,
-                    "worker_rank": ray.train.get_context().get_world_rank(),
-                }
-            }
         )
 
         self._cached_datasets = {"train": train_ds, "val": val_ds}

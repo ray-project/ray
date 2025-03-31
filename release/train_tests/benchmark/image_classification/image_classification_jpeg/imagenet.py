@@ -43,7 +43,7 @@ def get_preprocess_map_fn(
             Dict with "image" and "label" keys
         """
         # Convert to CHW format and normalize
-        image = torch.tensor(np.transpose(row["image"], axes=(2, 0, 1))) / 255.0
+        image = torch.from_numpy(row["image"].transpose(2, 0, 1)).float() / 255.0
         # Apply transforms
         image = crop_resize_transform(image)
         # Convert label

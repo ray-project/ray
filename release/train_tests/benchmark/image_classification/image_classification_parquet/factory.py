@@ -22,7 +22,6 @@ from image_classification.factory import (
 from .imagenet import IMAGENET_PARQUET_SPLIT_S3_DIRS, get_preprocess_map_fn
 from .torch_parquet_image_iterable_dataset import S3ParquetImageIterableDataset
 from s3_parquet_reader import S3ParquetReader
-from logutils import log_with_context
 
 logger = logging.getLogger(__name__)
 
@@ -65,23 +64,6 @@ class ImageClassificationParquetRayDataLoaderFactory(
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 
-        # Configure resource allocation for concurrent validation
-        if self.benchmark_config.validate_every_n_steps > 0:
-            cpus_to_exclude = 16
-            train_ds.context.execution_options.exclude_resources = (
-                train_ds.context.execution_options.exclude_resources.add(
-                    ray.data.ExecutionResources(cpu=cpus_to_exclude)
-                )
-            )
-            val_ds.context.execution_options.resource_limits = (
-                ray.data.ExecutionResources(cpu=cpus_to_exclude)
-            )
-            log_with_context(
-                f"Reserving {cpus_to_exclude} CPUs for validation that happens "
-                f"concurrently with training every {self.benchmark_config.validate_every_n_steps} "
-                "steps"
-            )
-
         return {"train": train_ds, "val": val_ds}
 
 
@@ -108,7 +90,6 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             self
         )  # Initialize S3ParquetReader to set up _s3_client
         self.train_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        self.val_url = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         self._cached_datasets: Optional[Dict[str, IterableDataset]] = None
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
@@ -156,19 +137,6 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             file_urls=val_file_urls,
             random_transforms=False,
             limit_rows_per_worker=limit_validation_rows_per_worker,
-        )
-
-        # Report validation dataset configuration
-        ray.train.report(
-            {
-                "validation_dataset": {
-                    "file_urls": val_file_urls,
-                    "random_transforms": False,
-                    "limit_rows_per_worker": limit_validation_rows_per_worker,
-                    "total_rows": total_validation_rows,
-                    "worker_rank": ray.train.get_context().get_world_rank(),
-                }
-            }
         )
 
         self._cached_datasets = {"train": train_ds, "val": val_ds}

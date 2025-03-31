@@ -9,9 +9,9 @@ import ray.train
 
 # Local imports
 from s3_reader import S3Reader
-from logutils import log_with_context
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 class S3JpegReader(S3Reader):
@@ -48,11 +48,11 @@ class S3JpegReader(S3Reader):
             bucket, prefix = self._parse_s3_url(url)
 
             # Collect file metadata for balanced distribution
-            log_with_context(
+            logger.info(
                 f"Worker {worker_rank}: Collecting file metadata for balanced distribution"
             )
             file_urls, file_size_bytes = self._list_s3_files(bucket, prefix)
-            log_with_context(f"Found {len(file_urls)} files in {url}")
+            logger.info(f"Found {len(file_urls)} files in {url}")
 
             # Distribute files based on size
             return self._distribute_files(
