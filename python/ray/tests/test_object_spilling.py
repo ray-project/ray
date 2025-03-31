@@ -240,6 +240,107 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
+def test_object_spilling_enabled_ray_init(shutdown_only):
+    ray_context = ray.init(
+        num_cpus=0, object_store_memory=75 * 1024 * 1024, object_spilling_enabled=False
+    )
+    assert not ray._private.worker._global_node._config[
+        "automatic_object_spilling_enabled"
+    ]
+
+    # Make sure config is not initalized if spilling is not enabled.
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
+
+    # Make sure the default spill directory is empty after running the workload.
+    run_basic_workload()
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --object-spilling-enabled=false --num-cpus 0 --object-store-memory 78643200"
+    ],
+    indirect=True,
+)
+def test_object_spilling_enabled_cli(call_ray_start, shutdown_only):
+    ray_context = ray.init(address=call_ray_start)
+
+    # Make sure the default spill directory is empty after running the workload.
+    run_basic_workload()
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+
+def test_object_spilling_enabled_ray_params_and_system_config(shutdown_only):
+    # Set the object spilling enabled through both ray init and system config.
+    # The ray init should take precedence.
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        object_spilling_enabled=False,
+        _system_config={"automatic_object_spilling_enabled": True},
+    )
+    assert not ray._private.worker._global_node._config[
+        "automatic_object_spilling_enabled"
+    ]
+
+    # Make sure config is not initalized if spilling is not enabled.
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
+
+    # Make sure the default spill directory is empty after running the workload.
+    run_basic_workload()
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+
+def test_object_spilling_enabled_system_config_and_env_var(shutdown_only):
+    # Set the object spilling enabled through both system config and env var.
+    # The system config should take precedence.
+    os.environ["RAY_automatic_object_spilling_enabled"] = "true"
+    ray_context = ray.init(
+        num_cpus=0,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={"automatic_object_spilling_enabled": False},
+    )
+    assert not ray._private.worker._global_node._config[
+        "automatic_object_spilling_enabled"
+    ]
+
+    # Make sure config is not initalized if spilling is not enabled.
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
+
+    # Make sure the default spill directory is empty after running the workload.
+    run_basic_workload()
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+
+def test_object_spilling_enabled_env_var(shutdown_only):
+    os.environ["RAY_automatic_object_spilling_enabled"] = "false"
+    ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    assert not ray._private.worker._global_node._config[
+        "automatic_object_spilling_enabled"
+    ]
+
+    # Make sure config is not initalized if spilling is not enabled.
+    assert "object_spilling_config" not in ray._private.worker._global_node._config
+
+    # Make sure the default spill directory is empty after running the workload.
+    run_basic_workload()
+    assert is_dir_empty(
+        Path(ray._private.worker._global_node._session_dir), ray_context["node_id"]
+    )
+
+    # clear env var
+    os.environ.pop("RAY_automatic_object_spilling_enabled")
+
+
 def test_custom_spill_dir_env_var(shutdown_only):
     os.environ["RAY_object_spilling_directory"] = "/tmp/custom_spill_dir"
     ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
@@ -277,7 +378,7 @@ def test_custom_spill_dir_system_config(shutdown_only):
     assert not is_dir_empty(Path("/tmp/custom_spill_dir"), ray_context["node_id"])
 
 
-def test_custom_spill_dir(shutdown_only):
+def test_custom_spill_dir_ray_init(shutdown_only):
     # Make sure the object spilling directory can be set by the user
     ray_context = ray.init(
         object_spilling_directory="/tmp/custom_spill_dir",

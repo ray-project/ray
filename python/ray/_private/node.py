@@ -244,9 +244,10 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
+        self._object_spilling_enabled = self._get_object_spilling_enabled()
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
-            f"Starting node with object spilling config: {self._object_spilling_config}"
+            f"Starting node with object spilling config: object_spilling_enabled={self._object_spilling_enabled}, object_spilling_config={self._object_spilling_config}"
         )
 
         # Obtain the fallback directoy from the object spilling config
@@ -1802,10 +1803,13 @@ class Node:
     def validate_external_storage(self):
         """Make sure we can setup the object spilling external storage."""
 
-        automatic_spilling_enabled = self._config.get(
-            "automatic_object_spilling_enabled", True
-        )
-        if not automatic_spilling_enabled:
+        object_spilling_enabled = self._object_spilling_enabled
+        self._ray_params._system_config[
+            "automatic_object_spilling_enabled"
+        ] = object_spilling_enabled
+        self._config["automatic_object_spilling_enabled"] = object_spilling_enabled
+
+        if not object_spilling_enabled:
             return
 
         object_spilling_config = self._object_spilling_config
@@ -1841,11 +1845,62 @@ class Node:
         storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
+    def _get_object_spilling_enabled(self):
+        """Consolidate the object spilling enabled from the ray params, environment
+        variable, and system config. The object spilling enabled specified through
+        ray params will override the one specified through environment variable and
+        system config."""
+
+        should_print_warning = False
+
+        object_spilling_enabled = None
+        if hasattr(self, "_object_spilling_enabled"):
+            object_spilling_enabled = self._object_spilling_enabled
+        else:
+            object_spilling_enabled = self._ray_params.object_spilling_enabled
+
+        if object_spilling_enabled is None:
+            object_spilling_enabled = self._ray_params.object_spilling_enabled
+
+        if object_spilling_enabled is None:
+            object_spilling_enabled = self._config.get(
+                "automatic_object_spilling_enabled", None
+            )
+
+        if object_spilling_enabled is None:
+            if "RAY_automatic_object_spilling_enabled" in os.environ:
+                should_print_warning = True
+
+            object_spilling_enabled = (
+                os.environ.get("RAY_automatic_object_spilling_enabled", "true")
+                == "true"
+            )
+        else:
+            should_print_warning = True
+
+        if should_print_warning and not is_in_test():
+            logger.warning(
+                "The object spilling enabled config is specified from an unstable "
+                "API - system config orenvironment variable. This is "
+                "subject to change in the future. You can use the stable "
+                "API - --object-spilling-enabled in ray start or "
+                "object_spilling_enabled in ray.init() to specify the "
+                "object spilling enabled instead. "
+            )
+
+        return object_spilling_enabled
+
     def _get_object_spilling_config(self):
         """Consolidate the object spilling config from the ray params, environment
         variable, and system config. The object spilling directory specified through
         ray params will override the one specified through environment variable and
-        system config."""
+        system config. The object spilling directory specified through ray params,
+        environment variable and system config will also override the content in the
+        'object_spilling_config' field in the system config and environment variable."""
+
+        automatic_spilling_enabled = self._get_object_spilling_enabled()
+        if not automatic_spilling_enabled:
+            return
 
         object_spilling_directory = self._ray_params.object_spilling_directory
         if not object_spilling_directory:
