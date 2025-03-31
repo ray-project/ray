@@ -18,6 +18,14 @@
 namespace ray {
 CgroupSetup::CgroupSetup() {
   RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
+  RAY_UNUSED(root_cgroup_procs_filepath_);
+  RAY_UNUSED(root_cgroup_subtree_control_filepath_);
+  RAY_UNUSED(cgroup_v2_app_folder_);
+  RAY_UNUSED(cgroup_v2_default_app_folder_);
+  RAY_UNUSED(cgroup_v2_default_app_proc_filepath_);
+  RAY_UNUSED(cgroup_v2_internal_folder_);
+  RAY_UNUSED(cgroup_v2_internal_proc_filepath_);
+  RAY_UNUSED(cgroup_v2_folder_);
 }
 Status CgroupSetup::AddSystemProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {

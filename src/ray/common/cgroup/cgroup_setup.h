@@ -98,21 +98,21 @@ class CgroupSetup : public BaseCgroupSetup {
   // See README under the current folder for details.
   //
   // File path of PIDs for root cgroup.
-  [[maybe_unused]] std::string root_cgroup_procs_filepath_;
+  std::string root_cgroup_procs_filepath_;
   // File path for subtree control for root cgroup.
-  [[maybe_unused]] std::string root_cgroup_subtree_control_filepath_;
+  std::string root_cgroup_subtree_control_filepath_;
   // Folder for cgroup v2 application processes of the current raylet instance.
-  [[maybe_unused]] std::string cgroup_v2_app_folder_;
+  std::string cgroup_v2_app_folder_;
   // Folder for cgroup v2 default application cgroup of the current raylet instance.
-  [[maybe_unused]] std::string cgroup_v2_default_app_folder_;
+  std::string cgroup_v2_default_app_folder_;
   // Process id file for default application cgroup.
-  [[maybe_unused]] std::string cgroup_v2_default_app_proc_filepath_;
+  std::string cgroup_v2_default_app_proc_filepath_;
   // Folder for cgroup v2 internal processes of the current raylet instance.
-  [[maybe_unused]] std::string cgroup_v2_internal_folder_;
+  std::string cgroup_v2_internal_folder_;
   // File path for cgroup v2 internal process pids.
-  [[maybe_unused]] std::string cgroup_v2_internal_proc_filepath_;
+  std::string cgroup_v2_internal_proc_filepath_;
   // Cgroup folder for the current ray node.
-  [[maybe_unused]] std::string cgroup_v2_folder_;
+  std::string cgroup_v2_folder_;
 };
 
 }  // namespace ray
