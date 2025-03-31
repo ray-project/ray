@@ -94,6 +94,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1304,6 +1305,9 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
+    enable_resource_isolation: bool = False,
+    system_reserved_cpu: Optional[float] = None,
+    system_reserved_memory: Optional[int] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1416,6 +1420,33 @@ def init(
             be used as the object store fallback directory as well.
         storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
             be removed in a future version of Ray.
+        enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
+            memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
+            must be enabled with read and write permissions for the raylet. Cgroup memory and
+            cpu controllers must also be enabled.
+            By default, the minimum of
+            10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and
+            25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus object_store_memory
+            will be reserved.
+            By default, the minimum of 20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and
+            1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
+            fractional i.e. 0.5 means half a cpu core.
+            By default, the minimum of
+            20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and
+            1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved.
+            This option only works if enable_resource_isolation is True.
+        system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
+            By default, the minimum of
+            10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and
+            25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus object_store_memory will be reserved.
+            This option only works if enable_resource_isolation is True.
+        _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+            The raylet must have read/write permissions to this path.
+            Cgroup memory and cpu controllers be enabled for this cgroup.
+            This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1476,7 +1507,9 @@ def init(
         )
         logging_config._apply()
 
-    # Parse the hidden options:
+    # Parse the hidden options
+    _cgroup_path: str = kwargs.pop("_cgroup_path", None)
+
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
@@ -1504,6 +1537,13 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
+
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=_cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
 
     # terminate any signal before connecting driver
     def sigterm_handler(signum, frame):
@@ -1742,6 +1782,7 @@ def init(
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
+            resource_isolation_config=resource_isolation_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit

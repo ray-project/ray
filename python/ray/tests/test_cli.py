@@ -338,6 +338,26 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     )
 
 
+def test_ray_start_invalid_resource_isolation_config():
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--cgroup-path=/doesnt/matter"],
+    )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+
+
+def test_ray_start_resource_isolation_config_default_values():
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--enable-resource-isolation"],
+    )
+    # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
+    assert result.exit_code == 0
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
