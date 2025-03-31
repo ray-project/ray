@@ -137,9 +137,9 @@ def convert_to_pyarrow_array(
             _object_extension_type_allowed,
         )
 
-        enable_fallback_config: Optional[
-            bool
-        ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
+        enable_fallback_config: Optional[bool] = (
+            DataContext.get_current().enable_fallback_to_arrow_object_ext_type
+        )
 
         if not _object_extension_type_allowed():
             object_ext_type_fallback_allowed = False
@@ -293,7 +293,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -375,7 +375,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this
@@ -948,6 +948,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         to_concat: Sequence[
             Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
         ],
+        copy: bool = True,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Concatenate multiple tensor arrays.
@@ -969,9 +970,9 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                 [e for a in to_concat for e in a]
             )
         else:
-            if len(to_concat) == 1:
+            if len(to_concat) == 1 and not copy:
+                # If only one array is passed in and copy=False, we can return the
                 return to_concat[0]
-
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
             return ArrowTensorArray.from_storage(to_concat[0].type, storage)

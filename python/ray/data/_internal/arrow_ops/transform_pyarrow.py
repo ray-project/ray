@@ -678,7 +678,7 @@ def combine_chunked_array(
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
-        return _concatenate_extension_column(array)
+        return _concatenate_extension_column(array, copy)
     elif len(array.chunks) == 0:
         # NOTE: In case there's no chunks, we need to explicitly create
         #       an empty array since calling into `combine_chunks` would fail

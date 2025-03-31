@@ -11,7 +11,9 @@ def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
     return isinstance(ca.type, pyarrow.ExtensionType)
 
 
-def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array":
+def _concatenate_extension_column(
+    ca: "pyarrow.ChunkedArray", copy: bool = True
+) -> "pyarrow.Array":
     """Concatenate chunks of an extension column into a contiguous array.
 
     This concatenation is required for creating copies and for .take() to work on
