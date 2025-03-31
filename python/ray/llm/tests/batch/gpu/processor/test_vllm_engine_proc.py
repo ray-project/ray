@@ -183,7 +183,7 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
         engine_kwargs=dict(
             # Skip CUDA graph capturing to reduce startup time.
             enforce_eager=True,
-            # # CI uses T4 GPU which does not support bfloat16.
+            # CI uses T4 GPU which does not support bfloat16.
             dtype="half",
         ),
         # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
