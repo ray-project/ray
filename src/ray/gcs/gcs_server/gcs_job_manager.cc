@@ -33,10 +33,9 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
         std::make_shared<rpc::JobConfig>(job_table_data.config());
     function_manager_.AddJobReference(job_id);
 
-    // Recover [running_job_ids_] from storage.
+    // Recover [running_job_infos_] from storage.
     if (!job_table_data.is_dead()) {
-      running_job_ids_.insert(job_id);
-      running_job_start_times_.insert({job_id, job_table_data.start_time()});
+      running_job_infos_.insert({job_id, job_table_data.start_time()});
     }
   }
 }
@@ -123,8 +122,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
 
       // Intentionally not checking return value, since the function could be invoked for
       // multiple times and requires idempotency (i.e. due to retry).
-      running_job_ids_.insert(job_id);
-      running_job_start_times_.insert({job_id, job_table_data.start_time()});
+      running_job_infos_.insert({job_id, job_table_data.start_time()});
     }
     WriteDriverJobExportEvent(job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -161,10 +159,9 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     WriteDriverJobExportEvent(job_table_data);
 
     // Update running job status.
-    auto iter = running_job_ids_.find(job_id);
-    RAY_CHECK(iter != running_job_ids_.end());
-    running_job_ids_.erase(iter);
-    running_job_start_times_.erase(job_id);
+    auto iter = running_job_infos_.find(job_id);
+    RAY_CHECK(iter != running_job_infos_.end());
+    running_job_infos_.erase(iter);
     ray::stats::STATS_job_duration_s.Record(
         (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
         {{"JobId", job_id.Hex()}});
@@ -503,12 +500,14 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsJobManager::RecordMetrics() {
-  ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
+  ray::stats::STATS_running_jobs.Record(running_job_infos_.size());
   ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
-  for (const auto &job_id : running_job_ids_) {
-    ray::stats::STATS_job_duration_s.Record(
-        (current_sys_time_ms() - running_job_start_times_[job_id]) / 1000.0,
-        {{"JobId", job_id.Hex()}});
+
+  for (const auto &pair : running_job_infos_) {
+    const auto &job_id = pair.first;
+    const auto &start_time = pair.second;
+    ray::stats::STATS_job_duration_s.Record((current_sys_time_ms() - start_time) / 1000.0,
+                                            {{"JobId", job_id.Hex()}});
   }
 }
 
