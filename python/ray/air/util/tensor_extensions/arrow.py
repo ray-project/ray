@@ -956,8 +956,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         of the tensor arrays have a different shape than the others, a variable-shaped
         tensor array will be returned.
         """
-        if not to_concat:
-            return ArrowTensorArray.from_numpy(np.array([]))
+
         to_concat_types = [arr.type for arr in to_concat]
         if ArrowTensorType._need_variable_shaped_tensor_array(to_concat_types):
             # Need variable-shaped tensor array.
@@ -971,8 +970,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             )
         else:
             if len(to_concat) == 1:
-                single_arr = to_concat[0]
-                return ArrowTensorArray.from_storage(single_arr.type, single_arr.storage)
+                return to_concat[0]
 
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
