@@ -90,7 +90,7 @@ Deployment through ``LLMRouter``
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
-    serve.run(llm_app)
+    serve.run(llm_app, blocking=True)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
 
@@ -168,7 +168,7 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
     deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
     deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
     llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
-    serve.run(llm_app)
+    serve.run(llm_app, blocking=True)
 
 
 Production Deployment
@@ -329,7 +329,7 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
 
             # Build and deploy the model
             app = build_openai_app({"llm_configs": [llm_config]})
-            serve.run(app)
+            serve.run(app, blocking=True)
 
     .. tab-item:: Client
         :sync: client
@@ -385,9 +385,9 @@ For structured output, you can use JSON mode similar to OpenAI's API:
 
             # Build and deploy the model
             app = build_openai_app({"llm_configs": [llm_config]})
-            serve.run(app)
+            serve.run(app, blocking=True)
 
-    .. tab-item:: Client
+    .. tab-item:: Client (JSON Object)
         :sync: client
 
         .. code-block:: python
@@ -424,6 +424,56 @@ For structured output, you can use JSON mode similar to OpenAI's API:
             #     "red",
             #     "blue",
             #     "green"
+            #   ]
+            # }
+    .. tab-item:: Client (JSON Schema)
+        :sync: client
+
+        If you want, you can also specify the schema you want for the response, using pydantic models:
+
+        .. code-block:: python
+            
+            from openai import OpenAI
+            from typing import List, Literal
+            from pydantic import BaseModel
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Define a pydantic model of a preset of allowed colors
+            class Color(BaseModel):
+                colors: List[Literal["cyan", "magenta", "yellow"]]
+
+            # Request structured JSON output
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": Color.model_json_schema()
+                    
+                },
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that outputs JSON."
+                    },
+                    {
+                        "role": "user",
+                        "content": "List three colors in JSON format"
+                    }
+                ],
+                stream=True,
+            )
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
+            # Example response:
+            # {
+            #   "colors": [
+            #     "cyan",
+            #     "magenta",
+            #     "yellow"
             #   ]
             # }
 
@@ -464,7 +514,7 @@ For multimodal models that can process both text and images:
 
             # Build and deploy the model
             app = build_openai_app({"llm_configs": [llm_config]})
-            serve.run(app)
+            serve.run(app, blocking=True)
 
     .. tab-item:: Client
         :sync: client
@@ -582,7 +632,7 @@ To set the deployment options, you can use the ``get_serve_options`` method on t
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
-    serve.run(llm_app)
+    serve.run(llm_app, blocking=True)
 
 Why is downloading the model so slow?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -620,7 +670,7 @@ If you are using huggingface models, you can enable fast download by setting `HF
     # Deploy the application
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
-    serve.run(llm_app)
+    serve.run(llm_app, blocking=True)
 
 Usage Data Collection
 --------------------------
