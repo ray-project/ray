@@ -1190,39 +1190,127 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "raylet_agent_manager",
+    hdrs = ["src/ray/raylet/agent_manager.h"],
+    srcs = ["src/ray/raylet/agent_manager.cc"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:process",
+        "//src/ray/util:event",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "//src/ray/util",
+        "@boost//:asio",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "worker",
+    hdrs = ["src/ray/raylet/worker.h"],
+    srcs = ["src/ray/raylet/worker.cc"],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_prod",
+        "//src/ray/common:network",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        ":worker_rpc",
+        "//src/ray/util:process",
+        ":node_manager_fbs",
+        ":cluster_resource_scheduler",
+    ],
+)
+
+ray_cc_library(
+    name = "runtime_env_agent_client",
+    hdrs = ["src/ray/raylet/runtime_env_agent_client.h"],
+    srcs = ["src/ray/raylet/runtime_env_agent_client.cc"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@boost//:beast",
+    ],
+)
+
+ray_cc_library(
+    name = "worker_pool",
+    hdrs = ["src/ray/raylet/worker_pool.h"],
+    srcs = ["src/ray/raylet/worker_pool.cc"],
+    deps = [
+        "@boost//:system",
+        "@com_google_absl//absl/strings",
+        "//src/ray/common:network",
+        "//src/ray/common:constants",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:runtime_env",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        ":gcs_client_lib",
+        ":runtime_env_agent_client",
+        ":worker",
+        ":core_worker_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "wait_manager",
+    hdrs = ["src/ray/raylet/wait_manager.h"],
+    srcs = ["src/ray/raylet/wait_manager.cc"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/util:container_util",
+    ],
+)
+
+ray_cc_library(
+    name = "local_object_manager",
+    hdrs = ["src/ray/raylet/local_object_manager.h"],
+    srcs = ["src/ray/raylet/local_object_manager.cc"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        ":gcs_client_lib",
+        ":object_manager_common",
+        ":object_directory",
+        ":subscriber_lib",
+        ":worker_pool",
+        ":worker_rpc",
+        "//src/ray/protobuf:node_manager_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "raylet_lib",
     srcs = [
-        "src/ray/raylet/agent_manager.cc",
         "src/ray/raylet/dependency_manager.cc",
-        "src/ray/raylet/local_object_manager.cc",
         "src/ray/raylet/local_task_manager.cc",
         "src/ray/raylet/node_manager.cc",
         "src/ray/raylet/placement_group_resource_manager.cc",
         "src/ray/raylet/raylet.cc",
-        "src/ray/raylet/runtime_env_agent_client.cc",
-        "src/ray/raylet/wait_manager.cc",
-        "src/ray/raylet/worker.cc",
         "src/ray/raylet/worker_killing_policy.cc",
         "src/ray/raylet/worker_killing_policy_group_by_owner.cc",
         "src/ray/raylet/worker_killing_policy_retriable_fifo.cc",
-        "src/ray/raylet/worker_pool.cc",
     ],
     hdrs = [
-        "src/ray/raylet/agent_manager.h",
         "src/ray/raylet/dependency_manager.h",
-        "src/ray/raylet/local_object_manager.h",
         "src/ray/raylet/local_task_manager.h",
         "src/ray/raylet/node_manager.h",
         "src/ray/raylet/placement_group_resource_manager.h",
         "src/ray/raylet/raylet.h",
-        "src/ray/raylet/runtime_env_agent_client.h",
         "src/ray/raylet/test/util.h",
-        "src/ray/raylet/wait_manager.h",
-        "src/ray/raylet/worker.h",
         "src/ray/raylet/worker_killing_policy.h",
         "src/ray/raylet/worker_killing_policy_group_by_owner.h",
         "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
-        "src/ray/raylet/worker_pool.h",
     ],
     linkopts = select({
         "@platforms//os:windows": [
@@ -1232,8 +1320,14 @@ ray_cc_library(
         ],
     }),
     deps = [
+        ":local_object_manager",
+        ":wait_manager",
+        ":runtime_env_agent_client",
+        ":raylet_agent_manager",
         ":core_worker_lib",
         ":gcs",
+        ":worker",
+        ":worker_pool",
         ":gcs_client_lib",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -1250,7 +1344,6 @@ ray_cc_library(
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
         "@boost//:asio",
-        "@boost//:beast",
         "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -1258,7 +1351,7 @@ ray_cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_prod",
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
