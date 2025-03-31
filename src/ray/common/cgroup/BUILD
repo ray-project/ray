@@ -56,7 +56,6 @@ ray_cc_library(
     hdrs = ["cgroup_manager.h"],
     deps = [
         ":base_cgroup_setup",
-        "@com_github_gflags_gflags//:gflags",
     ],
 )
 

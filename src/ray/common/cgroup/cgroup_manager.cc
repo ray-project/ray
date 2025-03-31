@@ -14,8 +14,6 @@
 
 #include "ray/common/cgroup/cgroup_manager.h"
 
-#include <gflags/gflags.h>
-
 namespace ray {
 
 // Here the possible types of cgroup setup classes are small, so we use if-else branch
