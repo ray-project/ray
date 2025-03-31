@@ -1845,6 +1845,8 @@ def parse_node_labels_from_yaml_file(
     path: str, cli_logger, cf, command_arg="--labels-file"
 ) -> Dict[str, str]:
     try:
+        if path == "":
+            return {}
         with open(path, "r") as file:
             # Expects valid YAML content
             labels = yaml.safe_load(file)
