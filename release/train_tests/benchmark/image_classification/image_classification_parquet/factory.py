@@ -118,19 +118,6 @@ class ImageClassificationParquetTorchDataLoaderFactory(
             limit_rows_per_worker=limit_training_rows_per_worker,
         )
 
-        # Report training dataset configuration
-        ray.train.report(
-            {
-                "train_dataset": {
-                    "file_urls": train_file_urls,
-                    "random_transforms": True,
-                    "limit_rows_per_worker": limit_training_rows_per_worker,
-                    "total_rows": total_training_rows,
-                    "worker_rank": ray.train.get_context().get_world_rank(),
-                }
-            }
-        )
-
         # Create validation dataset
         val_file_urls = train_file_urls
         val_ds = S3ParquetImageIterableDataset(

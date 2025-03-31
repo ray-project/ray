@@ -166,19 +166,6 @@ class ImageClassificationJpegTorchDataLoaderFactory(
             limit_rows_per_worker=limit_training_rows_per_worker,
         )
 
-        # Report training dataset configuration
-        ray.train.report(
-            {
-                "train_dataset": {
-                    "file_urls": train_file_urls,
-                    "random_transforms": True,
-                    "limit_rows_per_worker": limit_training_rows_per_worker,
-                    "total_rows": total_training_rows,
-                    "worker_rank": ray.train.get_context().get_world_rank(),
-                }
-            }
-        )
-
         # TODO: IMAGENET_JPEG_SPLIT_S3_DIRS["val"] does not have partitioning as "train" does. So we use "train" for validation.
         val_ds = S3JpegImageIterableDataset(
             file_urls=val_file_urls,
