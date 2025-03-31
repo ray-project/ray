@@ -10,6 +10,14 @@ pip install -c python/requirements_compiled.txt pytest nbval bash_kernel
 python -m bash_kernel.install
 pip install "ray[default]==2.41.0"
 
+# If `jq` is installed, echo "Installed"
+if command -v jq &> /dev/null; then
+  echo "jq is installed"
+else
+  echo "jq is not installed, please install it to run this script."
+  exit 1
+fi
+
 echo "--- Run a deliberate failure test to ensure the test script fails on error"
 # The following Jupyter notebook only contains a single cell that runs the `date` command.
 # The test script should fail because the output of the `date` command is different everytime.
