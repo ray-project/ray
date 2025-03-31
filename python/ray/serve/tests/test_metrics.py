@@ -549,11 +549,10 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 )
 def test_proxy_timeout_metrics(serve_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
-    signal = SignalActor.options(name="signal123").remote()
+    signal = SignalActor.remote()
 
     @serve.deployment
     async def return_status_code_with_timeout(request: Request):
-        signal = ray.get_actor("signal123")
         await signal.wait.remote()
         return
 
@@ -590,12 +589,11 @@ def test_proxy_timeout_metrics(serve_start_shutdown):
 def test_proxy_disconnect_metrics(serve_start_shutdown):
     """Test that disconnect metrics are reported correctly."""
 
-    signal = SignalActor.options(name="signal123").remote()
+    signal = SignalActor.remote()
 
     @serve.deployment
     class Disconnect:
         async def __call__(self, request: Request):
-            signal = ray.get_actor("signal123")
             await signal.wait.remote()
             return
 
