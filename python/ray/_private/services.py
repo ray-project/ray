@@ -1135,7 +1135,6 @@ def start_log_monitor(
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--logging-filename={logs_dir}/log_monitor.log",
     ]
 
     if stdout_filepath:
@@ -1186,9 +1185,8 @@ def start_api_server(
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
-    redirect_logging: bool = True,
-    stdout_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
-    stderr_file: Optional[IO[AnyStr]] = subprocess.DEVNULL,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1218,12 +1216,10 @@ def start_api_server(
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging: Whether we should redirect logging to
-            the provided log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump dashboard stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump dashboard stderr.
+            If None, stderr is not redirected.
 
     Returns:
         A tuple of :
@@ -1297,7 +1293,12 @@ def start_api_server(
             f"--node-ip-address={node_ip_address}",
         ]
 
-        if not redirect_logging:
+        if stdout_filepath:
+            command.append(f"--stdout-filepath={stdout_filepath}")
+        if stderr_filepath:
+            command.append(f"--stderr-filepath={stderr_filepath}")
+
+        if stdout_filepath is None and stderr_filepath is None:
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
@@ -1306,10 +1307,6 @@ def start_api_server(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
-            # Inherit stdout/stderr streams so that
-            # logs are redirected to stderr.
-            stdout_file = None
-            stderr_file = None
         if minimal:
             command.append("--minimal")
 
@@ -1323,6 +1320,14 @@ def start_api_server(
 
         if dashboard_grpc_port is not None:
             command.append(f"--grpc-port={dashboard_grpc_port}")
+
+        stdout_file = None
+        if stdout_filepath:
+            stdout_file = open(os.devnull, "w")
+
+        stderr_file = None
+        if stderr_filepath:
+            stderr_file = open(os.devnull, "w")
 
         process_info = start_ray_process(
             command,
@@ -2195,8 +2200,8 @@ def determine_plasma_store_config(
 def start_monitor(
     gcs_address: str,
     logs_dir: str,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_filepath: Optional[str] = None,
+    stderr_filepath: Optional[str] = None,
     autoscaling_config: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
@@ -2209,10 +2214,10 @@ def start_monitor(
     Args:
         gcs_address: The address of GCS server.
         logs_dir: The path to the log directory.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        stdout_filepath: The file path to dump monitor stdout.
+            If None, stdout is not redirected.
+        stderr_filepath: The file path to dump monitor stderr.
+            If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
@@ -2239,7 +2244,12 @@ def start_monitor(
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
 
-    if stdout_file is None and stderr_file is None:
+    if stdout_filepath:
+        command.append(f"--stdout-filepath={stdout_filepath}")
+    if stderr_filepath:
+        command.append(f"--stderr-filepath={stderr_filepath}")
+
+    if stdout_filepath is None and stderr_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
@@ -2252,6 +2262,15 @@ def start_monitor(
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
+
+    stdout_file = None
+    if stdout_filepath:
+        stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if stderr_filepath:
+        stderr_file = open(os.devnull, "w")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
