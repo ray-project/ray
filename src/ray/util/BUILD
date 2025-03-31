@@ -34,7 +34,7 @@ ray_cc_library(
     hdrs = ["env.h"],
     deps = [
         ":logging",
-        "@com_google_absl//absl/strings",
+        "@abseil-cpp//absl/strings",
     ],
 )
 
@@ -56,11 +56,11 @@ ray_cc_library(
         ":macros",
         ":string_utils",
         ":thread_utils",
-        "@com_github_spdlog//:spdlog",
-        "@com_google_absl//absl/debugging:failure_signal_handler",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
+        "@abseil-cpp//absl/debugging:failure_signal_handler",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_prod",
+        "@nlohmann_json//:json",
+        "@spdlog",
     ],
 )
 
@@ -78,9 +78,9 @@ ray_cc_library(
     hdrs = ["container_util.h"],
     deps = [
         ":logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:inlined_vector",
     ],
 )
 
@@ -100,9 +100,9 @@ ray_cc_library(
         ":filesystem",
         ":logging",
         ":macros",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/synchronization",
+        "@boost.asio",
     ],
 )
 
@@ -110,7 +110,7 @@ ray_cc_library(
     name = "function_traits",
     hdrs = ["function_traits.h"],
     deps = [
-        "@boost//:functional",
+        "@boost.functional",
     ],
 )
 
@@ -134,12 +134,12 @@ ray_cc_library(
         ":timestamp_utils",
         "//src/ray/protobuf:event_cc_proto",
         "//src/ray/protobuf:export_event_cc_proto",
-        "@boost//:asio",
-        "@com_github_spdlog//:spdlog",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_prod",
-        "@com_google_protobuf//:protobuf",
-        "@nlohmann_json",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost.asio",
+        "@googletest//:gtest_prod",
+        "@nlohmann_json//:json",
+        "@protobuf",
+        "@spdlog",
     ],
 )
 
@@ -161,7 +161,7 @@ ray_cc_library(
     name = "random",
     hdrs = ["random.h"],
     deps = [
-        "@com_google_absl//absl/random",
+        "@abseil-cpp//absl/random",
     ],
 )
 
@@ -170,7 +170,7 @@ ray_cc_library(
     srcs = ["string_utils.cc"],
     hdrs = ["string_utils.h"],
     deps = [
-        "@com_google_absl//absl/strings",
+        "@abseil-cpp//absl/strings",
     ],
 )
 
@@ -189,7 +189,7 @@ ray_cc_library(
     name = "throttler",
     hdrs = ["throttler.h"],
     deps = [
-        "@com_google_absl//absl/time",
+        "@abseil-cpp//absl/time",
     ],
 )
 
@@ -197,8 +197,8 @@ ray_cc_library(
     name = "sequencer",
     hdrs = ["sequencer.h"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -228,8 +228,8 @@ ray_cc_library(
         ":macros",
         ":process",
         "//:sha256",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@boost.asio",
     ],
 )
 
@@ -255,7 +255,7 @@ ray_cc_library(
     deps = [
         ":map_utils",
         ":util",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -286,10 +286,10 @@ ray_cc_library(
         ":thread_utils",
         ":util",
         "//src/ray/common:ray_config",
-        "@boost//:iostreams",
-        "@com_github_spdlog//:spdlog",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/strings",
+        "@boost.iostreams",
+        "@spdlog",
     ],
 )
 
@@ -312,7 +312,7 @@ ray_cc_library(
     deps = [
         ":compat",
         ":util",
-        "@com_github_spdlog//:spdlog",
+        "@spdlog",
     ],
 )
 
@@ -322,7 +322,7 @@ ray_cc_library(
     deps = [
         ":compat",
         ":util",
-        "@com_github_spdlog//:spdlog",
+        "@spdlog",
     ],
 )
 
@@ -332,7 +332,7 @@ ray_cc_library(
     hdrs = ["temporary_directory.h"],
     deps = [
         ":util",
-        "@com_google_absl//absl/strings:str_format",
+        "@abseil-cpp//absl/strings:str_format",
     ],
 )
 
@@ -340,7 +340,7 @@ ray_cc_library(
     name = "mutex_protected",
     hdrs = ["mutex_protected.h"],
     deps = [
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -381,6 +381,6 @@ ray_cc_library(
     hdrs = ["concurrent_flat_map.h"],
     deps = [
         ":mutex_protected",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )

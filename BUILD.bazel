@@ -7,14 +7,14 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load("@grpc//bazel:cython_library.bzl", "pyx_library")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
-load("@python3_9//:defs.bzl", python39 = "interpreter")
+# load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
@@ -23,40 +23,40 @@ package(
 
 # Hermetic python environment, currently only used for CI infra and scripts.
 
-py_runtime(
-    name = "python3_runtime",
-    interpreter = python39,
-    python_version = "PY3",
-    visibility = ["//visibility:private"],
-)
+# py_runtime(
+#     name = "python3_runtime",
+#     interpreter = python39,
+#     python_version = "PY3",
+#     visibility = ["//visibility:private"],
+# )
 
-py_runtime_pair(
-    name = "python_runtime_pair",
-    py2_runtime = None,
-    py3_runtime = ":python3_runtime",
-    visibility = ["//visibility:private"],
-)
+# py_runtime_pair(
+#     name = "python_runtime_pair",
+#     py2_runtime = None,
+#     py3_runtime = ":python3_runtime",
+#     visibility = ["//visibility:private"],
+# )
 
-constraint_setting(name = "hermetic")
+# constraint_setting(name = "hermetic")
 
-constraint_value(
-    name = "hermetic_python",
-    constraint_setting = ":hermetic",
-)
+# constraint_value(
+#     name = "hermetic_python",
+#     constraint_setting = ":hermetic",
+# )
 
-toolchain(
-    name = "python_toolchain",
-    exec_compatible_with = [":hermetic_python"],
-    toolchain = ":python_runtime_pair",
-    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
-)
+# toolchain(
+#     name = "python_toolchain",
+#     exec_compatible_with = [":hermetic_python"],
+#     toolchain = ":python_runtime_pair",
+#     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+# )
 
-platform(
-    name = "hermetic_python_platform",
-    constraint_values = [":hermetic_python"],
-    parents = ["@local_config_platform//:host"],
-    visibility = ["//visibility:private"],
-)
+# platform(
+#     name = "hermetic_python_platform",
+#     constraint_values = [":hermetic_python"],
+#     parents = ["@local_config_platform//:host"],
+#     visibility = ["//visibility:private"],
+# )
 
 # C/C++ toolchain constraint configs.
 
@@ -121,7 +121,7 @@ ray_cc_library(
     hdrs = ["src/ray/rpc/rpc_chaos.h"],
     deps = [
         "//src/ray/common:ray_config",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -133,7 +133,7 @@ ray_cc_library(
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -161,7 +161,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -172,9 +172,9 @@ ray_cc_library(
     deps = [
         ":grpc_client",
         ":rpc_client_call",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/time",
     ],
 )
 
@@ -186,7 +186,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/protobuf:reporter_cc_proto",
         "//src/ray/util:logging",
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -201,9 +201,9 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/util:thread_utils",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//:grpc++_reflection",
-        "@com_github_grpc_grpc//:grpcpp_admin",
+        "@grpc//:grpc++",
+        "@grpc//:grpc++_reflection",
+        "@grpc//:grpcpp_admin",
     ],
 )
 
@@ -253,7 +253,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -287,9 +287,9 @@ ray_cc_library(
         ":pubsub_lib",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:btree",
+        "@boost.asio",
+        "@grpc//:grpc++",
+        "@abseil-cpp//absl/container:btree",
     ],
 )
 
@@ -313,8 +313,8 @@ ray_cc_library(
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
+        "@boost.asio",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -341,7 +341,7 @@ ray_cc_library(
         ":worker_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "@com_github_grpc_grpc//:grpc++",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -363,9 +363,9 @@ ray_cc_library(
         ":grpc_common_lib",
         ":reporter_cc_grpc",
         "//src/ray/common:status",
-        "@boost//:asio",
-        "@boost//:thread",
-        "@com_github_grpc_grpc//:grpc++",
+        "@boost.asio",
+        "@boost.thread",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -466,7 +466,7 @@ ray_cc_library(
         "//src/ray/util",
         "//src/ray/util:compat",
         "//src/ray/util:counter_map",
-        "@msgpack",
+        "@msgpack-c//:msgpack",
     ],
 )
 
@@ -561,7 +561,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -575,7 +575,7 @@ ray_cc_binary(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "@com_github_gflags_gflags//:gflags",
+        "@gflags//:gflags",
     ],
 )
 
@@ -598,7 +598,7 @@ ray_cc_library(
     hdrs = ["src/ray/gcs/gcs_server/state_util.h"],
     deps = [
         "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -628,7 +628,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -651,7 +651,7 @@ ray_cc_library(
         ":gcs_kv_manager",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -683,8 +683,8 @@ ray_cc_library(
     deps = [
         ":gcs_pub_sub_lib",
         "//src/ray/protobuf:gcs_service_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
     ],
 )
 
@@ -850,8 +850,8 @@ ray_cc_library(
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",
         "//src/ray/util:type_traits",
-        "@boost//:bimap",
-        "@com_google_absl//absl/container:btree",
+        "@boost.bimap",
+        "@abseil-cpp//absl/container:btree",
     ],
 )
 
@@ -866,7 +866,7 @@ ray_cc_binary(
         ":stats_lib",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "@com_github_gflags_gflags//:gflags",
+        "@gflags//:gflags",
     ],
 )
 
@@ -877,9 +877,9 @@ ray_cc_library(
     hdrs = ["src/ray/pubsub/publisher.h"],
     deps = [
         ":pubsub_rpc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -890,9 +890,9 @@ ray_cc_library(
     hdrs = ["src/ray/pubsub/subscriber.h"],
     deps = [
         ":pubsub_rpc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -939,14 +939,14 @@ ray_cc_library(
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_prod",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
+        "@prometheus-cpp//pull",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_prod",
+        "@opencensus-cpp//opencensus/stats",
+        "@opencensus-cpp//opencensus/tags",
     ],
 )
 
@@ -972,7 +972,7 @@ ray_cc_library(
         ":reporter_rpc",
         ":stats_metric",
         "//src/ray/util:size_literals",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
+        "@grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -1021,7 +1021,7 @@ ray_cc_library(
     deps = [
         # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -1046,9 +1046,9 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -1063,9 +1063,9 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -1087,8 +1087,8 @@ ray_cc_library(
         ":scheduler_resource_reporter",
         ":stats_lib",
         "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
     ],
 )
 
@@ -1108,8 +1108,8 @@ ray_cc_library(
         # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduler_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
     ],
 )
 
@@ -1124,9 +1124,9 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -1177,9 +1177,9 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"],
     deps = [
         ":scheduling_policy",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/random:bit_gen_ref",
-        "@com_google_googletest//:gtest_prod",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/random:bit_gen_ref",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -1240,7 +1240,7 @@ ray_cc_library(
         # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
         ":ray_common",
         ":scheduler_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -1408,18 +1408,18 @@ ray_cc_library(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
-        "@boost//:asio",
-        "@boost//:system",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_prod",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
+        "@boost.asio",
+        "@boost.system",
+        "@prometheus-cpp//pull",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_prod",
+        "@opencensus-cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@opencensus-cpp//opencensus/stats",
+        "@opencensus-cpp//opencensus/tags",
     ],
 )
 
@@ -1538,14 +1538,14 @@ ray_cc_library(
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "@boost//:circular_buffer",
-        "@boost//:fiber",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@nlohmann_json",
+        "@boost.circular_buffer",
+        # "@boost//:fiber",
+        "@abseil-cpp//absl/cleanup",
+        "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -1557,7 +1557,7 @@ ray_cc_library(
     hdrs = ["src/ray/core_worker/transport/thread_pool.h"],
     deps = [
         "//src/ray/util:logging",
-        "@boost//:asio",
+        "@boost.asio",
     ],
 )
 
@@ -1588,7 +1588,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1600,7 +1600,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1611,7 +1611,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1622,7 +1622,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1633,7 +1633,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1645,7 +1645,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1657,7 +1657,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1669,7 +1669,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1681,7 +1681,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1691,7 +1691,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1701,7 +1701,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1711,7 +1711,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1722,7 +1722,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1734,7 +1734,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1746,7 +1746,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1761,7 +1761,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1775,7 +1775,7 @@ ray_cc_test(
         ":gcs_client_lib",
         ":ray_mock",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1789,7 +1789,7 @@ ray_cc_test(
         ":gcs_client_lib",
         ":ray_mock",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1801,7 +1801,7 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1812,7 +1812,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1826,7 +1826,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1840,7 +1840,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1853,7 +1853,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1866,7 +1866,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1879,8 +1879,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":scheduler",
-        "@com_google_absl//absl/random:mock_distributions",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/random:mock_distributions",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1894,7 +1894,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1907,7 +1907,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1920,7 +1920,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1934,7 +1934,7 @@ ray_cc_test(
     deps = [
         ":pull_manager",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1947,7 +1947,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":object_buffer_pool",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1961,7 +1961,7 @@ ray_cc_test(
     deps = [
         ":ownership_based_object_directory",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1974,7 +1974,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -1987,9 +1987,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@boost//:endian",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@boost.endian",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2001,8 +2001,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2014,9 +2014,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2035,9 +2035,9 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":plasma_store_server_lib",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2059,9 +2059,9 @@ ray_cc_test(
     deps = [
         ":core_worker_lib",
         ":plasma_store_server_lib",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2074,9 +2074,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/random",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2088,7 +2088,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2101,8 +2101,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2115,8 +2115,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":plasma_store_server_lib",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2130,7 +2130,7 @@ ray_cc_test(
     ],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2145,7 +2145,7 @@ ray_cc_test(
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2159,7 +2159,7 @@ ray_cc_test(
         "ray_common",
         "raylet_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2173,7 +2173,7 @@ ray_cc_test(
         "ray_common",
         "raylet_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2184,7 +2184,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2196,7 +2196,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2208,7 +2208,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2219,7 +2219,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2233,7 +2233,7 @@ ray_cc_test(
     deps = [
         ":ray_common",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2247,7 +2247,7 @@ ray_cc_test(
     deps = [
         ":ray_common",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2261,7 +2261,7 @@ ray_cc_test(
     deps = [
         ":ray_common",
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2274,9 +2274,9 @@ ray_cc_test(
         ":pubsub_cc_grpc",
         ":pubsub_lib",
         "//src/ray/protobuf:pubsub_cc_proto",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
+        "@abseil-cpp//absl/synchronization",
+        "@abseil-cpp//absl/time",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2287,7 +2287,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2300,7 +2300,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2315,7 +2315,7 @@ ray_cc_test(
     ],
     deps = [
         ":stats_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2331,7 +2331,7 @@ ray_cc_test(
     ],
     deps = [
         ":stats_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2356,7 +2356,7 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2369,7 +2369,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":grpc_common_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2382,7 +2382,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":worker_rpc",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2408,7 +2408,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -2430,7 +2430,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -2456,7 +2456,7 @@ ray_cc_test(
     ],
     deps = [
         ":gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2472,7 +2472,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2488,7 +2488,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2504,7 +2504,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2523,7 +2523,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2542,7 +2542,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2559,7 +2559,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2573,7 +2573,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2592,7 +2592,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2609,7 +2609,7 @@ ray_cc_test(
         ":gcs_test_util_lib",
         ":ray_mock",
         "//src/ray/util:process",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2659,7 +2659,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -2674,7 +2674,7 @@ ray_cc_test(
         ":gcs_test_util_lib",
         ":store_client_test_lib",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2690,7 +2690,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2705,7 +2705,7 @@ ray_cc_test(
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2721,7 +2721,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2768,7 +2768,7 @@ ray_cc_test(
     deps = [
         ":gcs_client_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2792,7 +2792,7 @@ ray_cc_test(
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":global_state_accessor_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2819,7 +2819,7 @@ ray_cc_test(
         ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2844,7 +2844,7 @@ ray_cc_test(
         ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -2868,11 +2868,11 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/time",
+        "@boost.asio",
+        "@boost.bind",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/time",
     ],
 )
 
@@ -2886,8 +2886,8 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
     ],
 )
 
@@ -2905,11 +2905,11 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/util:container_util",
         "//src/ray/util:counter_map",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/time",
+        "@boost.asio",
+        "@boost.bind",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/time",
     ],
 )
 
@@ -2926,7 +2926,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/util:sequencer",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -2951,12 +2951,12 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/util:logging",
-        "@boost//:asio",
-        "@boost//:bind",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
+        "@boost.asio",
+        "@boost.bind",
+        "@abseil-cpp//absl/base",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/synchronization",
+        "@abseil-cpp//absl/time",
     ],
 )
 
@@ -2968,8 +2968,8 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
-        "@boost//:asio",
-        "@com_google_absl//absl/strings",
+        "@boost.asio",
+        "@abseil-cpp//absl/strings",
     ],
 )
 
@@ -3000,8 +3000,8 @@ ray_cc_library(
     deps = [
         ":object_reader",
         "//src/ray/util:logging",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_googletest//:gtest_prod",
+        "@abseil-cpp//absl/types:optional",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -3119,7 +3119,7 @@ ray_cc_library(
         ":stats_lib",
         "//src/ray/util",
         "//src/ray/util:exponential_backoff",
-        "@boost//:asio",
+        "@boost.asio",
     ],
 )
 
@@ -3151,8 +3151,8 @@ ray_cc_library(
         ":gcs_store_client",
         ":redis_client",
         "//src/ray/util:container_util",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -3165,7 +3165,7 @@ ray_cc_library(
         ":gcs_store_client",
         "//src/ray/common:asio",
         "//src/ray/util:concurrent_flat_map",
-        "@com_google_absl//absl/container:node_hash_map",
+        "@abseil-cpp//absl/container:node_hash_map",
     ],
 )
 
@@ -3205,8 +3205,8 @@ ray_cc_test(
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
-        "@boost//:optional",
-        "@com_google_googletest//:gtest_main",
+        "@boost.optional",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3233,8 +3233,8 @@ ray_cc_test(
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
-        "@boost//:optional",
-        "@com_google_googletest//:gtest_main",
+        "@boost.optional",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3246,7 +3246,7 @@ ray_cc_test(
     deps = [
         ":gcs_in_memory_store_client",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3259,7 +3259,7 @@ ray_cc_test(
         ":gcs_in_memory_store_client",
         ":observable_store_client",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3295,7 +3295,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3316,7 +3316,7 @@ ray_cc_test(
         ":gcs",
         "//src/ray/util",
         "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3333,7 +3333,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3350,7 +3350,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3367,7 +3367,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -3397,22 +3397,22 @@ pyx_library(
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        # cython code is auto-generated, which is out of our control.
-        copts = COPTS + PYX_COPTS,
-        # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-        linkopts = select({
-            "@platforms//os:osx": [
-                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
-            ],
-            "@platforms//os:windows": [],
-            "//conditions:default": [
-                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
-            ],
-        }),
-        linkstatic = 1,
-    ),
+    # cc_kwargs = dict(
+    #     srcs = PYX_SRCS,
+    #     # cython code is auto-generated, which is out of our control.
+    #     copts = COPTS + PYX_COPTS,
+    #     # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
+    #     linkopts = select({
+    #         "@platforms//os:osx": [
+    #             "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+    #         ],
+    #         "@platforms//os:windows": [],
+    #         "//conditions:default": [
+    #             "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+    #         ],
+    #     }),
+    #     linkstatic = 1,
+    # ),
     deps = [
         ":python_callbacks",
         "//:core_worker_lib",
@@ -3583,7 +3583,7 @@ copy_to_workspace(
 
 copy_to_workspace(
     name = "cp_jemalloc",
-    srcs = ["@jemalloc//:shared"],
+    srcs = ["@jemalloc"],
     dstdir = "python/ray/core/",
 )
 

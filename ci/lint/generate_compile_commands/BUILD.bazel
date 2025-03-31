@@ -11,7 +11,7 @@ cc_binary(
     tags = ["manual"],
     deps = [
         "//:extra_actions_cc_proto_lib",
-        "@com_google_protobuf//:protobuf",
+        "@protobuf//:protobuf",
         "@rapidjson",
     ],
 )

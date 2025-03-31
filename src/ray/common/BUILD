@@ -21,8 +21,8 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
-        "@boost//:optional",
-        "@com_google_googletest//:gtest",
+        "@boost.optional",
+        "@googletest//:gtest",
     ],
 )
 
@@ -39,8 +39,8 @@ ray_cc_library(
         "//:aligned_alloc",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:optional",
+        "@abseil-cpp//absl/time",
+        "@abseil-cpp//absl/types:optional",
     ],
 )
 
@@ -53,8 +53,8 @@ ray_cc_library(
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:type_traits",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -70,10 +70,10 @@ ray_cc_library(
         ":asio",
         ":ray_config",
         "//src/ray/util",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@googletest//:gtest_prod",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -85,7 +85,7 @@ ray_cc_library(
         ":asio",
         "//src/ray/util",
         "//src/ray/util:event",
-        "@com_google_googletest//:gtest_prod",
+        "@googletest//:gtest_prod",
     ],
 )
 
@@ -102,7 +102,7 @@ ray_cc_library(
     deps = [
         ":id",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
 
@@ -142,8 +142,8 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
         "//src/ray/util:random",
-        "@com_github_google_flatbuffers//:flatbuffers",
-        "@msgpack",
+        "@flatbuffers",
+        "@msgpack-c//:msgpack",
     ],
 )
 
@@ -187,11 +187,11 @@ ray_cc_library(
         "//:node_manager_fbs",
         "//src/ray/util",
         "//src/ray/util:container_util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -217,9 +217,9 @@ ray_cc_library(
         "//src/ray/util",
         "//src/ray/util:array",
         "//src/ray/util:function_traits",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/synchronization",
+        "@boost.asio",
     ],
 )
 
@@ -235,8 +235,8 @@ ray_cc_library(
         ":ray_config",
         "//:stats_metric",
         "//src/ray/util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/synchronization",
     ],
 )
 
@@ -250,9 +250,9 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
-        "@com_google_absl//absl/algorithm",
-        "@com_google_absl//absl/strings",
-        "@nlohmann_json",
+        "@abseil-cpp//absl/algorithm",
+        "@abseil-cpp//absl/strings",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -278,8 +278,8 @@ ray_cc_library(
         ":id",
         "//:ray_syncer_cc_grpc",
         "//src/ray/util",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@grpc//:grpc++",
     ],
 )
 
@@ -292,9 +292,9 @@ ray_cc_library(
         "//src/ray/util:logging",
         "//src/ray/util:macros",
         "//src/ray/util:visibility",
-        "@boost//:system",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/strings",
+        "@boost.system",
     ],
 )
 
@@ -309,7 +309,7 @@ ray_cc_library(
     deps = [
         ":macros",
         ":status",
-        "@com_google_absl//absl/base:core_headers",
+        "@abseil-cpp//absl/base:core_headers",
     ],
 )
 
@@ -326,6 +326,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":source_location",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )

@@ -15,6 +15,6 @@ ray_cc_test(
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util/internal:stream_redirection_handle",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )

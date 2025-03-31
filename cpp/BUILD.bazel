@@ -63,11 +63,11 @@ cc_library(
         "//src/ray/util:process",
         "//src/ray/util:cmd_line_utils",
         "@boost//:callable_traits",
-        "@boost//:dll",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@msgpack",
-        "@nlohmann_json",
+        # "@boost.dll",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
     alwayslink = True,
 )
@@ -102,9 +102,9 @@ cc_binary(
         "//conditions:default": [
             "ray_cpp_lib",
             "@boost//:callable_traits",
-            "@boost//:optional",
-            "@msgpack",
-            "@nlohmann_json",
+            "@boost.optional",
+            "@msgpack-c//:msgpack",
+            "@nlohmann_json//:json",
         ],
     }),
 )
@@ -177,7 +177,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -207,7 +207,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -230,7 +230,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api_lib",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -250,9 +250,9 @@ cc_binary(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -272,9 +272,9 @@ cc_binary(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -310,9 +310,9 @@ cc_binary(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -343,9 +343,9 @@ cc_binary(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -365,11 +365,11 @@ cc_test(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -384,11 +384,11 @@ cc_binary(
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
-        "@boost//:optional",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@msgpack",
-        "@nlohmann_json",
+        "@boost.optional",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@msgpack-c//:msgpack",
+        "@nlohmann_json//:json",
     ],
 )
 

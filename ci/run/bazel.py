@@ -227,7 +227,7 @@ def shellcheck(bazel_aquery, *shellcheck_argv):
                 filenames.append(script_file)
             if script_text is not None:
                 has_stdin = True
-                flatc = "host/bin/external/com_github_google_flatbuffers/flatc"
+                flatc = "host/bin/external/flatbuffers/flatc"
                 if flatc not in script_text:
                     statements = ["if test -t 0; then", script_text, "fi"]
                     scripts_combined.append("\n".join(statements))

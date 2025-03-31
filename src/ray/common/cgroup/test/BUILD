@@ -12,7 +12,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/test:testing",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -27,7 +27,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/test:testing",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -39,6 +39,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:fake_cgroup_setup",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
