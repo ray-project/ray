@@ -26,8 +26,13 @@ cc_library(
         "include/",
     ],
     strip_include_prefix = "include",
-    copts = [
-    ],
+    copts = select({
+        "@platforms//os:windows": [],
+        # Ray doesn't control third-party libraries' implementation, simply ignores certain warning errors.
+        "//conditions:default": [
+            "-Wno-shadow",
+        ],
+    }),
     deps = [
         ":_msgpack",
     ],
