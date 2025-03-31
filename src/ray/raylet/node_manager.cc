@@ -628,8 +628,12 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(
-      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   /*graceful=*/false,
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   has_release_resources);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
