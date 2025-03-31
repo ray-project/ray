@@ -120,6 +120,10 @@ bool FileSystemMonitor::OverCapacityImpl(
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {
   std::vector<std::string> spilling_paths;
 
+  if (spilling_config.empty()) {
+    return spilling_paths;
+  }
+
   try {
     json spill_config = json::parse(spilling_config);
     const auto &directory_path = spill_config.at("params").at("directory_path");

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
+import os
 
 if TYPE_CHECKING:
     import torch
@@ -95,22 +96,66 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
         )
 
 
-def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
-    """Get the default torch device inside this actor or driver.
+def get_cuda_devices() -> List["torch.device"]:
+    """Gets the correct torch cuda device list configured for this process.
 
-    If any GPUs are available, the default device will be cuda:0 and we will rely on
-    torch to handle mapping CUDA_VISIBLE_DEVICES to a physical device.
-
-    If no GPUs are available, a CPU device will be returned if allow_cpu is true, else
-    the function will raise a RuntimeError.
+    Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+    superset of the `ray.get_gpu_ids()`.
     """
+    # Note: currently this method replicates the logic from
+    # `CUDATorchDeviceManager.get_devices()`.
+    # TODO(rui): tailor and clean up the logic for proper use in
+    # Compiled Graphs.
     import torch
 
-    accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
-    if not accelerator_ids.get("GPU", []):
-        if allow_cpu:
-            return torch.device("cpu")
-        else:
-            raise RuntimeError("No CUDA device available.")
+    # GPU IDs are assigned by Ray after you specify "use_gpu"
+    # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+    # We should always convert to strings.
+    gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
-    return torch.device("cuda:0")
+    device_ids = []
+
+    if len(gpu_ids) > 0:
+        cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        if cuda_visible_str and cuda_visible_str != "NoDevFiles":
+            cuda_visible_list = cuda_visible_str.split(",")
+        else:
+            cuda_visible_list = []
+
+        # By default, there should only be one GPU ID if `use_gpu=True`.
+        # If there are multiple GPUs, return a list of devices.
+        # If using fractional GPUs, these IDs are not guaranteed
+        # to be unique across different processes.
+        for gpu_id in gpu_ids:
+            try:
+                device_ids.append(cuda_visible_list.index(gpu_id))
+            except IndexError:
+                raise RuntimeError(
+                    "CUDA_VISIBLE_DEVICES set incorrectly. "
+                    f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                    "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                    " variable? If not, please help file an issue on Github."
+                )
+
+    else:
+        # If called on the driver or outside of Ray Train, return the
+        # 0th device.
+        device_ids.append(0)
+
+    return [torch.device(f"cuda:{device_id}") for device_id in device_ids]
+
+
+def get_devices() -> List["torch.device"]:
+    """Gets the correct torch device list configured for this process.
+
+    Returns a list of torch devices allocated for the current worker.
+    If no devices are assigned, then it returns a list with a single CPU device.
+    """
+
+    import torch
+
+    gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+    if len(gpu_ids) > 0:
+        return get_cuda_devices()
+    else:
+        return [torch.device("cpu")]

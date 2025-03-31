@@ -18,6 +18,8 @@ steps:
     soft_fail: true
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
+    tags:
+      - always
 
   - label: ":tapioca: build: uv pip compile LLM dependencies"
     key: uv_pip_compile_llm_dependencies

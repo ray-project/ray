@@ -1,4 +1,4 @@
-from typing import Iterator, List, Callable
+from typing import Callable, Iterator, List
 
 
 class Operator:
@@ -58,6 +58,13 @@ class Operator:
     def _apply_transform(
         self, transform: Callable[["Operator"], "Operator"]
     ) -> "Operator":
+        """Recursively applies transformation (in post-order) to the operators DAG
+
+        NOTE: This operation should be opting in to avoid in-place modifications,
+              instead creating new operations whenever any operator needs to be
+              updated.
+        """
+
         transformed_input_ops = []
         new_ops = []
 
