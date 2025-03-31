@@ -11,6 +11,7 @@ DEFAULT_THROUGHPUT_EMA_COEFF = 0.05
 DEFAULT_CLEAR_ON_REDUCE = False
 DEFAULT_THROUGHPUT = False
 
+
 @pytest.fixture
 def basic_stats():
     return Stats(
@@ -23,9 +24,9 @@ def basic_stats():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
 
+
 @pytest.mark.parametrize(
-    "init_values,expected_len,expected_peek", 
-    [(1.0, 1, 1.0), (None, 0, np.nan)]
+    "init_values,expected_len,expected_peek", [(1.0, 1, 1.0), (None, 0, np.nan)]
 )
 def test_init_with_values(init_values, expected_len, expected_peek):
     """Test initialization with different initial values."""
@@ -45,6 +46,7 @@ def test_init_with_values(init_values, expected_len, expected_peek):
     else:
         assert np.isnan(stats.peek())
 
+
 def test_init_with_window():
     """Test initialization with a window."""
     window_size = 3
@@ -60,10 +62,8 @@ def test_init_with_window():
     assert stats._window == window_size
     assert isinstance(stats.values, deque)
 
-@pytest.mark.parametrize(
-    "reduce_method", 
-    ["mean", "min", "max", "sum", None]
-)
+
+@pytest.mark.parametrize("reduce_method", ["mean", "min", "max", "sum", None])
 def test_init_with_reduce_methods(reduce_method):
     """Test initialization with different reduce methods."""
     stats = Stats(
@@ -76,6 +76,7 @@ def test_init_with_reduce_methods(reduce_method):
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     assert stats._reduce_method == reduce_method
+
 
 def test_invalid_init_params():
     """Test initialization with invalid parameters."""
@@ -90,7 +91,7 @@ def test_invalid_init_params():
             throughput=DEFAULT_THROUGHPUT,
             throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
         )
-    
+
     # Cannot have both window and ema_coeff
     with pytest.raises(ValueError):
         Stats(
@@ -102,7 +103,7 @@ def test_invalid_init_params():
             throughput=DEFAULT_THROUGHPUT,
             throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
         )
-    
+
     # Cannot have ema_coeff with non-mean reduction
     with pytest.raises(ValueError):
         Stats(
@@ -114,6 +115,7 @@ def test_invalid_init_params():
             throughput=DEFAULT_THROUGHPUT,
             throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
         )
+
 
 def test_push_with_ema():
     """Test pushing values with EMA reduction."""
@@ -128,10 +130,11 @@ def test_push_with_ema():
     )
     stats.push(1.0)
     stats.push(2.0)
-    
+
     # EMA formula: new_val = (1.0 - ema_coeff) * old_val + ema_coeff * val
     expected = 1.0 * (1.0 - DEFAULT_EMA_COEFF) + 2.0 * DEFAULT_EMA_COEFF
     assert abs(stats.peek() - expected) < 1e-6
+
 
 def test_push_with_window():
     """Test pushing values with a window."""
@@ -150,13 +153,14 @@ def test_push_with_window():
     assert stats.peek() == 2.5  # Mean of [2.0, 3.0]
     assert len(stats) == 2  # Window size is 2
 
+
 @pytest.mark.parametrize(
-    "reduce_method,values,expected", 
+    "reduce_method,values,expected",
     [
         ("sum", [1, 2, 3], 6),
         ("min", [10, 20, 5, 100], 5),
         ("max", [1, 3, 2, 4], 4),
-    ]
+    ],
 )
 def test_reduce_methods(reduce_method, values, expected):
     """Test different reduce methods."""
@@ -173,6 +177,7 @@ def test_reduce_methods(reduce_method, values, expected):
         stats.push(val)
     assert stats.peek() == expected
 
+
 def test_reduce_with_clear():
     """Test reduce with clear_on_reduce=True."""
     stats = Stats(
@@ -186,10 +191,11 @@ def test_reduce_with_clear():
     )
     stats.push(1)
     stats.push(2)
-    
+
     reduced_value = stats.reduce()
     assert reduced_value == 3
     assert len(stats) == 0  # Stats should be cleared
+
 
 def test_merge_on_time_axis():
     """Test merging stats on time axis."""
@@ -204,7 +210,7 @@ def test_merge_on_time_axis():
     )
     stats1.push(1)
     stats1.push(2)
-    
+
     stats2 = Stats(
         init_values=None,
         reduce="sum",
@@ -216,14 +222,15 @@ def test_merge_on_time_axis():
     )
     stats2.push(3)
     stats2.push(4)
-    
+
     stats1.merge_on_time_axis(stats2)
     assert stats1.peek() == 10  # sum of [1, 2, 3, 4]
+
 
 def test_merge_in_parallel():
     """Test merging stats in parallel."""
     window_size = 3
-    
+
     stats1 = Stats(
         init_values=None,
         reduce="mean",
@@ -235,7 +242,7 @@ def test_merge_in_parallel():
     )
     for i in range(1, 4):  # [1, 2, 3]
         stats1.push(i)
-    
+
     stats2 = Stats(
         init_values=None,
         reduce="mean",
@@ -247,7 +254,7 @@ def test_merge_in_parallel():
     )
     for i in range(4, 7):  # [4, 5, 6]
         stats2.push(i)
-    
+
     result = Stats(
         init_values=None,
         reduce="mean",
@@ -258,11 +265,12 @@ def test_merge_in_parallel():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     result.merge_in_parallel(stats1, stats2)
-    
+
     assert abs(result.peek() - 4.167) < 1e-3
 
+
 @pytest.mark.parametrize(
-    "op,value,expected", 
+    "op,value,expected",
     [
         (lambda s: float(s), None, 2.0),
         (lambda s: int(s), None, 2),
@@ -274,7 +282,7 @@ def test_merge_in_parallel():
         (lambda s: s >= 1.0, None, True),
         (lambda s: s < 3.0, None, True),
         (lambda s: s > 1.0, None, True),
-    ]
+    ],
 )
 def test_numeric_operations(op, value, expected):
     """Test numeric operations on Stats objects."""
@@ -288,8 +296,9 @@ def test_numeric_operations(op, value, expected):
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     stats.push(2.0)
-    
+
     assert op(stats) == expected
+
 
 def test_state_serialization():
     """Test saving and loading Stats state."""
@@ -312,6 +321,7 @@ def test_state_serialization():
     assert loaded_stats._window == stats._window
     assert loaded_stats.peek() == stats.peek()
     assert len(loaded_stats) == len(stats)
+
 
 def test_similar_to():
     """Test creating similar Stats objects."""
@@ -337,6 +347,7 @@ def test_similar_to():
     similar_with_value = Stats.similar_to(original, init_values=[1, 2])
     assert len(similar_with_value) == 2
     assert similar_with_value.peek() == 3  # sum of [1, 2]
+
 
 def test_reduce_history():
     """Test basic reduce history functionality."""
@@ -365,6 +376,7 @@ def test_reduce_history():
     assert stats.reduce() == 10
     check(stats.get_reduce_history(), [[np.nan], [3], [10]])
 
+
 def test_reduce_history_with_clear():
     """Test reduce history with clear_on_reduce=True."""
     stats = Stats(
@@ -390,6 +402,7 @@ def test_reduce_history_with_clear():
     check(stats.get_reduce_history(), [[np.nan], [3], [7]])
     assert len(stats) == 0
 
+
 def test_basic_throughput():
     """Test basic throughput tracking."""
     stats = Stats(
@@ -412,6 +425,7 @@ def test_basic_throughput():
     stats.push(2)
     assert stats.peek() == 3
     assert 5 < stats.throughput < 30  # Roughly 10 items/second
+
 
 def test_throughput_error_conditions():
     """Test throughput error conditions."""
@@ -452,6 +466,8 @@ def test_throughput_error_conditions():
     with pytest.raises(ValueError):
         non_throughput_stats.throughput
 
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))
