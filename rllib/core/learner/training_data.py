@@ -38,7 +38,6 @@ class TrainingData:
                     self.batch_refs,
                     self.episodes,
                     self.episodes_refs,
-                    self.data_iterators,
                 ]
             )
             != 1
