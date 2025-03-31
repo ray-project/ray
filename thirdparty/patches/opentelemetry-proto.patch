@@ -1,0 +1,73 @@
+commit 305930ae4e680ca990bdb9269d045de2508f374b
+Author: dentiny <dentinyhao@gmail.com>
+Date:   Mon Mar 31 21:12:13 2025 +0000
+
+    patch BUILD file
+    
+    Signed-off-by: dentiny <dentinyhao@gmail.com>
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+new file mode 100644
+index 0000000..0e3ce51
+--- /dev/null
++++ b/BUILD.bazel
+@@ -0,0 +1,59 @@
++load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library", "py_grpc_library")
++
++py_proto_library(
++    name = "common_proto_py",
++    deps = [":common_proto"],
++)
++
++py_proto_library(
++    name = "logs_proto_py",
++    deps = [":logs_proto"],
++)
++
++py_proto_library(
++    name = "logs_service_proto_py",
++    deps = [":logs_service_proto"],
++)
++
++py_grpc_library(
++    name = "logs_service_grpc_py",
++    srcs = [":logs_service_proto"],
++    deps = [":logs_service_proto_py"],
++)
++
++py_proto_library(
++    name = "metrics_proto_py",
++    deps = [":metrics_proto"],
++)
++
++py_proto_library(
++    name = "metrics_service_proto_py",
++    deps = [":metrics_service_proto"],
++)
++
++py_grpc_library(
++    name = "metrics_service_grpc_py",
++    srcs = [":metrics_service_proto"],
++    deps = [":metrics_service_proto_py"],
++)
++
++py_proto_library(
++    name = "resource_proto_py",
++    deps = [":resource_proto"],
++)
++
++py_proto_library(
++    name = "trace_proto_py",
++    deps = [":trace_proto"],
++)
++
++py_proto_library(
++    name = "trace_service_proto_py",
++    deps = [":trace_service_proto"],
++)
++
++py_grpc_library(
++    name = "trace_service_grpc_py",
++    srcs = [":trace_service_proto"],
++    deps = [":trace_service_proto_py"],
++)

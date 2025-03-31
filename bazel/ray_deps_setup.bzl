@@ -231,6 +231,10 @@ def ray_deps_setup():
         urls = [
             "https://github.com/open-telemetry/opentelemetry-proto/archive/v1.5.0.tar.gz",
         ],
+        patches = [
+            "@com_github_ray_project_ray//thirdparty/patches:opentelemetry-proto.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
