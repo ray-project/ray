@@ -378,6 +378,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
+  /// After the worker is destroyed, `NodeManger` will not attempt to schedule tasks.
   ///
   /// \param[in] worker The worker to destroy.
   /// \param[in] disconnect_type The reason why this worker process is disconnected.
@@ -394,6 +395,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
+  /// After the worker is destroyed, `NodeManger` will attempt to reschedule tasks.
   ///
   /// \param worker The worker to destroy.
   /// \param disconnect_type The reason why this worker process is disconnected.
@@ -729,7 +731,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &data);
 
-  /// Disconnect a client.
+  /// Disconnect a client, and will not attempt to schedule tasks.
   ///
   /// \param[in] client The client that sent the message.
   /// \param[in] graceful Indicates if this was a graceful disconnect initiated by the
@@ -748,7 +750,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                         const rpc::RayException *creation_task_exception = nullptr,
                         bool *has_release_resources = nullptr);
 
-  /// Disconnect a client, and try schedule.
+  /// Disconnect a client, and will attempt to schedule tasks.
   ///
   /// \param client The client that sent the message.
   /// \param graceful Indicates if this was a graceful disconnect initiated by the
