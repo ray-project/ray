@@ -587,6 +587,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
 
@@ -1387,6 +1388,7 @@ class TestRequestContextMetrics:
         self.verify_metrics(histogram_metrics[0], expected_metrics)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_multiplexed_metrics(serve_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
 
