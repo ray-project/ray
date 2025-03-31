@@ -340,20 +340,28 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self) -> Any:
+    def peek(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
         Thus, users can call this method to get an accurate look at the reduced values
         given the current internal values list.
 
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+
         Returns:
             The result of reducing the internal values list.
         """
         if self._has_new_values:
-            return self._reduced_values()[0]
+            ret = self._reduced_values()[0]
         else:
-            return self._reduce_history[-1]
+            ret = self._reduce_history[-1]
+
+        if compile and self._reduce_method:
+            return ret[0]
+        else:
+            return ret
 
     def get_reduce_history(self) -> List[Any]:
         """Returns the history of reduced values as a list.
@@ -365,7 +373,7 @@ class Stats:
         Returns:
             A list containing the history of reduced values.
         """
-        # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history
+        # Make a 1 level deep copy of the reduce history to avoid mutating the original reduce history's elements
         return [sublist.copy() for sublist in list(self._reduce_history)]
 
     @property
@@ -378,7 +386,7 @@ class Stats:
         if self._throughput_stats is None:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
         # We can always return the first value here because throughput is a single value
-        return self._throughput_stats.peek()[0]
+        return self._throughput_stats.peek()
 
     @property
     def has_throughput(self) -> bool:
@@ -389,13 +397,16 @@ class Stats:
         """
         return self._throughput_stats is not None
 
-    def reduce(self) -> List[Any]:
+    def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values list according to the constructor settings.
 
         Thereby, the internal values list is changed (note that this is different from
         `peek()`, where the internal list is NOT changed). See the docstring of this
         class for details on the reduction logic applied to the values list, based on
         the constructor settings, such as `window`, `reduce`, etc..
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
 
         Returns:
             The reduced value (can be of any type, depending on the input values and
@@ -419,9 +430,15 @@ class Stats:
                 # We need to extend it with a copy because reduced values are (possibly) references to the internal values list and will be mutated by following reduce calls.
                 self._reduce_history.append(reduced.copy())
 
-            return reduced
+            ret = reduced
         else:
-            return self._reduce_history[-1]
+            ret = self._reduce_history[-1]
+        
+        if compile and self._reduce_method is not None:
+            return ret[0]
+        else:
+            return ret
+        
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -443,7 +460,7 @@ class Stats:
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
         if self._throughput_stats is not None:
-            self._throughput_stats.merge_in_parallel(other._throughput_stats)
+            self._throughput_stats.merge_on_time_axis(other._throughput_stats)
 
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
@@ -674,7 +691,7 @@ class Stats:
                 "Cannot convert Stats object with reduce method `None` to int because it can not be reduced to a single value."
             )
         else:
-            return int(self.peek()[0])
+            return int(self.peek())
 
     def __float__(self):
         if self._reduce_method is None:
@@ -682,7 +699,7 @@ class Stats:
                 "Cannot convert Stats object with reduce method `None` to float because it can not be reduced to a single value."
             )
         else:
-            return float(self.peek()[0])
+            return float(self.peek())
 
     def __eq__(self, other):
         if self._reduce_method is None:
@@ -910,11 +927,17 @@ class Stats:
 
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
+                try:
+                    np.all(np.isnan(values))
+                except Exception as e:
+                    import pdb; pdb.set_trace()
+                    
                 if np.all(np.isnan(values)):
-                    # This avoids taking a mean of an empty array.
+                # This avoids taking a mean of an empty array.
                     reduced = np.nan
                 else:
                     reduced = reduce_meth(values)
+            
 
             def safe_isnan(value):
                 if torch and isinstance(value, torch.Tensor):

@@ -139,7 +139,7 @@ class MetricsLogger:
         """
         return self._key_in_stats(key)
 
-    def peek(self, key: Union[str, Tuple[str, ...], None] = None, default=None) -> Any:
+    def peek(self, key: Union[str, Tuple[str, ...], None] = None, default=None, compile: bool = True) -> Any:
         """Returns the reduced values found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
@@ -183,7 +183,7 @@ class MetricsLogger:
         def _nested_peek(stats):
             return tree.map_structure(
                 # If the Stats object has a reduce method, we need to convert the list to a single value
-                lambda s: (s.peek() if s._reduce_method is not None else s.peek()[0])
+                lambda s: (s.peek(compile=compile) if s._reduce_method is not None else s.peek(compile=compile)[0])
                 if isinstance(s, Stats)
                 else s,
                 stats.copy(),
@@ -200,28 +200,27 @@ class MetricsLogger:
 
                 if isinstance(stats, Stats):
                     # If the Stats object has a reduce method, we need to convert the list to a single value
-                    if stats._reduce_method is None:
-                        return stats.peek()
-                    else:
-                        return stats.peek()[0]
+                    return stats.peek(compile=compile)
+                    
                 elif isinstance(stats, dict) and stats:
                     return _nested_peek(stats)
                 else:
                     return default
 
     @staticmethod
-    def peek_results(results: Any) -> Any:
+    def peek_results(results: Any, compile: bool = True) -> Any:
         """Performs `peek()` on any leaf element of an arbitrarily nested Stats struct.
 
         Args:
             results: The nested structure of Stats-leafs to be peek'd and returned.
+            compile: If True, the result is compiled into a single value if possible.
 
         Returns:
             A corresponding structure of the peek'd `results` (reduced float/int values;
             no Stats objects).
         """
         return tree.map_structure(
-            lambda s: s.peek() if isinstance(s, Stats) else s, results
+            lambda s: s.peek(compile=compile) if isinstance(s, Stats) else s, results
         )
 
     def log_value(
@@ -658,14 +657,12 @@ class MetricsLogger:
                 return d
 
         # We do one pass over all the stats_dicts_or_loggers to 1. prepend the key if provided and 2. collect all the keys that lead to leaves (which may be lists or values).
-        stats_dicts_or_loggers_maybe_with_key_prepended = []
+        incoming_stats_dicts_with_key = []
         for stats_dict in stats_dicts:
             if key is not None:
                 stats_dict = {key: stats_dict}
             stats_dict = traverse_and_add_paths(stats_dict)
-            stats_dicts_or_loggers_maybe_with_key_prepended.append(stats_dict)
-
-        stats_dicts_or_loggers = stats_dicts_or_loggers_maybe_with_key_prepended
+            incoming_stats_dicts_with_key.append(stats_dict)
 
         tree.map_structure_with_path(
             lambda path, _: all_keys.add(force_tuple(path)),
@@ -673,85 +670,84 @@ class MetricsLogger:
         )
 
         for key in all_keys:
+            # Get all incoming Stats objects for this key
             incoming_stats = [
                 self._get_key(key, stats=s)
-                for s in stats_dicts_or_loggers
+                for s in incoming_stats_dicts_with_key
                 if self._key_in_stats(key, stats=s)
             ]
-            # We can also look in our own stats dict if we have existing stats for this key
-            all_stats = (
-                incoming_stats.copy()
-            )  # copy to avoid mutating the original list
-            try:
-                own_stats = self._get_key(key, stats=self.stats, key_error=False)
-            except Exception as e:
-                import pdb
 
-                pdb.set_trace()
-            if own_stats is not None:
-                all_stats += [own_stats]
-
+            # Find a base Stats object first - this will be our basis for merging
             base_stats = None
+            own_stats = self._get_key(key, stats=self.stats, key_error=False)
+            all_stats = incoming_stats + [own_stats] if own_stats else incoming_stats
+
+            if isinstance(own_stats, Stats):
+                # Prioritize own stats object if it exists
+                base_stats = own_stats
+            else:
+                base_stats = next(
+                    (s for s in incoming_stats if isinstance(s, Stats)), None
+                )
+                if base_stats is None:
+                    raise ValueError(
+                        f"Found a non-Stats value under key {key} but no Stats "
+                        "object to get settings from. All values under the same key must "
+                        "be Stats objects or have at least one Stats object to copy "
+                        "settings from."
+                    )
+            
+            # Turn all non-Stats objects into Stats objects
             more_stats = []
-            for i, stats_or_values in enumerate(incoming_stats):
+            for i, stats_or_values in enumerate(all_stats):
                 if not isinstance(stats_or_values, Stats):
                     # Create a Stats object from the non-Stats value.
                     self._check_tensor(key, stats_or_values)
-                    existing_stats = next(
-                        (s for s in all_stats if isinstance(s, Stats)), None
-                    )
-
-                    if existing_stats is None:
-                        raise ValueError(
-                            f"Found a non-Stats value under key {key} but no existing Stats "
-                            "object to get settings from. All values under the same key must "
-                            "be Stats objects or have at least one Stats object to copy "
-                            "settings from."
-                        )
-
-                    incoming_stats[i] = stats_or_values = Stats(
+                    
+                    all_stats[i] = Stats(
                         stats_or_values,
-                        reduce=existing_stats._reduce_method,
-                        window=existing_stats._window,
-                        ema_coeff=existing_stats._ema_coeff,
-                        clear_on_reduce=existing_stats._clear_on_reduce,
-                        throughput=existing_stats.has_throughput,
-                        throughput_ema_coeff=existing_stats._throughput_ema_coeff,
+                        reduce=base_stats._reduce_method,
+                        window=base_stats._window,
+                        ema_coeff=base_stats._ema_coeff,
+                        clear_on_reduce=base_stats._clear_on_reduce,
+                        throughput=base_stats.has_throughput,
+                        throughput_ema_coeff=base_stats._throughput_ema_coeff,
                     )
-
-                # Create a new Stats object to merge everything into as parallel,
-                # equally weighted Stats.
-                if base_stats is None:
-                    base_stats = stats_or_values
-                else:
+                    more_stats.append(all_stats[i])
+                elif stats_or_values is not base_stats:
                     more_stats.append(stats_or_values)
 
-            if base_stats is None:
-                if not self._key_in_stats(key):
-                    raise ValueError(
-                        f"Trying to merge metrics for a key {key} where the merging MetricsLogger {self} has not Stats object for the key and no Stats object was found in the incoming values {incoming_stats}."
-                    )
-                base_stats = self._get_key(key, key_error=True)
+            # Now that we have all Stats objects, we can merge them
+            # Three cases:
+            # 1. `base_stats` is a lifetime sum (reduce=sum, clear_on_reduce=False) -> Substract previous lifetime sum and then merge
+            # 2. `base_stats` is some other reduction method (min/max/sum/mean) -> We can reduce to a single value (don't merge)
+            # 3. `base_stats` has no reduction method -> Just merge
 
-            # If reduce method is "mean", calculate mean of all values and create new base_stats
-            if base_stats._reduce_method == "mean":
-                # Create a new list of all Stats objects to reduce
-                all_stats = (
-                    incoming_stats.copy()
-                )  # copy to avoid mutating the original list
-                own_stats = self._get_key(key, stats=self.stats, key_error=False)
-                if not (isinstance(own_stats, dict) and own_stats == {}):
-                    all_stats += [own_stats]
+            # Special case (1): `base_stats` is a lifetime sum
+            if (
+                base_stats._reduce_method == "sum"
+                and base_stats._window is None
+                and base_stats._clear_on_reduce is False
+            ):
+                reduce_history = base_stats.get_reduce_history()
+                for stat in more_stats:
+                    # Take the 2nd to last reduced value (from 2 calls ago)
+                    stat.push(-reduce_history[-2][0])
+
+            # For other cases, where we can reduce (2), we reduce to a single value
+            elif base_stats._reduce_method is not None:
+                # Note that we may take a mean of means here, which is not the same as a mean of all values
+                # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
 
                 # Collect all values from all available Stats objects
                 all_values = []
                 for stat in all_stats:
-                    all_values.extend(stat.peek())
+                    all_values.extend(stat.peek(compile=False))
 
                 # Create a temporary Stats object with all values to get the properly reduced value
                 temp_stats = Stats(
                     init_values=all_values,
-                    reduce="mean",
+                    reduce=base_stats._reduce_method,
                     window=len(all_values),
                     ema_coeff=None,
                     clear_on_reduce=False,
@@ -760,30 +756,16 @@ class MetricsLogger:
                 )
 
                 # Create new base Stats object using similar_to with the reduced value
-                base_stats = Stats.similar_to(base_stats, init_values=temp_stats.peek())
+                base_stats = Stats.similar_to(base_stats, init_values=temp_stats.peek(compile=False))
                 self._set_key(key, base_stats)
-                # Skip the rest of the loop since we've already processed this key
                 continue
-
-            # Special case: `base_stats` is a lifetime sum (reduce=sum,
-            # clear_on_reduce=False) -> We subtract the previous value (from 2
-            # `reduce()` calls ago) from all to-be-merged stats, so we don't count
-            # twice the older sum from before.
-            if (
-                base_stats._reduce_method == "sum"
-                and base_stats._window is None
-                and base_stats._clear_on_reduce is False
-            ):
-                for stat in [base_stats] + more_stats:
-                    # Take the 2nd to last reduced value (from 2 calls ago)
-                    reduce_history = stat.get_reduce_history()
-                    stat.push(-reduce_history[-2][0])
-
-            # There are more than one incoming parallel others -> Merge all of them
-            # first in parallel.
+            
+            # For other cases (3), where we can't reduce, we merge in parallel (also applies to case (1))
             if len(more_stats) > 0:
+                # There are more than one incoming parallel others -> Merge all of them
+                # in parallel.
                 base_stats.merge_in_parallel(*more_stats)
-
+            
             self._set_key(key, base_stats)
 
     def log_time(
@@ -1001,7 +983,7 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
+        logged_tensors = {key: self._get_key(key).peek(compile=False) for key in self._tensor_keys}
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
         return logged_tensors

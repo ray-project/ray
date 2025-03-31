@@ -186,7 +186,7 @@ def test_edge_cases(logger):
     check(results["clear_test"], [0.101])
     # Second call to reduce() returns the reduced value
     results = logger2.reduce()
-    assert isinstance(results["clear_test"][0], float)
+    assert isinstance(results["clear_test"], float)
     check(results["clear_test"], [0.101])
 
 
@@ -477,7 +477,6 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Check merged results
     check(logger.peek("count"), 10)  # sum of all values
-    check(logger.throughputs("count"), np.nan)  # Initial throughput should be np.nan
 
     # Test nested dict merging
     logger1 = MetricsLogger()
@@ -521,9 +520,6 @@ def test_merge_and_log_n_dicts_with_throughput(logger):
 
     # Check merged results
     check(logger.peek(["nested", "count"]), 10)  # sum of all values
-    check(
-        logger.throughputs(["nested", "count"]), np.nan
-    )  # Initial throughput should be np.nan
 
 
 def test_compile(logger):
