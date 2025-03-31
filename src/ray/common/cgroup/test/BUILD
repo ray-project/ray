@@ -5,8 +5,7 @@ ray_cc_test(
     size = "small",
     srcs = ["cgroup_v2_utils_privileged_test.cc"],
     tags = [
-        # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
-        "manual",
+        "cgroup",
         "exclusive",
         "team:core",
     ],
