@@ -263,6 +263,10 @@ const getAvailableResources = (
       label: "GPU Memory",
     },
     {
+      key: "GPUUtil",
+      label: "GPU Utilization",
+    },
+    {
       key: "CPU",
       label: "CPU Usage",
     },
@@ -394,6 +398,7 @@ type Actor = {
     uuid: string;
     memoryUsed: number;
     memoryTotal: number;
+    utilization: number;
   }>;
   requiredResources?: Record<string, number>;
   placementGroup?: {
@@ -480,6 +485,40 @@ const getActorGpuUsage = (actor: Actor) => {
     available: Math.max(totalMemoryAvailable - totalMemoryUsed, 0),
     total: totalMemoryAvailable,
     used: totalMemoryUsed,
+    usage: usage,
+  };
+};
+
+// Helper function to calculate GPU utilization for a single actor
+const getActorGpuUtilization = (actor: Actor) => {
+  if (!actor.gpuDevices || actor.gpuDevices.length === 0) {
+    return null;
+  }
+
+  let totalUtilization = 0;
+  let deviceCount = 0;
+
+  actor.gpuDevices.forEach((gpu) => {
+    if (gpu.utilization !== undefined) {
+      totalUtilization += gpu.utilization;
+      deviceCount++;
+    }
+  });
+
+  if (deviceCount === 0) {
+    return null;
+  }
+
+  // Calculate average utilization as a percentage
+  const avgUtilization = totalUtilization / deviceCount;
+
+  // Cap usage at 100%
+  const usage = Math.min(avgUtilization / 100, 1);
+
+  return {
+    available: 100 - avgUtilization,
+    total: 100,
+    used: avgUtilization,
     usage: usage,
   };
 };
@@ -650,6 +689,68 @@ const getNodeMemoryUsage = (nodeData: NodeData) => {
   return null;
 };
 
+// Helper function to calculate node-level GPU utilization
+const getNodeGpuUtilization = (nodeData: NodeData) => {
+  if (!nodeData.gpus || nodeData.gpus.length === 0) {
+    // Try accessing gpu utilization from actors instead
+    if (nodeData.actors) {
+      let totalUtilization = 0;
+      let deviceCount = 0;
+
+      Object.values(nodeData.actors).forEach((actor) => {
+        if (actor.gpuDevices) {
+          actor.gpuDevices.forEach((gpu) => {
+            if (gpu.utilization !== undefined) {
+              totalUtilization += gpu.utilization;
+              deviceCount++;
+            }
+          });
+        }
+      });
+
+      if (deviceCount > 0) {
+        const avgUtilization = totalUtilization / deviceCount;
+        const usage = Math.min(avgUtilization / 100, 1);
+
+        return {
+          available: 100 - avgUtilization,
+          total: 100,
+          used: avgUtilization,
+          usage: usage,
+        };
+      }
+    }
+    return null;
+  }
+
+  let totalUtilization = 0;
+  let deviceCount = 0;
+
+  nodeData.gpus.forEach((gpu) => {
+    if (gpu.utilizationGpu !== undefined) {
+      totalUtilization += gpu.utilizationGpu;
+      deviceCount++;
+    }
+  });
+
+  if (deviceCount === 0) {
+    return null;
+  }
+
+  // Calculate average utilization as a percentage
+  const avgUtilization = totalUtilization / deviceCount;
+
+  // Cap usage at 100%
+  const usage = Math.min(avgUtilization / 100, 1);
+
+  return {
+    available: 100 - avgUtilization,
+    total: 100,
+    used: avgUtilization,
+    usage: usage,
+  };
+};
+
 // Helper function to check if actor or node has resource info
 const hasResourceInfo = (
   data: Actor | NodeData,
@@ -661,6 +762,28 @@ const hasResourceInfo = (
     }
     if ((data as NodeData).gpus) {
       return ((data as NodeData).gpus?.length ?? 0) > 0;
+    }
+  } else if (resourceType.toLowerCase() === "gpuutil") {
+    if ((data as Actor).gpuDevices) {
+      return (
+        (data as Actor).gpuDevices?.some(
+          (gpu) => gpu.utilization !== undefined,
+        ) ?? false
+      );
+    }
+    if ((data as NodeData).gpus) {
+      return (
+        (data as NodeData).gpus?.some(
+          (gpu) => gpu.utilizationGpu !== undefined,
+        ) ?? false
+      );
+    }
+    if ((data as NodeData).actors) {
+      return Object.values((data as NodeData).actors).some(
+        (actor) =>
+          actor.gpuDevices?.some((gpu) => gpu.utilization !== undefined) ??
+          false,
+      );
     }
   } else if (resourceType.toLowerCase() === "cpu") {
     if ((data as Actor).processStats) {
@@ -1287,6 +1410,33 @@ const PhysicalVisualization = forwardRef<
             .attr("stroke", "#666")
             .attr("stroke-width", 1)
             .attr("stroke-dasharray", "4,2");
+        } else if (
+          selectedResource &&
+          selectedResource.toLowerCase() === "gpuutil"
+        ) {
+          // Get node-level GPU utilization if resource is selected
+          const nodeGpuUtilInfo = getNodeGpuUtilization(nodeData);
+          if (nodeGpuUtilInfo && nodeGpuUtilInfo.usage > 0) {
+            nodeGroup
+              .append("rect")
+              .attr("width", maxNodeWidth * nodeGpuUtilInfo.usage)
+              .attr("height", nodeHeight)
+              .attr("rx", 5)
+              .attr("ry", 5)
+              .attr("fill", colors.node)
+              .attr("stroke", "none");
+
+            // Add dashed line divider at the boundary
+            nodeGroup
+              .append("line")
+              .attr("x1", maxNodeWidth * nodeGpuUtilInfo.usage)
+              .attr("y1", 0)
+              .attr("x2", maxNodeWidth * nodeGpuUtilInfo.usage)
+              .attr("y2", nodeHeight)
+              .attr("stroke", "#666")
+              .attr("stroke-width", 1)
+              .attr("stroke-dasharray", "4,2");
+          }
         } else if (nodeCpuInfo && nodeCpuInfo.usage > 0) {
           nodeGroup
             .append("rect")
@@ -1732,6 +1882,11 @@ const renderPlacementGroups = (
         ) {
           actorResourceInfo = getActorGpuUsage(actor);
         } else if (
+          selectedResource.toLowerCase() === "gpuutil" &&
+          hasResourceInfo(actor, "gpuutil")
+        ) {
+          actorResourceInfo = getActorGpuUtilization(actor);
+        } else if (
           selectedResource.toLowerCase() === "cpu" &&
           hasResourceInfo(actor, "cpu")
         ) {
@@ -1938,6 +2093,11 @@ const renderFreeActors = (
         hasResourceInfo(actor, "gpu")
       ) {
         actorResourceInfo = getActorGpuUsage(actor);
+      } else if (
+        selectedResource.toLowerCase() === "gpuutil" &&
+        hasResourceInfo(actor, "gpuutil")
+      ) {
+        actorResourceInfo = getActorGpuUtilization(actor);
       } else if (
         selectedResource.toLowerCase() === "cpu" &&
         hasResourceInfo(actor, "cpu")
