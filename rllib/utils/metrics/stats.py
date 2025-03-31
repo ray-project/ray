@@ -433,12 +433,11 @@ class Stats:
             ret = reduced
         else:
             ret = self._reduce_history[-1]
-        
+
         if compile and self._reduce_method is not None:
             return ret[0]
         else:
             return ret
-        
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -930,14 +929,15 @@ class Stats:
                 try:
                     np.all(np.isnan(values))
                 except Exception as e:
-                    import pdb; pdb.set_trace()
-                    
+                    import pdb
+
+                    pdb.set_trace()
+
                 if np.all(np.isnan(values)):
-                # This avoids taking a mean of an empty array.
+                    # This avoids taking a mean of an empty array.
                     reduced = np.nan
                 else:
                     reduced = reduce_meth(values)
-            
 
             def safe_isnan(value):
                 if torch and isinstance(value, torch.Tensor):

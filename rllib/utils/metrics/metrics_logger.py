@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
+import threading
 
 import tree  # pip install dm_tree
 
@@ -111,8 +112,13 @@ class MetricsLogger:
 
     """
 
-    def __init__(self):
-        """Initializes a MetricsLogger instance."""
+    def __init__(self, root=False):
+        """Initializes a MetricsLogger instance.
+
+        Args:
+            root: Whether this logger is a root logger. If True, lifetime stats
+                (clear_on_reduce=False and reduction="sum") will not be cleared on reduce().
+        """
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
@@ -126,6 +132,8 @@ class MetricsLogger:
         #  offline RL logic first, then can remove this hack here and return to always
         #  using the RLock.
         self._threading_lock = _DummyRLock()
+        # Is this a root logger?
+        self._is_root_logger = root
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -139,7 +147,12 @@ class MetricsLogger:
         """
         return self._key_in_stats(key)
 
-    def peek(self, key: Union[str, Tuple[str, ...], None] = None, default=None, compile: bool = True) -> Any:
+    def peek(
+        self,
+        key: Union[str, Tuple[str, ...], None] = None,
+        default=None,
+        compile: bool = True,
+    ) -> Any:
         """Returns the reduced values found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
@@ -183,7 +196,11 @@ class MetricsLogger:
         def _nested_peek(stats):
             return tree.map_structure(
                 # If the Stats object has a reduce method, we need to convert the list to a single value
-                lambda s: (s.peek(compile=compile) if s._reduce_method is not None else s.peek(compile=compile)[0])
+                lambda s: (
+                    s.peek(compile=compile)
+                    if s._reduce_method is not None
+                    else s.peek(compile=compile)[0]
+                )
                 if isinstance(s, Stats)
                 else s,
                 stats.copy(),
@@ -201,7 +218,7 @@ class MetricsLogger:
                 if isinstance(stats, Stats):
                     # If the Stats object has a reduce method, we need to convert the list to a single value
                     return stats.peek(compile=compile)
-                    
+
                 elif isinstance(stats, dict) and stats:
                     return _nested_peek(stats)
                 else:
@@ -389,6 +406,12 @@ class MetricsLogger:
                         "throughput_ema_coeff must be the same for all logged values under the same key, "
                         "but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
                         "has throughput_ema_coeff={stats._throughput_ema_coeff}"
+                    )
+                if window != stats._window:
+                    raise ValueError(
+                        "window must be the same for all logged values under the same key, "
+                        "but got argument window={window} while the existing Stats object {key} "
+                        "has window={stats._window}"
                     )
                 if isinstance(value, Stats):
                     # If value itself is a `Stats`, we merge it on time axis into self's
@@ -696,14 +719,14 @@ class MetricsLogger:
                         "be Stats objects or have at least one Stats object to copy "
                         "settings from."
                     )
-            
+
             # Turn all non-Stats objects into Stats objects
             more_stats = []
             for i, stats_or_values in enumerate(all_stats):
                 if not isinstance(stats_or_values, Stats):
                     # Create a Stats object from the non-Stats value.
                     self._check_tensor(key, stats_or_values)
-                    
+
                     all_stats[i] = Stats(
                         stats_or_values,
                         reduce=base_stats._reduce_method,
@@ -717,25 +740,8 @@ class MetricsLogger:
                 elif stats_or_values is not base_stats:
                     more_stats.append(stats_or_values)
 
-            # Now that we have all Stats objects, we can merge them
-            # Three cases:
-            # 1. `base_stats` is a lifetime sum (reduce=sum, clear_on_reduce=False) -> Substract previous lifetime sum and then merge
-            # 2. `base_stats` is some other reduction method (min/max/sum/mean) -> We can reduce to a single value (don't merge)
-            # 3. `base_stats` has no reduction method -> Just merge
-
-            # Special case (1): `base_stats` is a lifetime sum
-            if (
-                base_stats._reduce_method == "sum"
-                and base_stats._window is None
-                and base_stats._clear_on_reduce is False
-            ):
-                reduce_history = base_stats.get_reduce_history()
-                for stat in more_stats:
-                    # Take the 2nd to last reduced value (from 2 calls ago)
-                    stat.push(-reduce_history[-2][0])
-
-            # For other cases, where we can reduce (2), we reduce to a single value
-            elif base_stats._reduce_method is not None:
+            # For cases where we can reduce, we reduce to a single value
+            if base_stats._reduce_method is not None:
                 # Note that we may take a mean of means here, which is not the same as a mean of all values
                 # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
 
@@ -756,16 +762,18 @@ class MetricsLogger:
                 )
 
                 # Create new base Stats object using similar_to with the reduced value
-                base_stats = Stats.similar_to(base_stats, init_values=temp_stats.peek(compile=False))
+                base_stats = Stats.similar_to(
+                    base_stats, init_values=temp_stats.peek(compile=False)
+                )
                 self._set_key(key, base_stats)
                 continue
-            
-            # For other cases (3), where we can't reduce, we merge in parallel (also applies to case (1))
+
+            # For other cases, we can't reduce, we merge in parallel (also applies to case (1))
             if len(more_stats) > 0:
                 # There are more than one incoming parallel others -> Merge all of them
                 # in parallel.
                 base_stats.merge_in_parallel(*more_stats)
-            
+
             self._set_key(key, base_stats)
 
     def log_time(
@@ -929,7 +937,27 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-            values = stats.reduce()
+
+            # Check if this is a lifetime stat (clear_on_reduce=False and reduce="sum")
+            # that belongs to a non-root logger
+            is_lifetime_stat = (
+                not stats._clear_on_reduce
+                and stats._reduce_method == "sum"
+                and stats._inf_window
+            )
+
+            # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
+            if is_lifetime_stat and not self._is_root_logger:
+                original_clear_on_reduce = stats._clear_on_reduce
+                # Modify to clear lifetime stats in non-root loggers
+                stats._clear_on_reduce = True
+                values = stats.reduce()
+                # Restore the original setting
+                stats._clear_on_reduce = original_clear_on_reduce
+            else:
+                # For root logger or non-lifetime stats, reduce normally
+                values = stats.reduce()
+
             path_key = tuple(path)
 
             if path_key not in self._reduced_paths:
@@ -983,7 +1011,9 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        logged_tensors = {key: self._get_key(key).peek(compile=False) for key in self._tensor_keys}
+        logged_tensors = {
+            key: self._get_key(key).peek(compile=False) for key in self._tensor_keys
+        }
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
         return logged_tensors
