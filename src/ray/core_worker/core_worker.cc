@@ -160,6 +160,7 @@ TaskCounter::TaskCounter() {
              {"Name", func_name},
              {"IsRetry", is_retry_label},
              {"JobId", job_id_},
+             {"ActorReprName", actor_repr_name_},
              {"Source", "executor"}});
         // Negate the metrics recorded from the submitter process for these tasks.
         ray::stats::STATS_tasks.Record(
@@ -168,6 +169,7 @@ TaskCounter::TaskCounter() {
              {"Name", func_name},
              {"IsRetry", is_retry_label},
              {"JobId", job_id_},
+             {"ActorReprName", actor_repr_name_},
              {"Source", "executor"}});
         // Record sub-state for get.
         ray::stats::STATS_tasks.Record(
@@ -176,6 +178,7 @@ TaskCounter::TaskCounter() {
              {"Name", func_name},
              {"IsRetry", is_retry_label},
              {"JobId", job_id_},
+             {"ActorReprName", actor_repr_name_},
              {"Source", "executor"}});
         // Record sub-state for wait.
         ray::stats::STATS_tasks.Record(
@@ -184,6 +187,7 @@ TaskCounter::TaskCounter() {
              {"Name", func_name},
              {"IsRetry", is_retry_label},
              {"JobId", job_id_},
+             {"ActorReprName", actor_repr_name_},
              {"Source", "executor"}});
       });
 }
@@ -3354,7 +3358,8 @@ Status CoreWorker::ExecuteTask(
     return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
+    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName(),
+                              actor_repr_name);
     {
       auto self_actor_handle =
           std::make_unique<ActorHandle>(task_spec.GetSerializedActorHandle());

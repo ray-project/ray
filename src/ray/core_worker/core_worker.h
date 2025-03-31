@@ -83,9 +83,10 @@ class TaskCounter {
  public:
   TaskCounter();
 
-  void BecomeActor(const std::string &actor_name) {
+  void BecomeActor(const std::string &actor_name, const std::string &actor_repr_name) {
     absl::MutexLock l(&mu_);
     actor_name_ = actor_name;
+    actor_repr_name_ = actor_repr_name;
   }
 
   void SetJobId(const JobID &job_id) {
@@ -138,6 +139,7 @@ class TaskCounter {
   std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
   std::string actor_name_ ABSL_GUARDED_BY(mu_);
+  std::string actor_repr_name_ ABSL_GUARDED_BY(mu_);
   int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
