@@ -46,8 +46,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
     gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*server_io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          server_io_service_->get_executor());
       server_io_service_->run();
     });
 
@@ -91,8 +91,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
     RAY_CHECK(gcs_client_ == nullptr);
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*client_io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          client_io_service_->get_executor());
       client_io_service_->run();
     });
     gcs::GcsClientOptions options("127.0.0.1",
