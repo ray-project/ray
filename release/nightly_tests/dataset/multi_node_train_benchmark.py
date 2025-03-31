@@ -360,10 +360,10 @@ def train_loop_per_worker():
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
 
-                # zero the parameter gradients
-                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                # zero the parameter gradients
+                optimizer.zero_grad()
 
                 num_batches += 1
                 total_loss += loss.item()
