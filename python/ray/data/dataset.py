@@ -23,7 +23,6 @@ from typing import (
 )
 
 import numpy as np
-import pandas as pd
 
 import ray
 import ray.cloudpickle as pickle
@@ -118,6 +117,7 @@ if TYPE_CHECKING:
     import dask
     import mars
     import modin
+    import pandas
     import pyarrow
     import pyspark
     import tensorflow as tf
@@ -790,6 +790,8 @@ class Dataset:
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
+                import pandas as pd
+
                 # The index of the column must be set
                 # to align with the index of the batch.
                 if (
@@ -5156,9 +5158,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        )
         # Schema is safe to call since we have already triggered execution with
         # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
