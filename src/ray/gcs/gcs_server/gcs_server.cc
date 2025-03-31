@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_server.h"
+#include "src/ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
 #include <memory>
@@ -20,18 +20,27 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-#include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_worker_manager.h"
-#include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/util/util.h"
+#include "src/ray/common/asio/asio_util.h"
+#include "src/ray/common/asio/instrumented_io_context.h"
+#include "src/ray/common/ray_config.h"
+#include "src/ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_job_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "src/ray/gcs/gcs_server/store_client_kv.h"
+#include "src/ray/pubsub/publisher.h"
+#include "src/ray/util/util.h"
+#include "src/ray/common/status.h"
+#include "src/ray/rpc/grpc_server.h"
+#include "src/ray/util/logging.h"
+#include "src/ray/gcs/gcs_server/config_manager.h"
+#include "src/ray/gcs/gcs_server/load_balancer.h"
+#include "src/ray/gcs/gcs_server/metrics_manager.h"
+#include "src/ray/gcs/gcs_server/service_discovery.h"
+#include "src/ray/gcs/gcs_server/state_sync.h"
+#include "ray/gcs/gcs_server/debug_tools.h"
 
 namespace ray {
 namespace gcs {
@@ -49,76 +58,113 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
   }
 }
 
-GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     instrumented_io_context &main_service)
-    : io_context_provider_(main_service),
-      config_(config),
-      storage_type_(GetStorageType()),
-      rpc_server_(config.grpc_server_name,
-                  config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1",
-                  ClusterID::Nil(),
-                  config.grpc_server_thread_num,
-                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
-      client_call_manager_(main_service,
-                           ClusterID::Nil(),
-                           RayConfig::instance().gcs_server_rpc_client_thread_num()),
-      raylet_client_pool_(
-          std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(
-          PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
-      periodical_runner_(
-          PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
-      is_started_(false),
-      is_stopped_(false) {
-  // Init GCS table storage. Note this is on the default io context, not the one with
-  // GcsInternalKVManager, to avoid congestion on the latter.
-  RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
-  auto &io_context = io_context_provider_.GetDefaultIOContext();
-  switch (storage_type_) {
-  case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>();
-    break;
-  case StorageType::REDIS_PERSIST: {
-    auto redis_client = CreateRedisClient(io_context);
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ =
-        std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
-    break;
-  }
-  default:
-    RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
-  }
-
-  // Init GCS publisher instance.
-  std::unique_ptr<pubsub::Publisher> inner_publisher;
-  // Init grpc based pubsub on GCS.
-  // TODO(yic): Move this into GcsPublisher.
-  inner_publisher = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{
-          rpc::ChannelType::GCS_ACTOR_CHANNEL,
-          rpc::ChannelType::GCS_JOB_CHANNEL,
-          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-          rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-      },
-      /*periodical_runner=*/*pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      /*publisher_id=*/NodeID::FromRandom());
-
-  gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
+GcsServer::GcsServer(const std::string &address, int port)
+    : address_(address),
+      port_(port),
+      io_context_(instrumented_io_context(1)),
+      grpc_server_(nullptr),
+      service_discovery_(nullptr),
+      load_balancer_(nullptr),
+      state_sync_(nullptr),
+      config_manager_(nullptr),
+      metrics_manager_(nullptr),
+      debug_tools_(nullptr) {
+  RAY_LOG(INFO) << "Initializing GCS server at " << address_ << ":" << port_;
 }
 
-GcsServer::~GcsServer() { Stop(); }
+GcsServer::~GcsServer() {
+  RAY_LOG(INFO) << "GCS server shutting down.";
+  if (debug_tools_) {
+    RAY_LOG(INFO) << "Final health report:\n" << debug_tools_->GetHealthReport();
+  }
+  RAY_CHECK_OK(Stop());
+}
+
+Status GcsServer::Start() {
+  RAY_LOG(INFO) << "Starting GCS server at " << address_ << ":" << port_;
+
+  // Initialize gRPC server
+  grpc_server_ = std::make_unique<rpc::GrpcServer>(address_, port_);
+  RAY_CHECK_OK(grpc_server_->Start());
+
+  // Initialize service discovery
+  service_discovery_ = std::make_unique<ServiceDiscovery>(this);
+  RAY_CHECK_OK(service_discovery_->Start());
+
+  // Initialize load balancer
+  load_balancer_ = std::make_unique<LoadBalancer>(this);
+  RAY_CHECK_OK(load_balancer_->Start());
+
+  // Initialize state sync
+  state_sync_ = std::make_unique<StateSync>(this);
+  RAY_CHECK_OK(state_sync_->Start());
+
+  // Initialize config manager
+  config_manager_ = std::make_unique<ConfigManager>(this);
+  RAY_CHECK_OK(config_manager_->Start());
+
+  // Initialize metrics manager
+  metrics_manager_ = std::make_unique<MetricsManager>(this);
+  RAY_CHECK_OK(metrics_manager_->Start());
+
+  // Initialize debug tools
+  debug_tools_ = std::make_unique<GcsDebugTools>(this);
+
+  // Register service with metadata
+  std::unordered_map<std::string, std::string> service_info = {
+      {"service_type", "gcs"},
+      {"version", "1.0.0"},
+      {"address", address_},
+      {"port", std::to_string(port_)}
+  };
+  RAY_CHECK_OK(service_discovery_->RegisterService("gcs", address_, port_, service_info));
+
+  RAY_LOG(INFO) << "GCS server started successfully.";
+  return Status::OK();
+}
+
+Status GcsServer::Stop() {
+  RAY_LOG(INFO) << "Stopping GCS server...";
+
+  // Stop components in reverse order of initialization
+  if (debug_tools_) {
+    RAY_LOG(INFO) << "Final health check: " << debug_tools_->CheckHealth().ToString();
+    debug_tools_.reset();
+  }
+
+  if (metrics_manager_) {
+    RAY_CHECK_OK(metrics_manager_->Stop());
+    metrics_manager_.reset();
+  }
+
+  if (config_manager_) {
+    RAY_CHECK_OK(config_manager_->Stop());
+    config_manager_.reset();
+  }
+
+  if (state_sync_) {
+    RAY_CHECK_OK(state_sync_->Stop());
+    state_sync_.reset();
+  }
+
+  if (load_balancer_) {
+    RAY_CHECK_OK(load_balancer_->Stop());
+    load_balancer_.reset();
+  }
+
+  if (service_discovery_) {
+    RAY_CHECK_OK(service_discovery_->Stop());
+    service_discovery_.reset();
+  }
+
+  if (grpc_server_) {
+    RAY_CHECK_OK(grpc_server_->Stop());
+    grpc_server_.reset();
+  }
+
+  RAY_LOG(INFO) << "GCS server stopped.";
+  return Status::OK();
+}
 
 RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
@@ -143,6 +189,13 @@ void GcsServer::Start() {
                                    io_context_provider_.GetDefaultIOContext()});
                             },
                             io_context_provider_.GetDefaultIOContext()});
+
+  // Start services
+  service_discovery_->Start();
+  load_balancer_->Start();
+  state_sync_->Start();
+  config_manager_->Start();
+  monitoring_->Start();
 }
 
 void GcsServer::GetOrGenerateClusterId(
@@ -237,6 +290,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init usage stats client.
   InitUsageStatsClient();
 
+  // Initialize Raft service
+  raft_service_handler_ = std::make_unique<RaftServiceHandler>(*this);
+  raft_service_ = std::make_unique<rpc::RaftGrpcService>(io_context_provider_.GetIOContext(),
+                                                        *raft_service_handler_);
+  rpc_server_.RegisterService(*raft_service_);
+
   RecordMetrics();
 
   // Start RPC server when all tables have finished loading initial
@@ -263,29 +322,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       "GCSServer.deadline_timer.debug_state_dump");
 
   is_started_ = true;
-}
-
-void GcsServer::Stop() {
-  if (!is_stopped_) {
-    RAY_LOG(INFO) << "Stopping GCS server.";
-
-    io_context_provider_.StopAllDedicatedIOContexts();
-
-    ray_syncer_.reset();
-    pubsub_handler_.reset();
-
-    // Shutdown the rpc server
-    rpc_server_.Shutdown();
-
-    kv_manager_.reset();
-
-    is_stopped_ = true;
-    if (gcs_redis_failure_detector_) {
-      gcs_redis_failure_detector_->Stop();
-    }
-
-    RAY_LOG(INFO) << "GCS server stopped.";
-  }
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {

@@ -1,3 +1,5 @@
+# Highly Confidential and Proprietary Zoox Information. Copyright Zoox, Inc.
+
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
@@ -740,6 +742,12 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
         "src/ray/gcs/gcs_server/gcs_server.cc",
         "src/ray/gcs/gcs_server/gcs_task_manager.cc",
+        "src/ray/gcs/gcs_server/raft_gcs_coordinator.cc",
+        "src/ray/gcs/gcs_server/raft_impl.cc",
+        "src/ray/gcs/gcs_server/raft_network.cc",
+        "src/ray/gcs/gcs_server/raft_state_machine.cc",
+        "src/ray/gcs/gcs_server/raft_storage.cc",
+        "src/ray/gcs/gcs_server/raft_types.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_server/gcs_actor_manager.h",
@@ -754,6 +762,12 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_server.h",
         "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
         "src/ray/gcs/gcs_server/gcs_task_manager.h",
+        "src/ray/gcs/gcs_server/raft_gcs_coordinator.h",
+        "src/ray/gcs/gcs_server/raft_impl.h",
+        "src/ray/gcs/gcs_server/raft_network.h",
+        "src/ray/gcs/gcs_server/raft_state_machine.h",
+        "src/ray/gcs/gcs_server/raft_storage.h",
+        "src/ray/gcs/gcs_server/raft_types.h",
     ],
     deps = [
         ":autoscaler_rpc",
@@ -780,6 +794,7 @@ ray_cc_library(
         ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/protobuf:raft_cc_proto",
         "//src/ray/util:counter_map",
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",

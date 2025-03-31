@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+// Resource view for a node
+message ResourceView {
+  map<string, double> resources = 1;
+  map<string, double> available_resources = 2;
+  map<string, double> total_resources = 3;
+}
+
+// Node resources
+message NodeResources {
+  string node_id = 1;
+  ResourceView resources = 2;
+  bool is_alive = 3;
+  int64 last_heartbeat = 4;
+}
+
+// Actor table entry
+message ActorTableEntry {
+  string actor_id = 1;
+  string name = 2;
+  string job_id = 3;
+  string node_id = 4;
+  string worker_id = 5;
+  bool is_alive = 6;
+  int64 num_restarts = 7;
+  int64 timestamp = 8;
+}
+
+// Actor table
+message ActorTable {
+  map<string, ActorTableEntry> entries = 1;
+}
+
+// Task table entry
+message TaskTableEntry {
+  string task_id = 1;
+  string job_id = 2;
+  string node_id = 3;
+  string worker_id = 4;
+  bool is_alive = 5;
+  int64 timestamp = 6;
+}
+
+// Task table
+message TaskTable {
+  map<string, TaskTableEntry> entries = 1;
+}
+
+// Node table entry
+message NodeTableEntry {
+  string node_id = 1;
+  string node_ip_address = 2;
+  string node_manager_port = 3;
+  bool is_alive = 4;
+  int64 timestamp = 5;
+}
+
+// Node table
+message NodeTable {
+  map<string, NodeTableEntry> entries = 1;
+}
+
+// Placement group table entry
+message PlacementGroupTableEntry {
+  string placement_group_id = 1;
+  string name = 2;
+  string job_id = 3;
+  string state = 4;
+  repeated BundleSpecification bundles = 5;
+  int64 timestamp = 6;
+}
+
+// Bundle specification
+message BundleSpecification {
+  string bundle_id = 1;
+  ResourceView resources = 2;
+  repeated string node_ids = 3;
+}
+
+// Placement group table
+message PlacementGroupTable {
+  map<string, PlacementGroupTableEntry> entries = 1;
+} 
