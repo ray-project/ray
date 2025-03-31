@@ -64,33 +64,67 @@ Quickstart Examples
 Deployment through ``LLMRouter``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+.. tab-set::
 
-    from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    .. tab-item:: Builder Pattern
+        :sync: builder
 
-    llm_config = LLMConfig(
-        model_loading_config=dict(
-            model_id="qwen-0.5b",
-            model_source="Qwen/Qwen2.5-0.5B-Instruct",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(
-                min_replicas=1, max_replicas=2,
+        .. code-block:: python 
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+                accelerator_type="A10G",
+                # You can customize the engine arguments (e.g. vLLM engine kwargs)
+                engine_kwargs=dict(
+                    tensor_parallel_size=2,
+                ),
             )
-        ),
-        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-        accelerator_type="A10G",
-        # You can customize the engine arguments (e.g. vLLM engine kwargs)
-        engine_kwargs=dict(
-            tensor_parallel_size=2,
-        ),
-    )
 
-    # Deploy the application
-    deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind([deployment])
-    serve.run(llm_app, blocking=True)
+            app = build_openai_app({"llm_configs": [llm_config]})
+            serve.run(app, blocking=True)
+
+    .. tab-item:: Bind Pattern
+        :sync: bind
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+
+            llm_config = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+                accelerator_type="A10G",
+                # You can customize the engine arguments (e.g. vLLM engine kwargs)
+                engine_kwargs=dict(
+                    tensor_parallel_size=2,
+                ),
+            )
+
+            # Deploy the application
+            deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
+            llm_app = LLMRouter.as_deployment().bind([deployment])
+            serve.run(llm_app, blocking=True)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
 
@@ -133,42 +167,86 @@ You can query the deployed models using either cURL or the OpenAI Python client:
 
 For deploying multiple models, you can pass a list of ``LLMConfig`` objects to the ``LLMRouter`` deployment:
 
-.. code-block:: python
+.. tab-set::
 
-    from ray import serve
-    from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+    .. tab-item:: Builder Pattern
+        :sync: builder
 
-    llm_config1 = LLMConfig(
-        model_loading_config=dict(
-            model_id="qwen-0.5b",
-            model_source="Qwen/Qwen2.5-0.5B-Instruct",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(
-                min_replicas=1, max_replicas=2,
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_app
+
+
+            llm_config1 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
             )
-        ),
-        accelerator_type="A10G",
-    )
 
-    llm_config2 = LLMConfig(
-        model_loading_config=dict(
-            model_id="qwen-1.5b",
-            model_source="Qwen/Qwen2.5-1.5B-Instruct",
-        ),
-        deployment_config=dict(
-            autoscaling_config=dict(
-                min_replicas=1, max_replicas=2,
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
             )
-        ),
-        accelerator_type="A10G",
-    )
 
-    # Deploy the application
-    deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
-    deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
-    llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
-    serve.run(llm_app, blocking=True)
+            app = build_openai_app({"llm_configs": [llm_config1, llm_config2]})
+            serve.run(app, blocking=True)
+
+
+    .. tab-item:: Bind Pattern
+        :sync: bind
+
+        .. code-block:: python
+            
+            from ray import serve
+            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
+
+            llm_config1 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            # Deploy the application
+            deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
+            deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
+            llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
+            serve.run(llm_app, blocking=True)
 
 
 Production Deployment
@@ -427,7 +505,6 @@ For structured output, you can use JSON mode similar to OpenAI's API:
             #   ]
             # }
     .. tab-item:: Client (JSON Schema)
-        :sync: client
 
         If you want, you can also specify the schema you want for the response, using pydantic models:
 
