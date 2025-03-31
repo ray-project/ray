@@ -23,11 +23,19 @@ torch, nn = try_import_torch()
 
 # TODO (simon): Maybe create again a base class `TorchLearnable`.
 class TorchDifferentiableLearner(DifferentiableLearner):
+    """A `DifferentiableLearner` class leveraging PyTorch for functional updates.
 
+    This class utilizes PyTorch 2.0's `func` module to perform functional
+    updates on the provided parameters.
+    """
+
+    # Set the framework to `"torch"`.
     framework: str = "torch"
 
     def __init__(self, **kwargs):
 
+        # First initialize the `DifferentiableLearner` base class to set
+        # the configurations and `MultiRLModule`.
         super().__init__(**kwargs)
 
         # Whether to compile the RL Module of this learner. This implies that the.
@@ -59,10 +67,11 @@ class TorchDifferentiableLearner(DifferentiableLearner):
                 torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
             )
 
-        self._lr_schedulers = {}
-        self._lr_scheduler_classes = None
-        if self.config._torch_lr_scheduler_classes:
-            self._lr_scheduler_classes = self.config._torch_lr_scheduler_classes
+        # TODO (simon): See, if we can include these without a torch optimizer.
+        # self._lr_schedulers = {}
+        # self._lr_scheduler_classes = None
+        # if self.config._torch_lr_scheduler_classes:
+        #     self._lr_scheduler_classes = self.config._torch_lr_scheduler_classes
 
     def _uncompiled_update(
         self,
@@ -70,7 +79,28 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         params: Dict[ModuleID, NamedParamDict],
         **kwargs,
     ) -> Tuple[Any, Any, Dict[ModuleID, NamedParamDict], Any]:
-        """Performs a single update given a batch of data."""
+        """Performs a single functional update using a batch of data.
+
+        This update operates on parameters passed via a functional call to the
+        `MultiRLModule` and leverages PyTorch 2.0's `autograd` module. Parameters
+        are not modified in-place within `self._module`; instead, updates are
+        applied to the cloned parameters provided.
+
+        Args:
+            batch: A dictionary (or `MultiAgentBatch`) containing training data for
+                all modules in the `MultiRLModule` (that should be trained).
+            params: A dictionary of named parameters for each module id.
+
+        Returns:
+            A tuple consisting of:
+                1) the output of a functional forward call to the RLModule using
+                    `params`,
+                2) the `loss_per_module` dictionary mapping module IDs to individual
+                    loss tensors,
+                3) the functionally updated parameters in the (dict) format passed in,
+                4) a metrics dict mapping module IDs to metrics key/value pairs.
+
+        """
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
@@ -87,6 +117,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # Make a functional forward pass with the provided parameters.
         fwd_out = self._make_functional_call(params, batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
+        # Compute gradients for the provided parameters.
         gradients = self.compute_gradients(loss_per_module, params)
 
         with contextlib.ExitStack() as stack:
@@ -95,7 +126,9 @@ class TorchDifferentiableLearner(DifferentiableLearner):
                     # Skip non-torch modules, b/c they may not have the `no_sync` API.
                     if isinstance(mod, torch.nn.Module):
                         stack.enter_context(mod.no_sync())
+            # TODO (simon): See, if we need here postprocessing of gradients.
             # postprocessed_gradients = self.postprocess_gradients(gradients)
+            # Make a stateless (of `params`) update of the `RLModule` parameters.
             params = self.apply_gradients(gradients, params)
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
@@ -110,20 +143,22 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         params: Dict[ModuleID, NamedParamDict],
         **kwargs,
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Computes the gradients based on the given losses.
+        """Computes functionally gradients based on the given losses.
+
+        This method uses `torch.autograd.grad` to make the backward pass on the
+        `MultiRLModule` which enables a functional backward pass. If a PyTorch
+        optimizer is needed a differentiable one must be used (e.g. `torchopt`).
 
         Args:
             loss_per_module: Dict mapping module IDs to their individual total loss
                 terms, computed by the individual `compute_loss_for_module()` calls.
                 The overall total loss (sum of loss terms over all modules) is stored
-                under `loss_per_module[ALL_MODULES]`.
+                under `loss_per_module[ALL_MODULES]`
+            params: A dictionary containing named parameters for each module id.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The gradients in the same (flat) format as self._params. Note that all
-            top-level structures, such as module IDs, will not be present anymore in
-            the returned dict. It will merely map parameter tensor references to their
-            respective gradient tensors.
+            The (named) gradients in the same (dict) format as `params`.
         """
 
         # TODO (simon): Add grad scalers later.
@@ -144,26 +179,39 @@ class TorchDifferentiableLearner(DifferentiableLearner):
             allow_unused=True,
         )
 
-        named_grads = {}
-        for module_id, module_params in params.items():
-            named_grads[module_id] = {}
-            for (name, _), grad in zip(module_params.items(), grads):
-                named_grads[module_id][name] = grad
+        # Map all gradients to their keys.
+        named_grads = {
+            module_id: {
+                name: grad for (name, _), grad in zip(module_params.items(), grads)
+            }
+            for module_id, module_params in params.items()
+        }
 
-        # TODO (simon): Check, if we better use here also named gradients.
         return named_grads
 
     @override(DifferentiableLearner)
     def apply_gradients(
         self,
-        gradients_dict: Dict[ModuleID, NamedParamDict],
+        gradients: Dict[ModuleID, NamedParamDict],
         params: Dict[ModuleID, NamedParamDict],
     ) -> Dict[ModuleID, NamedParamDict]:
+        """Applies the given gradients in a functional manner.
 
-        # Note, because we detach the cloned parameters from their graph we cannot make
-        # in-place modifications of parameters.
+        This method requires functional parameter updates, meaning modifications
+        must not be performed in-place (e.g., using an optimizer or directly within
+        the `MultiRLModule`).
+
+        Args:
+            gradients: A dictionary containing named gradients for each module id.
+            params: A dictionary containing named parameters for each module id.
+
+        Returns:
+            The updated parameters in the same (dict) format as `params`.
+        """
+        # Note, because this is a functional update we cannot apply in-place
+        # modifications of parameters.
         updated_params = {}
-        for module_id, module_grads in gradients_dict.items():
+        for module_id, module_grads in gradients.items():
             updated_params[module_id] = {}
             for name, grad in module_grads.items():
                 # If updates should not be skipped turn `nan` and `inf` gradients to zero.
@@ -203,7 +251,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch
     ) -> Dict[ModuleID, NamedParamDict]:
-
+        """Makes a functional call for each module in the `MultiRLModule`."""
         return self._module.foreach_module(
             lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
             return_dict=True,

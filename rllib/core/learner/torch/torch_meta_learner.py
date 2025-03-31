@@ -25,9 +25,7 @@ from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     NamedParamDict,
-    ParamDict,
     ResultDict,
-    TensorType,
 )
 
 logger = logging.getLogger("__name__")
@@ -36,23 +34,35 @@ torch, nn = try_import_torch()
 
 
 class TorchMetaLearner(TorchLearner):
+    """A `TorchLearner` designed for meta-learning with functional updates.
 
+    This `TorchLearner` manages one or more `DifferentiableLearner` instances,
+    which perform functional updates on the `MultiRLModule`. These updates enable
+    the computation of higher-order gradients, making this class suitable for
+    meta-learning applications.
+
+    The `update` method executes one or more update loops on its
+    `DifferentiableLearner` instances, leveraging the functionally updated
+    parameters for its own learning process.
+    """
+
+    # A list of `TorchDifferentiableLearner`s that run inner functional update
+    # loops.
     others: List[TorchDifferentiableLearner]
 
     def __init__(
         self,
         **kwargs,
     ):
+        # First, initialize the `TorchLearner`.
         super().__init__(**kwargs)
 
+        # Initialize all configured `TorchDifferentiableLearner`s.
         self.others = [
             other_config.learner_class(
                 config=self.config,
                 learner_config=other_config,
                 module=self.module,
-                # TODO (simon): Create this attribute in the `AlgorithmConfig`
-                # or generate a `DifferentiableAlgorithmConfig` (naming is weird)
-                # that has this attribute (and maybe others).
             )
             for other_config in self.config.differentiable_learner_configs
         ]
@@ -60,11 +70,10 @@ class TorchMetaLearner(TorchLearner):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(TorchLearner)
     def build(self) -> None:
-        """Builds the Learner.
+        """Builds the `TorchMetaLearner`.
 
-        This method should be called before the learner is used. It is responsible for
-        setting up the LearnerConnectorPipeline, the RLModule, optimizer(s), and
-        (optionally) the optimizers' learning rate schedulers.
+        This method should be called before the meta-learner is used. It is
+        responsible for setting up the `TorchDifferentiableLearner`s.
         """
         super().build()
 
@@ -101,7 +110,14 @@ class TorchMetaLearner(TorchLearner):
         _no_metrics_reduce: bool = False,
         **kwargs,
     ) -> ResultDict:
+        """Performs a meta-update on the `MultiRLModule`.
 
+        This method allows multiple backward passes on a batch by iteratively
+        applying functional updates from the `TorchDifferentiableLearner` instances
+        in `others`. The resulting differentiable parameters are then used in this
+        learner's own functional forward pass on the `MultiRLModule`, enabling the
+        computation of higher-order gradients during the backward pass.
+        """
         self._check_is_built()
 
         # Call `before_gradient_based_update` to allow for non-gradient based
@@ -117,12 +133,18 @@ class TorchMetaLearner(TorchLearner):
                 episodes_refs=episodes_refs,
                 data_iterators=data_iterators,
             )
+        # Validate training data.
+        # TODO (simon): Pass in a `TrainingData` list for all differentiable learners.
+        # to be used if necessary. Some algorithms need it.
         training_data.validate()
         training_data.solve_refs()
         assert training_data.batches is None, "`training_data.batches` must be None!"
 
+        # Increase the _weigths_seq_no in each `update` run.
         self._weights_seq_no += 1
 
+        # Create a batch iterator.
+        # TODO (simon): Create this method in the `Learner`.
         batch_iter = self._create_iterator_if_necessary(
             training_data=training_data,
             num_total_minibatches=num_total_minibatches,
@@ -145,6 +167,7 @@ class TorchMetaLearner(TorchLearner):
                     f"are not in this Learner!"
                 )
 
+            # Clone the parameters for the differentiable updates.
             params = self._clone_named_parameters()
 
             # Update all differentiable learners.
@@ -158,15 +181,6 @@ class TorchMetaLearner(TorchLearner):
                     **kwargs,
                 )
                 other_losses.append(other_results)
-            for mid, module_params in params.items():
-                for name, p in module_params.items():
-                    print(f"{name}: requires_grad = {p.requires_grad}")
-            # for mid, module_params in params.items():
-            #     for name, p in module_params.items():
-            #         if p.grad is not None:
-            #             print(f"{name}: {p.grad.norm()}")
-            #         else:
-            #             print(f"{name}: No gradient")
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
             # all tensor values (no numpy).
@@ -222,7 +236,7 @@ class TorchMetaLearner(TorchLearner):
             return self.metrics.reduce()
 
     def _clone_named_parameters(self):
-
+        """Clone named parameters for functional updates."""
         return self.module.foreach_module(
             lambda _, m: {name: p.clone() for name, p in m.named_parameters()},
             return_dict=True,
@@ -254,7 +268,15 @@ class TorchMetaLearner(TorchLearner):
         params: NamedParamDict,
         **kwargs,
     ):
-        """Performs a single update given a batch of data."""
+        """Performs a single functional update using a batch of data.
+
+        This update utilizes a functional forward pass via PyTorch 2.0's `func` module.
+        The updated parameters provided by `TorchDifferentiableLearner` instances are
+        functions of the `MultiRLModule`'s parameters, allowing for differentiation.
+
+        To ensure compatibility, the `MultiRLModule`'s `forward` method must encapsulate
+        all logic from `forward_train` and support additional keyword arguments (`kwargs`).
+        """
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
@@ -270,6 +292,8 @@ class TorchMetaLearner(TorchLearner):
         # TODO (simon): For this to work, the `RLModule.forward` must run the
         # the `forward_train`. Passing in arguments which makes the `forward` modular
         # could be a workaround.
+        # Make a functional forward call to include higher-order gradients in the meta
+        # update.
         fwd_out = self._make_functional_call(params, batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
         gradients = self.compute_gradients(loss_per_module)
@@ -290,34 +314,8 @@ class TorchMetaLearner(TorchLearner):
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch
     ) -> Dict[ModuleID, NamedParamDict]:
-
+        """Make a functional forward call to all modules in the `MultiRLModule`."""
         return self._module.foreach_module(
             lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
             return_dict=True,
         )
-
-    @override(TorchLearner)
-    def compute_gradients(
-        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
-    ) -> ParamDict:
-        for optim in self._optimizer_parameters:
-            # `set_to_none=True` is a faster way to zero out the gradients.
-            optim.zero_grad(set_to_none=True)
-
-        if self._grad_scalers is not None:
-            total_loss = sum(
-                self._grad_scalers[mid].scale(loss)
-                for mid, loss in loss_per_module.items()
-            )
-        else:
-            total_loss = sum(loss_per_module.values())
-
-        # If we don't have any loss computations, `sum` returns 0.
-        if isinstance(total_loss, int):
-            assert total_loss == 0
-            return {}
-
-        total_loss.backward(retain_graph=True)
-        grads = {pid: p.grad for pid, p in self._params.items()}
-
-        return grads

@@ -63,8 +63,24 @@ logger = logging.getLogger(__name__)
 
 
 class DifferentiableLearner(Checkpointable):
+    """A differentiable `Learner` class enabling functional parameter updates.
 
+    This class is part of RLlib's Meta Learning API and provides a differentiable
+    `Learner`, allowing higher-order updates within the meta-learning loop.
+
+    Unlike standard learners, this class operates on a provided `RLModule` reference
+    instead of creating its own. Updated cloned module parameters are returned to the
+    caller, facilitating further update processes.
+
+    The `update`, `_update`, `compute_gradients`, and `apply_gradients` methods
+    require, in addition to other arguments, a dictionary of cloned `RLModule`
+    parameters for functional updates.
+    """
+
+    # The framework an instance uses.
     framework_str: str
+
+    # The key for the total loss.
     TOTAL_LOSS_KEY: str = "total_loss"
 
     def __init__(
@@ -73,11 +89,16 @@ class DifferentiableLearner(Checkpointable):
         config: "AlgorithmConfig",
         learner_config: "DifferentiableLearnerConfig",
         module: Optional[RLModule] = None,
+        **kwargs,
     ) -> None:
 
+        # An `AlgorithmConfig` used to access certain global configurations.
         self.config: "AlgorithmConfig" = config.copy(copy_frozen=False)
+        # The specific configuration for the differentiable learner instance.
         self.learner_config: "DifferentiableLearnerConfig" = learner_config
+        # The reference to the caller's module.
         self._module: Optional[MultiRLModule] = module
+        # A counter for functional weight updates.
         self._weights_seq_no: int = 0
 
         # Whether self.build has already been called.
@@ -102,22 +123,16 @@ class DifferentiableLearner(Checkpointable):
         if self._is_built:
             logger.debug("DifferentiableLearner already built. Skipping built.")
 
-        # TODO (sven): Figure out which space to provide here. For now,
-        #  it doesn't matter, as the default connector piece doesn't use
-        #  this information anyway.
-        #  module_spec = self._module_spec.as_multi_rl_module_spec()
+        # TODO (simon): Move the `build_learner_connector` to the
+        # `DifferentiableLearnerConfig`.
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
             device=None,
         )
 
+        # This instance is now ready for use.
         self._is_built = True
-
-    @property
-    def module(self) -> MultiRLModule:
-        """The MultiRLModule that is being trained."""
-        return self._module
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
@@ -127,29 +142,44 @@ class DifferentiableLearner(Checkpointable):
         params: Dict[ModuleID, NamedParamDict],
         **kwargs,
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Computes the gradients based on the given losses.
+        """Computes functional gradients based on the given losses.
+
+        Note that this method requires computing gradients functionally,
+        without relying on an optimizer. If an optimizer is needed, a
+        differentiable optimizer from a third-party package must be used.
 
         Args:
             loss_per_module: Dict mapping module IDs to their individual total loss
                 terms, computed by the individual `compute_loss_for_module()` calls.
                 The overall total loss (sum of loss terms over all modules) is stored
                 under `loss_per_module[ALL_MODULES]`.
+            params: A dictionary containing cloned parameters for each module id.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The gradients in the same (flat) format as self._params. Note that all
-            top-level structures, such as module IDs, will not be present anymore in
-            the returned dict. It will merely map parameter tensor references to their
-            respective gradient tensors.
+            The gradients in the same (dict) format as `params`.
         """
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(
         self,
-        gradients_dict: Dict[ModuleID, NamedParamDict],
+        gradients: Dict[ModuleID, NamedParamDict],
         params: Dict[ModuleID, NamedParamDict],
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Applies given gradients."""
+        """Applies given gradients functionally.
+
+        Note that this method requires functional parameter updates,
+        meaning modifications must not be performed in-place (e.g., via an
+        optimizer or directly within the `MultiRLModule`).
+
+        Args:
+            gradients: A dictionary containing named gradients for each module id.
+            params: A dictionary containing named parameters for each module id.
+
+        Returns:
+            The updated parameters in the same (dict) format as `params`.
+        """
 
     @OverrideToImplementCustomLogic
     def should_module_be_updated(self, module_id, multi_agent_batch=None):
@@ -184,14 +214,12 @@ class DifferentiableLearner(Checkpointable):
         uses independent multi-agent learning (default behavior for RLlib's multi-agent
         setups), also only `compute_loss_for_module()` should be overridden, but it will
         be called for each individual RLModule inside the MultiRLModule.
-        It is recommended to not compute any forward passes within this method, and to
-        use the `forward_train()` outputs of the RLModule(s) to compute the required
-        loss tensors.
-        See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
+        For the functional update to work, no `forward` call should be made
+        within this method, especially not a non-functional one. Instead, use
+        the model outputs provided by `fwd_out`.
 
         Args:
-            fwd_out: Output from a call to the `forward_train()` method of the
+            fwd_out: Output from a functional call to the `forward_train()` method of the
                 underlying MultiRLModule (`self.module`) during training
                 (`self.update()`).
             batch: The train batch that was used to compute `fwd_out`.
@@ -203,6 +231,8 @@ class DifferentiableLearner(Checkpointable):
         for module_id in fwd_out:
             loss = self.compute_loss_for_module(
                 module_id=module_id,
+                # TODO (simon): Check, if this should be provided per
+                # `DifferentiableLearnerConfig`.
                 config=self.config.get_config_for_module(module_id),
                 batch=batch[module_id],
                 fwd_out=fwd_out[module_id],
@@ -211,6 +241,7 @@ class DifferentiableLearner(Checkpointable):
 
         return loss_per_module
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def compute_loss_for_module(
         self,
@@ -238,45 +269,36 @@ class DifferentiableLearner(Checkpointable):
             these different optimizers, simply add up the individual loss terms for
             each optimizer and return the sum. Also, for recording/logging any
             individual loss terms, you can use the `Learner.metrics.log_value(
-            key=..., value=...)` or `Learner.metrics.log_dict()` APIs. See:
-            :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for more
-            information.
+            key=..., value=...)` or `DifferentiableLearner.metrics.log_dict()` APIs.
+            See: :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for
+            more information.
         """
 
     def update(
         self,
-        params: Optional[Dict[ModuleID, NamedParamDict]] = None,
-        training_data: Optional[TrainingData] = None,
+        params: Dict[ModuleID, NamedParamDict],
+        training_data: TrainingData,
         *,
         _no_metrics_reduce: bool = False,
         **kwargs,
     ) -> Tuple[Dict[ModuleID, NamedParamDict], ResultDict]:
-        """Run `num_epochs` epochs over the given train batch.
+        """Make a functional update on provided parameters.
 
-        You can use this method to take more than one backward pass on the batch.
-        The same `minibatch_size` and `num_epochs` will be used for all module ids in
-        MultiRLModule.
+        You can use this method to take more than one backward pass on the batch. All
+        configuration parameters for the iteration loop are set within the
+        `learner_config`. Note, the same configuration will be used for all module ids
+        in `MultiRLModule`.
 
         Args:
-            batch: A batch of training data to update from.
-            timesteps: Timesteps dict, which must have the key
-                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-                # TODO (sven): Make this a more formal structure with its own type.
-            num_epochs: The number of complete passes over the entire train batch. Each
-                pass might be further split into n minibatches (if `minibatch_size`
-                provided).
-            minibatch_size: The size of minibatches to use to further split the train
-                `batch` into sub-batches. The `batch` is then iterated over n times
-                where n is `len(batch) // minibatch_size`.
-            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
-                If the train batch has a time rank (axis=1), shuffling will only take
-                place along the batch axis to not disturb any intact (episode)
-                trajectories. Also, shuffling is always skipped if `minibatch_size` is
-                None, meaning the entire train batch is processed each epoch, making it
-                unnecessary to shuffle.
+            params: A parameter dictionary holding named parameters for each module id.
+                These parameters must be a clone of the module's original parameters to
+                perform a functional update on them.
+            training_data: A `TrainingData` instance containing the data or data iterators
+                to be used in updating the given parameters in `param`.
 
         Returns:
-            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            The functionally updated parameters in the (dict) format they were passed in
+            and a `ResultDict` object produced by a call to `self.metrics.reduce()`. The
             returned dict may be arbitrarily nested and must have `Stats` objects at
             all its leafs, allowing components further downstream (i.e. a user of this
             Learner) to further reduce these results (for example over n parallel
@@ -284,6 +306,7 @@ class DifferentiableLearner(Checkpointable):
         """
         self._check_is_built()
 
+        # TODO (simon): Implement a `before_gradient_based_update`, if necessary.
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
         # self.before_gradient_based_update(timesteps=timesteps or {})
@@ -381,6 +404,8 @@ class DifferentiableLearner(Checkpointable):
         shuffle_batch_per_epoch: bool = False,
         **kwargs,
     ) -> Iterable:
+        """Provides a batch iterator."""
+
         # Data iterator provided.
         if training_data.data_iterators:
             num_iters = kwargs.pop("num_iters", None)
@@ -463,12 +488,13 @@ class DifferentiableLearner(Checkpointable):
         params: Dict[ModuleID, NamedParamDict],
         **kwargs,
     ) -> Tuple[Any, Dict[ModuleID, NamedParamDict], Any, Any]:
-        """Contains all logic for an in-graph/traceable update step.
+        """Contains all logic for an in-graph/traceable functional update step.
 
         Framework specific subclasses must implement this method. This should include
-        calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
-        `postprocess_gradients`, and `apply_gradients` methods and return a tuple
-        with all the individual results.
+        functional calls to the RLModule's `forward_train`, `compute_loss`,
+        `compute_gradients`, `postprocess_gradients`, and `apply_gradients` methods
+        and return a tuple with all the individual results as well as the functionally
+        updated parameter dictionary.
 
         Args:
             batch: The train batch already converted to a Dict mapping str to (possibly
@@ -477,10 +503,12 @@ class DifferentiableLearner(Checkpointable):
 
         Returns:
             A tuple consisting of:
-                1) The `forward_train()` output of the RLModule,
-                2) the loss_per_module dictionary mapping module IDs to individual loss
-                    tensors
-                3) a metrics dict mapping module IDs to metrics key/value pairs.
+                1) the output of a functional forward call to the RLModule using
+                    `params`,
+                2) the functionally updated parameters in the (dict) format passed in,
+                3) the `loss_per_module` dictionary mapping module IDs to individual
+                    loss tensors,
+                4) a metrics dict mapping module IDs to metrics key/value pairs.
 
         """
 
@@ -492,6 +520,11 @@ class DifferentiableLearner(Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
+        """Gets the state of the `DifferentiableLearner` instance.
+
+        Note, because the `MultiRLModule` held by this class is only a reference
+        it is not contained in the class' state.
+        """
         self._check_is_built()
 
         state = {
@@ -507,6 +540,7 @@ class DifferentiableLearner(Checkpointable):
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
+        """Sets the state of the `DifferentiableLearner` instance."""
         self._check_is_built()
 
         weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
@@ -714,13 +748,37 @@ class DifferentiableLearner(Checkpointable):
         module: MultiRLModule,
         params: Dict[ModuleID, NamedParamDict],
         batch: MultiAgentBatch,
+        **kwargs,
     ) -> Dict[ModuleID, Dict[str, TensorType]]:
-        """Makes a functional call to a module."""
+        """Makes a functional call to a module.
+
+        Functional calls enable the Learner to (a) use the same module as its
+        `MetaLearner` and (b) to generate and apply gradients without modifying
+        the `RLModule` parameters directly.
+
+        Args:
+            module: The `MultiRLModule` to be used for the functional call. Note, this
+                module's `forward` method must call the `foward_train`.
+            params: A dictionary containing containing for each `RLModule`'s id its
+                named parameter dictionary. For functional calls to work, these
+                parameters need to be cloned.
+            batch: A `MultiAgentBatch` instance to be used in the functional call.
+
+        Returns:
+            A dictionary with the output of the module's forward pass.
+        """
 
     @property
-    def module(self):
+    def module(self) -> MultiRLModule:
+        """The MultiRLModule reference that is being used in updates."""
         return self._module
 
     @module.setter
-    def module(self, module: MultiRLModule):
+    def module(self, module: MultiRLModule) -> None:
+        """Sets the `MultiRLModule`.
+
+        Args:
+            module: The reference to the `MultiRLModule` of the class that holds the
+                instance of this `DifferentiableLearner` instance.
+        """
         self._module = module
