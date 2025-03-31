@@ -64,10 +64,10 @@ enum LabelOperator {
 message LabelConstraint {
   // The key of the label
   string label_key = 1;
-  // The values to check against.
-  repeated string label_values = 2;
   // The operator to use for the label constraint.
-  LabelOperator operator = 3;
+  LabelOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
 }
 
 // A list of node label constraints to be used for specify the label requirements in a
