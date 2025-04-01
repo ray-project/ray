@@ -2,6 +2,7 @@ import contextlib
 import logging
 import ray
 
+from itertools import cycle
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -94,7 +95,7 @@ class TorchMetaLearner(TorchLearner):
                 other.module = self.module
 
     @OverrideToImplementCustomLogic
-    @override(TorchLearner)
+    @override(Learner)
     def update(
         self,
         batch: Optional[MultiAgentBatch] = None,
@@ -115,6 +116,7 @@ class TorchMetaLearner(TorchLearner):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         _no_metrics_reduce: bool = False,
+        others_training_data: Optional[List[TrainingData]] = None,
         **kwargs,
     ) -> ResultDict:
         """Performs a meta-update on the `MultiRLModule`.
@@ -161,6 +163,11 @@ class TorchMetaLearner(TorchLearner):
             **kwargs,
         )
 
+        # If no training data for `DifferentiableLearner`s have been passed in, cycle
+        # over the main training_data for each `DifferentiableLearner`.
+        if not others_training_data:
+            others_training_data = cycle([training_data])
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -180,10 +187,10 @@ class TorchMetaLearner(TorchLearner):
             # Update all differentiable learners.
             others_loss_per_module = []
             others_results = {}
-            for other in self.others:
+            for other, other_training_data in zip(self.others, others_training_data):
                 # TODO (simon): Add the single results to the overall results.
                 params, other_loss_per_module, other_results = other.update(
-                    training_data=training_data,
+                    training_data=other_training_data,
                     params=params,
                     _no_metrics_reduce=_no_metrics_reduce,
                     **kwargs,

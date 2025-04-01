@@ -28,7 +28,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
     DifferentiableLearnerConfig,
 )
-from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -5817,7 +5816,9 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         super().validate()
 
         # TODO (simon): Maybe moving this to a private method?
-        # Ensure that the default learner class is derived from `MetaLearner`.
+        # Ensure that the default learner class is derived from `TorchMetaLearner`.
+        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+
         if not issubclass(self.get_default_learner_class(), TorchMetaLearner):
             self._value_error(
                 "`get_default_learner_class` must return a `MetaLearner` class "
