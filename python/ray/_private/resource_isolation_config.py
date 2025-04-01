@@ -29,8 +29,6 @@ class ResourceIsolationConfig:
             processes.
         system_reserved_memory: The amount of memory in bytes reserved
             for ray system processes.
-
-    This will be passed to RayParams as-is and can then be integrated with raylet start through Node :)
     """
 
     def __init__(
@@ -76,7 +74,8 @@ class ResourceIsolationConfig:
         if not isinstance(self.cgroup_path, str):
             raise ValueError(
                 f"Invalid value={self.cgroup_path} for cgroup_path. "
-                "Use a string to represent the path for the cgroup that the raylet should use."
+                "Use a string to represent the path for the cgroup that the raylet should use "
+                "to enable resource isolation."
             )
 
         # validate system_reserved_cpu
@@ -95,7 +94,8 @@ class ResourceIsolationConfig:
         ):
             raise ValueError(
                 f"Invalid value={self.system_reserved_cpu} for system_reserved_cpu. "
-                "Use a float to represent the number of cores that need to be reserved for ray system processes."
+                "Use a float to represent the number of cores that need to be reserved for "
+                "ray system processes to enable resource isolation."
             )
 
         self.system_reserved_cpu = float(self.system_reserved_cpu)
@@ -108,7 +108,6 @@ class ResourceIsolationConfig:
                 f"greater than or equal to {ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES}"
             )
 
-        # check that calculated reserved_cpu is valid
         if self.system_reserved_cpu > available_system_cpus:
             raise ValueError(
                 f"The requested system_reserved_cpu={self.system_reserved_cpu} is greater than "
@@ -120,6 +119,9 @@ class ResourceIsolationConfig:
         # see the cpu.weights section in
         # https://docs.kernel.org/admin-guide/cgroup-v2.html
         # for more information.
+        # This assumes that ray is allowed to use all available CPU
+        # cores and distribute them between system processes and
+        # application processes
         self.system_reserved_cpu_weight: int = int(
             (self.system_reserved_cpu / float(available_system_cpus))
             * _CGROUP_CPU_MAX_WEIGHT
@@ -140,7 +142,8 @@ class ResourceIsolationConfig:
         if not isinstance(self.system_reserved_memory, int):
             raise ValueError(
                 f"Invalid value={self.system_reserved_memory} for system_reserved_memory. "
-                "Use an integer to represent the number bytes that need to be reserved for ray system processes."
+                "Use an integer to represent the number bytes that need to be reserved for "
+                "ray system processes to enable resource isolation."
             )
 
         if (
@@ -161,16 +164,14 @@ class ResourceIsolationConfig:
             )
 
     def add_object_store_memory(self, object_store_memory: int):
-        """This is an awkward method until we refactor the Object Store config into a similar
-        class and do validation earlier i.e. when the object_store config is created outside
-        """
         self.system_reserved_memory += object_store_memory
         available_system_memory = utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
             raise ValueError(
-                f"The total requested system_reserved_memory={self.system_reserved_memory} is greater than "
-                f"the amount of memory available={available_system_memory}."
-                "Pick a smaller number of bytes to reserve for ray system processes."
+                f"The total requested system_reserved_memory={self.system_reserved_memory}, calculated by "
+                " object_store_bytes + system_reserved_memory, is greater than the total memory "
+                f" available={available_system_memory}. Pick a smaller number of bytes for object_store_bytes "
+                "or system_reserved_memory."
             )
 
     def is_enabled(self) -> bool:

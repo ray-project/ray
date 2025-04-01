@@ -132,7 +132,7 @@ class RayParams:
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray
-            system processes (defaults no isolation if config not provided)
+            system processes (defaults to no isolation if config not provided)
     """
 
     def __init__(
