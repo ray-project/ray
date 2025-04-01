@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 S3_BUCKET = "ray-benchmark-data-internal"
 CRITEO_S3_URI = f"s3://{S3_BUCKET}/criteo/tsv.gz"
-CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
+CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN = (
+    "criteo/tsv.gz/categorical_feature_value_counts/{}-value_counts.json"
+)
 
 
 INT_FEATURE_COUNT = 13
@@ -44,14 +46,20 @@ def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     return batch
 
 
-def concat_and_normalize_dense_features(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def concat_and_normalize_dense_features(
+    batch: Dict[str, np.ndarray]
+) -> Dict[str, np.ndarray]:
     """Concatenate dense and sparse features together.
     Apply log transformation to dense features."""
 
     out = {}
 
-    out["dense"] = np.column_stack([batch[feature_name] for feature_name in DEFAULT_INT_NAMES])
-    out["sparse"] = np.column_stack([batch[feature_name] for feature_name in DEFAULT_CAT_NAMES])
+    out["dense"] = np.column_stack(
+        [batch[feature_name] for feature_name in DEFAULT_INT_NAMES]
+    )
+    out["sparse"] = np.column_stack(
+        [batch[feature_name] for feature_name in DEFAULT_CAT_NAMES]
+    )
 
     out["dense"] += 3  # Prevent log(0)
     out["dense"] = np.log(out["dense"], dtype=np.float32)
@@ -104,12 +112,12 @@ def convert_to_torchrec_batch_format(batch: Dict[str, np.ndarray]):
 
 
 def read_json_from_s3(bucket_name, key):
-    s3 = boto3.client('s3')
-    
+    s3 = boto3.client("s3")
+
     # Download object content
     response = s3.get_object(Bucket=bucket_name, Key=key)
-    content = response['Body'].read().decode('utf-8')
-    
+    content = response["Body"].read().decode("utf-8")
+
     # Parse JSON
     data = json.loads(content)
     return data
@@ -136,7 +144,7 @@ def get_ray_dataset(stage: str = "train"):
         parse_options=pyarrow.csv.ParseOptions(delimiter="\t"),
         shuffle=("files" if stage == "train" else None),  # coarse file-level shuffle
     )
-    
+
     # Convert categorical features to integers.
 
     # Option 1: Use the built-in preprocessor (This is not performant enough.)
@@ -155,6 +163,7 @@ def get_ray_dataset(stage: str = "train"):
     for cat_feature in DEFAULT_CAT_NAMES:
         if COMPUTE_VALUE_COUNTS_FROM_SCRATCH:
             logger.info(f"Computing value counts for: {cat_feature}")
+
             def filter_features(batch):
                 features = batch[cat_feature]
                 features[features == None] = ""
@@ -162,17 +171,22 @@ def get_ray_dataset(stage: str = "train"):
 
             value_counts = [
                 (group[cat_feature], group["count()"])
-                for group in ds.map_batches(filter_features).groupby(key=cat_feature).count().take_all()
+                for group in ds.map_batches(filter_features)
+                .groupby(key=cat_feature)
+                .count()
+                .take_all()
             ]
         else:
-            json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(cat_feature)
-            logger.info(f"Downloading value counts file: {json_filepath}")
-            value_counts = read_json_from_s3(
-                bucket_name=S3_BUCKET, key=json_filepath
+            json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(
+                cat_feature
             )
+            logger.info(f"Downloading value counts file: {json_filepath}")
+            value_counts = read_json_from_s3(bucket_name=S3_BUCKET, key=json_filepath)
 
         value_counts = filter(lambda x: x[1] >= FREQUENCY_THRESHOLD, value_counts)
-        categorical_value_to_index[cat_feature] = {val: i for i, (val, _) in enumerate(value_counts, start=2)}
+        categorical_value_to_index[cat_feature] = {
+            val: i for i, (val, _) in enumerate(value_counts, start=2)
+        }
 
     # This mapping is large, so put a shared copy in the object store for all the map tasks to use.
     categorical_value_to_index_ref = ray.put(categorical_value_to_index)
@@ -180,14 +194,19 @@ def get_ray_dataset(stage: str = "train"):
     # Clean data.
     ds = ds.map_batches(fill_missing)
 
-    def categorical_values_to_indices(batch: Dict[str, np.ndarray], mapping_ref: ray.ObjectRef):
+    def categorical_values_to_indices(
+        batch: Dict[str, np.ndarray], mapping_ref: ray.ObjectRef
+    ):
         mapping: Dict[str, int] = ray.get(mapping_ref)
         for cat_feature in DEFAULT_CAT_NAMES:
             batch[cat_feature] = np.vectorize(
                 lambda k: mapping.get(cat_feature, {}).get(k, LOW_FREQUENCY_INDEX)
             )(batch[cat_feature])
         return batch
-    ds = ds.map_batches(categorical_values_to_indices, fn_args=(categorical_value_to_index_ref,))
+
+    ds = ds.map_batches(
+        categorical_values_to_indices, fn_args=(categorical_value_to_index_ref,)
+    )
 
     # HACK: Dummy encoding for quicker testing.
     # def dummy_categorical_encoder(batch):
@@ -201,7 +220,6 @@ def get_ray_dataset(stage: str = "train"):
     # TODO: Need to shuffle the data.
 
     return ds
-
 
 
 if __name__ == "__main__":

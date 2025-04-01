@@ -7,33 +7,21 @@ import time
 import tempfile
 from typing import Dict
 
-import torch
-from torchrec.distributed import TrainPipelineSparseDist
-from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
-from torchrec.optim.optimizers import in_backward_optimizer_filter
-
 import ray.train
-import ray.train.torch
-from ray._private.test_utils import safe_write_to_results_json
 from ray.data._internal.stats import Timer
-from ray.train.torch import TorchTrainer
-from ray.train.v2._internal.util import date_str
+import torch
 
-from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
-from image_classification.factory import ImageClassificationFactory
-
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
-class TorchRecRunner:
+class TrainLoopRunner:
     def __init__(self, factory: BenchmarkFactory):
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
 
-        self.setup()
+        self._setup()
 
         # Training progress state.
         self._train_batch_idx: int = 0
@@ -45,6 +33,9 @@ class TorchRecRunner:
         checkpoint = ray.train.get_checkpoint()
         if checkpoint:
             self.restore_from_checkpoint(checkpoint)
+
+    def setup(self):
+        raise NotImplementedError
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
         logger.info(
@@ -64,26 +55,6 @@ class TorchRecRunner:
 
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
-
-    def setup(self):
-        device = ray.train.torch.get_device()
-
-        self.model = self.factory.get_model()
-
-        dense_optimizer = KeyedOptimizerWrapper(
-            dict(in_backward_optimizer_filter(self.model.named_parameters())),
-            lambda params: torch.optim.Adagrad(params, lr=15.0, eps=1e-8),
-        )
-        self.optimizer = CombinedOptimizer(
-            [self.model.fused_optimizer, dense_optimizer]
-        )
-        # lr_scheduler = LRPolicyScheduler(
-        #     optimizer, args.lr_warmup_steps, args.lr_decay_start, args.lr_decay_steps
-        # )
-
-        self.pipeline = TrainPipelineSparseDist(
-            self.model, self.optimizer, device, execute_all_batches=True
-        )
 
     def run(self):
         logger.info(
@@ -110,28 +81,76 @@ class TorchRecRunner:
             logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
-        batch_iterator = iter(train_dataloader)
 
-        pipeline = self.pipeline
-        pipeline._model.train()
+        # Skip through batches if we restored to a middle of the epoch.
+        # TODO: Compare this baseline to the data checkpointing approach once we have it.
+        if self._train_batch_idx > 0:
+            if ray.train.get_context().get_world_rank() == 0:
+                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+
+            for _ in range(self._train_batch_idx + 1):
+                with self._metrics["train/iter_skip_batch"].timer():
+                    self._get_next_batch(train_dataloader)
 
         while True:
-            try:
-                with self._metrics["train/step"].timer():
-                    out = pipeline.progress(batch_iterator)
+            with self._metrics["train/step"].timer():
+                try:
+                    self.train_step(train_dataloader)
+                except StopIteration:
+                    break
 
-                self._train_batch_idx += 1
-                self._metrics["train/rows_processed"].add(len(out[-1]))
+            self._train_batch_idx += 1
+            # self._metrics["train/rows_processed"].add(num_rows)
 
-                # lr_scheduler.step()
-            except StopIteration:
-                break
+            if self._should_validate_during_epoch():
+                self.validate_and_checkpoint()
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
+            # with self._metrics["train/iter_batch"].timer():
+            #     batch = self.get_next_batch(train_dataloader)
+
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
+
+    def _validate_epoch(self) -> Dict[str, float]:
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
+                f"batch={self._train_batch_idx}"
+            )
+
+        val_dataloader = self.factory.get_val_dataloader()
+
+        self.model.eval()
+
+        total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
+        num_rows = 0
+
+        with self._metrics["validation/iter_first_batch"].timer():
+            batch = self.get_next_batch(val_dataloader)
+
+        while batch:
+            input_batch, labels = batch
+
+            with self._metrics["validation/step"].timer():
+                if not self.benchmark_config.skip_validation_step:
+                    total_loss += self.validate_step(input_batch, labels)
+
+            num_rows += len(labels)
+            self._metrics["validation/rows_processed"].add(len(labels))
+
+            with self._metrics["validation/iter_batch"].timer():
+                batch = self.get_next_batch(val_dataloader)
+
+        return {"validation/loss": total_loss.item() / num_rows}
+
+    def train_step(self, train_dataloader):
+        raise NotImplementedError
+
+    def validate_step(self, val_dataloader):
+        raise NotImplementedError
 
     def _should_validate_during_epoch(self) -> bool:
         """Handles the validate_every_n_steps logic."""
@@ -149,15 +168,9 @@ class TorchRecRunner:
             == 0
         )
 
-    def get_next_batch(self, dataloader):
-        pass
-
-    def train_step(self, input_batch, labels):
-        pass
-
     def validate_and_checkpoint(self):
         with self._metrics["validation/epoch"].timer():
-            validation_metrics = self.validate()
+            validation_metrics = self._validate_epoch()
 
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
@@ -171,18 +184,6 @@ class TorchRecRunner:
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
 
-    def validate(self) -> Dict[str, float]:
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
-            )
-
-        return {}
-
-    def validate_step(self, input_batch, labels):
-        pass
-
     def report_checkpoint(self, metrics, checkpoint):
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
@@ -193,50 +194,6 @@ class TorchRecRunner:
             checkpoint=checkpoint,
             checkpoint_dir_name=checkpoint_dir_name,
         )
-
-    def load_checkpoint(self, local_dir: str):
-        self.model.load_state_dict(
-            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
-        )
-        self.optimizer.load_state_dict(
-            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
-        )
-
-        train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
-        self._train_epoch_idx = train_state["epoch"]
-        self._train_batch_idx = train_state["batch_idx"]
-
-        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
-            metrics_json = json.load(f)
-
-        for k, v in metrics_json.items():
-            self._metrics[k].__dict__.update(v)
-
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-                f"{ray.train.get_checkpoint()}"
-            )
-
-    def save_checkpoint(self, local_dir: str):
-        train_state = {
-            "epoch": self._train_epoch_idx,
-            "batch_idx": self._train_batch_idx,
-        }
-        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
-        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
-        torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
-
-        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
-        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
-            json.dump(metrics_json, f)
-
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
-            )
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
@@ -295,3 +252,79 @@ class TorchRecRunner:
         metrics.update(self.factory.get_dataloader_metrics())
 
         return metrics
+
+
+
+class VanillaTorchRunner(TrainLoopRunner):
+    def _setup(self):
+        model = self.factory.get_model()
+        self.model = ray.train.torch.prepare_model(model)
+        self.loss_fn = self.factory.get_loss_fn()
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+
+    def train_step(self, train_dataloader):
+        input_batch, labels = next(train_dataloader)
+
+        if self.benchmark_config.skip_train_step:
+            return
+
+        self.model.train()
+        self.optimizer.zero_grad()
+        out = self.model(input_batch)
+        loss = self.loss_fn(out, labels)
+        loss.backward()
+        self.optimizer.step()
+
+    def validate_step(self, val_dataloader):
+        input_batch, labels = next(val_dataloader)
+
+        with torch.no_grad():
+            out = self.model(input_batch)
+            loss = self.loss_fn(out, labels)
+        return loss
+
+    def load_checkpoint(self, local_dir: str):
+        self.model.load_state_dict(
+            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
+        )
+        self.optimizer.load_state_dict(
+            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
+        )
+
+        train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
+        self._train_epoch_idx = train_state["epoch"]
+        self._train_batch_idx = train_state["batch_idx"]
+
+        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
+            metrics_json = json.load(f)
+
+        for k, v in metrics_json.items():
+            self._metrics[k].__dict__.update(v)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"{ray.train.get_checkpoint()}"
+            )
+
+    def save_checkpoint(self, local_dir: str):
+        train_state = {
+            "epoch": self._train_epoch_idx,
+            "batch_idx": self._train_batch_idx,
+        }
+        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
+        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
+        torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
+
+        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
+            json.dump(metrics_json, f)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx}"
+            )
+
+

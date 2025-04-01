@@ -37,7 +37,11 @@ from dataloader_factory import (
     BaseDataLoaderFactory,
 )
 from ray_dataloader_factory import RayDataLoaderFactory
-from recsys.criteo import DEFAULT_CAT_NAMES, convert_to_torchrec_batch_format, get_ray_dataset
+from recsys.criteo import (
+    DEFAULT_CAT_NAMES,
+    convert_to_torchrec_batch_format,
+    get_ray_dataset,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -61,9 +65,36 @@ class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
 
 class TorchRecConfig(BaseModel):
     embedding_dim: int = 128
-    num_embeddings_per_feature: List[int] = [40000000,39060,17295,7424,20265,3,7122,1543,63,40000000,3067956,405282,10,2209,11938,155,4,976,14,40000000,40000000,40000000,590152,12973,108,36]
-    over_arch_layer_sizes: List[int] = [1024,1024,512,256,1]
-    dense_arch_layer_sizes: List[int] = [512,256,128]
+    num_embeddings_per_feature: List[int] = [
+        40000000,
+        39060,
+        17295,
+        7424,
+        20265,
+        3,
+        7122,
+        1543,
+        63,
+        40000000,
+        3067956,
+        405282,
+        10,
+        2209,
+        11938,
+        155,
+        4,
+        976,
+        14,
+        40000000,
+        40000000,
+        40000000,
+        590152,
+        12973,
+        108,
+        36,
+    ]
+    over_arch_layer_sizes: List[int] = [1024, 1024, 512, 256, 1]
+    dense_arch_layer_sizes: List[int] = [512, 256, 128]
     interaction_type: str = "dcn"
     dcn_num_layers: int = 3
     dcn_low_rank_dim: int = 512
@@ -188,4 +219,6 @@ class RecsysFactory(BenchmarkFactory):
         return model
 
     def get_loss_fn(self) -> torch.nn.Module:
-        raise NotImplementedError("torchrec model should return the loss directly in forward")
+        raise NotImplementedError(
+            "torchrec model should return the loss directly in forward"
+        )
