@@ -97,18 +97,50 @@ class _CollectiveOperation:
             raise ValueError("Expected a NCCL group")
         return communicator
 
-    def execute(self, send_buf: "torch.Tensor") -> "torch.Tensor":
+    def execute(self, send_buf: Union["torch.Tensor", Tuple["torch.Tensor", ...]]) -> Union["torch.Tensor", Tuple["torch.Tensor", ...]]:
         """
         Call the collective operation on the input tensor. An output tensor is
         allocated and returned.
         """
+        # (TODO): better naming for input argument
         import torch
 
-        if not isinstance(send_buf, torch.Tensor):
+        if not (isinstance(send_buf, torch.Tensor) or (isinstance(send_buf, tuple) and all(isinstance(t, torch.Tensor) for t in send_buf))):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        recv_buf = torch.empty_like(send_buf)
-        communicator.allreduce(send_buf, recv_buf, self._op)
+
+        if isinstance(send_buf, torch.Tensor) or len(send_buf) == 1:
+            if isinstance(send_buf, tuple):
+                send_buf = send_buf[0]
+            recv_buf = torch.empty_like(send_buf)
+
+            communicator.allreduce(send_buf, recv_buf, self._op)
+
+            if isinstance(send_buf, tuple):
+                recv_buf = (recv_buf,)
+        else:
+            if len(set(t.device for t in send_buf)) != 1:
+                raise ValueError(f"Expected tensors on same device")
+
+            if len(set((t.dtype, t.device) for t in send_buf)) != 1:
+                raise ValueError("Expected tensors to have same dtype")
+
+            total_size = sum(g.numel() for g in send_buf)
+            flat_send_buf = torch.empty(total_size, dtype=send_buf[0].dtype, device=send_buf[0].device)
+            recv_buf = tuple(torch.empty_like(t) for t in send_buf)
+
+            offset = 0
+            for t in send_buf:
+                flat_send_buf[offset:offset + t.numel()].copy_(t.view(-1))
+                offset += t.numel()
+
+            communicator.allreduce(flat_send_buf, flat_send_buf, self._op)
+
+            offset = 0
+            for t in recv_buf:
+                t.copy_(flat_send_buf[offset:offset + t.numel()].view(t.shape))
+                offset += t.numel()
+            
         return recv_buf
 
 
