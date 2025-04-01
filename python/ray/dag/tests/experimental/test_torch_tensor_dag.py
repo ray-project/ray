@@ -279,7 +279,8 @@ def test_torch_tensor_shm(ray_start_regular):
     # Test transferring a single tensor.
     with InputNode() as inp:
         data = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        data_annotated = data.with_tensor_transport(transport="shm")
+        # Specify device="gpu" because the default device is "cpu".
+        data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
         dag = receiver.recv_on_gpu.bind(data_annotated)
 
     compiled_dag = dag.experimental_compile()
@@ -295,6 +296,7 @@ def test_torch_tensor_shm(ray_start_regular):
     # Test transferring a dict of tensors.
     with InputNode() as inp:
         data = sender.send_dict.bind(inp)
+        # Specify device="gpu" because the default device is "cpu".
         data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
         dag = receiver.recv_dict_on_gpu.bind(data_annotated)
 
