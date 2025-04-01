@@ -430,15 +430,16 @@ def test_lifetime_stats_behavior():
 
 def test_hierarchical_metrics_system():
     """Test a complete hierarchical metrics system with diverse feature combinations.
-    The test mimics how we use MetricsLogger in EnvRunners, AggregatorActors and the driver.
-    
+    The test mimics how we use MetricsLogger in EnvRunners, AggregatorActors and the driver (Algorithm object).
+
     This test creates a tree structure of MetricsLoggers:
-        Root
-       /    \
-      A      B
-     / \    / \
-    A1  A2  B1  B2
-    
+
+        Root        (Driver)
+        ┌─┴─┐
+      A      B      (AggregatorActor)
+    ┌─┴─┐  ┌─┴─┐
+    A1 A2  B1 B2    (EnvRunner)
+
     Each logger logs different types of metrics, and we test the aggregation
     of all these metrics through multiple reduction steps.
     """

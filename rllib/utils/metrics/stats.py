@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 import time
 import threading
-from typing import Any, Deque, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -928,7 +928,7 @@ class Stats:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 try:
                     np.all(np.isnan(values))
-                except Exception as e:
+                except Exception:
                     import pdb
 
                     pdb.set_trace()
