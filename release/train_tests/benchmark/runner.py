@@ -76,11 +76,27 @@ class TrainLoopRunner:
         with self._metrics["train/epoch"].timer():
             self._train_epoch()
 
+    def _wrap_dataloader_with_timer(self, dataloader, prefix: str):
+        dataloader_iter = iter(dataloader)
+
+        def wrapped_dataloader():
+            with self._metrics[f"{prefix}/iter_first_batch"].timer():
+                yield next(dataloader_iter)
+
+            while True:
+                with self._metrics[f"{prefix}/iter_batch"].timer():
+                    yield next(dataloader_iter)
+
+        return wrapped_dataloader
+
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
+        train_dataloader = self._wrap_dataloader_with_timer(
+            train_dataloader, prefix="train"
+        )
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
@@ -100,16 +116,15 @@ class TrainLoopRunner:
                     break
 
             self._train_batch_idx += 1
-            # self._metrics["train/rows_processed"].add(num_rows)
+            self._metrics["train/rows_processed"].add(
+                self.benchmark_config.dataloader_config.train_batch_size
+            )
 
             if self._should_validate_during_epoch():
                 self.validate_and_checkpoint()
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
-
-            # with self._metrics["train/iter_batch"].timer():
-            #     batch = self.get_next_batch(train_dataloader)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -122,14 +137,14 @@ class TrainLoopRunner:
             )
 
         val_dataloader = self.factory.get_val_dataloader()
+        val_dataloader = self._wrap_dataloader_with_timer(
+            val_dataloader, prefix="validation"
+        )
 
         self.model.eval()
 
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
-
-        with self._metrics["validation/iter_first_batch"].timer():
-            batch = self.get_next_batch(val_dataloader)
 
         while batch:
             input_batch, labels = batch
@@ -254,7 +269,6 @@ class TrainLoopRunner:
         return metrics
 
 
-
 class VanillaTorchRunner(TrainLoopRunner):
     def _setup(self):
         model = self.factory.get_model()
@@ -326,5 +340,3 @@ class VanillaTorchRunner(TrainLoopRunner):
                 f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
                 f"train_batch_idx={self._train_batch_idx}"
             )
-
-
