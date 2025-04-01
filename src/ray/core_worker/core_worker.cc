@@ -2633,7 +2633,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_,
                       function,
                       args,
-                      1,
+                      /*num_returns*/ 0,
                       new_resource,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
@@ -3350,8 +3350,6 @@ Status CoreWorker::ExecuteTask(
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(!return_objects->empty());
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
