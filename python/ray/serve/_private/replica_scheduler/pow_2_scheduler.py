@@ -99,7 +99,7 @@ class MultiplexScheduleMixin:
 
     def apply_multiplex_scheduling(
         self,
-        request_metadata: RequestMetadata,
+        multiplexed_model_id: str,
         multiplexed_start_matching_time: float,
         tried_first_multiplexed_models: bool,
         tried_fewest_multiplexed_models: bool,
@@ -110,11 +110,11 @@ class MultiplexScheduleMixin:
             < self.multiplexed_matching_timeout
         ):
             candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
-                request_metadata.multiplexed_model_id, None
+                multiplexed_model_id, None
             )
             if (
                 not candidate_replica_ids
-                and request_metadata.multiplexed_model_id
+                and multiplexed_model_id
                 not in self._multiplexed_model_id_fallback_match
             ) or tried_first_multiplexed_models:
                 # When there is no match for a multiplexed model id
@@ -123,13 +123,9 @@ class MultiplexScheduleMixin:
                 candidate_replica_ids = (
                     self._get_replica_ids_with_fewest_multiplexed_models()
                 )
-                self._multiplexed_model_id_fallback_match.add(
-                    request_metadata.multiplexed_model_id
-                )
+                self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
-                self._multiplexed_model_id_fallback_match.discard(
-                    request_metadata.multiplexed_model_id
-                )
+                self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
                 tried_first_multiplexed_models = True
         elif not tried_fewest_multiplexed_models:
             # After the `multiplexed_matching_timeout` is up, first try
@@ -151,7 +147,43 @@ class MultiplexScheduleMixin:
         )
 
 
-class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler):
+class LocalityScheduleMixin:
+    def apply_locality_scheduling(
+        self,
+        tried_same_az: bool,
+        tried_same_node: bool,
+    ) -> Tuple[Set[ReplicaID], bool, bool, bool]:
+        if (
+            self._prefer_local_node_routing
+            and not tried_same_node
+            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+        ):
+            # Attempt to schedule requests to replicas on the
+            # same node at most once
+            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+            tried_same_node = True
+        elif (
+            self._prefer_local_az_routing
+            and not tried_same_az
+            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
+        ):
+            # Attempt to schedule requests to replicas in the same
+            # AZ at most once
+            candidate_replica_ids = self._colocated_replica_ids[
+                LocalityScope.AVAILABILITY_ZONE
+            ]
+            tried_same_az = True
+        else:
+            # On subsequent iterations or when there are no replicas on the same
+            # node or AZ, consider all available replicas.
+            candidate_replica_ids = self._replica_id_set
+            should_backoff = True
+        return candidate_replica_ids, tried_same_az, tried_same_node, should_backoff
+
+
+class PowerOfTwoChoicesReplicaScheduler(
+    MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
+):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
     Requests are scheduled in FIFO order.
@@ -420,7 +452,7 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
-    async def choose_two_replicas_with_backoff(
+    async def choose_replicas(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
@@ -444,9 +476,6 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
             backoff_index = 0
             entered_backoff = False
 
-            tried_same_az = False
-            tried_same_node = False
-
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
@@ -469,51 +498,31 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
                 ):
                     # Get candidates for multiplexed model ID.
                     multiplexed_start_matching_time = time.time()
-                    tried_fewest_multiplexed_models = False
                     tried_first_multiplexed_models = False
+                    tried_fewest_multiplexed_models = False
                     (
                         candidate_replica_ids,
                         tried_first_multiplexed_models,
                         tried_fewest_multiplexed_models,
                     ) = self.apply_multiplex_scheduling(
-                        request_metadata=request_metadata,
+                        multiplexed_model_id=request_metadata.multiplexed_model_id,
                         multiplexed_start_matching_time=multiplexed_start_matching_time,
                         tried_first_multiplexed_models=tried_first_multiplexed_models,
                         tried_fewest_multiplexed_models=tried_fewest_multiplexed_models,
                     )
                     should_backoff = True
-                elif (
-                    self._prefer_local_node_routing
-                    and not tried_same_node
-                    and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
-                ):
-                    # Attempt to schedule requests to replicas on the
-                    # same node at most once
-                    candidate_replica_ids = self._colocated_replica_ids[
-                        LocalityScope.NODE
-                    ]
-                    tried_same_node = True
-                    should_backoff = False
-                elif (
-                    self._prefer_local_az_routing
-                    and not tried_same_az
-                    and len(
-                        self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]
-                    )
-                    > 0
-                ):
-                    # Attempt to schedule requests to replicas in the same
-                    # AZ at most once
-                    candidate_replica_ids = self._colocated_replica_ids[
-                        LocalityScope.AVAILABILITY_ZONE
-                    ]
-                    tried_same_az = True
-                    should_backoff = False
                 else:
-                    # On subsequent iterations or when there are no replicas on the same
-                    # node or AZ, consider all available replicas.
-                    candidate_replica_ids = self._replica_id_set
-                    should_backoff = True
+                    tried_same_az = False
+                    tried_same_node = False
+                    (
+                        candidate_replica_ids,
+                        tried_same_az,
+                        tried_same_node,
+                        should_backoff,
+                    ) = self.apply_locality_scheduling(
+                        tried_same_az=tried_same_az,
+                        tried_same_node=tried_same_node,
+                    )
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -777,9 +786,7 @@ class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler
                 start_time = time.time()
                 backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
-                async for candidates in self.choose_two_replicas_with_backoff(
-                    request_metadata
-                ):
+                async for candidates in self.choose_replicas(request_metadata):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
                     # if we need to continue this scheduling task.
