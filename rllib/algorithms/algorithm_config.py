@@ -28,7 +28,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
     DifferentiableLearnerConfig,
 )
-from ray.rllib.core.learner.meta_learner import MetaLearner
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec

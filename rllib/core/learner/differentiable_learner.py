@@ -28,7 +28,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
