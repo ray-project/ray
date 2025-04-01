@@ -102,7 +102,7 @@ class ResourceIsolationConfig:
 
         if self.system_reserved_cpu < ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES:
             raise ValueError(
-                f"The requested system_reserved_cpu={system_reserved_cpu} is less than "
+                f"The requested system_reserved_cpu={self.system_reserved_cpu} is less than "
                 f"the minimum number of cpus that can be used for resource isolation. "
                 "Pick a number of cpu cores to reserve for ray system processes "
                 f"greater than or equal to {ray_constants.MINIMUM_SYSTEM_RESERVED_CPU_CORES}"
@@ -111,7 +111,7 @@ class ResourceIsolationConfig:
         # check that calculated reserved_cpu is valid
         if self.system_reserved_cpu > available_system_cpus:
             raise ValueError(
-                f"The requested system_reserved_cpu={system_reserved_cpu} is greater than "
+                f"The requested system_reserved_cpu={self.system_reserved_cpu} is greater than "
                 f"the number of cpus available={available_system_cpus}. "
                 "Pick a smaller number of cpu cores to reserve for ray system processes."
             )
@@ -148,7 +148,7 @@ class ResourceIsolationConfig:
             < ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
         ):
             raise ValueError(
-                f"The requested system_reserved_memory={system_reserved_memory} is less than "
+                f"The requested system_reserved_memory={self.system_reserved_memory} is less than "
                 f"the minimum number of bytes that can be used for resource isolation. "
                 "Pick a number of bytes to reserve for ray system processes "
                 f"greater than or equal to {ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES}"
