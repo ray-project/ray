@@ -81,7 +81,6 @@ class ClusterConfigToReport:
     max_workers: Optional[int] = None
     head_node_instance_type: Optional[str] = None
     worker_node_instance_types: Optional[List[str]] = None
-    cloud_provider_alt: Optional[str] = None
 
 
 @dataclass(init=True)
@@ -122,8 +121,6 @@ class UsageStatsToReport:
     session_start_timestamp_ms: Optional[int] = None
     #: The cloud provider found in the cluster.yaml file (e.g., aws).
     cloud_provider: Optional[str] = None
-    #: The cloud provider found by querying the providers' metadata services.
-    cloud_provider_alt: Optional[str] = None
     #: The min_workers found in the cluster.yaml file.
     min_workers: Optional[int] = None
     #: The max_workers found in the cluster.yaml file.
@@ -786,13 +783,17 @@ def get_cluster_config_to_report(
         import requests
 
         def cloud_metadata_request(
-            url: str, headers: Optional[Dict[str, str]] = None
+            url: str, headers: Optional[Dict[str, str]], cloud_provider: str
         ) -> bool:
             try:
                 res = requests.get(url, headers=headers, timeout=1)
                 # The requests may be rejected based on pod configuration but if
                 # it's a machine on the cloud provider it should at least be reachable.s
                 if res.status_code != 404:
+                    if result.cloud_provider is None:
+                        result.cloud_provider = cloud_provider
+                    else:
+                        result.cloud_provider += f"_{cloud_provider}"
                     return True
             except requests.exceptions.ConnectionError:
                 pass
@@ -802,15 +803,21 @@ def get_cluster_config_to_report(
         if cloud_metadata_request(
             "http://metadata.google.internal/computeMetadata/v1",
             {"Metadata-Flavor": "Google"},
+            "gcp",
         ):
-            result.cloud_provider_alt = "gcp"
-        elif cloud_metadata_request("http://169.254.169.254/latest/meta-data/"):
-            result.cloud_provider_alt = "aws"
+            pass
+        elif cloud_metadata_request(
+            "http://169.254.169.254/latest/meta-data/", None, "aws"
+        ):
+            pass
         elif cloud_metadata_request(
             "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
             {"Metadata": "true"},
+            "azure",
         ):
-            result.cloud_provider_alt = "azure"
+            pass
+        elif result.cloud_provider is not None:
+            result.cloud_provider += "_unkown"
 
         return result
     except Exception as e:
@@ -910,7 +917,6 @@ def generate_report_data(
         os=cluster_metadata["os"],
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
         cloud_provider=cluster_config_to_report.cloud_provider,
-        cloud_provider_alt=cluster_config_to_report.cloud_provider_alt,
         min_workers=cluster_config_to_report.min_workers,
         max_workers=cluster_config_to_report.max_workers,
         head_node_instance_type=cluster_config_to_report.head_node_instance_type,
