@@ -74,9 +74,9 @@ class SACCatalog(Catalog):
         )
 
         # Define the heads.
-        self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_qf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
         self.pi_and_qf_head_activation = self._model_config_dict[
-            "post_fcnet_activation"
+            "head_fcnet_activation"
         ]
 
         # We don't have the exact (framework specific) action dist class yet and thus
@@ -85,7 +85,7 @@ class SACCatalog(Catalog):
         self.pi_head_config = None
 
         # TODO (simon): Implement in a later step a q network with
-        # different `post_fcnet_hiddens` than pi.
+        #  different `head_fcnet_hiddens` than pi.
         self.qf_head_config = MLPHeadConfig(
             # TODO (simon): These latent_dims could be different for the
             # q function, value function, and pi head.
@@ -133,11 +133,7 @@ class SACCatalog(Catalog):
         else:
             raise ValueError("The observation space is not supported by RLlib's SAC.")
 
-        if self._model_config_dict["encoder_latent_dim"]:
-            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
-        else:
-            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
-
+        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
         self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
 
         self.qf_encoder_config = MLPEncoderConfig(
@@ -156,7 +152,7 @@ class SACCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a SACRLModule implementation.
+        the behavior of the DefaultSACRLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".

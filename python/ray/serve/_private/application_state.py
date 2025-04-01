@@ -1,19 +1,19 @@
+import json
 import logging
 import os
 import time
 import traceback
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
-    ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -38,11 +38,26 @@ from ray.serve._private.utils import (
     DEFAULT,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
+    validate_route_prefix,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
+from ray.serve.generated.serve_pb2 import (
+    ApplicationStatusInfo as ApplicationStatusInfoProto,
+)
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.schema import DeploymentDetails, LoggingConfig, ServeApplicationSchema
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+from ray.serve.schema import (
+    APIType,
+    ApplicationStatus,
+    DeploymentDetails,
+    LoggingConfig,
+    ServeApplicationSchema,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -57,14 +72,6 @@ class BuildAppStatus(Enum):
     IN_PROGRESS = 2
     SUCCEEDED = 3
     FAILED = 4
-
-
-class APIType(Enum):
-    """Tracks the type of API that an application originates from."""
-
-    UNKNOWN = 0
-    IMPERATIVE = 1
-    DECLARATIVE = 2
 
 
 @dataclass
@@ -83,6 +90,97 @@ class BuildAppTaskInfo:
     target_capacity: Optional[float]
     target_capacity_direction: Optional[TargetCapacityDirection]
     finished: bool
+
+
+@dataclass(eq=True)
+class ApplicationStatusInfo:
+    status: ApplicationStatus
+    message: str = ""
+    deployment_timestamp: float = 0
+
+    def debug_string(self):
+        return json.dumps(asdict(self), indent=4)
+
+    def to_proto(self):
+        return ApplicationStatusInfoProto(
+            status=f"APPLICATION_STATUS_{self.status.name}",
+            message=self.message,
+            deployment_timestamp=self.deployment_timestamp,
+        )
+
+    @classmethod
+    def from_proto(cls, proto: ApplicationStatusInfoProto):
+        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
+        return cls(
+            status=ApplicationStatus(status),
+            message=proto.message,
+            deployment_timestamp=proto.deployment_timestamp,
+        )
+
+
+@dataclass(eq=True)
+class StatusOverview:
+    app_status: ApplicationStatusInfo
+    name: str = ""
+    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
+
+    def debug_string(self):
+        return json.dumps(asdict(self), indent=4)
+
+    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
+        """Get a deployment's status by name.
+
+        Args:
+            name: Deployment's name.
+
+        Return (Optional[DeploymentStatusInfo]): Status with a name matching
+            the argument, if one exists. Otherwise, returns None.
+        """
+
+        for deployment_status in self.deployment_statuses:
+            if name == deployment_status.name:
+                return deployment_status
+
+        return None
+
+    def to_proto(self):
+        # Create a protobuf for the Serve Application info
+        app_status_proto = self.app_status.to_proto()
+
+        # Create protobufs for all individual deployment statuses
+        deployment_status_protos = map(
+            lambda status: status.to_proto(), self.deployment_statuses
+        )
+
+        # Create a protobuf list containing all the deployment status protobufs
+        deployment_status_proto_list = DeploymentStatusInfoListProto()
+        deployment_status_proto_list.deployment_status_infos.extend(
+            deployment_status_protos
+        )
+
+        # Return protobuf encapsulating application and deployment protos
+        return StatusOverviewProto(
+            name=self.name,
+            app_status=app_status_proto,
+            deployment_statuses=deployment_status_proto_list,
+        )
+
+    @classmethod
+    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
+        # Recreate Serve Application info
+        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
+
+        # Recreate deployment statuses
+        deployment_statuses = []
+        for info_proto in proto.deployment_statuses.deployment_status_infos:
+            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
+
+        # Recreate StatusInfo
+        return cls(
+            app_status=app_status,
+            deployment_statuses=deployment_statuses,
+            name=proto.name,
+        )
 
 
 @dataclass
@@ -124,7 +222,6 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
-        save_checkpoint_func: Callable,
         logging_config: LoggingConfig,
     ):
         """
@@ -133,11 +230,6 @@ class ApplicationState:
             deployment_state_manager: State manager for all deployments
                 in the cluster.
             endpoint_state: State manager for endpoints in the system.
-            save_checkpoint_func: Function that can be called to write
-                a checkpoint of the application state. This should be
-                called in self._set_target_state() before actually
-                setting the target state so that the controller can
-                properly recover application states if it crashes.
         """
 
         self._name = name
@@ -163,7 +255,6 @@ class ApplicationState:
             deleting=False,
             api_type=APIType.UNKNOWN,
         )
-        self._save_checkpoint_func = save_checkpoint_func
         self._logging_config = logging_config
 
     @property
@@ -266,11 +357,6 @@ class ApplicationState:
             api_type=api_type,
         )
 
-        # Checkpoint ahead, so that if the controller crashes before we
-        # write to the target state, the target state will be recovered
-        # after the controller recovers
-        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
-        # Set target state
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -279,7 +365,7 @@ class ApplicationState:
         Wipes the target deployment infos, code version, and config.
         """
         self._set_target_state(
-            deployment_infos=dict(),
+            deployment_infos={},
             api_type=self._target_state.api_type,
             code_version=None,
             target_config=None,
@@ -503,20 +589,26 @@ class ApplicationState:
         # application status to set.
         deployment_statuses = self.get_deployments_statuses()
         lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)
-        if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
+        if lowest_rank_status.status == DeploymentStatus.DEPLOY_FAILED:
+            failed_deployments = [
+                s.name
+                for s in deployment_statuses
+                if s.status == DeploymentStatus.DEPLOY_FAILED
+            ]
+            return (
+                ApplicationStatus.DEPLOY_FAILED,
+                f"Failed to update the deployments {failed_deployments}.",
+            )
+        elif lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name
                 for s in deployment_statuses
                 if s.status == DeploymentStatus.UNHEALTHY
             ]
-            status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
-            if self._status in [
-                ApplicationStatus.DEPLOYING,
-                ApplicationStatus.DEPLOY_FAILED,
-            ]:
-                return ApplicationStatus.DEPLOY_FAILED, status_msg
-            else:
-                return ApplicationStatus.UNHEALTHY, status_msg
+            return (
+                ApplicationStatus.UNHEALTHY,
+                f"The deployments {unhealthy_deployment_names} are UNHEALTHY.",
+            )
         elif lowest_rank_status.status == DeploymentStatus.UPDATING:
             return ApplicationStatus.DEPLOYING, ""
         elif (
@@ -785,7 +877,10 @@ class ApplicationStateManager:
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
-        self._application_states: Dict[str, ApplicationState] = dict()
+
+        self._shutting_down = False
+
+        self._application_states: Dict[str, ApplicationState] = {}
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -798,7 +893,6 @@ class ApplicationStateManager:
                     app_name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self._save_checkpoint_func,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -809,6 +903,53 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return
         self._application_states[name].delete()
+
+    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+        live_route_prefixes: Dict[str, str] = {
+            app_state.route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
+        }
+
+        for name, deployment_args in name_to_deployment_args.items():
+            for deploy_param in deployment_args:
+                # Make sure route_prefix is not being used by other application.
+                deploy_app_prefix = deploy_param.get("route_prefix")
+                if deploy_app_prefix is None:
+                    continue
+
+                existing_app_name = live_route_prefixes.get(deploy_app_prefix)
+                # It's ok to redeploy an app with the same prefix
+                # if it has the same name as the app already using that prefix.
+                if existing_app_name is not None and existing_app_name != name:
+                    raise RayServeException(
+                        f"Prefix {deploy_app_prefix} is being used by application "
+                        f'"{existing_app_name}". Failed to deploy application "{name}".'
+                    )
+
+                # We might be deploying more than one app,
+                # so we need to add this app's prefix to the
+                # set of live route prefixes that we're checking
+                # against during this batch operation.
+                live_route_prefixes[deploy_app_prefix] = name
+
+            if name not in self._application_states:
+                self._application_states[name] = ApplicationState(
+                    name,
+                    self._deployment_state_manager,
+                    self._endpoint_state,
+                    self._logging_config,
+                )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+            deployment_infos = {
+                params["deployment_name"]: deploy_args_to_deployment_info(
+                    **params, app_name=name
+                )
+                for params in deployment_args
+            }
+            self._application_states[name].deploy_app(deployment_infos)
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
@@ -824,42 +965,7 @@ class ApplicationStateManager:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
         """
-
-        # Make sure route_prefix is not being used by other application.
-        live_route_prefixes: Dict[str, str] = {
-            app_state.route_prefix: app_name
-            for app_name, app_state in self._application_states.items()
-            if app_state.route_prefix is not None
-            and not app_state.status == ApplicationStatus.DELETING
-            and name != app_name
-        }
-
-        for deploy_param in deployment_args:
-            deploy_app_prefix: str = deploy_param["route_prefix"]
-            app_name = live_route_prefixes.get(deploy_app_prefix)
-            if app_name is not None:
-                raise RayServeException(
-                    f"Prefix {deploy_app_prefix} is being used by application "
-                    f'"{app_name}". Failed to deploy application "{name}".'
-                )
-
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                self._endpoint_state,
-                self._save_checkpoint_func,
-                self._logging_config,
-            )
-        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-
-        deployment_infos = {
-            params["deployment_name"]: deploy_args_to_deployment_info(
-                **params, app_name=name
-            )
-            for params in deployment_args
-        }
-        self._application_states[name].deploy_app(deployment_infos)
+        self.deploy_apps({name: deployment_args})
 
     def apply_app_configs(
         self,
@@ -883,7 +989,6 @@ class ApplicationStateManager:
                     app_config.name,
                     self._deployment_state_manager,
                     endpoint_state=self._endpoint_state,
-                    save_checkpoint_func=self._save_checkpoint_func,
                     logging_config=self._logging_config,
                 )
 
@@ -946,6 +1051,9 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_deployment
 
+    def get_app_source(self, name: str) -> APIType:
+        return self._application_states[name].api_type
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
@@ -974,6 +1082,8 @@ class ApplicationStateManager:
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
     def shutdown(self) -> None:
+        self._shutting_down = True
+
         for app_state in self._application_states.values():
             app_state.delete()
 
@@ -985,22 +1095,21 @@ class ApplicationStateManager:
         Iterate through all application states and check if all their applications
         are deleted.
         """
-        return all(
+        return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]
-    ) -> None:
+    def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         application_state_info = {
             app_name: app_state.get_checkpoint_data()
             for app_name, app_state in self._application_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            application_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
@@ -1038,23 +1147,24 @@ def build_serve_application(
     )
 
     try:
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
-        from ray.serve._private.deployment_graph_build import build as pipeline_build
-        from ray.serve._private.deployment_graph_build import (
-            get_and_validate_ingress_deployment,
-        )
+        from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 
         # Import and build the application.
         args_info_str = f" with arguments {args}" if args else ""
         logger.info(f"Importing application '{name}'{args_info_str}.")
 
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        deployments = pipeline_build(app._get_internal_dag_node(), name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        app = call_user_app_builder_with_args_if_necessary(
+            import_attr(import_path), args
+        )
 
         deploy_args_list = []
-        for deployment in deployments:
-            is_ingress = deployment.name == ingress.name
+        built_app: BuiltApplication = build_app(
+            app,
+            name=name,
+            default_runtime_env=ray.get_runtime_context().runtime_env,
+        )
+        for deployment in built_app.deployments:
+            is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
@@ -1062,7 +1172,7 @@ def build_serve_application(
                     ingress=is_ingress,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
-                    route_prefix=deployment.route_prefix,
+                    route_prefix="/" if is_ingress else None,
                     docs_path=deployment._docs_path,
                 )
             )
@@ -1114,6 +1224,11 @@ def override_deployment_info(
             options["max_ongoing_requests"] = options.get("max_ongoing_requests")
 
         deployment_name = options["name"]
+        if deployment_name not in deployment_infos:
+            raise ValueError(
+                f"Got config override for nonexistent deployment '{deployment_name}'"
+            )
+
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))
@@ -1138,12 +1253,7 @@ def override_deployment_info(
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
-        override_options = dict()
-
-        # Override route prefix if specified in deployment config
-        deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
-        if deployment_route_prefix is not DEFAULT.VALUE:
-            override_options["route_prefix"] = deployment_route_prefix
+        override_options = {}
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
@@ -1207,6 +1317,7 @@ def override_deployment_info(
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
+    validate_route_prefix(app_route_prefix)
     for deployment in list(deployment_infos.values()):
         if (
             app_route_prefix is not DEFAULT.VALUE

@@ -10,9 +10,10 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import run_background_task
 from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
@@ -30,6 +31,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.modules.job.utils import get_head_node_id
+from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -358,7 +360,7 @@ class JobManager:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
-            env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -505,6 +507,7 @@ class JobManager:
                 "Please use a different submission_id."
             )
 
+        driver_logger = self._get_job_driver_logger(submission_id)
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
@@ -525,7 +528,6 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
-            driver_logger = self._get_job_driver_logger(submission_id)
             driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
@@ -559,8 +561,7 @@ class JobManager:
             )
         except Exception as e:
             tb_str = traceback.format_exc()
-
-            logger.warning(
+            driver_logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
                 f". Full traceback:\n{tb_str}"
             )
@@ -572,6 +573,8 @@ class JobManager:
                     f". Full traceback:\n{tb_str}"
                 ),
             )
+        finally:
+            close_logger_file_descriptor(driver_logger)
 
         return submission_id
 

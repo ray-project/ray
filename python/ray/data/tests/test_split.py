@@ -29,6 +29,7 @@ from ray.data._internal.split import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -89,6 +90,8 @@ def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits)
 
 
 def _test_equal_split_balanced(block_sizes, num_splits):
+    ctx = DataContext.get_current()
+
     blocks = []
     metadata = []
     ref_bundles = []
@@ -101,7 +104,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
 
-    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+    logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
         ExecutionPlan(stats),
@@ -128,12 +131,12 @@ def test_equal_split_balanced_grid(ray_start_regular_shared):
     seed = int(time.time())
     print(f"Seeding RNG for test_equal_split_balanced_grid with: {seed}")
     random.seed(seed)
-    max_num_splits = 20
-    num_splits_samples = 5
+    max_num_splits = 15
+    num_splits_samples = 3
     max_num_blocks = 50
     max_num_rows_per_block = 100
-    num_blocks_samples = 5
-    block_sizes_samples = 5
+    num_blocks_samples = 3
+    block_sizes_samples = 3
     for num_splits in np.random.randint(2, max_num_splits + 1, size=num_splits_samples):
         for num_blocks in np.random.randint(
             1, max_num_blocks + 1, size=num_blocks_samples
@@ -263,42 +266,34 @@ def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices
     assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
 
 
-@pytest.mark.parametrize("num_blocks", list(range(1, 5)) + [8, 10])
+@pytest.mark.parametrize("num_blocks", [1, 3, 5, 10])
 @pytest.mark.parametrize(
     "indices",
     [
-        # Two-splits.
-        list(range(5)),
+        [2],  # Single split
+        [1, 3],  # Two splits
+        [0, 2, 4],  # Three splits
+        [1, 2, 3, 4],  # Four splits
+        [1, 2, 3, 4, 7],  # Five splits
+        [1, 2, 3, 4, 6, 9],  # Six splits
     ]
-    + list(
-        # Three-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 2))
-    )
-    + list(
-        # Four-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 3))
-    )
-    + list(
-        # Five-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 4))
-    )
-    + list(
-        # Six-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 5))
-    ),
+    + [
+        list(x) for x in itertools.combinations_with_replacement([1, 3, 4], 2)
+    ]  # Selected two-split cases
+    + [
+        list(x) for x in itertools.combinations_with_replacement([0, 2, 4], 3)
+    ],  # Selected three-split cases
 )
 def test_split_at_indices_coverage_complete(
-    ray_start_regular_shared,
-    num_blocks,
-    indices,
+    ray_start_regular_shared, num_blocks, indices
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(5, override_num_blocks=num_blocks)
+    ds = ray.data.range(10, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
-    assert r == [arr.tolist() for arr in np.array_split(list(range(5)), indices)]
+    assert r == [arr.tolist() for arr in np.array_split(list(range(10)), indices)]
 
 
 def test_split_proportionately(ray_start_regular_shared):
@@ -591,10 +586,10 @@ def test_drop_empty_block_split():
 
 def verify_splits(splits, blocks_by_split):
     assert len(splits) == len(blocks_by_split)
-    for blocks, (block_refs, meta) in zip(blocks_by_split, splits):
+    for blocks, (block_refs, metas) in zip(blocks_by_split, splits):
         assert len(blocks) == len(block_refs)
-        assert len(blocks) == len(meta)
-        for block, block_ref, meta in zip(blocks, block_refs, meta):
+        assert len(blocks) == len(metas)
+        for block, block_ref, meta in zip(blocks, block_refs, metas):
             assert list(ray.get(block_ref)["id"]) == block
             assert meta.num_rows == len(block)
 

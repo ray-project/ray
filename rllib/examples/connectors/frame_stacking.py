@@ -55,7 +55,7 @@ Results to expect
 
 With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
 and learner connector pipelines), you should see something like this using:
-`--env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95`
+`--env ALE/Pong-v5 --num-learners=4 --num-gpus-per-learner=1 --num-env-runners=95`
 +---------------------------+------------+--------+------------------+...
 | Trial name                | status     |   iter |   total time (s) |
 |                           |            |        |                  |
@@ -81,6 +81,7 @@ import gymnasium as gym
 
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.test_utils import (
@@ -94,7 +95,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=5000000, default_reward=20.0, default_iters=200
 )
 # Use Pong by default.
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ale_py:ALE/Pong-v5",
+)
 parser.add_argument(
     "--num-frames",
     type=int,
@@ -113,10 +117,6 @@ if __name__ == "__main__":
     from ray import tune
 
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # Define our custom connector pipelines.
     def _make_env_to_module_connector(env):
@@ -192,19 +192,17 @@ if __name__ == "__main__":
             ),
             entropy_coeff=0.01,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
+            lr=0.00015 * (args.num_learners or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
         )
         .rl_module(
-            model_config_dict=dict(
-                {
-                    "vf_share_layers": True,
-                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                    "conv_activation": "relu",
-                    "post_fcnet_hiddens": [256],
-                },
-            )
+            model_config=DefaultModelConfig(
+                vf_share_layers=True,
+                conv_filters=[(16, 4, 2), (32, 4, 2), (64, 4, 2), (128, 4, 2)],
+                conv_activation="relu",
+                head_fcnet_hiddens=[256],
+            ),
         )
     )
 

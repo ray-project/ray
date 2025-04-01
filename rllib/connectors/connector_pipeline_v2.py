@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 from typing import Any, Collection, Dict, List, Optional, Tuple, Type, Union
 
@@ -8,9 +7,11 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.metrics import TIMERS, CONNECTOR_PIPELINE_TIMER, CONNECTOR_TIMERS
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.utils import to_snake_case
 from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +60,20 @@ class ConnectorPipelineV2(ConnectorV2):
                 pipeline during construction. Note that you can always add (or remove)
                 more ConnectorV2 pieces later on the fly.
         """
-        self.connectors = connectors or []
+        self.connectors = []
+
+        for conn in connectors:
+            # If we have a `ConnectorV2` instance just append.
+            if isinstance(conn, ConnectorV2):
+                self.connectors.append(conn)
+            # If, we have a class with `args` and `kwargs`, build the instance.
+            # Note that this way of constructing a pipeline should only be
+            # used internally when restoring the pipeline state from a
+            # checkpoint.
+            elif isinstance(conn, tuple) and len(conn) == 3:
+                self.connectors.append(conn[0](*conn[1], **conn[2]))
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
-
-        self.timers = defaultdict(_Timer)
 
     def __len__(self):
         return len(self.connectors)
@@ -77,6 +87,7 @@ class ConnectorPipelineV2(ConnectorV2):
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
+        metrics: Optional[MetricsLogger] = None,
         **kwargs,
     ) -> Any:
         """In a pipeline, we simply call each of our connector pieces after each other.
@@ -85,39 +96,70 @@ class ConnectorPipelineV2(ConnectorV2):
         piece in the pipeline.
         """
         shared_data = shared_data if shared_data is not None else {}
+        full_stats = None
+        if metrics:
+            full_stats = metrics.log_time(
+                kwargs.get("metrics_prefix_key", ()) + (CONNECTOR_PIPELINE_TIMER,)
+            )
+            full_stats.__enter__()
+
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
-            timer = self.timers[str(connector)]
-            with timer:
-                batch = connector(
-                    rl_module=rl_module,
-                    batch=batch,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    # Deprecated arg.
-                    data=batch,
-                    **kwargs,
-                )
-                if not isinstance(batch, dict):
-                    raise ValueError(
-                        f"`data` returned by ConnectorV2 {connector} must be a dict! "
-                        f"You returned {batch}. Check your (custom) connectors' "
-                        f"`__call__()` method's return value and make sure you return "
-                        f"the `data` arg passed in (either altered or unchanged)."
+            # TODO (sven): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            stats = None
+            if metrics:
+                stats = metrics.log_time(
+                    kwargs.get("metrics_prefix_key", ())
+                    + (
+                        TIMERS,
+                        CONNECTOR_TIMERS,
+                        to_snake_case(connector.__class__.__name__),
                     )
+                )
+                stats.__enter__()
+
+            batch = connector(
+                rl_module=rl_module,
+                batch=batch,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                metrics=metrics,
+                # Deprecated arg.
+                data=batch,
+                **kwargs,
+            )
+
+            if metrics:
+                stats.__exit__(None, None, None)
+
+            if not isinstance(batch, dict):
+                raise ValueError(
+                    f"`data` returned by ConnectorV2 {connector} must be a dict! "
+                    f"You returned {batch}. Check your (custom) connectors' "
+                    f"`__call__()` method's return value and make sure you return "
+                    f"the `data` arg passed in (either altered or unchanged)."
+                )
+
+        if metrics:
+            full_stats.__exit__(None, None, None)
+
         return batch
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
 
         Args:
-            name: The name of the connector piece to be removed from the pipeline.
+            name_or_class: The name of the connector piece to be removed from the
+                pipeline.
         """
         idx = -1
         for i, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name_or_class:
+            if (isinstance(name_or_class, type) and c.__class__ is name_or_class) or (
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
+            ):
                 idx = i
                 break
         if idx >= 0:
@@ -244,11 +286,14 @@ class ConnectorPipelineV2(ConnectorV2):
         for conn in self.connectors:
             conn_name = type(conn).__name__
             if self._check_component(conn_name, components, not_components):
-                state[conn_name] = conn.get_state(
+                sts = conn.get_state(
                     components=self._get_subcomponents(conn_name, components),
                     not_components=self._get_subcomponents(conn_name, not_components),
                     **kwargs,
                 )
+                # Ignore empty dicts.
+                if sts:
+                    state[conn_name] = sts
         return state
 
     @override(ConnectorV2)
@@ -266,6 +311,17 @@ class ConnectorPipelineV2(ConnectorV2):
     # don't have to return the `connectors` c'tor kwarg from there. This is b/c all
     # connector pieces in this pipeline are themselves Checkpointable components,
     # so they will be properly written into this pipeline's checkpoint.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (self.input_observation_space, self.input_action_space),  # *args
+            {
+                "connectors": [
+                    (type(conn), *conn.get_ctor_args_and_kwargs())
+                    for conn in self.connectors
+                ]
+            },
+        )
 
     @override(ConnectorV2)
     def reset_state(self) -> None:

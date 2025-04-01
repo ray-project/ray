@@ -20,13 +20,16 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
+from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -43,6 +46,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
@@ -53,7 +57,7 @@ from ray.data._internal.logical.operators.from_operators import (
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -74,7 +78,9 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
+    FileShuffleConfig,
     _unwrap_arrow_serialization_workaround,
+    _validate_shuffle_arg,
 )
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
@@ -83,10 +89,11 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import datasets
     import mars
@@ -125,9 +132,12 @@ def from_blocks(blocks: List[Block]):
     block_refs = [ray.put(block) for block in blocks]
     metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
     from_blocks_op = FromBlocks(block_refs, metadata)
-    logical_plan = LogicalPlan(from_blocks_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -205,9 +215,12 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, metadata)
-    logical_plan = LogicalPlan(from_items_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -339,7 +352,7 @@ def read_datasource(
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -388,6 +401,7 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+
     import uuid
 
     stats = DatasetStats(
@@ -405,10 +419,182 @@ def read_datasource(
         ray_remote_args,
         concurrency,
     )
-    logical_plan = LogicalPlan(read_op)
+    execution_plan = ExecutionPlan(stats)
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
     return Dataset(
-        plan=ExecutionPlan(stats),
+        plan=execution_plan,
         logical_plan=logical_plan,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_audio(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    file_extensions: Optional[List[str]] = AudioDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from audio files.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://anonymous@air-example-data-2/6G-audio-data-LibriSpeech-train-clean-100-flac/train-clean-100/5022/29411/5022-29411-0000.flac"
+        >>> ds = ray.data.read_audio(path)
+        >>> ds.schema()
+        Column       Type
+        ------       ----
+        amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
+        sample_rate  int64
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The pyarrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_file>`_.
+            when opening input files to read.
+        partition_filter:  A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing audio amplitudes and associated
+        metadata.
+    """  # noqa: E501
+    datasource = AudioDatasource(
+        paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_videos(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from video files.
+
+    Each row in the resulting dataset represents a video frame.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://anonymous@ray-example-data/basketball.mp4"
+        >>> ds = ray.data.read_videos(path)
+        >>> ds.schema()
+        Column       Type
+        ------       ----
+        frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
+        frame_index  int64
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The pyarrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_file>`_.
+            when opening input files to read.
+        partition_filter:  A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing video frames from the video files.
+    """
+    datasource = VideoDatasource(
+        paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -474,7 +660,7 @@ def read_mongo(
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -544,7 +730,7 @@ def read_bigquery(
     or automatically chosen if unspecified (see the ``parallelism`` arg below).
 
     .. warning::
-        The maximum query response size is 10GB. For more information, see `BigQuery response too large to return <https://cloud.google.com/knowledge/kb/bigquery-response-too-large-to-return-consider-setting-allowlargeresults-to-true-in-your-job-configuration-000004266>`_.
+        The maximum query response size is 10GB.
 
     Examples:
         .. testcode::
@@ -563,7 +749,7 @@ def read_bigquery(
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -599,7 +785,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
@@ -691,7 +877,7 @@ def read_parquet(
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to PyArrow tensors. This function
@@ -707,7 +893,8 @@ def read_parquet(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -728,6 +915,7 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
     if meta_provider is None:
@@ -779,7 +967,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -841,11 +1029,11 @@ def read_images(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -870,7 +1058,8 @@ def read_images(
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -890,6 +1079,8 @@ def read_images(
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = ImageFileMetadataProvider()
 
@@ -916,7 +1107,7 @@ def read_images(
     )
 
 
-@PublicAPI
+@Deprecated
 def read_parquet_bulk(
     paths: Union[str, List[str]],
     *,
@@ -928,7 +1119,7 @@ def read_parquet_bulk(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[BaseFileMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = ParquetBulkDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
@@ -974,7 +1165,7 @@ def read_parquet_bulk(
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -986,17 +1177,18 @@ def read_parquet_bulk(
             assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see
             the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
@@ -1016,6 +1208,14 @@ def read_parquet_bulk(
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    warnings.warn(
+        "`read_parquet_bulk` is deprecated and will be removed after May 2025. Use "
+        "`read_parquet` instead.",
+        DeprecationWarning,
+    )
+
     if meta_provider is None:
         meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
@@ -1058,7 +1258,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1119,16 +1319,16 @@ def read_json(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1144,6 +1344,8 @@ def read_json(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
+            the input files, e.g. ``FileShuffleConfig(seed=42)``.
             Defaults to not shuffle with ``None``.
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
@@ -1161,6 +1363,8 @@ def read_json(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1199,7 +1403,7 @@ def read_csv(
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1286,16 +1490,16 @@ def read_csv(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1309,7 +1513,8 @@ def read_csv(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
@@ -1327,6 +1532,8 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1367,7 +1574,7 @@ def read_text(
     partitioning: Partitioning = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1401,17 +1608,17 @@ def read_text(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1423,7 +1630,8 @@ def read_text(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1438,6 +1646,8 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1477,7 +1687,7 @@ def read_avro(
     partitioning: Partitioning = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1510,17 +1720,17 @@ def read_avro(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1532,7 +1742,8 @@ def read_avro(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1546,6 +1757,8 @@ def read_avro(
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1582,7 +1795,7 @@ def read_numpy(
     partitioning: Partitioning = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1627,6 +1840,8 @@ def read_numpy(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
+            if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
+            input files, i.e. ``FileShuffleConfig(seed = 42)``.
             Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -1641,6 +1856,8 @@ def read_numpy(
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1677,7 +1894,7 @@ def read_tfrecords(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1740,10 +1957,10 @@ def read_tfrecords(
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
             use ``arrow_open_stream_args={'compression': 'gzip'}``).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1755,7 +1972,8 @@ def read_tfrecords(
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1775,6 +1993,8 @@ def read_tfrecords(
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
     import platform
+
+    _emit_meta_provider_deprecation_warning(meta_provider)
 
     tfx_read = False
 
@@ -1843,14 +2063,15 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    expand_json: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
-    `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+    `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1873,6 +2094,8 @@ def read_webdataset(
         suffixes: A function or list of suffixes to select for creating samples.
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
+            if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
+            input files, i.e. ``FileShuffleConfig(seed = 42)``.
             Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
@@ -1885,6 +2108,8 @@ def read_webdataset(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        expand_json: If ``True``, expand JSON objects into individual samples.
+            Defaults to ``False``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1894,6 +2119,8 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1911,6 +2138,7 @@ def read_webdataset(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        expand_json=expand_json,
     )
     return read_datasource(
         datasource,
@@ -1933,7 +2161,7 @@ def read_binary_files(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None] = None,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1976,16 +2204,16 @@ def read_binary_files(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1996,7 +2224,8 @@ def read_binary_files(
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2010,6 +2239,8 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -2039,6 +2270,8 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    shard_keys: Optional[list[str]] = None,
+    shard_hash_fn: str = "MD5",
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2049,14 +2282,16 @@ def read_sql(
 
     .. note::
 
-        By default, ``read_sql`` launches multiple read tasks, and each task executes a
-        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
-        databases, ``OFFSET`` is slow.
+        Parallelism is supported by databases that support sharding. This means
+        that the database needs to support all of the following operations:
+        ``MOD``, ``ABS``, and ``CONCAT``.
 
-        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
-        single task. Note that this approach requires all result rows to fit in the
-        memory of single task. If the rows don't fit, your program may raise an out of
-        memory error.
+        You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
+        The default is ``MD5``, but other common alternatives include ``hash``,
+        ``unicode``, and ``SHA``.
+
+        If the database does not support sharding, the read operation will be
+        executed in a single task.
 
     Examples:
 
@@ -2109,13 +2344,18 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        shard_keys: The keys to shard the data by.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
+            For other databases, common alternatives include "hash" and "SHA".
+            This is applied to the shard keys.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
@@ -2123,7 +2363,21 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
+    datasource = SQLDatasource(
+        sql=sql,
+        shard_keys=shard_keys,
+        shard_hash_fn=shard_hash_fn,
+        connection_factory=connection_factory,
+    )
+    if override_num_blocks and override_num_blocks > 1:
+        if shard_keys is None:
+            raise ValueError("shard_keys must be provided when override_num_blocks > 1")
+
+        if not datasource.supports_sharding(override_num_blocks):
+            raise ValueError(
+                "Database does not support sharding. Please set override_num_blocks to 1."
+            )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -2192,7 +2446,7 @@ def read_databricks_tables(
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2276,6 +2530,74 @@ def read_databricks_tables(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_hudi(
+    table_uri: str,
+    *,
+    storage_options: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from an
+    `Apache Hudi table <https://hudi.apache.org>`_.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ... )
+
+    Args:
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
+            are supported.
+        storage_options: Extra options that make sense for a particular storage
+            connection. This is used to store connection parameters like credentials,
+            endpoint, etc. See more explanation
+            `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the Hudi table.
+    """  # noqa: E501
+    datasource = HudiDatasource(
+        table_uri=table_uri,
+        storage_options=storage_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI
+def from_daft(df: "daft.DataFrame") -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+
+    Args:
+        df: A Daft DataFrame
+
+    Returns:
+        A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
+    """
+    # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such that we can stream object references into a Ray
+    # dataset. Unfortunately this is very tricky today because of the way Ray Datasources are implemented with a fully-materialized `list`
+    # of ReadTasks, rather than an iterator which can lazily return these tasks.
+    return df.to_ray_dataset()
 
 
 @PublicAPI
@@ -2447,9 +2769,12 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        )
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
         return MaterializedDataset(
-            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+            execution_plan,
             logical_plan,
         )
 
@@ -2458,9 +2783,12 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2540,10 +2868,13 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2616,10 +2947,13 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrow(tables, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2675,7 +3009,7 @@ def read_delta_sharing_tables(
         json_predicate_hints: Predicate hints to be applied to the table. For more
             details, see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control the number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2718,7 +3052,7 @@ def from_spark(
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
-    `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
+    `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
@@ -2836,7 +3170,7 @@ def from_huggingface(
                 )
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
-                "Distrubuted read via Hugging Face Hub parquet files failed, "
+                "Distributed read via Hugging Face Hub parquet files failed, "
                 "falling back on single node read."
             )
 
@@ -2853,8 +3187,8 @@ def from_huggingface(
         if override_num_blocks is not None:
             raise ValueError(
                 "`override_num_blocks` parameter is not supported for "
-                "streaming Hugging Face Datasets. Please omit the parameter or "
-                "use non-streaming mode to read the dataset."
+                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
+                "Alternatively, use streaming mode to read the dataset."
             )
 
         # To get the resulting Arrow table from a Hugging Face Dataset after
@@ -3046,7 +3380,8 @@ def read_iceberg(
              `pyiceberg catalog
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
-        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+        ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
+            read tasks.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
@@ -3115,7 +3450,7 @@ def read_lance(
             method, such as `batch_size`. For more information,
             see `LanceDB API doc <https://lancedb.github.io\
             /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3134,6 +3469,88 @@ def read_lance(
         filter=filter,
         storage_options=storage_options,
         scanner_options=scanner_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_clickhouse(
+    *,
+    table: str,
+    dsn: str,
+    columns: Optional[List[str]] = None,
+    filter: Optional[str] = None,
+    order_by: Optional[Tuple[List[str], bool]] = None,
+    client_settings: Optional[Dict[str, Any]] = None,
+    client_kwargs: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_clickhouse( # doctest: +SKIP
+        ...     table="default.table",
+        ...     dsn="clickhouse+http://username:password@host:8124/default",
+        ...     columns=["timestamp", "age", "status", "text", "label"],
+        ...     filter="age > 18 AND status = 'active'",
+        ...     order_by=(["timestamp"], False),
+        ... )
+
+    Args:
+        table: Fully qualified table or view identifier (e.g.,
+            "default.table_name").
+        dsn: A string in standard DSN (Data Source Name) HTTP format (e.g.,
+            "clickhouse+http://username:password@host:8124/default").
+            For more information, see `ClickHouse Connection String doc
+            <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+        columns: Optional list of columns to select from the data source.
+            If no columns are specified, all columns will be selected by default.
+        filter: Optional SQL filter string that will be used in the WHERE statement
+            (e.g., "label = 2 AND text IS NOT NULL"). The filter string must be valid for use in
+            a ClickHouse SQL WHERE clause. Please Note: Parallel reads are not currently supported
+            when a filter is set. Specifying a filter forces the parallelism to 1 to ensure
+            deterministic and consistent results. For more information, see `ClickHouse SQL WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
+        order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
+            should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
+            parallelism. If not provided, the data will be read in a single task. This is to ensure
+            that the data is read in a consistent order across all tasks.
+        client_settings: Optional ClickHouse server settings to be used with the session/every request.
+            For more information, see `ClickHouse Client Settings
+            <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional additional arguments to pass to the ClickHouse client. For more information,
+            see `ClickHouse Core Settings <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the ClickHouse table or view.
+    """  # noqa: E501
+    datasource = ClickHouseDatasource(
+        table=table,
+        dsn=dsn,
+        columns=columns,
+        filter=filter,
+        order_by=order_by,
+        client_settings=client_settings,
+        client_kwargs=client_kwargs,
     )
 
     return read_datasource(
@@ -3227,9 +3644,12 @@ def _get_num_output_blocks(
     return parallelism
 
 
-def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"]:
-        raise ValueError(
-            f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files'."
+def _emit_meta_provider_deprecation_warning(
+    meta_provider: Optional[BaseFileMetadataProvider],
+) -> None:
+    if meta_provider is not None:
+        warnings.warn(
+            "The `meta_provider` argument is deprecated and will be removed after May "
+            "2025.",
+            DeprecationWarning,
         )

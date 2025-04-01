@@ -13,7 +13,12 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import Counter, get_deployment_details, tlog
+from ray.serve._private.test_utils import (
+    Counter,
+    check_num_replicas_eq,
+    get_deployment_details,
+    tlog,
+)
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -304,6 +309,8 @@ def test_replica_actor_died(serve_instance, die_during_request):
         replica_to_kill = random.choice(replicas)
         tlog(f"Killing replica {replica_to_kill}")
         ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
+
+    wait_for_condition(check_num_replicas_eq, name="Dummy", target=1)
 
     # The controller just health checked both of them, so it should not
     # be able to health check and notify the handle router in time. Then

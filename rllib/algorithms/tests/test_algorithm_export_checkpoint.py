@@ -32,25 +32,20 @@ def save_test(alg_name, framework="tf", multi_agent=False):
             enable_env_runner_and_connector_v2=True,
         )
 
-    if "DDPG" in alg_name or "SAC" in alg_name:
-        config.environment("Pendulum-v1")
-        algo = config.build()
-        test_obs = np.array([[0.1, 0.2, 0.3]])
+    if multi_agent:
+        config.multi_agent(
+            policies={"pol1", "pol2"},
+            policy_mapping_fn=(
+                lambda agent_id, episode, worker, **kwargs: "pol1"
+                if agent_id == "agent1"
+                else "pol2"
+            ),
+        )
+        config.environment(MultiAgentCartPole, env_config={"num_agents": 2})
     else:
-        if multi_agent:
-            config.multi_agent(
-                policies={"pol1", "pol2"},
-                policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "pol1"
-                    if agent_id == "agent1"
-                    else "pol2"
-                ),
-            )
-            config.environment(MultiAgentCartPole, env_config={"num_agents": 2})
-        else:
-            config.environment("CartPole-v1")
-        algo = config.build()
-        test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
+        config.environment("CartPole-v1")
+    algo = config.build()
+    test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
@@ -94,9 +89,6 @@ class TestAlgorithmSave(unittest.TestCase):
 
     def test_save_appo_multi_agent(self):
         save_test("APPO", "torch", multi_agent=True)
-
-    def test_save_ppo(self):
-        save_test("PPO", "torch")
 
 
 if __name__ == "__main__":

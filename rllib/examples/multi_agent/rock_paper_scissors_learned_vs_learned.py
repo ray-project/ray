@@ -16,6 +16,7 @@ import re
 from pettingzoo.classic import rps_v2
 
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -44,7 +45,7 @@ parser.add_argument(
 
 
 register_env(
-    "RockPaperScissors",
+    "pettingzoo_rps",
     lambda _: ParallelPettingZooEnv(rps_v2.parallel_env()),
 )
 
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("RockPaperScissors")
+        .environment("pettingzoo_rps")
         .env_runners(
             env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
         )
@@ -70,16 +71,16 @@ if __name__ == "__main__":
             vf_loss_coeff=0.005,
         )
         .rl_module(
-            model_config_dict={
-                "use_lstm": args.use_lstm,
+            model_config=DefaultModelConfig(
+                use_lstm=args.use_lstm,
                 # Use a simpler FCNet when we also have an LSTM.
-                "fcnet_hiddens": [32] if args.use_lstm else [256, 256],
-                "lstm_cell_size": 256,
-                "max_seq_len": 15,
-                "vf_share_layers": True,
-            },
+                fcnet_hiddens=[32] if args.use_lstm else [256, 256],
+                lstm_cell_size=256,
+                max_seq_len=15,
+                vf_share_layers=True,
+            ),
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     "p0": RLModuleSpec(),
                     "p1": RLModuleSpec(),
                 }

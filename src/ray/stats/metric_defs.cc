@@ -14,9 +14,11 @@
 
 #include "ray/stats/metric_defs.h"
 
-namespace ray {
+#include "ray/util/size_literals.h"
 
-namespace stats {
+using namespace ray::literals;
+
+namespace ray::stats {
 
 /// The definitions of metrics that you can use everywhere.
 ///
@@ -67,6 +69,21 @@ DEFINE_stats(actors,
              (),
              ray::stats::GAUGE);
 
+/// Job related stats.
+DEFINE_stats(running_jobs,
+             "Number of jobs currently running.",
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::GAUGE);
+
+DEFINE_stats(finished_jobs,
+             "Number of jobs finished.",
+             // TODO(hjiang): Consider adding task completion status, for example, failed,
+             // completed in tags.
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::COUNT);
+
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
@@ -99,23 +116,19 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-double operator""_MB(unsigned long long int x) {
-  return static_cast<double>(1024L * 1024L * x);
-}
-
 DEFINE_stats(object_store_dist,
              "The distribution of object size in bytes",
              ("Source"),
-             ({32_MB,
-               64_MB,
-               128_MB,
-               256_MB,
-               512_MB,
-               1024_MB,
-               2048_MB,
-               4096_MB,
-               8192_MB,
-               16384_MB}),
+             ({32_MiB,
+               64_MiB,
+               128_MiB,
+               256_MiB,
+               512_MiB,
+               1024_MiB,
+               2048_MiB,
+               4096_MiB,
+               8192_MiB,
+               16384_MiB}),
              ray::stats::HISTOGRAM);
 
 /// Placement group metrics from the GCS.
@@ -129,6 +142,12 @@ DEFINE_stats(placement_groups,
 /// ===============================================================================
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
+
+DEFINE_stats(io_context_event_loop_lag_ms,
+             "Latency of a task from post to execution",
+             ("Name"),  // Name of the instrumented_io_context.
+             (),
+             ray::stats::GAUGE);
 
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -146,8 +165,8 @@ DEFINE_stats(operation_active_count,
 DEFINE_stats(grpc_server_req_process_time_ms,
              "Request latency in grpc server",
              ("Method"),
-             (),
-             ray::stats::GAUGE);
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 DEFINE_stats(grpc_server_req_new,
              "New request number in grpc server",
              ("Method"),
@@ -366,6 +385,4 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-}  // namespace stats
-
-}  // namespace ray
+}  // namespace ray::stats

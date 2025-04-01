@@ -1,6 +1,7 @@
 import inspect
 import logging
 from inspect import Parameter
+from typing import List
 
 from ray._private.inspect_util import is_cython
 
@@ -78,7 +79,27 @@ def extract_signature(func, ignore_first=False):
     return signature_parameters
 
 
-def flatten_args(signature_parameters: list, args, kwargs):
+def validate_args(signature_parameters: List[Parameter], args, kwargs):
+    """Validates the arguments against the signature.
+
+    Args:
+        signature_parameters: The list of Parameter objects
+            representing the function signature, obtained from
+            `extract_signature`.
+        args: The positional arguments passed into the function.
+        kwargs: The keyword arguments passed into the function.
+
+    Raises:
+        TypeError: Raised if arguments do not fit in the function signature.
+    """
+    reconstructed_signature = inspect.Signature(parameters=signature_parameters)
+    try:
+        reconstructed_signature.bind(*args, **kwargs)
+    except TypeError as exc:  # capture a friendlier stacktrace
+        raise TypeError(str(exc)) from None
+
+
+def flatten_args(signature_parameters: List[Parameter], args, kwargs):
     """Validates the arguments against the signature and flattens them.
 
     The flat list representation is a serializable format for arguments.
@@ -92,7 +113,7 @@ def flatten_args(signature_parameters: list, args, kwargs):
         signature_parameters: The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
-        args: The non-keyword arguments passed into the function.
+        args: The positional arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
 
     Returns:
@@ -102,12 +123,7 @@ def flatten_args(signature_parameters: list, args, kwargs):
     Raises:
         TypeError: Raised if arguments do not fit in the function signature.
     """
-
-    reconstructed_signature = inspect.Signature(parameters=signature_parameters)
-    try:
-        reconstructed_signature.bind(*args, **kwargs)
-    except TypeError as exc:  # capture a friendlier stacktrace
-        raise TypeError(str(exc)) from None
+    validate_args(signature_parameters, args, kwargs)
     list_args = []
     for arg in args:
         list_args += [DUMMY_TYPE, arg]

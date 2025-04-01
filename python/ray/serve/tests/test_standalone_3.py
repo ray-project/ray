@@ -15,12 +15,11 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -566,6 +565,30 @@ def test_serve_shut_down_without_duplicated_logs(
                 all_serve_logs += f.read()
     assert all_serve_logs.count("Controller shutdown started") == 1
     assert all_serve_logs.count("Deleting app 'default'") == 1
+
+
+def test_job_runtime_env_not_leaked(shutdown_ray):  # noqa: F811
+    """https://github.com/ray-project/ray/issues/49074"""
+
+    @serve.deployment
+    class D:
+        async def __call__(self) -> str:
+            return os.environ["KEY"]
+
+    app = D.bind()
+
+    # Initialize Ray with a runtime_env, should get picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL1"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL1"
+    serve.shutdown()
+    ray.shutdown()
+
+    # Re-initialize Ray with a different runtime_env, check that the updated one
+    # is picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL2"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL2"
 
 
 if __name__ == "__main__":

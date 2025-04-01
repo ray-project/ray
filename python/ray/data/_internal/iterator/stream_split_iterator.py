@@ -1,4 +1,3 @@
-import copy
 import logging
 import threading
 import time
@@ -135,13 +134,13 @@ class SplitCoordinator:
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        # Set current DataContext.
+        self._data_context = dataset.context
+        ray.data.DataContext._set_current(self._data_context)
         # Automatically set locality with output to the specified location hints.
         if locality_hints:
-            dataset.context.execution_options.locality_with_output = locality_hints
+            self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
-
-        # Set current DataContext.
-        ray.data.DataContext._set_current(dataset.context)
 
         self._base_dataset = dataset
         self._n = n
@@ -158,7 +157,7 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 executor = StreamingExecutor(
-                    copy.deepcopy(dataset.context.execution_options),
+                    self._data_context,
                     create_dataset_tag(
                         self._base_dataset._name, self._base_dataset._uuid
                     ),
@@ -166,7 +165,13 @@ class SplitCoordinator:
                 self._executor = executor
 
                 def add_split_op(dag):
-                    return OutputSplitter(dag, n, equal, locality_hints)
+                    return OutputSplitter(
+                        dag,
+                        n,
+                        equal,
+                        self._data_context,
+                        locality_hints,
+                    )
 
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,

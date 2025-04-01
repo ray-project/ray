@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._private.protobuf_compat import message_to_dict
 
@@ -17,6 +17,7 @@ from ray._private.utils import (
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
+from ray.core.generated import autoscaler_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,10 @@ class GlobalState:
         self.global_state_accessor.connect()
 
     def actor_table(
-        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+        self,
+        actor_id: Optional[str],
+        job_id: Optional[ray.JobID] = None,
+        actor_state_name: Optional[str] = None,
     ):
         """Fetch and parse the actor table information for a single actor ID.
 
@@ -525,7 +529,7 @@ class GlobalState:
         """Return a list of transfer events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
-        by passing in "filename" or using using json.dump, and then load go to
+        by passing in "filename" or using json.dump, and then load go to
         chrome://tracing in the Chrome web browser and load the dumped file.
         Make sure to enable "Flow events" in the "View Options" menu.
 
@@ -748,7 +752,7 @@ class GlobalState:
         return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
-        """Returns a dictionary mapping node id to avaiable resources."""
+        """Returns a dictionary mapping node id to available resources."""
         self._check_connected()
         available_resources_by_id = {}
 
@@ -837,6 +841,17 @@ class GlobalState:
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 
+    def get_cluster_config(self) -> autoscaler_pb2.ClusterConfig:
+        """Get the cluster config of the current cluster."""
+        self._check_connected()
+        serialized_cluster_config = self.global_state_accessor.get_internal_kv(
+            ray._raylet.GCS_AUTOSCALER_STATE_NAMESPACE.encode(),
+            ray._raylet.GCS_AUTOSCALER_CLUSTER_CONFIG_KEY.encode(),
+        )
+        if serialized_cluster_config:
+            return autoscaler_pb2.ClusterConfig.FromString(serialized_cluster_config)
+        return None
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -920,7 +935,9 @@ def node_ids():
 
 
 def actors(
-    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+    actor_id: Optional[str] = None,
+    job_id: Optional[ray.JobID] = None,
+    actor_state_name: Optional[str] = None,
 ):
     """Fetch actor info for one or more actor IDs (for debugging only).
 
@@ -952,7 +969,7 @@ def timeline(filename=None):
     variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
-    passing in "filename" or using using json.dump, and then load go to
+    passing in "filename" or using json.dump, and then load go to
     chrome://tracing in the Chrome web browser and load the dumped file.
 
     Args:
@@ -970,7 +987,7 @@ def object_transfer_timeline(filename=None):
     """Return a list of transfer events that can viewed as a timeline.
 
     To view this information as a timeline, simply dump it as a json file by
-    passing in "filename" or using using json.dump, and then load go to
+    passing in "filename" or using json.dump, and then load go to
     chrome://tracing in the Chrome web browser and load the dumped file. Make
     sure to enable "Flow events" in the "View Options" menu.
 

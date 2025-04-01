@@ -41,6 +41,6 @@ def fast_gcs_failure_detection(monkeypatch):
 
 @pytest.fixture
 def reduce_actor_cache():
-    os.environ["RAY_DASHBOARD_MAX_ACTORS_TO_CACHE"] = "3"
+    os.environ["RAY_maximum_gcs_destroyed_actor_cached_count"] = "3"
     yield
-    os.environ.pop("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", None)
+    os.environ.pop("RAY_maximum_gcs_destroyed_actor_cached_count", None)

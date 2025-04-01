@@ -191,28 +191,29 @@ By default, Ray requests 1 CPU per read task, which means one read task per CPU 
 For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-Parquet column pruning
-~~~~~~~~~~~~~~~~~~~~~~
+.. _parquet_column_pruning:
 
-Current Dataset reads all Parquet columns into memory.
+Parquet column pruning (projection pushdown)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, :func:`ray.data.read_parquet` reads all columns in the Parquet files into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :func:`ray.data.read_parquet` to
-avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris dataset.
+avoid loading unnecessary data (projection pushdown). Note that this is more efficient than
+calling :func:`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
 
-.. _parquet_row_pruning:
+.. testcode::
 
-Parquet row pruning
-~~~~~~~~~~~~~~~~~~~
+    import ray
+    # Read just two of the five columns of the Iris dataset.
+    ray.data.read_parquet(
+        "s3://anonymous@ray-example-data/iris.parquet",
+        columns=["sepal.length", "variety"],
+    )
 
-Similarly, you can pass in a filter to :func:`ray.data.read_parquet` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned.
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
-(where ``pyarrow`` has to be imported)
-to read rows with sepal.length greater than 5.0.
-This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+.. testoutput::
+
+    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
 
 .. _data_memory:

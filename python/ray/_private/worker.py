@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
-    IO,
     Any,
     AnyStr,
     Callable,
@@ -78,8 +77,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
-from ray._private.storage import _load_class
-from ray._private.utils import get_ray_doc_version
+from ray._private.utils import get_ray_doc_version, load_class
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -443,7 +441,7 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
@@ -470,8 +468,10 @@ class Worker:
         self._enable_record_actor_task_log = (
             ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
         )
-        self._out_file = None
-        self._err_file = None
+        # Whether rotation is enabled for out file and err file, task log position report will be skipped if rotation enabled, since the position cannot be accurate.
+        self._file_rotation_enabled = False
+        self._out_filepath = None
+        self._err_filepath = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -485,11 +485,17 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
+        # Indicates whether the worker is connected to the Ray cluster.
+        # It should be set to True in `connect` and False in `disconnect`.
+        self._is_connected: bool = False
 
     @property
     def connected(self):
         """bool: True if Ray has been started and False otherwise."""
-        return self.node is not None
+        return self._is_connected
+
+    def set_is_connected(self, is_connected: bool):
+        self._is_connected = is_connected
 
     @property
     def node_ip_address(self):
@@ -524,6 +530,14 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
+
+    @property
+    def current_task_name(self):
+        return self.core_worker.get_current_task_name()
+
+    @property
+    def current_task_function_name(self):
+        return self.core_worker.get_current_task_function_name()
 
     @property
     def current_node_id(self):
@@ -567,6 +581,17 @@ class Worker:
         worker_id = self.core_worker.get_worker_id()
         return ray._private.state.get_worker_debugger_port(worker_id)
 
+    @property
+    def job_logging_config(self):
+        """Get the job's logging config for this worker"""
+        if not hasattr(self, "core_worker"):
+            return None
+        job_config = self.core_worker.get_job_config()
+        if not job_config.serialized_py_logging_config:
+            return None
+        logging_config = pickle.loads(job_config.serialized_py_logging_config)
+        return logging_config
+
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
         ray._private.state.update_worker_debugger_port(worker_id, port)
@@ -600,13 +625,17 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
-    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
-        """Set the worker's err file where stderr is redirected to"""
-        self._err_file = err_file
+    def set_file_rotation_enabled(self, rotation_enabled: bool) -> None:
+        """Set whether rotation is enabled for outfile and errfile."""
+        self._file_rotation_enabled = rotation_enabled
 
-    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+    def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
+        """Set the worker's err file where stderr is redirected to"""
+        self._err_filepath = err_filepath
+
+    def set_out_file(self, out_filepath=Optional[AnyStr]) -> None:
         """Set the worker's out file where stdout is redirected to"""
-        self._out_file = out_file
+        self._out_filepath = out_filepath
 
     def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
@@ -619,6 +648,8 @@ class Worker:
             return
 
         if not hasattr(self, "core_worker"):
+            return
+        if self._file_rotation_enabled:
             return
 
         self.core_worker.record_task_log_start(
@@ -643,6 +674,10 @@ class Worker:
         if not hasattr(self, "core_worker"):
             return
 
+        # Disable file offset fetch if rotation enabled (since file offset doesn't make sense for rotated files).
+        if self._file_rotation_enabled:
+            return
+
         self.core_worker.record_task_log_end(
             task_id,
             attempt_number,
@@ -650,24 +685,24 @@ class Worker:
             self.get_current_err_offset(),
         )
 
-    def get_err_file_path(self) -> str:
-        """Get the err log file path"""
-        return self._err_file.name if self._err_file is not None else ""
-
     def get_out_file_path(self) -> str:
         """Get the out log file path"""
-        return self._out_file.name if self._out_file is not None else ""
+        return self._out_filepath if self._out_filepath is not None else ""
+
+    def get_err_file_path(self) -> str:
+        """Get the err log file path"""
+        return self._err_filepath if self._err_filepath is not None else ""
 
     def get_current_out_offset(self) -> int:
         """Get the current offset of the out file if seekable, else 0"""
-        if self._out_file is not None and self._out_file.seekable():
-            return self._out_file.tell()
+        if self._out_filepath is not None:
+            return os.path.getsize(self._out_filepath)
         return 0
 
     def get_current_err_offset(self) -> int:
         """Get the current offset of the err file if seekable, else 0"""
-        if self._err_file is not None and self._err_file.seekable():
-            return self._err_file.tell()
+        if self._err_filepath is not None:
+            return os.path.getsize(self._err_filepath)
         return 0
 
     def get_serialization_context(self):
@@ -828,6 +863,7 @@ class Worker:
         object_refs: list,
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
+        skip_deserialization: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -844,8 +880,10 @@ class Worker:
                 Exception object, whether to return them as values in the
                 returned list. If False, then the first found exception will be
                 raised.
+            skip_deserialization: If true, only the buffer will be released and
+                the object associated with the buffer will not be deserialized.
         Returns:
-            list: List of deserialized objects
+            list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
         """
@@ -857,12 +895,16 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs = self.core_worker.get_objects(
+        timeout_ms = (
+            int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        )
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.get_objects(
             object_refs,
-            self.current_task_id,
             timeout_ms,
         )
+
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
             if metadata:
@@ -873,6 +915,9 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
+        if skip_deserialization:
+            return None, debugger_breakpoint
+
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -982,7 +1027,7 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
@@ -1367,22 +1412,23 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
-            This storage path must be accessible by all nodes of the cluster, otherwise
-            an error will be raised. This option can also be specified as the
-            RAY_STORAGE env var.
+        object_spilling_directory: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
+        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
+            be removed in a future version of Ray.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
-        _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
+        _redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1434,13 +1480,18 @@ def init(
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
-    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _object_spilling_directory: Optional[str] = kwargs.pop(
+        "object_spilling_directory", None
+    )
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
     )
     _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_username: str = kwargs.pop(
+        "_redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+    )
     _redis_password: str = kwargs.pop(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
@@ -1582,7 +1633,7 @@ def init(
             )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
         job_config.set_runtime_env(runtime_env)
@@ -1594,7 +1645,7 @@ def init(
     # higher priority in case user also provided runtime_env for ray.init()
     else:
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
 
@@ -1624,6 +1675,12 @@ def init(
         )
     else:
         driver_mode = SCRIPT_MODE
+
+    if storage is not None:
+        warnings.warn(
+            "Cluster-wide storage configuration is deprecated and will be removed in a "
+            "future version of Ray."
+        )
 
     global _global_node
 
@@ -1667,15 +1724,16 @@ def init(
             labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
+            object_spilling_directory=_object_spilling_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
             object_store_memory=object_store_memory,
-            redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,
@@ -1744,6 +1802,7 @@ def init(
             node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
@@ -1857,6 +1916,11 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    # Make sure to clean up compiled dag node if exists.
+    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
+
+    _shutdown_all_compiled_dags()
+
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -1921,7 +1985,7 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
-def print_to_stdstream(data):
+def print_to_stdstream(data, ignore_prefix: bool):
     should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
@@ -1938,7 +2002,7 @@ def print_to_stdstream(data):
         sink = sys.stdout
 
     for batch in batches:
-        print_worker_logs(batch, sink)
+        print_worker_logs(batch, sink, ignore_prefix)
 
 
 # Start time of this process, used for relative time logs.
@@ -2029,7 +2093,9 @@ def time_string() -> str:
 _worker_logs_enabled = True
 
 
-def print_worker_logs(data: Dict[str, str], print_file: Any):
+def print_worker_logs(
+    data: Dict[str, str], print_file: Any, ignore_prefix: bool = False
+):
     if not _worker_logs_enabled:
         return
 
@@ -2109,11 +2175,19 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 color_pre = color_for(data, line)
                 color_post = colorama.Style.RESET_ALL
-            print(
-                f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
-                f"{message_for(data, line)}",
-                file=print_file,
-            )
+
+            if ignore_prefix:
+                print(
+                    f"{message_for(data, line)}",
+                    file=print_file,
+                )
+            else:
+                print(
+                    f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
+                    f"{message_for(data, line)}",
+                    file=print_file,
+                )
+
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
@@ -2163,7 +2237,6 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
-
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2172,7 +2245,7 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] not in [
+            if error_data["job_id"] is not None and error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
@@ -2184,7 +2257,8 @@ def listen_error_messages(worker, threads_stopped):
                     "lines": [error_message],
                     "pid": "raylet",
                     "is_err": False,
-                }
+                },
+                ignore_prefix=False,
             )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
@@ -2217,6 +2291,7 @@ def connect(
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
+    debug_source: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2244,6 +2319,7 @@ def connect(
         worker_launched_time_ms: The time when the worker process for this worker
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
+        debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2311,8 +2387,6 @@ def connect(
             )
 
     driver_name = ""
-    log_stdout_file_path = ""
-    log_stderr_file_path = ""
     interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
@@ -2417,8 +2491,6 @@ def connect(
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
@@ -2428,10 +2500,8 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+        debug_source,
     )
-
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
 
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id
@@ -2462,9 +2532,14 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
+        # If the job's logging config is set, don't add the prefix
+        # (task/actor's name and its PID) to the logs.
+        ignore_prefix = global_worker.job_logging_config is not None
+
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
-                "ray_print_logs", print_to_stdstream
+                "ray_print_logs",
+                functools.partial(print_to_stdstream, ignore_prefix=ignore_prefix),
             )
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
@@ -2482,6 +2557,9 @@ def connect(
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
+
+    # Mark the worker as connected.
+    worker.set_is_connected(True)
 
 
 def disconnect(exiting_interpreter=False):
@@ -2506,10 +2584,12 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
+        # Ignore the prefix if the logging config is set.
+        ignore_prefix = worker.job_logging_config is not None
         for leftover in stdout_deduplicator.flush():
-            print_worker_logs(leftover, sys.stdout)
+            print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
-            print_worker_logs(leftover, sys.stderr)
+            print_worker_logs(leftover, sys.stderr, ignore_prefix)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
@@ -2520,6 +2600,9 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
+
+    # Mark the worker as disconnected.
+    worker.set_is_connected(False)
 
 
 @contextmanager
@@ -2722,9 +2805,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
@@ -2937,7 +3020,6 @@ def wait(
             ray_waitables,
             num_returns,
             timeout_milliseconds,
-            worker.current_task_id,
             fetch_local,
         )
         return ready_ids, remaining_ids
@@ -3499,7 +3581,7 @@ def remote(
             for more details.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
+        _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):

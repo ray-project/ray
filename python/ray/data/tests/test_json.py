@@ -1,6 +1,7 @@
 import gzip
 import json
 import os
+import requests
 import shutil
 from functools import partial
 
@@ -11,6 +12,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -64,7 +66,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -308,7 +310,7 @@ def test_json_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(
@@ -354,7 +356,7 @@ def test_json_read_with_read_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -397,7 +399,7 @@ def test_json_read_with_parse_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -602,7 +604,7 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Single large file, default block_size
     num_chars = 2500000
@@ -621,7 +623,9 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [_unwrap_protocol(path2)]
-    assert "{one: string, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(
+        pa.schema([("one", pa.string()), ("two", pa.string())])
+    )
 
     # Single file, negative and zero block_size (expect failure)
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -642,16 +646,16 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
         dsdf = ds.to_pandas()
 
 
-@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
-def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
     ray.data.range(100, override_num_blocks=20).write_json(
-        tmp_path, num_rows_per_file=num_rows_per_file
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
     for filename in os.listdir(tmp_path):
         with open(os.path.join(tmp_path, filename), "r") as file:
             num_rows_written = len(file.read().splitlines())
-            assert num_rows_written == num_rows_per_file
+            assert num_rows_written == min_rows_per_file
 
 
 def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
@@ -685,6 +689,44 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
     assert (
         retrieved_data == data[0]
     ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
+
+
+def test_json_with_http_path_parallelization():
+    from ray.data.datasource.file_based_datasource import (
+        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+    )
+
+    def is_url_accessible(url: str) -> bool:
+        """Check if a URL is accessible."""
+        try:
+            response = requests.head(
+                url, timeout=5
+            )  # Use HEAD request to check connectivity
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+    # List of URLs to check
+    data_urls = [
+        (
+            f"https://data.commoncrawl.org/contrib/datacomp/DCLM-pool/"
+            f"crawl=CC-MAIN-2022-49/1669446711712.26/CC-MAIN-20221210042021"
+            f"-20221210072021-000{i:02}.jsonl.gz"
+        )
+        for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD + 3)
+    ]
+
+    data_urls = [url for url in data_urls if is_url_accessible(url)]
+    # Check if at least one URL is accessible
+    if len(data_urls) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD:
+        pytest.skip("Not enough accessible HTTP links, skipping test.")
+
+    # Test logic
+    ds = ray.data.read_json(data_urls, include_paths=True)
+    ds = ds.select_columns(["path"])
+    df = ds.to_pandas().drop_duplicates()
+
+    assert len(df) == len(data_urls)
 
 
 if __name__ == "__main__":

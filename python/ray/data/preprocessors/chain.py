@@ -28,7 +28,7 @@ class Chain(Preprocessor):
         >>>
         >>> preprocessor = Chain(
         ...     StandardScaler(columns=["X0", "X1"]),
-        ...     Concatenator(include=["X0", "X1"], output_column_name="X"),
+        ...     Concatenator(columns=["X0", "X1"], output_column_name="X"),
         ...     LabelEncoder(label_column="Y")
         ... )
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP

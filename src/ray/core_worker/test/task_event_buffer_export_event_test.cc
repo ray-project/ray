@@ -16,6 +16,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -30,6 +34,7 @@
 
 using ::testing::_;
 using ::testing::Return;
+using json = nlohmann::json;
 
 namespace ray {
 

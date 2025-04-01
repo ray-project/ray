@@ -331,14 +331,10 @@ def _inject_tracing_into_function(function):
     if not _is_tracing_enabled():
         return function
 
-    setattr(
+    function.__signature__ = _add_param_to_signature(
         function,
-        "__signature__",
-        _add_param_to_signature(
-            function,
-            inspect.Parameter(
-                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-            ),
+        inspect.Parameter(
+            "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
         ),
     )
 
@@ -541,14 +537,10 @@ def _inject_tracing_into_class(_cls):
             continue
 
         # Add _ray_trace_ctx to method signature
-        setattr(
+        method.__signature__ = _add_param_to_signature(
             method,
-            "__signature__",
-            _add_param_to_signature(
-                method,
-                inspect.Parameter(
-                    "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-                ),
+            inspect.Parameter(
+                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
             ),
         )
 

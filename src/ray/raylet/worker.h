@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
@@ -233,7 +234,6 @@ class Worker : public WorkerInterface {
     RAY_CHECK(!task_spec.IsActorTask());
     SetIsActorWorker(task_spec.IsActorCreationTask());
     assigned_task_ = assigned_task;
-    task_assign_time_ = absl::Now();
     root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   }
 

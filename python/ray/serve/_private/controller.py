@@ -7,11 +7,11 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray._common.utils import run_background_task
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -19,7 +19,6 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
@@ -49,7 +48,6 @@ from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    DEFAULT,
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
@@ -111,7 +109,7 @@ class ServeController:
     async def __init__(
         self,
         *,
-        http_config: HTTPOptions,
+        http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
@@ -155,7 +153,7 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            config=http_config,
+            http_options=http_options,
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
@@ -228,8 +226,7 @@ class ServeController:
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
-            global_logging_config,
+            {LongPollNamespace.GLOBAL_LOGGING_CONFIG: global_logging_config}
         )
         configure_component_logger(
             component_name="controller",
@@ -335,8 +332,8 @@ class ServeController:
         # NOTE(zcin): Java only supports 1.x deployments, so only return
         # a dictionary of deployment name -> endpoint info
         data = {
-            endpoint_tag.name: EndpointInfoProto(route=endppint_dict["route"])
-            for endpoint_tag, endppint_dict in endpoints.items()
+            endpoint_tag.name: EndpointInfoProto(route=endpoint_dict["route"])
+            for endpoint_tag, endpoint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
@@ -403,6 +400,9 @@ class ServeController:
             try:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
+
+                self.deployment_state_manager.save_checkpoint()
+
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
@@ -421,6 +421,12 @@ class ServeController:
             try:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update()
+
+                self.application_state_manager.save_checkpoint()
+                # ApplicationStateManager.update() can also mutate the
+                # DeploymentStateManager so we need to checkpoint that as well
+                self.deployment_state_manager.save_checkpoint()
+
                 self.asm_update_duration_gauge_s.set(
                     time.time() - asm_update_start_time
                 )
@@ -719,37 +725,56 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_applications(
+        self, name_to_deployment_args_list: Dict[str, List[bytes]]
+    ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
-        If same app name deployed, old application will be overwrriten.
+        If same app name deployed, old application will be overwritten.
 
         Args:
             name: Application name.
-            deployment_args_list: List of serialized deployment infomation,
+            deployment_args_list: List of serialized deployment information,
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
         """
-        deployment_args_deserialized = []
-        for deployment_args_bytes in deployment_args_list:
-            deployment_args = DeploymentArgs.FromString(deployment_args_bytes)
-            deployment_args_deserialized.append(
-                {
-                    "deployment_name": deployment_args.deployment_name,
-                    "deployment_config_proto_bytes": deployment_args.deployment_config,
-                    "replica_config_proto_bytes": deployment_args.replica_config,
-                    "deployer_job_id": deployment_args.deployer_job_id,
-                    "route_prefix": deployment_args.route_prefix
-                    if deployment_args.HasField("route_prefix")
-                    else None,
-                    "ingress": deployment_args.ingress,
-                    "docs_path": deployment_args.docs_path
-                    if deployment_args.HasField("docs_path")
-                    else None,
-                }
-            )
-        self.application_state_manager.deploy_app(name, deployment_args_deserialized)
+        name_to_deployment_args = {}
+        for name, deployment_args_list in name_to_deployment_args_list.items():
+            deployment_args_deserialized = []
+            for deployment_args_bytes in deployment_args_list:
+                args = DeploymentArgs.FromString(deployment_args_bytes)
+                deployment_args_deserialized.append(
+                    {
+                        "deployment_name": args.deployment_name,
+                        "deployment_config_proto_bytes": args.deployment_config,
+                        "replica_config_proto_bytes": args.replica_config,
+                        "deployer_job_id": args.deployer_job_id,
+                        "ingress": args.ingress,
+                        "route_prefix": (
+                            args.route_prefix if args.HasField("route_prefix") else None
+                        ),
+                        "docs_path": (
+                            args.docs_path if args.HasField("docs_path") else None
+                        ),
+                    }
+                )
+            name_to_deployment_args[name] = deployment_args_deserialized
+
+        self.application_state_manager.deploy_apps(name_to_deployment_args)
+
+        self.application_state_manager.save_checkpoint()
+
+    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+        """
+        Deploy a single application
+        (as deploy_applications(), but it only takes a single name and deployment args).
+        This primarily exists as a shim to avoid
+        changing Java code in https://github.com/ray-project/ray/pull/49168,
+        and could be removed if the Java code was refactored
+        to use the new bulk deploy_applications API.
+        """
+        self.deploy_applications({name: deployment_args_list})
 
     def apply_config(
         self,
@@ -784,14 +809,6 @@ class ServeController:
         self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
-            for deployments in app_config.deployments:
-                if deployments.route_prefix != DEFAULT.VALUE:
-                    logger.warning(
-                        "Specifying route prefix for a deployment is deprecated. "
-                        "Please specify route prefix at an application level in the "
-                        "Serve config instead."
-                    )
-
             # If the application logging config is not set, use the global logging
             # config.
             if app_config.logging_config is None and config.logging_config:
@@ -821,6 +838,8 @@ class ServeController:
             target_capacity=self._target_capacity,
             target_capacity_direction=self._target_capacity_direction,
         )
+
+        self.application_state_manager.save_checkpoint()
 
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
@@ -871,9 +890,7 @@ class ServeController:
         error messages, etc.
 
         Returns:
-            Dict that follows the format of the schema ServeInstanceDetails. Currently,
-            there is a value set for every field at all schema levels, except for the
-            route_prefix in the deployment_config for each deployment.
+            Dict that follows the format of the schema ServeInstanceDetails.
         """
 
         http_config = self.get_http_config()
@@ -903,16 +920,14 @@ class ServeController:
                 # serve.run, the app is in deleting state,
                 # or a checkpoint hasn't been set yet
                 deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
-        # fill in all info that should be shown to users. Currently, every field is set
-        # except for the route_prefix in the deployment_config of each deployment, since
-        # route_prefix is set instead in each application.
-        # Eventually we want to remove route_prefix from DeploymentSchema.
+        # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
@@ -921,9 +936,11 @@ class ServeController:
             proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.proxy_state_manager.get_proxy_details()
-            if self.proxy_state_manager
-            else None,
+            proxies=(
+                self.proxy_state_manager.get_proxy_details()
+                if self.proxy_state_manager
+                else None
+            ),
             applications=applications,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
@@ -1012,6 +1029,8 @@ class ServeController:
         """
         for name in names:
             self.application_state_manager.delete_app(name)
+
+        self.application_state_manager.save_checkpoint()
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment
@@ -1163,9 +1182,6 @@ class ServeControllerAvatar:
         except ValueError:
             self._controller = None
         if self._controller is None:
-            http_config = HTTPOptions()
-            logging_config = LoggingConfig()
-            http_config.port = http_proxy_port
             self._controller = ServeController.options(
                 num_cpus=0,
                 name=SERVE_CONTROLLER_NAME,
@@ -1177,8 +1193,8 @@ class ServeControllerAvatar:
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
-                http_config=http_config,
-                global_logging_config=logging_config,
+                http_options=HTTPOptions(port=http_proxy_port),
+                global_logging_config=LoggingConfig(),
             )
 
     def check_alive(self) -> None:

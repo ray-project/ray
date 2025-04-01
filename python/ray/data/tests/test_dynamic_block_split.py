@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -68,7 +68,7 @@ class RandomBytesDatasource(Datasource):
                             (self.num_rows_per_batch, self.row_size), dtype=np.uint8
                         )
                     }
-                    block = ArrowBlockAccessor.numpy_to_block(batch)
+                    block = ArrowBlockBuilder._table_from_pydict(batch)
                     yield block
                 else:
                     yield pd.DataFrame(

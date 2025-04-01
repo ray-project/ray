@@ -350,8 +350,8 @@ def test_metrics_agent_proxy_record_and_export_from_workers_complicated(
 
         # Make sure the rest of metrics are still there because new metrics
         # are reported.
-        for i in range(i + 2, len(metrics)):
-            assert get_metric(f"{namespace}_test_{i}", agent_port) is not None, i
+        for j in range(i + 2, len(metrics)):
+            assert get_metric(f"{namespace}_test_{j}", agent_port) is not None, j
         i += 2
 
 

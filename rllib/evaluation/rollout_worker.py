@@ -20,9 +20,7 @@ from typing import (
     Union,
 )
 
-import numpy as np
-import tree  # pip install dm_tree
-from gymnasium.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Space
 
 import ray
 from ray import ObjectRef
@@ -70,7 +68,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import Filter, NoFilter, get_filter
+from ray.rllib.utils.filter import Filter, NoFilter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework
@@ -98,8 +96,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
-    from ray.rllib.evaluation.episode import Episode
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -247,7 +244,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via EnvRunnerGroup) in case
-                `recreate_failed_env_runners=True` and one of the original workers (or
+                `restart_failed_env_runners=True` and one of the original workers (or
                 an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
@@ -329,7 +326,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
         self.env_context = env_context
         self.config: AlgorithmConfig = config
-        self.callbacks: DefaultCallbacks = self.config.callbacks_class()
+        self.callbacks: RLlibCallback = self.config.callbacks_class()
         self.recreated_worker: bool = recreated_worker
 
         # Setup current policy_mapping_fn. Start with the one from the config, which
@@ -528,7 +525,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 pol._update_model_view_requirements_from_init_state()
 
         if (
-            self.config.is_multi_agent()
+            self.config.is_multi_agent
             and self.env is not None
             and not isinstance(
                 self.env,
@@ -1001,6 +998,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
+    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
         """Returns the thus-far collected metrics from this worker's rollouts.
 
@@ -1089,7 +1087,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         action_space: Optional[Space] = None,
         config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
-        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
+        policy_mapping_fn=None,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
@@ -1221,7 +1219,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def set_policy_mapping_fn(
         self,
-        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, Any], PolicyID]] = None,
     ) -> None:
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 
@@ -1425,8 +1423,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         #  key in `state` entirely (will be part of the policies then).
         self.sync_filters(state["filters"])
 
-        connector_enabled = self.config.enable_connectors
-
         # Support older checkpoint versions (< 1.0), in which the policy_map
         # was stored under the "state" key, not "policy_states".
         policy_states = (
@@ -1448,9 +1444,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     )
                 else:
                     policy_spec = (
-                        PolicySpec.deserialize(spec)
-                        if connector_enabled or isinstance(spec, dict)
-                        else spec
+                        PolicySpec.deserialize(spec) if isinstance(spec, dict) else spec
                     )
                     self.add_policy(
                         policy_id=pid,
@@ -1795,11 +1789,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
 
-                if not merged_conf.enable_connectors:
-                    # If connectors are not enabled, rollout worker will handle
-                    # the running of these preprocessors.
-                    self.preprocessors[name] = preprocessor
-
             policy_spec.config = merged_conf
             policy_spec.observation_space = obs_space
 
@@ -1865,37 +1854,22 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         for name, policy_spec in sorted(policy_dict.items()):
             new_policy = self.policy_map[name]
-            if policy_spec.config.enable_connectors:
-                # Note(jungong) : We should only create new connectors for the
-                # policy iff we are creating a new policy from scratch. i.e,
-                # we should NOT create new connectors when we already have the
-                # policy object created before this function call or have the
-                # restoring states from the caller.
-                # Also note that we cannot just check the existence of connectors
-                # to decide whether we should create connectors because we may be
-                # restoring a policy that has 0 connectors configured.
-                if (
-                    new_policy.agent_connectors is None
-                    or new_policy.action_connectors is None
-                ):
-                    # TODO(jungong) : revisit this. It will be nicer to create
-                    # connectors as the last step of Policy.__init__().
-                    create_connectors_for_policy(new_policy, policy_spec.config)
-                maybe_get_filters_for_syncing(self, name)
-            else:
-                filter_shape = tree.map_structure(
-                    lambda s: (
-                        None
-                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                        else np.array(s.shape)
-                    ),
-                    new_policy.observation_space_struct,
-                )
-
-                self.filters[name] = get_filter(
-                    policy_spec.config.observation_filter,
-                    filter_shape,
-                )
+            # Note(jungong) : We should only create new connectors for the
+            # policy iff we are creating a new policy from scratch. i.e,
+            # we should NOT create new connectors when we already have the
+            # policy object created before this function call or have the
+            # restoring states from the caller.
+            # Also note that we cannot just check the existence of connectors
+            # to decide whether we should create connectors because we may be
+            # restoring a policy that has 0 connectors configured.
+            if (
+                new_policy.agent_connectors is None
+                or new_policy.action_connectors is None
+            ):
+                # TODO(jungong) : revisit this. It will be nicer to create
+                # connectors as the last step of Policy.__init__().
+                create_connectors_for_policy(new_policy, policy_spec.config)
+            maybe_get_filters_for_syncing(self, name)
 
     def _call_callbacks_on_create_policy(self):
         """Calls the on_create_policy callback for each policy in the policy map."""
