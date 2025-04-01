@@ -49,7 +49,109 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
-class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
+class MultiplexScheduleMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[
+            str, Set[ReplicaID]
+        ] = defaultdict(set)
+
+        # When there is no match for a multiplexed model id, we will try to fall back
+        # to all replicas immediately. This set is used to make sure we only fall back
+        # once for concurrent requests for the same model id.
+        # Whenever there is a match, we will remove the model id from this set.
+        self._multiplexed_model_id_fallback_match: Set[str] = set()
+
+    def update_replicas(self, replicas: List[RunningReplica]):
+        super().update_replicas(replicas)
+        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+
+        for r in replicas:
+            for model_id in r.multiplexed_model_ids:
+                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
+
+        self._multiplexed_model_id_to_replica_ids = (
+            new_multiplexed_model_id_to_replica_ids
+        )
+
+    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
+        """Get the set of replicas that have the fewest multiplexed models loaded."""
+        candidates = set()
+        sorted_replicas = sorted(
+            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
+        )
+        least_num_multiplexed_model_ids = math.inf
+        for replica in sorted_replicas:
+            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
+                candidates.add(replica.replica_id)
+                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+            else:
+                break
+
+        return candidates
+
+    @property
+    def multiplexed_matching_timeout(self) -> float:
+        return random.uniform(
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+        )
+
+    def apply_multiplex_scheduling(
+        self,
+        request_metadata: RequestMetadata,
+        multiplexed_start_matching_time: float,
+        tried_first_multiplexed_models: bool,
+        tried_fewest_multiplexed_models: bool,
+    ) -> Tuple[Set[ReplicaID], bool, bool]:
+        # TODO (genesu): add doc string and data structure for the return type
+        if (
+            time.time() - multiplexed_start_matching_time
+            < self.multiplexed_matching_timeout
+        ):
+            candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
+                request_metadata.multiplexed_model_id, None
+            )
+            if (
+                not candidate_replica_ids
+                and request_metadata.multiplexed_model_id
+                not in self._multiplexed_model_id_fallback_match
+            ) or tried_first_multiplexed_models:
+                # When there is no match for a multiplexed model id
+                # or when the replica(s) with the matching model id is busy,
+                # first try to fall back to replicas with the fewest models.
+                candidate_replica_ids = (
+                    self._get_replica_ids_with_fewest_multiplexed_models()
+                )
+                self._multiplexed_model_id_fallback_match.add(
+                    request_metadata.multiplexed_model_id
+                )
+            elif candidate_replica_ids:
+                self._multiplexed_model_id_fallback_match.discard(
+                    request_metadata.multiplexed_model_id
+                )
+                tried_first_multiplexed_models = True
+        elif not tried_fewest_multiplexed_models:
+            # After the `multiplexed_matching_timeout` is up, first try
+            # routing to replicas that have the fewest models loaded.
+            # We only try this once to avoid deterministically retrying on
+            # the same replicas repeatedly.
+            candidate_replica_ids = (
+                self._get_replica_ids_with_fewest_multiplexed_models()
+            )
+            tried_fewest_multiplexed_models = True
+        else:
+            # If the timeout is up, and we've already tried the candidates
+            # with the fewest models loaded, fall back to all replicas.
+            candidate_replica_ids = self._replica_id_set
+        return (
+            candidate_replica_ids,
+            tried_first_multiplexed_models,
+            tried_fewest_multiplexed_models,
+        )
+
+
+class PowerOfTwoChoicesReplicaScheduler(MultiplexScheduleMixin, ReplicaScheduler):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
     Requests are scheduled in FIFO order.
@@ -134,15 +236,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._colocated_replica_ids: DefaultDict[
             LocalityScope, Set[ReplicaID]
         ] = defaultdict(set)
-        self._multiplexed_model_id_to_replica_ids: DefaultDict[
-            str, Set[ReplicaID]
-        ] = defaultdict(set)
-
-        # When there is no match for a multiplexed model id, we will try to fallback
-        # to all replicas immediately. This set is used to make sure we only fallback
-        # once for concurrent requests for the same model id.
-        # Whenever there is a match, we will remove the the model id from this set.
-        self._multiplexed_model_id_fallback_match: Set[str] = set()
 
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
@@ -281,7 +374,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_replicas = {}
         new_replica_id_set = set()
         new_colocated_replica_ids = defaultdict(set)
-        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -304,8 +396,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
                     r.replica_id
                 )
-            for model_id in r.multiplexed_model_ids:
-                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
             replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
@@ -322,9 +412,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
         self._colocated_replica_ids = new_colocated_replica_ids
-        self._multiplexed_model_id_to_replica_ids = (
-            new_multiplexed_model_id_to_replica_ids
-        )
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
@@ -332,22 +419,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
-
-    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
-        """Get the set of replicas that have the fewest multiplexed models loaded."""
-        candidates = set()
-        sorted_replicas = sorted(
-            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
-        )
-        least_num_multiplexed_model_ids = math.inf
-        for replica in sorted_replicas:
-            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
-                candidates.add(replica.replica_id)
-                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
-            else:
-                break
-
-        return candidates
 
     async def choose_two_replicas_with_backoff(
         self,
@@ -376,14 +447,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             tried_same_az = False
             tried_same_node = False
 
-            multiplexed_start_matching_time = None
-            multiplexed_matching_timeout = random.uniform(
-                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
-            )
-            tried_fewest_multiplexed_models = False
-            tried_first_multiplexed_models = False
-
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
                 while len(self._replicas) == 0:
@@ -400,56 +463,24 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         extra={"log_to_stderr": False},
                     )
 
-                if multiplexed_start_matching_time is None:
-                    multiplexed_start_matching_time = time.time()
-
-                candidate_replica_ids = None
                 if (
                     request_metadata is not None
                     and request_metadata.multiplexed_model_id
                 ):
                     # Get candidates for multiplexed model ID.
-                    if (
-                        time.time() - multiplexed_start_matching_time
-                        < multiplexed_matching_timeout
-                    ):
-                        candidate_replica_ids = (
-                            self._multiplexed_model_id_to_replica_ids.get(
-                                request_metadata.multiplexed_model_id, None
-                            )
-                        )
-                        if (
-                            not candidate_replica_ids
-                            and request_metadata.multiplexed_model_id
-                            not in self._multiplexed_model_id_fallback_match
-                        ) or tried_first_multiplexed_models:
-                            # When there is no match for a multiplexed model id
-                            # or when the replica(s) with the matching model id is busy,
-                            # first try to fall back to replicas with the fewest models.
-                            candidate_replica_ids = (
-                                self._get_replica_ids_with_fewest_multiplexed_models()
-                            )
-                            self._multiplexed_model_id_fallback_match.add(
-                                request_metadata.multiplexed_model_id
-                            )
-                        elif candidate_replica_ids:
-                            self._multiplexed_model_id_fallback_match.discard(
-                                request_metadata.multiplexed_model_id
-                            )
-                        tried_first_multiplexed_models = True
-                    elif not tried_fewest_multiplexed_models:
-                        # After the `multiplexed_matching_timeout` is up, first try
-                        # routing to replicas that have the fewest models loaded.
-                        # We only try this once to avoid deterministically retrying on
-                        # the same replicas repeatedly.
-                        candidate_replica_ids = (
-                            self._get_replica_ids_with_fewest_multiplexed_models()
-                        )
-                        tried_fewest_multiplexed_models = True
-                    else:
-                        # If the timeout is up and we've already tried the candidates
-                        # with the fewest models loaded, fall back to all replicas.
-                        candidate_replica_ids = self._replica_id_set
+                    multiplexed_start_matching_time = time.time()
+                    tried_fewest_multiplexed_models = False
+                    tried_first_multiplexed_models = False
+                    (
+                        candidate_replica_ids,
+                        tried_first_multiplexed_models,
+                        tried_fewest_multiplexed_models,
+                    ) = self.apply_multiplex_scheduling(
+                        request_metadata=request_metadata,
+                        multiplexed_start_matching_time=multiplexed_start_matching_time,
+                        tried_first_multiplexed_models=tried_first_multiplexed_models,
+                        tried_fewest_multiplexed_models=tried_fewest_multiplexed_models,
+                    )
                     should_backoff = True
                 elif (
                     self._prefer_local_node_routing
@@ -642,8 +673,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
                 # Include replicas whose queues are full as not in the cache so we will
-                # actively probe them. Otherwise we may end up in "deadlock" until their
-                # cache entries expire.
+                # actively probe them. Otherwise, we may end up in "deadlock" until
+                # their cache entries expire.
                 if queue_len is None or queue_len >= r.max_ongoing_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:

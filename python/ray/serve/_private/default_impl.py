@@ -136,18 +136,14 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
-def create_router(
-    handle_id: str,
+def create_scheduler(
+    actor_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-) -> Router:
-    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
-    from ray.serve.context import _get_global_client
-
-    actor_id = get_current_actor_id()
+    is_inside_ray_client_context: bool,
+):
+    # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
-    controller_handle = _get_global_client()._controller
-    is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
         deployment_id,
@@ -163,6 +159,28 @@ def create_router(
         # Streaming ObjectRefGenerators are not supported in Ray Client
         use_replica_queue_len_cache=not is_inside_ray_client_context,
         create_replica_wrapper_func=lambda r: RunningReplica(r),
+    )
+    return replica_scheduler
+
+
+def create_router(
+    handle_id: str,
+    deployment_id: DeploymentID,
+    handle_options: InitHandleOptions,
+) -> Router:
+    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
+    from ray.serve.context import _get_global_client
+
+    actor_id = get_current_actor_id()
+
+    controller_handle = _get_global_client()._controller
+    is_inside_ray_client_context = inside_ray_client_context()
+
+    replica_scheduler = create_scheduler(
+        actor_id,
+        deployment_id,
+        handle_options,
+        is_inside_ray_client_context,
     )
 
     return SingletonThreadRouter(

@@ -163,7 +163,7 @@ class DeploymentConfig(BaseModel):
     is_cross_language: bool = False
 
     # This flag is used to let controller know which language does
-    # the deploymnent use.
+    # the deployment use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = Field(
@@ -174,6 +174,11 @@ class DeploymentConfig(BaseModel):
     logging_config: Optional[dict] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
+
+    replica_scheduler_class: Optional[str] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
     # Contains the names of deployment options manually set by the user
