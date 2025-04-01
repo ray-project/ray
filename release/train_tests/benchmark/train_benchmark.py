@@ -39,6 +39,8 @@ def train_fn_per_worker(config):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
+
     benchmark_config: BenchmarkConfig = cli_to_config()
     logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 

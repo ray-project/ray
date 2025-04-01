@@ -21,7 +21,7 @@ class TrainLoopRunner:
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
 
-        self._setup()
+        self.setup()
 
         # Training progress state.
         self._train_batch_idx: int = 0
@@ -87,7 +87,7 @@ class TrainLoopRunner:
                 with self._metrics[f"{prefix}/iter_batch"].timer():
                     yield next(dataloader_iter)
 
-        return wrapped_dataloader
+        return wrapped_dataloader()
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
@@ -311,7 +311,7 @@ class TrainLoopRunner:
 
 
 class VanillaTorchRunner(TrainLoopRunner):
-    def _setup(self):
+    def setup(self):
         model = self.factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
         self.loss_fn = self.factory.get_loss_fn()
