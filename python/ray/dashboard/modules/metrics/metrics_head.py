@@ -24,11 +24,11 @@ from ray.dashboard.modules.metrics.templates import (
     GRAFANA_INI_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
 )
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 
@@ -77,9 +77,9 @@ class PrometheusQueryError(Exception):
         super().__init__(self.message)
 
 
-class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class MetricsHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -199,10 +199,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 message="prometheus healthcheck failed.",
                 reason=str(e),
             )
-
-    @staticmethod
-    def is_minimal_module():
-        return False
 
     def _create_default_grafana_configs(self):
         """
@@ -375,7 +371,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
             )
 
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
 
