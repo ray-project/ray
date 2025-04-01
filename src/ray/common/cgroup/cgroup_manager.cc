@@ -22,11 +22,11 @@ BaseCgroupSetup &GetCgroupSetup(bool enable_resource_isolation) {
   if (enable_resource_isolation) {
     // TODO(hjiang): Enable real cgroup setup after PR:
     // https://github.com/ray-project/ray/pull/49941
-    static auto noop_cgroup_setup = std::make_unique<NoopCgroupSetup>();
-    return *noop_cgroup_setup;
+    static NoopCgroupSetup noop_cgroup_setup{};
+    return noop_cgroup_setup;
   }
-  static auto noop_cgroup_setup = std::make_unique<NoopCgroupSetup>();
-  return *noop_cgroup_setup;
+  static NoopCgroupSetup noop_cgroup_setup{};
+  return noop_cgroup_setup;
 }
 
 }  // namespace ray
