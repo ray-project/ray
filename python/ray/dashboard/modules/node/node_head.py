@@ -35,7 +35,7 @@ from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
 )
-from ray.dashboard.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.utils import async_loop_forever
@@ -710,6 +710,31 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             detail=actors[actor_id],
         )
 
+    @routes.get("/test/dump")
+    async def dump(self, req) -> aiohttp.web.Response:
+        """
+        Dump all data from datacenter. This is used for testing purpose only.
+        """
+        key = req.query.get("key")
+        if key is None:
+            all_data = {
+                k: dict(v)
+                for k, v in DataSource.__dict__.items()
+                if not k.startswith("_")
+            }
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message="Fetch all data from datacenter success.",
+                **all_data,
+            )
+        else:
+            data = dict(DataSource.__dict__.get(key))
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message=f"Fetch {key} from datacenter success.",
+                **{key: data},
+            )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
@@ -717,6 +742,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._update_node_physical_stats(),
             self._update_actors(),
             self._cleanup_actors(),
+            DataOrganizer.purge(),
+            DataOrganizer.organize(self._node_executor),
         )
 
     @staticmethod
