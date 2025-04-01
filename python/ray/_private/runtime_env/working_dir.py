@@ -1,10 +1,12 @@
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
 
 import ray._private.ray_constants as ray_constants
+import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -124,11 +126,13 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     # Note working_dir is not following the priority order of other plugins. Instead
     # it's specially treated to happen before all other plugins.
     priority = 5
+    working_dir_placeholder = "$WORKING_DIR_PLACEHOLDER"
 
     def __init__(
         self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
     ):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
+        self._working_dirs = os.path.join(resources_dir, "working_dirs")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
 
@@ -188,13 +192,89 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
                 "not exist on the cluster. Something may have gone wrong while "
                 "downloading or unpacking the working_dir."
             )
+        # Use placeholder here and will replace it by `pre_worker_startup`.
+        context.working_dir = WorkingDirPlugin.working_dir_placeholder
+        working_dir = context.working_dir
+        context.symlink_paths_to_working_dir.append(str(local_dir))
+        context.env_vars[runtime_env_consts.RAY_WORKING_DIR] = working_dir
 
         if not _WIN32:
-            context.command_prefix += ["cd", str(local_dir), "&&"]
+            context.command_prefix += [
+                "cd",
+                str(working_dir),
+                "&&",
+            ]
         else:
             # Include '/d' incase temp folder is on different drive than Ray install.
-            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
-        set_pythonpath_in_context(python_path=str(local_dir), context=context)
+            context.command_prefix += [
+                "cd",
+                "/d",
+                str(working_dir),
+                "&&",
+            ]
+        set_pythonpath_in_context(python_path=str(working_dir), context=context)
+
+    async def pre_worker_startup(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        worker_id: str,
+        job_id: str,
+        logger: logging.Logger = default_logger,
+    ) -> None:
+        if not runtime_env.working_dir():
+            return
+        logger.info(f"Creating working dir for worker {worker_id}, job id {job_id}")
+        working_dir = os.path.join(self._working_dirs, worker_id)
+        os.makedirs(working_dir, exist_ok=True)
+        context.working_dir = working_dir
+        # Replace the placeholder with the real working dir.
+        for i, prefix in enumerate(context.command_prefix):
+            context.command_prefix[i] = prefix.replace(
+                WorkingDirPlugin.working_dir_placeholder, working_dir
+            )
+        for k, v in context.env_vars.items():
+            context.env_vars[k] = v.replace(
+                WorkingDirPlugin.working_dir_placeholder, working_dir
+            )
+        # Add symbol links to the working dir.
+        # Deduplicate, as linking duplicate file will raise FileExistsError
+        linked_dir = set()
+        for symlink_dir in context.symlink_paths_to_working_dir:
+            for name in os.listdir(symlink_dir):
+                src_path = os.path.join(symlink_dir, name)
+                link_path = os.path.join(working_dir, name)
+                if src_path not in linked_dir:
+                    if os.path.isfile(src_path) and src_path.endswith("jar"):
+                        # Hard link jar files only
+                        logger.info(
+                            f"Creating hardlink from {src_path} to {link_path}."
+                        )
+                        os.link(src_path, link_path)
+                    else:
+                        logger.info(f"Creating symlink from {src_path} to {link_path}.")
+                        os.symlink(src_path, link_path)
+                    linked_dir.add(src_path)
+
+    async def post_worker_exit(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        worker_id: str,
+        logger: logging.Logger = default_logger,
+    ) -> None:
+        if not runtime_env.working_dir():
+            return
+        # TODO(Jacky): Cache working dirs for debugging.
+        if runtime_env_consts.DISABLE_WORKING_DIR_GC:
+            logger.info(
+                f"Working directory GC has been disabled. The dir {worker_id} "
+                "won't be deleted."
+            )
+            return
+        logger.info(f"Deleting working dir for worker {worker_id}")
+        working_dir = os.path.join(self._working_dirs, worker_id)
+        # TODO(Jacky): Use async method to remove, such as aiofiles.os.removedirs
+        shutil.rmtree(working_dir)
 
     @contextmanager
     def with_working_dir_env(self, uri):

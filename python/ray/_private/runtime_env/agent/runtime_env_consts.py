@@ -1,3 +1,4 @@
+import os
 import ray._private.ray_constants as ray_constants
 
 RUNTIME_ENV_RETRY_TIMES = ray_constants.env_integer("RUNTIME_ENV_RETRY_TIMES", 3)
@@ -12,9 +13,17 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = ray_constants.env_integer(
     "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
 )
 
+# Disable working dir GC or not
+DISABLE_WORKING_DIR_GC = ray_constants.env_bool(
+    "RAY_RUNTIME_ENV_DISABLE_WORKING_DIR_GC", False
+)
+
 RUNTIME_ENV_LOG_FILENAME = "runtime_env.log"
 RUNTIME_ENV_AGENT_PORT_PREFIX = "RUNTIME_ENV_AGENT_PORT_PREFIX:"
 RUNTIME_ENV_AGENT_LOG_FILENAME = "runtime_env_agent.log"
 RUNTIME_ENV_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
     "RAY_RUNTIME_ENV_AGENT_CHECK_PARENT_INTERVAL_S"  # noqa
 )
+
+# Make the `RAY_WORKING_DIR` configurable
+RAY_WORKING_DIR = os.environ.get("RAY_WORKING_DIR", "RAY_WORKING_DIR")

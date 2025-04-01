@@ -54,6 +54,7 @@ constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
+constexpr char kEnvVarKeyWorkerId[] = "RAY_WORKER_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 
 // Environment variable key for virtual cluster ID

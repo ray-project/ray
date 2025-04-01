@@ -236,6 +236,11 @@ class ProxyManager:
             serialized_runtime_env=serialized_runtime_env,
             runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
+            # TODO(Jacky): Improve this worker id.
+            # NOTE(Jcaky): This is a workaround for the issue that all the `worker id`s
+            # are the same, and the value of worker_id will be optimized in the future.
+            # If an error occurs, please report `issues` to us.
+            worker_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
             source_process="client_server",
         )
 

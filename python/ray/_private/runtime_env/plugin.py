@@ -100,6 +100,48 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
+    async def pre_worker_startup(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        worker_id: str,
+        job_id: str,
+        logger: logging.Logger,
+    ) -> None:
+        """Perform actions before the worker startup process begins.
+
+        This method can be used to prepare the environment before starting the worker.
+        You might use this to set up necessary configurations, environment variables,
+        or additional resources that workers need before commencing their tasks.
+
+        Args:
+            runtime_env: The RuntimeEnv object.
+            context: Auxiliary information supplied by Ray.
+            worker_id: The identifier of the worker.
+            job_id: The identifier of the job.
+            logger: A logger to log messages during the pre-worker startup process.
+        """
+        return
+
+    async def post_worker_exit(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        worker_id: str,
+        logger: logging.Logger,
+    ) -> None:
+        """Perform cleanup actions after a worker has finished its execution.
+
+        This method can be used to clean up the environment after the worker has completed its tasks.
+        You might use this to free up resources, remove temporary files, or other post-execution
+        housekeeping tasks to maintain a clean state.
+
+        Args:
+            runtime_env: The RuntimeEnv object.
+            worker_id: The identifier of the worker.
+            logger: A logger to log messages during the post-worker exit process.
+        """
+        return
+
 
 class PluginSetupContext:
     def __init__(
