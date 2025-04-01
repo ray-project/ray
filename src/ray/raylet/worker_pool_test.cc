@@ -788,6 +788,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   // Entry point
   expected_command.push_back("MainClass");
   expected_command.push_back("--language=JAVA");
+  expected_command.push_back("--enable-resource-isolation=false");
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);
 }

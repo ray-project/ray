@@ -331,11 +331,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
-
-  // Add resource isolation flag.
-  worker_command_args.emplace_back(absl::StrFormat(
-      "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
-
   for (const auto &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       worker_command_args.insert(
@@ -450,6 +445,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-preload-modules=" +
                                   serialized_preload_python_modules);
   }
+
+  worker_command_args.emplace_back(absl::StrFormat(
+      "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
 
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
