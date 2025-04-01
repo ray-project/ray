@@ -254,7 +254,7 @@ class Stats:
                     isinstance(throughput, (int, float))
                     and not isinstance(throughput, bool)
                 )
-                else 0.0,
+                else None,
                 reduce="mean",
                 ema_coeff=throughput_ema_coeff,
                 window=None,

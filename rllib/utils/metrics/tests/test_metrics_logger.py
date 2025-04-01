@@ -246,7 +246,9 @@ def test_has_throughput_property(logger):
     # Create a Stats object with throughput tracking
     logger.log_value("with_throughput", 10, reduce="sum", with_throughput=True)
     check(logger.peek("with_throughput"), 10)
-    check(logger.throughputs("with_throughput"), 0)  # Initial throughput should be 0
+    check(
+        logger.throughputs("with_throughput"), np.nan
+    )  # Initial throughput should be np.nan
 
     # Create a Stats object without throughput tracking
     logger.log_value("without_throughput", 10, reduce="sum")

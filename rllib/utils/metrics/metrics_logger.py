@@ -249,7 +249,7 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
-        throughput_ema_coeff: float = 0.05,
+        throughput_ema_coeff: Optional[float] = None,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -354,7 +354,7 @@ class MetricsLogger:
                 estimate. The current throughput estimate of a key can be obtained
                 through: <MetricsLogger>.throughputs([key]).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
-                Only used if with_throughput=True. Defaults to 0.05.
+                Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -364,6 +364,9 @@ class MetricsLogger:
         # Set default ema_coeff to 0.01 if reduce is "mean" and no window is provided
         if reduce == "mean" and window is None and ema_coeff is None:
             ema_coeff = 0.01
+
+        if with_throughput and throughput_ema_coeff is None:
+            throughput_ema_coeff = 0.05
 
         self._check_tensor(key, value)
 
@@ -430,7 +433,7 @@ class MetricsLogger:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         with_throughput: bool = False,
-        throughput_ema_coeff: float = 0.05,
+        throughput_ema_coeff: Optional[float] = None,
     ) -> None:
         """Logs all leafs (`Stats` or simple values) of a (nested) dict to this logger.
 
@@ -513,13 +516,16 @@ class MetricsLogger:
                 estimate. The current throughput estimate of a key can be obtained
                 through: <MetricsLogger>.throughputs([key]).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
-                Only used if with_throughput=True. Defaults to 0.05.
+                Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
         assert isinstance(
             stats_dict, dict
         ), f"`stats_dict` ({stats_dict}) must be dict!"
 
         prefix_key = force_tuple(key)
+
+        if with_throughput and throughput_ema_coeff is None:
+            throughput_ema_coeff = 0.05
 
         def _map(path, stat_or_value):
             extended_key = prefix_key + force_tuple(tree.flatten(path))

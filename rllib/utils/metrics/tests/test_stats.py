@@ -418,7 +418,7 @@ def test_basic_throughput():
     # First push - throughput should be 0 initially
     stats.push(1)
     assert stats.peek() == 1
-    assert stats.throughput == 0.0
+    assert stats.throughput == np.nan
 
     # Wait and push again to measure throughput
     time.sleep(0.1)
@@ -464,7 +464,7 @@ def test_throughput_error_conditions():
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
     with pytest.raises(ValueError):
-        non_throughput_stats.throughput
+        non_throughput_stats.throughput  # noqa: B018
 
 
 if __name__ == "__main__":
