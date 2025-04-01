@@ -39,8 +39,6 @@ class DataSource:
 
 
 class DataOrganizer:
-    head_node_ip = None
-
     @staticmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_PURGING_INTERVAL)
     async def purge():
