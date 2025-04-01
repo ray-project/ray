@@ -309,7 +309,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   // For milestone-1, there's no requested and limit set for each task.
-  RAY_CHECK_EQ(ctx.max_memory, 0);
+  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(0));
   return ApplyCgroupForDefaultAppCgroup(ctx);
 }
 
