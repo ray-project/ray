@@ -311,16 +311,16 @@ steps:
     tags: core_cpp
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
-        --build-type ubsan --except-tags no_ubsan
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+        --build-type ubsan --except-tags no_ubsan,cgroup
         --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup
-        --build-type tsan-clang --except-tags no_tsan
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+        --build-type tsan-clang --except-tags no_tsan,cgroup
         --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: flaky cpp tests"
