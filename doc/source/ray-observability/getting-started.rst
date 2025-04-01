@@ -421,18 +421,22 @@ Flow Insight View
 
 The Flow Insight view provides a powerful visualization of your Ray application's
 execution flow, helping you understand the relationships between actors, tasks, and
-data transfers in your distributed application. This view offers both logical and
-physical perspectives of your application's execution, making it easier to analyze
-performance, identify bottlenecks, and optimize your Ray workloads.
+data transfers in your distributed application. This view offers logical view, 
+physical view, distributed stack and flame graph of your application's execution,
+making it easier to analyze performance, identify bottlenecks, and optimize your Ray workloads.
 
 Key Features
 ~~~~~~~~~~~~
 
-**Dual Visualization Modes:**
+**Four Visualization Modes:**
 
 - **Logical View:** Displays the call graph between functions and actors, showing the control flow and data dependencies in your application.
 
 - **Physical View:** Shows the physical distribution of actors across nodes with their resource usage and placement groups.
+
+- **Distrubuted Stack View**: Offers a unified call stack visualization across your distributed system, similar to how developers use pstack for single-process applications.
+
+- **Flame Graph View:** Provides a hierarchical visualization of execution time across your distributed application.
 
 **Interactive Exploration:**
 
@@ -467,7 +471,7 @@ Accessing Flow Insight
 ~~~~~~~~~~~~~~~~~~~~~~
 
 
-.. image:: ./images/flow-insight-entry.jpg
+.. image:: ./images/flow-insight-view-entry.gif
     :align: center
     :alt: Flow Insight View screenshot
 
@@ -480,7 +484,7 @@ Logical View
 ~~~~~~~~~~~~
 
 
-.. image:: ./images/flow-insight-logical-view.jpg
+.. image:: ./images/flow-insight-view-logical.gif
     :align: center
     :alt: Flow Insight View screenshot
 
@@ -500,7 +504,7 @@ Physical View
 ~~~~~~~~~~~~~
 
 
-.. image:: ./images/flow-insight-physical-view.jpg
+.. image:: ./images/flow-insight-view-physical.gif
     :align: center
     :alt: Flow Insight View screenshot
 
@@ -564,11 +568,77 @@ In the Flow Insight physical view, you can then select the context key (e.g., "r
 to color-code actors based on their context values, making it easy to identify actors with
 specific roles or states.
 
+Distributed Flame Graph
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: ./images/flow-insight-view-flame.gif
+    :align: center
+    :alt: Distributed Flame Graph screenshot
+
+The Distributed Flame Graph is an advanced visualization tool that automatically collects and aggregates
+execution time data from all components across your entire Ray job lifecycle. While traditional flame
+graphs are limited to profiling performance on a single machine, Ray's Distributed Flame Graph provides
+a unified view of performance across your entire distributed system.
+
+Key features of the Distributed Flame Graph:
+
+- **System-wide Performance View:** Visualizes execution time across all distributed components
+- **Call Hierarchy:** Shows parent-child relationships between function calls
+- **Time Distribution:** Block width represents the proportion of time spent in each function
+- **Performance Hotspots:** Easily identify which components consume the most execution time
+
+The flame graph is particularly valuable for performance optimization as it allows you to:
+
+- Identify which distributed components are consuming the most time
+- Understand call relationships between components
+- Detect unexpected performance bottlenecks
+- Compare expected vs. actual execution time distribution
+
+For example, the flame graph might reveal that a particular process is consuming a long
+execution time, representing the majority of your application's runtime, helping you focus your
+optimization efforts on the most impactful components.
+
+To access the Distributed Flame Graph, select "Flame" in the view type selector in the Flow Insight
+visualization after clicking on the "Insight" link for a specific job in the Jobs view.
+
+Distributed Stack (DStack)
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: ./images/flow-insight-view-dstack.gif
+    :align: center
+    :alt: Distributed Stack screenshot
+
+The Distributed Stack (DStack) view provides a unified call stack visualization across your entire
+Ray cluster. Similar to how developers use `pstack` to diagnose issues in single-process applications,
+DStack extends this capability to distributed systems, automatically collecting and visualizing call
+relationships across all actors and tasks in your Ray cluster.
+
+Key features of DStack:
+
+- **Zero-Code Integration:** Works automatically with native Ray API code without any modifications
+- **Global System View:** See the entire distributed system's call stack in a single interface
+- **Dependency Tracking:** Identify call dependencies between components across nodes
+- **Blockage Detection:** Quickly locate blocked components and understand why they're stuck
+
+DStack is particularly valuable for debugging complex distributed applications by helping you:
+
+- Understand the current state of all distributed components at a glance
+- Trace execution paths across multiple nodes
+- Detect deadlocks and performance bottlenecks in distributed interactions
+- Identify which specific components are blocking progress and why
+
+This capability is especially powerful for troubleshooting complex distributed applications like
+reinforcement learning systems, where traditional debugging approaches would require manually
+logging into individual nodes and examining processes one by one.
+
+To access the DStack view, select "Call Stack" in the view type selector in the Flow Insight
+visualization after clicking on the "Insight" link for a specific job in the Jobs view.
+
+
 Info Card
 ~~~~~~~~~
 
-When you click on an element in either the logical or physical view, the info card displays
-detailed information about that element:
+When you click on an element in each view, the info card displays detailed information about that element:
 
 - **For Actors:**
   - Basic information (name, ID, language)
