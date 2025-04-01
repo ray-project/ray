@@ -8,9 +8,6 @@ applications:
           accelerator_type: A10G
           engine_kwargs:
             max_model_len: 8192
-          runtime_env:
-            env_vars:
-              VLLM_USE_V1: "0"
     import_path: ray.serve.llm:build_openai_app
     name: llm-endpoint
     route_prefix: /

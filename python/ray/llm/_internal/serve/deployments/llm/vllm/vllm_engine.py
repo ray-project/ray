@@ -317,10 +317,11 @@ class VLLMEngine:
         # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
         # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
         if not envs.is_set("VLLM_USE_V1"):
-            raise AssertionError(
-                "Starting from Ray 2.45, VLLM_USE_V1 environment variable must be "
-                "set to prevent undetermined behavior"
+            logger.warning(
+                "VLLM_USE_V1 environment variable is not set, using vLLM v0 as default. "
+                "Later we may switch default to use v1 once vLLM v1 is mature."
             )
+            envs.set_vllm_use_v1(False)
         if not envs.VLLM_USE_V1:
             return await self._start_engine_v0()
         return await self._start_engine_v1()
@@ -378,6 +379,11 @@ class VLLMEngine:
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=placement_group,
                 placement_group_capture_child_tasks=True,
+            ),
+            runtime_env=dict(
+                env_vars=dict(
+                    VLLM_USE_V1="0",
+                ),
             ),
         )(_EngineBackgroundProcess)
         # Run the process in the background
