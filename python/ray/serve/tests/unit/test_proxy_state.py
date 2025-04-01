@@ -662,8 +662,8 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
         assert proxy_state.status == ProxyStatus.HEALTHY
 
 
-def test_proxy_state_manager_get_target_info(all_nodes):
-    """Test the get_target_info method on ProxyStateManager."""
+def test_proxy_state_manager_get_targets(all_nodes):
+    """Test the get_targets method on ProxyStateManager."""
     manager, cluster_node_info_cache = _create_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
@@ -677,12 +677,12 @@ def test_proxy_state_manager_get_target_info(all_nodes):
 
     manager._proxy_states[all_nodes[-1][0]].try_update_status(ProxyStatus.DRAINED)
 
-    targets = manager.get_target_info(RequestProtocol.HTTP)
+    targets = manager.get_targets(RequestProtocol.HTTP)
     assert len(targets) == len(all_nodes) - 1
     assert targets[0].ip == "mock_node_ip"
     assert targets[0].port == 8000
 
-    targets = manager.get_target_info(RequestProtocol.GRPC)
+    targets = manager.get_targets(RequestProtocol.GRPC)
     assert len(targets) == 0
 
     with pytest.raises(ValueError):
