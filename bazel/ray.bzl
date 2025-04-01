@@ -16,7 +16,6 @@ COPTS_WITHOUT_LOG = select({
         "-Wconversion-null",
         "-Wno-misleading-indentation",
         "-Wimplicit-fallthrough",
-        "-fstack-protector-strong",
     ],
 }) + select({
     "//:clang-cl": [
