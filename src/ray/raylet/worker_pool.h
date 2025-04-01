@@ -255,8 +255,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
-  /// \param enable_resource_isolation Whether resource isolation is enabled for the core
-  /// worker.
+  /// \param enable_resource_isolation If true, core worker enables resource isolation by
+  /// adding itself into appropriate cgroup.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
              std::string node_address,
