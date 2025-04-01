@@ -101,11 +101,12 @@ def get_devices() -> List["torch.device"]:
     Gets the torch devices configured for this process.
 
     This method assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
+    superset of the `ray.get_gpu_ids()`. It does NOT assume
+    `CUDA_VISIBLE_DEVICES` is set to a single GPU ID.
 
     Returns:
         A list of torch devices allocated for the current worker.
-        If no devices are assigned, then it returns a list with
+        If no CUDA devices are assigned, then it returns a list with
         a single CPU device.
     """
 
@@ -117,7 +118,6 @@ def get_devices() -> List["torch.device"]:
 
     device_ids = []
 
-    assert len(gpu_ids) > 0, "No GPUs found"
     cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if cuda_visible_str and cuda_visible_str != "NoDevFiles":
         cuda_visible_list = cuda_visible_str.split(",")
