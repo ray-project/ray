@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import itertools
 import os
 import shutil
@@ -8,7 +9,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version
-from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data import Schema
@@ -51,22 +51,20 @@ def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-            lazy_fixture("s3_server"),
-        ),
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
+        ("s3_fs_with_space", "s3_path_with_space", "s3_server"),
+        ("s3_fs_with_special_chars", "s3_path_with_special_chars", "s3_server"),
     ],
 )
-def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_csv_read(request, ray_start_regular_shared, fs, data_path, endpoint_url):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -215,9 +213,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
 
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
-def test_csv_ignore_missing_paths(
-    ray_start_regular_shared, local_path, ignore_missing_paths
-):
+def test_csv_ignore_missing_paths(ray_start_regular_shared, local_path, ignore_missing_paths):
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(local_path, "test1.csv")
@@ -240,17 +236,18 @@ def test_csv_ignore_missing_paths(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-def test_csv_read_meta_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-):
+def test_csv_read_meta_provider(request, ray_start_regular_shared, fs, data_path, endpoint_url):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -284,17 +281,18 @@ def test_csv_read_meta_provider(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-def test_csv_read_many_files_basic(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-):
+def test_csv_read_many_files_basic(request, ray_start_regular_shared, fs, data_path, endpoint_url):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -319,19 +317,20 @@ def test_csv_read_many_files_basic(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
 def test_csv_read_many_files_partitioned(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_partitioned_df,
-    assert_base_partitioned_ds,
+    request, ray_start_regular_shared, fs, data_path, endpoint_url, write_partitioned_df, assert_base_partitioned_ds
 ):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -388,17 +387,18 @@ def test_csv_read_many_files_partitioned(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-def test_csv_read_many_files_diff_dirs(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-):
+def test_csv_read_many_files_diff_dirs(request, ray_start_regular_shared, fs, data_path, endpoint_url):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -433,24 +433,25 @@ def test_csv_read_many_files_diff_dirs(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
+            "s3_server",
         ),
     ],
 )
 def test_csv_read_partitioned_hive_implicit(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
+    request, ray_start_regular_shared, fs, data_path, endpoint_url, write_base_partitioned_df, assert_base_partitioned_ds
 ):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     storage_options = (
         {}
         if endpoint_url is None
@@ -478,24 +479,25 @@ def test_csv_read_partitioned_hive_implicit(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
         (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-            lazy_fixture("s3_server"),
+            "s3_fs_with_anonymous_crendential",
+            "s3_path_with_anonymous_crendential",
+            "s3_server",
         ),
     ],
 )
 def test_csv_read_partitioned_styles_explicit(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
+    request, ray_start_regular_shared, fs, data_path, endpoint_url, write_base_partitioned_df, assert_base_partitioned_ds
 ):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     storage_options = (
         {}
         if endpoint_url is None
@@ -531,23 +533,23 @@ def test_csv_read_partitioned_styles_explicit(
 
 
 @pytest.mark.parametrize(
+    "style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]
+)
+@pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_csv_read_partitioned_with_filter(
-    style,
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
+def test_csv_read_partitioned_with_filter(request, style, ray_start_regular_shared, fs, data_path, endpoint_url, write_base_partitioned_df, assert_base_partitioned_ds):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     storage_options = (
         {}
         if endpoint_url is None
@@ -588,23 +590,23 @@ def test_csv_read_partitioned_with_filter(
 
 
 @pytest.mark.parametrize(
+    "style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]
+)
+@pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
-def test_csv_read_partitioned_with_filter_multikey(
-    style,
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
+def test_csv_read_partitioned_with_filter_multikey(request, style, ray_start_regular_shared, fs, data_path, endpoint_url, write_base_partitioned_df, assert_base_partitioned_ds):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     storage_options = (
         {}
         if endpoint_url is None
@@ -653,12 +655,18 @@ def test_csv_read_partitioned_with_filter_multikey(
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (None, "local_path", None),
+        ("local_fs", "local_path", None),
+        ("s3_fs", "s3_path", "s3_server"),
     ],
 )
-def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
+def test_csv_write(request, ray_start_regular_shared, fs, data_path, endpoint_url):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
+    if endpoint_url is not None and isinstance(endpoint_url, str):
+        endpoint_url = request.getfixturevalue(endpoint_url)
     if endpoint_url is None:
         storage_options = {}
     else:
@@ -690,12 +698,16 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 @pytest.mark.parametrize(
     "fs,data_path",
     [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (None, "local_path"),
+        ("local_fs", "local_path"),
+        ("s3_fs", "s3_path"),
     ],
 )
-def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
+def test_csv_roundtrip(request, ray_start_regular_shared, fs, data_path):
+    if fs is not None and isinstance(fs, str):
+        fs = request.getfixturevalue(fs)
+    if data_path is not None and isinstance(data_path, str):
+        data_path = request.getfixturevalue(data_path)
     # Single block.
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.data.from_pandas([df])
