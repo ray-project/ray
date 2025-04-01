@@ -242,7 +242,8 @@ int main(int argc, char *argv[]) {
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
-  boost::asio::io_service::work main_work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      main_service_work(main_service.get_executor());
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
