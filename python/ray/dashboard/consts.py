@@ -91,5 +91,5 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
 
-# Time to wait for the subprocess module to be ready.
-SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = 5.0
+# Maximum time to wait for the subprocess module to be ready.
+SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = 30.0
