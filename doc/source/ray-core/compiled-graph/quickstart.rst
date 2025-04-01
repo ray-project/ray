@@ -5,7 +5,7 @@ Hello World
 -----------
 This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
-.. testcode::
+.. code-block:: bash
 
     pip install "ray[cgraph]"
     
@@ -15,36 +15,21 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 First, define a simple actor that echoes its argument.
 
-.. testcode::
-
-    import ray
-
-    @ray.remote
-    class SimpleActor:
-    def echo(self, msg):
-        return msg
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __simple_actor_start__
+    :end-before: __simple_actor_end__
 
 Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ray.get`` to execute tasks on the actor.
 
-.. testcode::
-    import time
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __ray_core_usage_start__
+    :end-before: __ray_core_usage_end__
 
-    a = SimpleActor.remote()
+.. code-block::
 
-    # warmup
-    for _ in range(5):
-        msg_ref = a.echo.remote("hello")
-        ray.get(msg_ref)
-
-    start = time.perf_counter()
-    msg_ref = a.echo.remote("hello")
-    ray.get(msg_ref)
-    end = time.perf_counter()
-    print(f"Execution takes {(end - start) * 1000 * 1000} us")
-
-.. testoutput::
-
-    Execution takes 969.0364822745323 us
+  Execution takes 969.0364822745323 us
 
 Now, create an equivalent program using Ray Compiled Graph. 
 First, define a graph to execute using classic Ray Core, without any compilation.
@@ -60,50 +45,22 @@ Note 3 key differences with the classic Ray Core APIs:
 Here, define a graph and execute it.
 Note that there is **no** compilation happening here. This uses the same execution backend as the preceding example:
 
-.. testcode::
-
-    import ray.dag
-    with ray.dag.InputNode() as inp:
-        # Note that it uses `bind` instead of `remote`.
-        # This returns a ray.dag.DAGNode, instead of the usual ray.ObjectRef.
-        dag = a.echo.bind(inp)
-
-    # warmup
-    for _ in range(5):
-        msg_ref = dag.execute("hello")
-        ray.get(msg_ref)
-
-    start = time.perf_counter()
-    # `dag.execute` runs the DAG and returns an ObjectRef. You can use `ray.get` API.
-    msg_ref = dag.execute("hello")
-    ray.get(msg_ref)
-    end = time.perf_counter()
-    print(f"Execution takes {(end - start) * 1000 * 1000} us")
-
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __dag_usage_start__
+    :end-before: __dag_usage_end__
 
 Next, compile the ``dag`` using the :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>` API.
 The graph uses the same APIs for execution:
 
-.. testcode::
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_usage_start__
+    :end-before: __cgraph_usage_end__
 
-    dag = dag.experimental_compile()
+.. code-block::
 
-    # warmup
-    for _ in range(5):
-        msg_ref = dag.execute("hello")
-        ray.get(msg_ref)
-
-    start = time.perf_counter()
-    # `dag.execute` runs the DAG and returns CompiledDAGRef. Similar to
-    # ObjectRefs, you can use the ray.get API.
-    msg_ref = dag.execute("hello")
-    ray.get(msg_ref)
-    end = time.perf_counter()
-    print(f"Execution takes {(end - start) * 1000 * 1000} us")
-
-.. testoutput::
-
-    Execution takes 86.72196418046951 us
+  Execution takes 86.72196418046951 us
 
 The performance of the same task graph improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
 the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1 ms+ system overhead.
@@ -119,9 +76,10 @@ Normal tasks can still execute on the actors while the actors participate in a C
 Once you're done, you can tear down the Compiled Graph by deleting it or explicitly calling ``dag.teardown()``.
 This allows reuse of the actors in a new Compiled Graph.
 
-.. testcode::
-
-    dag.teardown()
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __teardown_start__
+    :end-before: __teardown_end__
 
 
 Specifying data dependencies
@@ -130,49 +88,28 @@ Specifying data dependencies
 When creating the DAG, a ``ray.dag.DAGNode`` can be passed as an argument to other ``.bind`` calls to specify data dependencies.
 For example, the following uses the preceding example to create a DAG that passes the same message from one actor to another:
 
-.. testcode::
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_bind_start__
+    :end-before: __cgraph_bind_end__
 
-    import ray.dag
+.. code-block::
 
-    a = SimpleActor.remote()
-    b = SimpleActor.remote()
-
-    with ray.dag.InputNode() as inp:
-        # Note that it uses `bind` instead of `remote`.
-        # This returns a ray.dag.DAGNode, instead of the usual ray.ObjectRef.
-        dag = a.echo.bind(inp)
-        dag = b.echo.bind(dag)
-
-    dag = dag.experimental_compile()
-    print(ray.get(dag.execute("hello")))
-
-.. testoutput::
-
-    hello
+  hello
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
 Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` returns multiple :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>` objects, one per node:
 
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_multi_output_start__
+    :end-before: __cgraph_multi_output_end__
 
-.. testcode::
+.. code-block::
 
-    import ray.dag
+  Execution takes 86.72196418046951 us
 
-    a = SimpleActor.remote()
-    b = SimpleActor.remote()
-
-    with ray.dag.InputNode() as inp:
-        # Note that it uses `bind` instead of `remote`.
-        # This returns a ray.dag.DAGNode, instead of the usual ray.ObjectRef.
-        dag = ray.dag.MultiOutputNode([a.echo.bind(inp), b.echo.bind(inp)])
-
-    dag = dag.experimental_compile()
-    print(ray.get(dag.execute("hello")))
-
-.. testoutput::
-
-    ["hello", "hello"]
 
 Be aware that:
 * On the same actor, a Compiled Graph executes in order. If an actor has multiple tasks in the same Compiled Graph, it executes all of them to completion before executing on the next DAG input.
@@ -182,9 +119,24 @@ Be aware that:
 ``asyncio`` support
 -------------------
 
-.. warning::
+If your Compiled Graph driver is running in an ``asyncio`` event loop, use the ``async`` APIs to ensure that executing
+the Compiled Graph and getting the results doesn't block the event loop.
+First, pass ``enable_async=True`` to the ``dag.experimental_compile()``:
 
-    Under construction.
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_compile_start__
+    :end-before: __cgraph_async_compile_end__
+
+Next, use `execute_async` to invoke the Compiled Graph. Calling ``await`` on ``execute_async`` will return once
+the input has been submitted, and it returns a future that can be used to get the result. Finally, 
+use `await` to get the result of the Compiled Graph.
+
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_execute_start__
+    :end-before: __cgraph_async_execute_end__
+
 
 Execution and failure semantics
 -------------------------------
@@ -209,41 +161,11 @@ the graph to shut down, the remaining actors stay alive.
 For example, this example explicitly destroys an actor while it's participating in a Compiled Graph.
 The remaining actors are reusable:
 
-.. testcode::
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_actor_death_start__
+    :end-before: __cgraph_actor_death_end__
 
-    import ray
-    from ray.dag import InputNode, MultiOutputNode
-
-    @ray.remote
-    class EchoActor:
-    def echo(self, msg):
-        return msg
-
-    actors = [EchoActor.remote() for _ in range(4)]
-    with InputNode() as inp:
-        outputs = [actor.echo.bind(inp) for actor in actors]
-        dag = MultiOutputNode(outputs)
-
-    compiled_dag = dag.experimental_compile()
-    # Kill one of the actors to simulate unexpected actor death.
-    ray.kill(actors[0])
-    ref = compiled_dag.execute(1)
-
-    live_actors = []
-    try:
-        ray.get(ref)
-    except ray.exceptions.ActorDiedError:
-        # At this point, the Compiled Graph is shutting down.
-        for actor in actors:
-            try:
-                # Check for live actors.
-                ray.get(actor.echo.remote("ping"))
-                live_actors.append(actor)
-            except ray.exceptions.RayActorError:
-                pass
-
-    # Optionally, use the live actors to create a new Compiled Graph.
-    assert live_actors == actors[1:]
 
 Execution Timeouts
 ------------------
@@ -261,60 +183,78 @@ to change the default timeout:
 
 :func:`ray.get() <ray.get>` also has a timeout parameter to set timeout on a per-call basis.
 
+CPU to GPU communication
+------------------------
+
+With classic Ray Core, passing ``torch.Tensors`` between actors can become expensive, especially
+when transferring between devices. This is because Ray Core doesn't know the final destination device.
+Therefore, you may see unnecessary copies across devices other than the source and destination devices.
+
+Ray Compiled Graph ships with native support for passing ``torch.Tensors`` between actors executing on different
+devices. Developers can now use type hint annotations in the Compiled Graph declaration to indicate the final
+destination device of a ``torch.Tensor``.
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_actor_start__
+    :end-before: __cgraph_cpu_to_gpu_actor_end__
+
+In Ray Core, if you try to pass a CPU tensor from the driver,
+the GPU actor receives a CPU tensor:
+
+.. testcode::
+    :skipif: True
+
+    # This will fail because the driver passes a CPU copy of the tensor, 
+    # and the GPU actor also receives a CPU copy.
+    ray.get(actor.process.remote(torch.zeros(10)))
+
+With Ray Compiled Graph, you can annotate DAG nodes with type hints to indicate that there may be a ``torch.Tensor``
+contained in the value:
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_start__
+    :end-before: __cgraph_cpu_to_gpu_end__
+
+Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to the GPU assigned to the ``GPUActor`` by Ray Core.
+
+Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
+
+- Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
+  multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
+  destination GPU.
+
+- In the future, this can be further optimized through techniques such as
+  `memory pinning <https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html>`_,
+  using zero-copy deserialization when the CPU is the destination, etc.
+
+
 GPU to GPU communication
 ------------------------
 Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor`` objects, avoiding any copies through Ray's CPU-based shared-memory object store.
 With user-provided type hints, Ray prepares NCCL communicators and
-operation scheduling ahead of time, avoiding deadlock and `overlapping compute and communication <compiled-graph-overlap>`.
+operation scheduling ahead of time, avoiding deadlock and :ref:`overlapping compute and communication <compiled-graph-overlap>`.
 
 Ray Compiled Graph uses `cupy <https://cupy.dev/>`_ under the hood to support NCCL operations.
 The cupy version affects the NCCL version. The Ray team is also planning to support custom communicators in the future, for example to support collectives across CPUs or to reuse existing collective groups.
 
 First, create sender and receiver actors. Note that this example requires at least 2 GPUs.
 
-.. testcode::
-
-    import ray
-    import ray.dag
-    import torch
-    from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-    ray.init()
-    # Note that the following example requires at least 2 GPUs.
-    assert ray.available_resources().get("GPU") >= 2, "At least 2 GPUs are required to run this example."
-
-    @ray.remote(num_gpus=1)
-    class GPUSender:
-        def send(self, shape):
-            return torch.zeros(shape, device="cuda")
-
-    @ray.remote(num_gpus=1)
-    class GPUReceiver:
-        def recv(self, tensor: torch.Tensor):
-            assert tensor.device.type == "cuda"
-            return tensor.shape
-
-    sender = GPUSender.remote()
-    receiver = GPUReceiver.remote()
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_nccl_setup_start__
+    :end-before: __cgraph_nccl_setup_end__
 
 To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains the ``torch.Tensor`` that you want to transmit using the ``with_tensor_transport`` API hint:
 
-.. testcode::
-
-    with ray.dag.InputNode() as inp:
-        dag = sender.send.bind(inp)
-        # Add a type hint that the return value of `send` should use NCCL.
-        dag = dag.with_tensor_transport("nccl")
-        # NOTE: With ray<2.42, use `with_type_hint()` instead.
-        # dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = receiver.recv.bind(dag)
-
-    # Compile API prepares the NCCL communicator across all workers and schedule operations
-    # accordingly.
-    dag = dag.experimental_compile()
-    assert ray.get(dag.execute((10, ))) == (10, )
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_nccl_exec_start__
+    :end-before: __cgraph_nccl_exec_end__
 
 Current limitations include:
+
 * ``torch.Tensor`` and NVIDIA NCCL only
 * Support for peer-to-peer transfers. Collective communication operations are coming soon.
 * Communication operations are currently done synchronously. :ref:`Overlapping compute and communication <compiled-graph-overlap>` is an experimental feature.

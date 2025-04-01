@@ -72,15 +72,19 @@ time_in_queue_histogram = metrics.Histogram(
 
 
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    model = llm_config.model_id
+    engine_config = llm_config.get_engine_config()
+
+    # This `model` is the local path on disk, or the hf model id.
+    # If it is the hf_model_id, vLLM automatically downloads the correct model from HF.
+    # We want this to be the local path on the disk when we already downloaded the
+    # model artifacts from a remote storage during node initialization,
+    # so vLLM will not require HF token for it and try to download it again.
+    model = engine_config.actual_hf_model_id
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
 
-    engine_config = llm_config.get_engine_config()
     return vllm.engine.arg_utils.AsyncEngineArgs(
         **{
-            # This is the local path on disk, or the hf model id
-            # If it is the hf_model_id, vllm automatically downloads the correct model.
             "model": model,
             "distributed_executor_backend": "ray",
             "disable_log_stats": False,
@@ -252,7 +256,7 @@ class VLLMEngine:
         self,
         llm_config: LLMConfig,
     ):
-        """Create a VLLM Engine class
+        """Create a vLLM Engine class
 
         Args:
             llm_config: The llm configuration for this engine
@@ -284,7 +288,7 @@ class VLLMEngine:
         return await initialize_node_util(llm_config)
 
     async def start(self):
-        """Start the VLLM engine.
+        """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
@@ -422,7 +426,7 @@ class VLLMEngine:
     ) -> AsyncGenerator[LLMRawResponse, None]:
         """Generate an LLMRawResponse stream
 
-        The VLLM generation request will be passed into VLLM, and the resulting output
+        The vLLM generation request will be passed into vLLM, and the resulting output
         will be wrapped in an LLMRawResponse and yielded back to the user.
 
         Error handling:
@@ -439,7 +443,7 @@ class VLLMEngine:
                 f"Request {vllm_generation_request.request_id} started. "
                 f"Prompt: {vllm_generation_request.prompt}"
             )
-        # Construct a results generator from VLLM
+        # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=vllm.inputs.TextPrompt(
                 prompt=vllm_generation_request.prompt,

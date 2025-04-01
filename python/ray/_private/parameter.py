@@ -35,10 +35,6 @@ class RayParams:
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
@@ -75,6 +71,8 @@ class RayParams:
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
+        object_spilling_directory: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
         worker_path: The path of the source code that will be run by the
             worker.
         setup_worker_path: The path of the Python file that will set up
@@ -147,7 +145,6 @@ class RayParams:
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
-        redis_max_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
         object_manager_port: Optional[int] = None,
@@ -169,6 +166,7 @@ class RayParams:
         redis_username: Optional[str] = ray_constants.REDIS_DEFAULT_USERNAME,
         redis_password: Optional[str] = ray_constants.REDIS_DEFAULT_PASSWORD,
         plasma_directory: Optional[str] = None,
+        object_spilling_directory: Optional[str] = None,
         worker_path: Optional[str] = None,
         setup_worker_path: Optional[str] = None,
         huge_pages: Optional[bool] = False,
@@ -208,7 +206,6 @@ class RayParams:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
-        self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
@@ -229,6 +226,7 @@ class RayParams:
         self.redis_username = redis_username
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
+        self.object_spilling_directory = object_spilling_directory
         self.worker_path = worker_path
         self.setup_worker_path = setup_worker_path
         self.huge_pages = huge_pages

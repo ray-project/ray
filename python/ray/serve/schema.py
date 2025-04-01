@@ -15,6 +15,7 @@ from ray._private.pydantic_compat import (
     root_validator,
     validator,
 )
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
@@ -140,6 +141,15 @@ class LoggingConfig(BaseModel):
             "Whether to enable access logs for each request. Default to True."
         ),
     )
+    additional_log_standard_attrs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Default attributes from the Python standard logger that will be "
+            "added to all log records. "
+            "See https://docs.python.org/3/library/logging.html#logrecord-attributes "
+            "for a list of available attributes."
+        ),
+    )
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
@@ -167,6 +177,16 @@ class LoggingConfig(BaseModel):
                 f"{list(logging._nameToLevel.keys())}."
             )
         return v
+
+    @validator("additional_log_standard_attrs")
+    def valid_additional_log_standard_attrs(cls, v):
+        for attr in v:
+            if attr not in LOGRECORD_STANDARD_ATTRS:
+                raise ValueError(
+                    f"Unknown attribute '{attr}'. "
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                )
+        return list(set(v))
 
     def _compute_hash(self) -> int:
         return crc32(

@@ -14,6 +14,11 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "mock/ray/raylet/local_task_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
@@ -75,7 +80,7 @@ TEST(NodeManagerTest, TestHandleReportWorkerBacklog) {
     NodeManager::HandleReportWorkerBacklog(
         request,
         &reply,
-        [](Status stauts, std::function<void()> success, std::function<void()> failure) {
+        [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
         local_task_manager);
@@ -119,7 +124,7 @@ TEST(NodeManagerTest, TestHandleReportWorkerBacklog) {
     NodeManager::HandleReportWorkerBacklog(
         request,
         &reply,
-        [](Status stauts, std::function<void()> success, std::function<void()> failure) {
+        [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
         local_task_manager);
@@ -163,7 +168,7 @@ TEST(NodeManagerTest, TestHandleReportWorkerBacklog) {
     NodeManager::HandleReportWorkerBacklog(
         request,
         &reply,
-        [](Status stauts, std::function<void()> success, std::function<void()> failure) {
+        [](Status status, std::function<void()> success, std::function<void()> failure) {
         },
         worker_pool,
         local_task_manager);

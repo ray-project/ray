@@ -14,6 +14,12 @@
 
 // clang-format off
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <map>
+#include <string>
+#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -90,7 +96,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_placement_group_manager_,
                                       *client_pool_,
                                       kv_manager_->GetInstance(),
-                                      io_service_));
+                                      io_service_,
+                                      /*gcs_publisher=*/nullptr));
   }
 
  public:

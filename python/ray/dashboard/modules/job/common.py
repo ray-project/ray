@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
+    EventLogType,
     check_export_api_enabled,
     get_export_event_logger,
 )
@@ -220,7 +221,7 @@ class JobInfoStorageClient:
                 and export_event_log_dir_root is not None
             ):
                 self._export_submission_job_event_logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB,
+                    EventLogType.SUBMISSION_JOB,
                     export_event_log_dir_root,
                 )
         except Exception:

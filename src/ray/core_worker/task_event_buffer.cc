@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/task_event_buffer.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 

@@ -4,7 +4,6 @@ import json
 import logging
 import logging.handlers
 import os
-import pathlib
 import signal
 import sys
 
@@ -14,10 +13,12 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
-from ray._private.ray_logging import configure_log_file, setup_component_logger
+from ray._private.ray_logging import setup_component_logger
+from ray._private import logging_utils
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,6 @@ class DashboardAgent:
         # Used by the agent and sub-modules.
         self.gcs_aio_client = GcsAioClient(
             address=self.gcs_address,
-            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
             cluster_id=self.cluster_id_hex,
         )
 
@@ -243,11 +243,15 @@ class DashboardAgent:
             await self.http_server.cleanup()
 
 
-def open_capture_files(log_dir):
+def get_capture_filepaths(log_dir):
+    """Get filepaths for the given [log_dir].
+    log_dir:
+        Logging directory to place output and error logs.
+    """
     filename = f"agent-{args.agent_id}"
     return (
-        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
-        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+        f"{log_dir}/{filename}.out",
+        f"{log_dir}/{filename}.err",
     )
 
 
@@ -334,20 +338,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        help="Specify the max bytes for rotating log file.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
-        ),
+        help="Specify the backup count of rotated log file.",
     )
     parser.add_argument(
         "--log-dir",
@@ -403,23 +402,36 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        # Disable log rotation for windows platform.
+        logging_rotation_bytes = (
+            args.logging_rotate_bytes if sys.platform != "win32" else 0
+        )
+        logging_rotation_backup_count = (
+            args.logging_rotate_backup_count if sys.platform != "win32" else 1
+        )
+
         logging_params = dict(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
-            max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count,
+            max_bytes=logging_rotation_bytes,
+            backup_count=logging_rotation_backup_count,
         )
         logger = setup_component_logger(**logging_params)
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
-        loop = ray._private.utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         # Setup stdout/stderr redirect files
-        out_file, err_file = open_capture_files(args.log_dir)
-        configure_log_file(out_file, err_file)
+        out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
+        logging_utils.redirect_stdout_stderr_if_needed(
+            out_filepath,
+            err_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+        )
 
         agent = DashboardAgent(
             args.node_ip_address,

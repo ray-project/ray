@@ -10,14 +10,14 @@ PyTorch profiler
 To run PyTorch Profiling on Compiled Graph, simply set the environment variable ``RAY_CGRAPH_ENABLE_TORCH_PROFILING=1``
 when running the script. For example, for a Compiled Graph script in ``example.py``, run the following command:
 
-.. testcode::
+.. code-block:: bash
 
     RAY_CGRAPH_ENABLE_TORCH_PROFILING=1 python3 example.py
 
 After execution, Compiled Graph generates the profiling results in the `compiled_graph_torch_profiles` directory
 under the current working directory. Compiled Graph generates one trace file per actor.
 
-Traces can be visualized using https://ui.perfetto.dev/.
+You can visualize traces by using https://ui.perfetto.dev/.
 
 
 Nsight system profiler
@@ -29,45 +29,21 @@ system profiling.
 To run Nsight Profiling on Compiled Graph, specify the runtime_env for the involved actors
 as described in :ref:`Run Nsight on Ray <run-nsight-on-ray>`. For example,
 
-.. testcode::
-    import ray
-    import torch
-    from ray.dag import InputNode
-
-    @ray.remote(num_gpus=1, runtime_env={"nsight": "default"})
-    class RayActor:
-        def send(self, shape, dtype, value: int):
-            return torch.ones(shape, dtype=dtype, device=self.device) * value
-
-        def recv(self, tensor):
-            return (tensor[0].item(), tensor.shape, tensor.dtype)
-
-    sender = RayActor.remote()
-    receiver = RayActor.remote()
+.. literalinclude:: ../doc_code/cgraph_profiling.py
+    :language: python
+    :start-after: __profiling_setup_start__
+    :end-before: __profiling_setup_end__
 
 Then, create a Compiled Graph as usual.
 
-.. testcode::
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Test normal execution.
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="nccl")
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
-        shape = (10 * (i + 1),)
-        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        assert ray.get(ref) == (i, shape, dtype)
+.. literalinclude:: ../doc_code/cgraph_profiling.py
+    :language: python
+    :start-after: __profiling_execution_start__
+    :end-before: __profiling_execution_end__
 
 Finally, run the script as usual.
 
-.. testcode::
+.. code-block:: bash
 
     python3 example.py
 
@@ -77,7 +53,7 @@ directory.
 For fine-grained performance analysis of method calls and system overhead, set the environment variable
 ``RAY_CGRAPH_ENABLE_NVTX_PROFILING=1`` when running the script:
 
-.. testcode::
+.. code-block:: bash
 
     RAY_CGRAPH_ENABLE_NVTX_PROFILING=1 python3 example.py
 
@@ -93,41 +69,16 @@ Visualization
 To visualize the graph structure, call the :func:`visualize <ray.dag.compiled_dag_node.CompiledDAG.visualize>` method after calling :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>`
 on the graph.
 
-.. testcode::
-
-    import ray
-    from ray.dag import InputNode, MultiOutputNode
-
-    @ray.remote
-    class Worker:
-        def inc(self, x):
-            return x + 1
-
-        def double(self, x):
-            return x * 2
-
-        def echo(self, x):
-            return x
-
-    sender1 = Worker.remote()
-    sender2 = Worker.remote()
-    receiver = Worker.remote()
-
-    with InputNode() as inp:
-        w1 = sender1.inc.bind(inp)
-        w1 = receiver.echo.bind(w1)
-        w2 = sender2.double.bind(inp)
-        w2 = receiver.echo.bind(w2)
-        dag = MultiOutputNode([w1, w2])
-
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.visualize()
+.. literalinclude:: ../doc_code/cgraph_visualize.py
+    :language: python
+    :start-after: __cgraph_visualize_start__
+    :end-before: __cgraph_visualize_end__
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
 Note that this requires ``graphviz``.
 
-The visualization for the preceding code is shown below.
-Tasks of the same actor are shown in the same color.
+The following image shows the visualization for the preceding code.
+Tasks that belong to the same actor are the same color.
 
 .. image:: ../../images/compiled_graph_viz.png
     :alt: Visualization of Graph Structure

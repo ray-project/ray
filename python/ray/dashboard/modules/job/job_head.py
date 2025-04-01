@@ -8,7 +8,7 @@ from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.client import ClientResponse
-from aiohttp.web import Request, Response
+from aiohttp.web import Request, Response, StreamResponse
 
 import ray
 from ray import NodeID
@@ -19,15 +19,13 @@ from ray.dashboard.consts import (
     TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS,
     WAIT_AVAILABLE_AGENT_TIMEOUT,
 )
-import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobInfoStorageClient,
@@ -45,11 +43,12 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.utils import ResponseType
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-routes = optional_utils.DashboardHeadRouteTable
 
 # Feature flag controlling whether critical Ray Job control operations are performed
 # exclusively by the Job Agent running on the Head node (or randomly sampled Worker one)
@@ -146,7 +145,7 @@ class JobAgentSubmissionClient:
                 raise
 
 
-class JobHead(dashboard_utils.DashboardHeadModule):
+class JobHead(SubprocessModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
 
     NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
@@ -164,9 +163,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     # to read the logs from until then.
     WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 1
 
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._job_info_client = None
+
+        # To make sure that the internal KV is initialized by getting the lazy property
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -565,8 +568,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-    @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
-    async def tail_job_logs(self, req: Request) -> Response:
+    @routes.get(
+        "/api/jobs/{job_or_submission_id}/logs/tail", resp_type=ResponseType.WEBSOCKET
+    )
+    async def tail_job_logs(self, req: Request) -> StreamResponse:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self.gcs_aio_client,
@@ -624,10 +629,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return self._agents[driver_node_id]
 
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
-
-    @staticmethod
-    def is_minimal_module():
-        return False

@@ -5,7 +5,7 @@ import random
 from typing import Tuple, List
 
 import grpc
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 
 from grpc import aio as aiogrpc
 import ray._private.gcs_utils as gcs_utils

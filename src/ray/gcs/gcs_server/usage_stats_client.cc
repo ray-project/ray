@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 
+#include <string>
+
 namespace ray {
 namespace gcs {
 UsageStatsClient::UsageStatsClient(InternalKVInterface &internal_kv,
