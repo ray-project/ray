@@ -18,7 +18,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/ray_ci:test_privileged ci
-          --only-tags=cgroup
           --cache-test-results
           --build-name oss-ci-base_test
           --build-type cgroup
