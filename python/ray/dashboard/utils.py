@@ -533,6 +533,15 @@ class NotifyQueue:
     async def get(cls):
         return await cls.queue().get()
 
+    @classmethod
+    async def watch_and_notify_forever(cls):
+        while True:
+            co = await cls.get()
+            try:
+                await co
+            except Exception:
+                logger.exception(f"Error notifying coroutine {co}")
+
 
 """
 https://docs.python.org/3/library/json.html?highlight=json#json.JSONEncoder
