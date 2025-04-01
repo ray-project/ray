@@ -121,7 +121,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      work_;
 };
 
 TEST_P(GlobalStateAccessorTest, TestJobTable) {
