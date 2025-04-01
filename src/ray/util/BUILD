@@ -303,6 +303,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":util",
         "//src/ray/util/internal:stream_redirection_handle",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
