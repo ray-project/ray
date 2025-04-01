@@ -1486,6 +1486,11 @@ class Node:
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
+
+        # add plasma store memory to the total system reserved memory
+        if self.resource_isolation_config.is_enabled():
+            self.resource_isolation_config.add_object_store_memory(object_store_memory)
+
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
