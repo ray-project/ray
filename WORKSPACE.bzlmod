@@ -1,0 +1,130 @@
+workspace(name = "com_github_ray_project_ray")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# http_archive(
+#     name = "platforms",
+#     sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+#     urls = [
+#         "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+#     ],
+# )
+
+# load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
+
+# ray_deps_setup()
+
+# load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
+
+# ray_deps_build_all()
+
+# # This needs to be run after grpc_deps() in ray_deps_build_all() to make
+# # sure all the packages loaded by grpc_deps() are available. However a
+# # load() statement cannot be in a function so we put it here.
+# load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
+
+# grpc_extra_deps()
+
+# load("@bazel_skylib//lib:versions.bzl", "versions")
+
+# # Please keep this in sync with the .bazelversion file.
+# versions.check(
+#     maximum_bazel_version = "6.5.0",
+#     minimum_bazel_version = "6.5.0",
+# )
+
+# load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+
+# hedron_compile_commands_setup()
+
+# http_archive(
+#     name = "rules_python",
+#     sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+#     strip_prefix = "rules_python-0.31.0",
+#     url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
+# )
+
+# load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+# python_register_toolchains(
+#     name = "python3_9",
+#     python_version = "3.9",
+#     register_toolchains = False,
+# )
+
+# load("@python3_9//:defs.bzl", python39 = "interpreter")
+# load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
+
+# pip_install_dependencies()
+
+# load("@rules_python//python:pip.bzl", "pip_parse")
+
+# pip_parse(
+#     name = "py_deps_buildkite",
+#     python_interpreter_target = python39,
+#     requirements_lock = "//release:requirements_buildkite.txt",
+# )
+
+# load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+
+# install_py_deps_buildkite()
+
+# register_toolchains("//:python_toolchain")
+
+# register_execution_platforms(
+#     "@local_config_platform//:host",
+#     "//:hermetic_python_platform",
+# )
+
+# http_archive(
+#     name = "crane_linux_x86_64",
+#     build_file_content = """
+# filegroup(
+#     name = "file",
+#     srcs = glob(["**"]),
+#     visibility = ["//visibility:public"],
+# )
+# """,
+#     sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
+#     urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
+# )
+
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+http_archive(
+    name = "hedron_compile_commands",
+    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
+    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
+    sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
+)
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()
+
+load("//bazel:ray_deps_setup.bzl", "auto_http_archive")
+# NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
+# all of http/git_repository should add prefix for patches defined in ray directory.
+auto_http_archive(
+    name = "com_github_antirez_redis",
+    build_file = "@com_github_ray_project_ray//bazel:redis.BUILD",
+    patch_args = ["-p1"],
+    url = "https://github.com/redis/redis/archive/refs/tags/7.2.3.tar.gz",
+    sha256 = "afd656dbc18a886f9a1cc08a550bf5eb89de0d431e713eba3ae243391fb008a6",
+    patches = [
+        "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
+    ],
+    workspace_file_content = 'workspace(name = "com_github_antirez_redis")',
+)
+
+auto_http_archive(
+    name = "com_github_redis_hiredis",
+    build_file = "@com_github_ray_project_ray//bazel:hiredis.BUILD",
+    url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
+    sha256 = "b6d6f799b7714d85316f9ebfb76a35a78744f42ea3b6774289d882d13a2f0383",
+    patches = [
+        "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
+    ],
+)

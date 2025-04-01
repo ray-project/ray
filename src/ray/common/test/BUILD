@@ -9,7 +9,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -22,7 +22,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -35,7 +35,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -52,7 +52,7 @@ ray_cc_test(
         "//:grpc_common_lib",
         "//:ray_mock_syncer",
         "//src/ray/common:ray_syncer",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -63,7 +63,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -74,7 +74,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:event_stats",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -86,7 +86,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -97,7 +97,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -110,7 +110,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -128,7 +128,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -140,7 +140,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -153,7 +153,7 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "//src/ray/common:network",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -175,7 +175,7 @@ ray_cc_test(
         "//:grpc_common_lib",
         "//src/ray/common:grpc_util",
         "//src/ray/common:status",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -187,7 +187,7 @@ ray_cc_test(
     deps = [
         ":testing",
         "//src/ray/common:status_or",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -207,9 +207,9 @@ ray_cc_test(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor",
-        "@boost//:filesystem",
-        "@boost//:thread",
-        "@com_google_googletest//:gtest_main",
+        "@boost.filesystem",
+        "@boost.thread",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -222,7 +222,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:task_common",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -236,6 +236,6 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )

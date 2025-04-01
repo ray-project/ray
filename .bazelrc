@@ -1,6 +1,8 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
+common --enable_bzlmod
+
 # Provides users an option to turn on strict action env.
 # TODO(aslonnie): make this default; fix the python tests..
 build:strict --incompatible_strict_action_env
@@ -66,9 +68,9 @@ build:macos --host_copt="-w"
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
-build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
+build --per_file_copt="-\\.(asm|S)$,external/grpc/.*@-DGRPC_BAZEL_BUILD"
 # Don't generate warnings about kernel features we don't need https://github.com/ray-project/ray/issues/6832
-build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR_MANYLINUX1"
+build:linux --per_file_copt="-\\.(asm|S)$,external/grpc/.*@-DGPR_MANYLINUX1"
 # Ignore wchar_t -> char conversion warning on MSVC
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
@@ -208,7 +210,7 @@ build:ubsan --copt -fno-sanitize-recover=all
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -fno-sanitize-recover=all
-build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined"
+build:ubsan --per_file_copt="-external/grpc/.*@-fsanitize=undefined"
 
 build:cgroup --sandbox_writable_path=/sys/fs/cgroup --config=llvm
 

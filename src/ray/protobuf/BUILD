@@ -1,6 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+load("@rules_proto_grpc_python//:defs.bzl", "python_grpc_compile")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -20,7 +20,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "common_py_proto",
-    deps = [":common_proto"],
+    protos = [":common_proto"],
 )
 
 proto_library(
@@ -40,7 +40,7 @@ proto_library(
 
 python_grpc_compile(
     name = "instance_manager_py_proto",
-    deps = [":instance_manager_proto"],
+    protos = [":instance_manager_proto"],
 )
 
 cc_proto_library(
@@ -71,7 +71,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "runtime_env_common_py_proto",
-    deps = [":runtime_env_common_proto"],
+    protos = [":runtime_env_common_proto"],
 )
 
 cc_proto_library(
@@ -81,7 +81,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "gcs_py_proto",
-    deps = [":gcs_proto"],
+    protos = [":gcs_proto"],
 )
 
 # Function and class dependencies.
@@ -92,7 +92,7 @@ proto_library(
 
 python_grpc_compile(
     name = "dependency_py_proto",
-    deps = [":dependency_proto"],
+    protos = [":dependency_proto"],
 )
 
 # Text logging.
@@ -108,7 +108,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "logging_py_proto",
-    deps = [":logging_proto"],
+    protos = [":logging_proto"],
 )
 
 proto_library(
@@ -129,7 +129,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "node_manager_py_proto",
-    deps = [":node_manager_proto"],
+    protos = [":node_manager_proto"],
 )
 
 proto_library(
@@ -137,7 +137,7 @@ proto_library(
     srcs = ["reporter.proto"],
     deps = [
         ":common_proto",
-        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
+        "@opencensus-proto//opencensus/proto/metrics/v1:metrics_proto",
     ],
 )
 
@@ -148,7 +148,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "reporter_py_proto",
-    deps = [":reporter_proto"],
+    protos = [":reporter_proto"],
 )
 
 proto_library(
@@ -168,7 +168,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "gcs_service_py_proto",
-    deps = [":gcs_service_proto"],
+    protos = [":gcs_service_proto"],
 )
 
 proto_library(
@@ -187,7 +187,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "test_service_py_proto",
-    deps = [":test_service_proto"],
+    protos = [":test_service_proto"],
 )
 
 proto_library(
@@ -213,7 +213,7 @@ proto_library(
 
 python_grpc_compile(
     name = "core_worker_py_proto",
-    deps = [":core_worker_proto"],
+    protos = [":core_worker_proto"],
 )
 
 cc_proto_library(
@@ -243,7 +243,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "event_py_proto",
-    deps = [":event_proto"],
+    protos = [":event_proto"],
 )
 
 proto_library(
@@ -266,7 +266,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_event_py_proto",
-    deps = [":export_event_proto"],
+    protos = [":export_event_proto"],
 )
 
 proto_library(
@@ -285,7 +285,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_task_event_py_proto",
-    deps = [":export_task_event_proto"],
+    protos = [":export_task_event_proto"],
 )
 
 proto_library(
@@ -300,7 +300,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_runtime_env_py_proto",
-    deps = [":export_runtime_env_proto"],
+    protos = [":export_runtime_env_proto"],
 )
 
 proto_library(
@@ -315,7 +315,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_node_event_py_proto",
-    deps = [":export_node_event_proto"],
+    protos = [":export_node_event_proto"],
 )
 
 proto_library(
@@ -331,7 +331,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_actor_event_py_proto",
-    deps = [":export_actor_event_proto"],
+    protos = [":export_actor_event_proto"],
 )
 
 proto_library(
@@ -350,7 +350,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_driver_job_event_py_proto",
-    deps = [":export_driver_job_event_proto"],
+    protos = [":export_driver_job_event_proto"],
 )
 
 proto_library(
@@ -365,7 +365,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_submission_job_event_py_proto",
-    deps = [":export_submission_job_event_proto"],
+    protos = [":export_submission_job_event_proto"],
 )
 
 proto_library(
@@ -380,7 +380,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "export_train_state_py_proto",
-    deps = [":export_train_state_proto"],
+    protos = [":export_train_state_proto"],
 )
 
 # Agent manager gRPC lib.
@@ -392,7 +392,7 @@ proto_library(
 
 python_grpc_compile(
     name = "agent_manager_py_proto",
-    deps = [":agent_manager_proto"],
+    protos = [":agent_manager_proto"],
 )
 
 cc_proto_library(
@@ -409,7 +409,7 @@ proto_library(
 
 python_grpc_compile(
     name = "ray_client_py_proto",
-    deps = [":ray_client_proto"],
+    protos = [":ray_client_proto"],
 )
 
 # Pubsub
@@ -443,7 +443,7 @@ proto_library(
 
 python_grpc_compile(
     name = "runtime_env_agent_py_proto",
-    deps = [":runtime_env_agent_proto"],
+    protos = [":runtime_env_agent_proto"],
 )
 
 cc_proto_library(
@@ -459,7 +459,7 @@ proto_library(
 
 python_grpc_compile(
     name = "serve_py_proto",
-    deps = [":serve_proto"],
+    protos = [":serve_proto"],
 )
 
 proto_library(
@@ -469,7 +469,7 @@ proto_library(
 
 python_grpc_compile(
     name = "usage_py_proto",
-    deps = [":usage_proto"],
+    protos = [":usage_proto"],
 )
 
 cc_proto_library(
@@ -484,7 +484,7 @@ proto_library(
 
 python_grpc_compile(
     name = "autoscaler_py_proto",
-    deps = [":autoscaler_proto"],
+    protos = [":autoscaler_proto"],
 )
 
 cc_proto_library(
