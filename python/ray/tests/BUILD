@@ -404,6 +404,7 @@ py_test_module_list(
         "test_list_actors_2.py",
         "test_list_actors_3.py",
         "test_list_actors_4.py",
+        "test_logging_utils.py",
         "test_metrics_agent_2.py",
         "test_microbenchmarks.py",
         "test_mini.py",
