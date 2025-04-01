@@ -1526,11 +1526,15 @@ class Algorithm(Checkpointable, Trainable):
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.append(met)
-                    num_units_done += (
-                        met.get(NUM_EPISODES, 0)
-                        if unit == "episodes"
-                        else (
-                            env_s if self.config.count_steps_by == "env_steps" else ag_s
+                    num_units_done += int(
+                        (
+                            met.get(NUM_EPISODES, 0)
+                            if unit == "episodes"
+                            else (
+                                env_s
+                                if self.config.count_steps_by == "env_steps"
+                                else ag_s
+                            )
                         )
                     )
             # Old API stack -> RolloutWorkers return batches.
