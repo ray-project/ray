@@ -80,12 +80,20 @@ class TrainLoopRunner:
         dataloader_iter = iter(dataloader)
 
         def wrapped_dataloader():
-            with self._metrics[f"{prefix}/iter_first_batch"].timer():
-                yield next(dataloader_iter)
+            try:
+                with self._metrics[f"{prefix}/iter_first_batch"].timer():
+                    batch = next(dataloader_iter)
+            except StopIteration:
+                return
 
             while True:
-                with self._metrics[f"{prefix}/iter_batch"].timer():
-                    yield next(dataloader_iter)
+                yield batch
+
+                try:
+                    with self._metrics[f"{prefix}/iter_batch"].timer():
+                        batch = next(dataloader_iter)
+                except StopIteration:
+                    return
 
         return wrapped_dataloader()
 

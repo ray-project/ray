@@ -1,32 +1,9 @@
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, List
 import logging
-import time
 
 from pydantic import BaseModel
 import torch
-import torchvision
-from torch.utils.data import IterableDataset
-
-from pyre_extensions import none_throws
-from torch import distributed as dist
-from torch.utils.data import DataLoader
-from torchrec import EmbeddingBagCollection
-from torchrec.datasets.criteo import DEFAULT_CAT_NAMES, DEFAULT_INT_NAMES
-from torchrec.distributed import TrainPipelineSparseDist
-from torchrec.distributed.comm import get_local_size
-from torchrec.distributed.model_parallel import (
-    DistributedModelParallel,
-    get_default_sharders,
-)
-from torchrec.distributed.planner import EmbeddingShardingPlanner, Topology
-from torchrec.distributed.planner.storage_reservations import (
-    HeuristicalStorageReservation,
-)
-from torchrec.models.dlrm import DLRM, DLRM_DCN, DLRM_Projection, DLRMTrain
-from torchrec.modules.embedding_configs import EmbeddingBagConfig
-from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
-from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
-from torchrec.optim.optimizers import in_backward_optimizer_filter
+import torch.distributed as torch_dist
 
 import ray.train
 import ray.train.torch
@@ -38,9 +15,10 @@ from dataloader_factory import (
 )
 from ray_dataloader_factory import RayDataLoaderFactory
 from recsys.criteo import (
-    DEFAULT_CAT_NAMES,
+    CRITEO_NUM_EMBEDDINGS_PER_FEATURE,
     convert_to_torchrec_batch_format,
     get_ray_dataset,
+    mock_dataloader,
 )
 
 
@@ -49,15 +27,21 @@ logger = logging.getLogger(__name__)
 
 class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
     def get_train_dataloader(self):
-        raise NotImplementedError
+        return mock_dataloader(
+            1024, self.benchmark_config.dataloader_config.train_batch_size
+        )
 
     def get_val_dataloader(self):
-        raise NotImplementedError
+        return mock_dataloader(
+            256, self.benchmark_config.dataloader_config.validation_batch_size
+        )
 
 
 class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
-        return {stage: get_ray_dataset(stage) for stage in ("train", "valid")}
+        # return {stage: get_ray_dataset(stage) for stage in ("train", "valid")}
+        ds = get_ray_dataset("valid")
+        return {stage: ds for stage in ("train", "valid")}
 
     def collate_fn(self, batch):
         return convert_to_torchrec_batch_format(batch)
@@ -65,34 +49,7 @@ class RecsysRayDataLoaderFactory(RayDataLoaderFactory):
 
 class TorchRecConfig(BaseModel):
     embedding_dim: int = 128
-    num_embeddings_per_feature: List[int] = [
-        40000000,
-        39060,
-        17295,
-        7424,
-        20265,
-        3,
-        7122,
-        1543,
-        63,
-        40000000,
-        3067956,
-        405282,
-        10,
-        2209,
-        11938,
-        155,
-        4,
-        976,
-        14,
-        40000000,
-        40000000,
-        40000000,
-        590152,
-        12973,
-        108,
-        36,
-    ]
+    num_embeddings_per_feature: List[int] = CRITEO_NUM_EMBEDDINGS_PER_FEATURE
     over_arch_layer_sizes: List[int] = [1024, 1024, 512, 256, 1]
     dense_arch_layer_sizes: List[int] = [512, 256, 128]
     interaction_type: str = "dcn"
@@ -115,6 +72,24 @@ class RecsysFactory(BenchmarkFactory):
         return data_factory_cls(self.benchmark_config)
 
     def get_model(self) -> torch.nn.Module:
+        # NOTE: These imports error on a CPU-only driver node.
+        # Delay the import to happen on the GPU train workers instead.
+        from torchrec import EmbeddingBagCollection
+        from torchrec.datasets.criteo import DEFAULT_CAT_NAMES, DEFAULT_INT_NAMES
+        from torchrec.distributed.model_parallel import (
+            DistributedModelParallel,
+            get_default_sharders,
+        )
+        from torchrec.distributed.planner import EmbeddingShardingPlanner, Topology
+        from torchrec.distributed.planner.storage_reservations import (
+            HeuristicalStorageReservation,
+        )
+        from torchrec.models.dlrm import DLRM, DLRM_DCN, DLRM_Projection, DLRMTrain
+        from torchrec.modules.embedding_configs import EmbeddingBagConfig
+        from torchrec.optim.apply_optimizer_in_backward import (
+            apply_optimizer_in_backward,
+        )
+
         args = self.torchrec_config
         device = ray.train.torch.get_device()
         local_world_size = ray.train.get_context().get_local_world_size()
@@ -201,7 +176,7 @@ class RecsysFactory(BenchmarkFactory):
             storage_reservation=HeuristicalStorageReservation(percentage=0.05),
         )
         plan = planner.collective_plan(
-            train_model, get_default_sharders(), dist.GroupMember.WORLD
+            train_model, get_default_sharders(), torch_dist.GroupMember.WORLD
         )
 
         model = DistributedModelParallel(
@@ -220,5 +195,6 @@ class RecsysFactory(BenchmarkFactory):
 
     def get_loss_fn(self) -> torch.nn.Module:
         raise NotImplementedError(
-            "torchrec model should return the loss directly in forward"
+            "torchrec model should return the loss directly in forward. "
+            "See the `DLRMTrain` wrapper class."
         )

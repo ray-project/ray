@@ -5,6 +5,7 @@ import boto3
 import json
 import numpy as np
 import pyarrow.csv
+import torch
 
 import ray.data
 from ray.data import DataContext
@@ -32,6 +33,90 @@ DEFAULT_COLUMN_NAMES: List[str] = [
     *DEFAULT_INT_NAMES,
     *DEFAULT_CAT_NAMES,
 ]
+CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
+    45833188,
+    36746,
+    17245,
+    7413,
+    20243,
+    3,
+    7114,
+    1441,
+    62,
+    29275261,
+    1572176,
+    345138,
+    10,
+    2209,
+    11267,
+    128,
+    4,
+    974,
+    14,
+    48937457,
+    11316796,
+    40094537,
+    452104,
+    12606,
+    104,
+    35,
+]
+# CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
+#     40000000,
+#     39060,
+#     17295,
+#     7424,
+#     20265,
+#     3,
+#     7122,
+#     1543,
+#     63,
+#     40000000,
+#     3067956,
+#     405282,
+#     10,
+#     2209,
+#     11938,
+#     155,
+#     4,
+#     976,
+#     14,
+#     40000000,
+#     40000000,
+#     40000000,
+#     590152,
+#     12973,
+#     108,
+#     36,
+# ]
+# [
+#     1000000,
+#     39060,
+#     17295,
+#     7424,
+#     20265,
+#     3,
+#     7122,
+#     1543,
+#     63,
+#     1000000,
+#     3067956,
+#     405282,
+#     10,
+#     2209,
+#     11938,
+#     155,
+#     4,
+#     976,
+#     14,
+#     1000000,
+#     1000000,
+#     1000000,
+#     590152,
+#     12973,
+#     108,
+#     36,
+# ]
 
 
 def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -66,6 +151,24 @@ def concat_and_normalize_dense_features(
     out["label"] = batch["label"]
 
     return out
+
+
+def mock_dataloader(num_batches: int, batch_size: int):
+    """Creates a dummy batch of size `batch_size` and yields it `num_batches` times."""
+    dense = np.random.randn(batch_size, INT_FEATURE_COUNT).astype(np.float32)
+    sparse = np.random.randint(
+        1,
+        np.array(CRITEO_NUM_EMBEDDINGS_PER_FEATURE),
+        (batch_size, CAT_FEATURE_COUNT),
+    ).astype(np.int32)
+    labels = np.random.randint(0, 1, (batch_size,)).astype(np.int32)
+    batch = convert_to_torchrec_batch_format(
+        {"dense": dense, "sparse": sparse, "label": labels}
+    )
+    batch = batch.pin_memory()
+
+    for _ in range(num_batches):
+        yield batch
 
 
 def convert_to_torchrec_batch_format(batch: Dict[str, np.ndarray]):
