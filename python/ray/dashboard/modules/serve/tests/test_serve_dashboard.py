@@ -300,7 +300,7 @@ def test_get_serve_instance_details_not_started(ray_start_stop, url):
     """Test REST API when Serve hasn't started yet."""
     # Parse the response to ensure it's formatted correctly.
     serve_details = ServeInstanceDetails(**requests.get(url).json())
-    assert serve_details.target_details == {}
+    assert serve_details.target_groups == []
 
 
 @pytest.mark.skipif(
@@ -471,17 +471,21 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     print("Finished checking application details.")
 
     # Check target details
-    target_details = serve_details.target_details
-    assert len(target_details["HTTP"]) == 1
-    assert len(target_details["gRPC"]) == 1
-    for target in target_details["HTTP"][0].targets:
+    target_groups = serve_details.target_groups
+    assert len(target_groups) == 2
+    # sort target_groups by protocol
+    target_groups.sort(key=lambda x: x.protocol)
+    assert len(target_groups[0].targets) == 1
+    assert target_groups[0].protocol == "gRPC"
+    assert target_groups[0].route_prefix == "/"
+    assert target_groups[1].protocol == "HTTP"
+    assert target_groups[1].route_prefix == "/"
+    for target in target_groups[0].targets:
+        assert target.ip in proxy_ips
+        assert target.port == 9001
+    for target in target_groups[1].targets:
         assert target.ip in proxy_ips
         assert target.port == 8005
-    for target in target_details["gRPC"][0].targets:
-        assert target.ip in proxy_ips
-        assert target.port == grpc_port
-    assert target_details["HTTP"][0].route_prefix == "/"
-    assert target_details["gRPC"][0].route_prefix == "/"
 
 
 @pytest.mark.skipif(

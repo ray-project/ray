@@ -1075,6 +1075,7 @@ class Target(BaseModel, frozen=True):
 class TargetGroup(BaseModel, frozen=True):
     targets: List[Target] = Field(description="List of targets for the given route.")
     route_prefix: str = Field(description="Prefix route of the targets.")
+    protocol: RequestProtocol = Field(description="Protocol of the targets.")
 
 
 @PublicAPI(stability="stable")
@@ -1116,9 +1117,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
 
-    target_details: Dict[RequestProtocol, List[TargetGroup]] = Field(
-        default_factory=dict,
-        description="Mapping from protocol to list of target details for the given route.",
+    target_groups: List[TargetGroup] = Field(
+        default_factory=list,
+        description=(
+            "List of target groups, each containing target info for a given route and "
+            "protocol."
+        ),
     )
 
     @staticmethod

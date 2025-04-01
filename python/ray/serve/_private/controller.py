@@ -945,21 +945,28 @@ class ServeController:
                 else None
             ),
             applications=applications,
-            target_details=self.get_target_details(),
+            target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_details(self) -> Dict[str, List[TargetGroup]]:
-        """Target details contains information about IP
+    def get_target_groups(self) -> List[TargetGroup]:
+        """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 
         This information is used to setup the load balancer.
         """
         if self.proxy_state_manager is None:
-            return {}
-        return {
-            protocol: [self.proxy_state_manager.get_target_info(protocol)]
+            return []
+        return [
+            # setting prefix route to "/" because in ray serve, proxy
+            # accepts requests from the client and routes them to the
+            # correct application. This is true for both HTTP and gRPC proxies.
+            TargetGroup(
+                protocol=protocol,
+                route_prefix="/",
+                targets=self.proxy_state_manager.get_targets(protocol),
+            )
             for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
-        }
+        ]
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
