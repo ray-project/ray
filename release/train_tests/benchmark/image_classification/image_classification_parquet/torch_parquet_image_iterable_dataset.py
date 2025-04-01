@@ -158,9 +158,9 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
 
         except Exception as e:
             worker_id, _ = self._get_worker_info()
-            logger.info(
+            logger.error(
                 f"Worker {worker_id}: Error reading file {file_url}: {str(e)}",
-                level="error",
+                exc_info=True,
             )
             raise
 
@@ -266,9 +266,8 @@ class S3ParquetImageIterableDataset(S3ParquetReader, IterableDataset):
             yield from self._process_files(files_to_read, preprocess_fn, worker_id)
 
         except Exception as e:
-            logger.info(
+            logger.error(
                 f"Worker {worker_id}: Fatal error: {str(e)}",
-                level="error",
                 exc_info=True,
             )
             raise

@@ -130,9 +130,8 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             return file_url, image
 
         except Exception as e:
-            logger.info(
+            logger.error(
                 f"Worker {worker_id}: Error fetching image from {file_url}: {str(e)}",
-                level="error",
                 exc_info=True,
             )
             return file_url, None
@@ -175,9 +174,8 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             return image, label
 
         except Exception as e:
-            logger.info(
+            logger.error(
                 f"Error processing {file_url}: {str(e)}",
-                level="error",
                 exc_info=True,
             )
             raise
@@ -261,9 +259,8 @@ class S3JpegImageIterableDataset(S3JpegReader, IterableDataset):
             yield from self._process_files(files_to_read, preprocess_fn, worker_id)
 
         except Exception as e:
-            logger.info(
+            logger.error(
                 f"Worker {worker_id}: Fatal error: {str(e)}",
-                level="error",
                 exc_info=True,
             )
             raise

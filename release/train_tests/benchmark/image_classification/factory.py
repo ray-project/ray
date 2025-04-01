@@ -135,10 +135,9 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
                     current_time = time.time()
                     time_since_last_batch = current_time - last_batch_time
                     if time_since_last_batch > 10:
-                        logger.info(
+                        logger.warning(
                             f"Worker {worker_rank}: Long delay ({time_since_last_batch:.2f}s) "
-                            f"between batches {batch_idx-1} and {batch_idx}",
-                            level="warning",
+                            f"between batches {batch_idx-1} and {batch_idx}"
                         )
 
                     # Process and transfer batch to device
@@ -161,10 +160,9 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
 
                     # Monitor device transfer performance
                     if transfer_time > 5:
-                        logger.info(
+                        logger.warning(
                             f"Worker {worker_rank}: Slow device transfer ({transfer_time:.2f}s) "
-                            f"for batch {batch_idx}",
-                            level="warning",
+                            f"for batch {batch_idx}"
                         )
 
                     logger.info(
@@ -176,17 +174,15 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
                     yield images, labels
 
                 except Exception as e:
-                    logger.info(
+                    logger.error(
                         f"Worker {worker_rank}: Error processing batch {batch_idx}: {str(e)}",
-                        level="error",
                         exc_info=True,
                     )
                     raise
 
         except Exception as e:
-            logger.info(
+            logger.error(
                 f"Worker {worker_rank}: Error in batch iterator: {str(e)}",
-                level="error",
                 exc_info=True,
             )
             raise
