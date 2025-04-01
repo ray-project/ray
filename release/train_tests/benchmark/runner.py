@@ -116,6 +116,8 @@ class TrainLoopRunner:
                     break
 
             self._train_batch_idx += 1
+
+            # TODO: This is slightly off if the last batch is a partial batch.
             self._metrics["train/rows_processed"].add(
                 self.benchmark_config.dataloader_config.train_batch_size
             )
@@ -198,6 +200,45 @@ class TrainLoopRunner:
                     metrics=validation_metrics,
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
+
+    def load_checkpoint(self, local_dir: str):
+        self._load_training_state(local_dir)
+
+        run_state = torch.load(os.path.join(local_dir, "run_state.pt"))
+        self._train_epoch_idx = run_state["epoch"]
+        self._train_batch_idx = run_state["batch_idx"]
+
+        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
+            metrics_json = json.load(f)
+
+        for k, v in metrics_json.items():
+            self._metrics[k].__dict__.update(v)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"{ray.train.get_checkpoint()}"
+            )
+
+    def save_checkpoint(self, local_dir: str):
+        self._save_training_state(local_dir)
+
+        run_state = {
+            "epoch": self._train_epoch_idx,
+            "batch_idx": self._train_batch_idx,
+        }
+        torch.save(run_state, os.path.join(local_dir, "run_state.pt"))
+
+        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
+            json.dump(metrics_json, f)
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx}"
+            )
 
     def report_checkpoint(self, metrics, checkpoint):
         checkpoint_dir_name = (
@@ -297,46 +338,14 @@ class VanillaTorchRunner(TrainLoopRunner):
             loss = self.loss_fn(out, labels)
         return loss
 
-    def load_checkpoint(self, local_dir: str):
+    def _save_training_state(self, local_dir: str):
+        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
+        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
+
+    def _load_training_state(self, local_dir: str):
         self.model.load_state_dict(
             torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
         )
         self.optimizer.load_state_dict(
             torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
         )
-
-        train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
-        self._train_epoch_idx = train_state["epoch"]
-        self._train_batch_idx = train_state["batch_idx"]
-
-        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
-            metrics_json = json.load(f)
-
-        for k, v in metrics_json.items():
-            self._metrics[k].__dict__.update(v)
-
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-                f"{ray.train.get_checkpoint()}"
-            )
-
-    def save_checkpoint(self, local_dir: str):
-        train_state = {
-            "epoch": self._train_epoch_idx,
-            "batch_idx": self._train_batch_idx,
-        }
-        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
-        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
-        torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
-
-        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
-        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
-            json.dump(metrics_json, f)
-
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
-            )
