@@ -251,6 +251,7 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
     if not USE_GPU:
         pytest.skip("SHM tests require GPUs")
