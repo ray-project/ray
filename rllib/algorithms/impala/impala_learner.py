@@ -99,15 +99,15 @@ class IMPALALearner(Learner):
                 t.start()
 
         # Create and start the Learner thread.
-        #self._learner_thread = _LearnerThread(
-        #    update_method=Learner.update,
-        #    in_queue=self._learner_thread_in_queue,
-        #    # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #    #  metrics each 20 updates" logic right now.
-        #    # out_queue=self._learner_thread_out_queue,
-        #    learner=self,
-        #)
-        #self._learner_thread.start()
+        self._learner_thread = _LearnerThread(
+            update_method=Learner.update,
+            in_queue=self._learner_thread_in_queue,
+            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+            #  metrics each 20 updates" logic right now.
+            # out_queue=self._learner_thread_out_queue,
+            learner=self,
+        )
+        self._learner_thread.start()
 
     @override(Learner)
     def update(
