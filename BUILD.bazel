@@ -2341,6 +2341,7 @@ ray_cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        "//src/ray/common:test_util"
     ],
 )
 
@@ -2572,6 +2573,7 @@ ray_cc_test(
         ":gcs_server_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
+        "//src/ray/common:test_util",
     ],
 )
 
