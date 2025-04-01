@@ -65,7 +65,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-    work_ = boost::asio::executor_work_guard(io_service_->get_executor());
+    work_ = std::make_unique<
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+        io_service_->get_executor());
     thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
