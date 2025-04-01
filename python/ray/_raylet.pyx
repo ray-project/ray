@@ -4379,7 +4379,16 @@ cdef class CoreWorker:
             num_returns = returns[0].size()
 
         if num_returns == 0:
-            return num_outputs_stored
+            if len(returns) > 0 and returns[0] is not None:
+                import warnings
+                warnings.warn(
+                    f"Function {function_name} returned a value but was called with "
+                    f"num_returns=0. The return value will be ignored. This is likely "
+                    f"a mistake in your code.",
+                    UserWarning,
+                    stacklevel=2
+                )
+            return []
 
         task_output_inlined_bytes = 0
         i = -1
@@ -4450,6 +4459,33 @@ cdef class CoreWorker:
                         i, num_returns))
 
         return num_outputs_stored
+
+
+    cdef inline vector[CObjectReference] execute_function(
+        TaskID task_id,
+        const c_string &function_name,
+        const unordered_map[c_string, c_string] &actor_creation_task_resources,
+        const CRayFunction &ray_function,
+        const vector[unique_ptr[CTaskArg]] &args,
+        int64_t num_returns,
+        const c_vector[CObjectReference] &dependencies) except *:
+        
+        try:
+            # Function execution happens here
+            returns = ray_function.executor(args, num_returns)
+            
+            # Add warning for num_returns=0 with actual returns
+            if num_returns == 0:
+                if len(returns) > 0 and returns[0] is not None:
+                    import warnings
+                    warnings.warn(
+                        f"Function {function_name.decode('utf-8')} returned a value "
+                        f"but was called with num_returns=0. The return value will "
+                        f"be ignored. This is likely a mistake in your code.",
+                        UserWarning,
+                        stacklevel=2
+                    )
+                return []
 
     cdef c_function_descriptors_to_python(
             self,
