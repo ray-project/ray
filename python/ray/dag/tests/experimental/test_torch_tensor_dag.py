@@ -251,6 +251,31 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+def test_torch_tensor_shm(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("SHM tests require GPUs")
+
+    sender = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+    receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        data_annotated = data.with_tensor_transport(transport="shm")
+        dag = receiver.recv.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    # Check that the transport is set to AUTO (host shared memory and gRPC)
+    # even though sender and receiver have GPUs.
+    assert data_annotated.type_hint.transport == TorchTensorType.AUTO
+    for i in range(3):
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
 def test_torch_tensor_auto(ray_start_regular, num_gpus):
