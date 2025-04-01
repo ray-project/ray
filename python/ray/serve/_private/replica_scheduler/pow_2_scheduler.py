@@ -37,7 +37,11 @@ from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
 )
-from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_scheduler import (
+    ReplicaScheduler,
+    _get_request_scheduling_context,
+    _set_request_scheduling_context,
+)
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.util import metrics
 
@@ -101,9 +105,7 @@ class MultiplexScheduleMixin:
         self,
         multiplexed_model_id: str,
         multiplexed_start_matching_time: float,
-        tried_first_multiplexed_models: bool,
-        tried_fewest_multiplexed_models: bool,
-    ) -> Tuple[Set[ReplicaID], bool, bool]:
+    ) -> Set[ReplicaID]:
         # TODO (genesu): add doc string and data structure for the return type
         if (
             time.time() - multiplexed_start_matching_time
@@ -116,7 +118,7 @@ class MultiplexScheduleMixin:
                 not candidate_replica_ids
                 and multiplexed_model_id
                 not in self._multiplexed_model_id_fallback_match
-            ) or tried_first_multiplexed_models:
+            ) or _get_request_scheduling_context().tried_first_multiplexed_models:
                 # When there is no match for a multiplexed model id
                 # or when the replica(s) with the matching model id is busy,
                 # first try to fall back to replicas with the fewest models.
@@ -126,8 +128,8 @@ class MultiplexScheduleMixin:
                 self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
-                tried_first_multiplexed_models = True
-        elif not tried_fewest_multiplexed_models:
+                _set_request_scheduling_context(tried_first_multiplexed_models=True)
+        elif not _get_request_scheduling_context().tried_fewest_multiplexed_models:
             # After the `multiplexed_matching_timeout` is up, first try
             # routing to replicas that have the fewest models loaded.
             # We only try this once to avoid deterministically retrying on
@@ -135,36 +137,28 @@ class MultiplexScheduleMixin:
             candidate_replica_ids = (
                 self._get_replica_ids_with_fewest_multiplexed_models()
             )
-            tried_fewest_multiplexed_models = True
+            _set_request_scheduling_context(tried_fewest_multiplexed_models=True)
         else:
             # If the timeout is up, and we've already tried the candidates
             # with the fewest models loaded, fall back to all replicas.
             candidate_replica_ids = self._replica_id_set
-        return (
-            candidate_replica_ids,
-            tried_first_multiplexed_models,
-            tried_fewest_multiplexed_models,
-        )
+        return candidate_replica_ids
 
 
 class LocalityScheduleMixin:
-    def apply_locality_scheduling(
-        self,
-        tried_same_az: bool,
-        tried_same_node: bool,
-    ) -> Tuple[Set[ReplicaID], bool, bool, bool]:
+    def apply_locality_scheduling(self) -> Set[ReplicaID]:
         if (
             self._prefer_local_node_routing
-            and not tried_same_node
+            and not _get_request_scheduling_context().tried_same_node
             and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
         ):
             # Attempt to schedule requests to replicas on the
             # same node at most once
             candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            tried_same_node = True
+            _set_request_scheduling_context(tried_same_node=True)
         elif (
             self._prefer_local_az_routing
-            and not tried_same_az
+            and not _get_request_scheduling_context().tried_same_az
             and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
         ):
             # Attempt to schedule requests to replicas in the same
@@ -172,13 +166,13 @@ class LocalityScheduleMixin:
             candidate_replica_ids = self._colocated_replica_ids[
                 LocalityScope.AVAILABILITY_ZONE
             ]
-            tried_same_az = True
+            _set_request_scheduling_context(tried_same_az=True)
         else:
             # On subsequent iterations or when there are no replicas on the same
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
-            should_backoff = True
-        return candidate_replica_ids, tried_same_az, tried_same_node, should_backoff
+            _set_request_scheduling_context(should_backoff=True)
+        return candidate_replica_ids
 
 
 class PowerOfTwoChoicesReplicaScheduler(
@@ -472,9 +466,9 @@ class PowerOfTwoChoicesReplicaScheduler(
         backoff sleep time.
         """
 
+        entered_backoff = False
         try:
             backoff_index = 0
-            entered_backoff = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -492,37 +486,20 @@ class PowerOfTwoChoicesReplicaScheduler(
                         extra={"log_to_stderr": False},
                     )
 
+                multiplexed_start_matching_time = time.time()
                 if (
                     request_metadata is not None
                     and request_metadata.multiplexed_model_id
                 ):
                     # Get candidates for multiplexed model ID.
-                    multiplexed_start_matching_time = time.time()
-                    tried_first_multiplexed_models = False
-                    tried_fewest_multiplexed_models = False
-                    (
-                        candidate_replica_ids,
-                        tried_first_multiplexed_models,
-                        tried_fewest_multiplexed_models,
-                    ) = self.apply_multiplex_scheduling(
+                    candidate_replica_ids = self.apply_multiplex_scheduling(
                         multiplexed_model_id=request_metadata.multiplexed_model_id,
                         multiplexed_start_matching_time=multiplexed_start_matching_time,
-                        tried_first_multiplexed_models=tried_first_multiplexed_models,
-                        tried_fewest_multiplexed_models=tried_fewest_multiplexed_models,
                     )
-                    should_backoff = True
+                    _set_request_scheduling_context(should_backoff=True)
                 else:
-                    tried_same_az = False
-                    tried_same_node = False
-                    (
-                        candidate_replica_ids,
-                        tried_same_az,
-                        tried_same_node,
-                        should_backoff,
-                    ) = self.apply_locality_scheduling(
-                        tried_same_az=tried_same_az,
-                        tried_same_node=tried_same_node,
-                    )
+                    # Get candidates for locality preference.
+                    candidate_replica_ids = self.apply_locality_scheduling()
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -537,7 +514,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                 # replica is found. These sequence should only help to reduce the
                 # latency of the request. No backoff and sleep should be applied, until
                 # we have fall into the case trying on all available replicas.
-                if not should_backoff:
+                if not _get_request_scheduling_context().should_backoff:
                     continue
 
                 if not entered_backoff:
