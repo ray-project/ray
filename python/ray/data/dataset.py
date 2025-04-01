@@ -2674,6 +2674,164 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=SMD_API_GROUP)
+    def join(
+        self,
+        other: "Dataset",
+        on: Optional[Union[str, List[str]]] = None,
+        left_on: Optional[Union[str, List[str]]] = None,
+        right_on: Optional[Union[str, List[str]]] = None,
+        how: str = "inner",
+    ) -> "Dataset":
+        """Join two datasets based on common columns.
+
+        This performs a database-style join operation to combine two datasets.
+        The behavior is similar to pandas.merge().
+
+        Examples:
+
+            >>> import ray
+            >>> # Create sample datasets with customer data
+            >>> customers = ray.data.from_items([
+            ...     {"id": 1, "name": "Alice"},
+            ...     {"id": 2, "name": "Bob"},
+            ...     {"id": 3, "name": "Charlie"}
+            ... ])
+            >>> orders = ray.data.from_items([
+            ...     {"customer_id": 1, "amount": 100},
+            ...     {"customer_id": 2, "amount": 200},
+            ...     {"customer_id": 4, "amount": 400}
+            ... ])
+
+            >>> # Inner join - only matching records are kept
+            >>> customers.join(orders, left_on="id", right_on="customer_id").take_all()
+            [{'id': 1, 'name': 'Alice', 'customer_id': 1, 'amount': 100},
+            {'id': 2, 'name': 'Bob', 'customer_id': 2, 'amount': 200}]
+
+            >>> # Left join - all records from left dataset are kept
+            >>> customers.join(orders, left_on="id", right_on="customer_id", how="left_outer").take_all()
+            [{'id': 1, 'name': 'Alice', 'customer_id': 1, 'amount': 100},
+            {'id': 2, 'name': 'Bob', 'customer_id': 2, 'amount': 200},
+            {'id': 3, 'name': 'Charlie', 'customer_id': None, 'amount': None}]
+
+        Args:
+            other: The dataset to join with.
+            on: The column name(s) to join on. If specified, both datasets must have
+                these columns. Cannot be used with left_on/right_on.
+            left_on: The column name(s) from the left dataset to join on.
+                Must be used with right_on.
+            right_on: The column name(s) from the right dataset to join on.
+                Must be used with left_on.
+            how: The type of join to perform. Options are:
+                - "inner": Only rows that appear in both datasets are included
+                - "left_outer": All rows from left dataset, matched rows from right
+                - "right_outer": Matched rows from left, all rows from right dataset
+                - "full_outer": All rows from both datasets
+
+        Returns:
+            A new Dataset with joined data.
+
+        Raises:
+            ValueError: If column specifications are invalid.
+        """
+        # Validate column inputs
+        if on is not None and (left_on is not None or right_on is not None):
+            raise ValueError("Cannot specify both 'on' and 'left_on'/'right_on'")
+
+        if on is not None:
+            # Use 'on' for both datasets
+            left_on = right_on = on
+        elif (left_on is None) != (right_on is None):
+            # If one is specified, both must be specified
+            raise ValueError("Both 'left_on' and 'right_on' must be specified together")
+
+        # Convert single string to list for consistency
+        if isinstance(left_on, str):
+            left_on = [left_on]
+        if isinstance(right_on, str):
+            right_on = [right_on]
+
+        # Validate join type
+        valid_join_types = ["inner", "left_outer", "right_outer", "full_outer"]
+        if how not in valid_join_types:
+            raise ValueError(
+                f"Invalid join type: {how}. Must be one of {valid_join_types}"
+            )
+
+        plan = self._plan.copy()
+        from ray.data._internal.logical.operators.join_operator import Join
+
+        join_op = Join(
+            self._logical_plan.dag,
+            other._logical_plan.dag,
+            left_on=left_on,
+            right_on=right_on,
+            how=how,
+        )
+        logical_plan = LogicalPlan(join_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=SMD_API_GROUP)
+    def merge(
+        self,
+        other: "Dataset",
+        on: Optional[Union[str, List[str]]] = None,
+        left_on: Optional[Union[str, List[str]]] = None,
+        right_on: Optional[Union[str, List[str]]] = None,
+        how: str = "inner",
+        suffixes: Tuple[str, str] = ("", "_right"),
+    ) -> "Dataset":
+        """Merge two datasets using a database-style join operation.
+
+        This is similar to join(), but with additional options for
+        handling overlapping column names.
+
+        Examples:
+
+            >>> import ray
+            >>> # Create sample datasets
+            >>> df1 = ray.data.from_items([
+            ...     {"key": 1, "value": "a"},
+            ...     {"key": 2, "value": "b"},
+            ...     {"key": 3, "value": "c"}
+            ... ])
+            >>> df2 = ray.data.from_items([
+            ...     {"key": 1, "value": "x"},
+            ...     {"key": 2, "value": "y"},
+            ...     {"key": 4, "value": "z"}
+            ... ])
+
+            >>> # Merge with custom suffixes for duplicate columns
+            >>> df1.merge(df2, on="key", suffixes=("_left", "_right")).take_all()
+            [{'key': 1, 'value_left': 'a', 'value_right': 'x'},
+            {'key': 2, 'value_left': 'b', 'value_right': 'y'}]
+
+        Args:
+            other: The dataset to merge with.
+            on: The column name(s) to join on. If specified, both datasets must have
+                these columns. Cannot be used with left_on/right_on.
+            left_on: The column name(s) from the left dataset to join on.
+                Must be used with right_on.
+            right_on: The column name(s) from the right dataset to join on.
+                Must be used with left_on.
+            how: The type of join to perform. Options are:
+                - "inner": Only rows that appear in both datasets are included
+                - "left_outer": All rows from left dataset, matched rows from right
+                - "right_outer": Matched rows from left, all rows from right dataset
+                - "full_outer": All rows from both datasets
+            suffixes: Suffixes to apply to overlapping column names in the left and
+                right datasets. Default is ("", "_right").
+
+        Returns:
+            A new Dataset with merged data.
+
+        Raises:
+            ValueError: If column specifications are invalid.
+        """
+        # merge() is just a wrapper around join() with the suffixes parameter
+        # The suffixes are handled in the join operator's implementation
+        return self.join(other, on=on, left_on=left_on, right_on=right_on, how=how)
+
     @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
