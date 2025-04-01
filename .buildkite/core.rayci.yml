@@ -214,8 +214,9 @@ steps:
         --except-tags kubernetes,manual
 
   - label: ":ray: core: asan tests"
-    tags: python
-    instance_type: medium
+    tags:
+      - python
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --install-mask all-ray-libraries
@@ -336,6 +337,7 @@ steps:
     key: core_flaky_tests
     tags:
       - python
+      - flaky
       - skip-on-premerge
     instance_type: large
     soft_fail: true

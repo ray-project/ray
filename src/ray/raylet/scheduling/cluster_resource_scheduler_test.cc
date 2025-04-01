@@ -682,15 +682,15 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
       io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
-  auto node_id = NodeID::FromRandom();
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
   {
-    NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 10},
-                                                        {ResourceID::Memory(), 2},
-                                                        {ResourceID::GPU(), 3},
-                                                        {ResourceID("custom1"), 5},
-                                                        {ResourceID("custom2"), 5}});
+    auto node_id = NodeID::FromRandom();
+    node_resources = CreateNodeResources({{ResourceID::CPU(), 10},
+                                          {ResourceID::Memory(), 2},
+                                          {ResourceID::GPU(), 3},
+                                          {ResourceID("custom1"), 5},
+                                          {ResourceID("custom2"), 5}});
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
         scheduling::NodeID(node_id.Binary()), node_resources);
   }
