@@ -198,7 +198,7 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'shm' or a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
