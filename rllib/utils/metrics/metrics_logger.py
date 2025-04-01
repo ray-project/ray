@@ -352,7 +352,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.throughputs([key]).
+                through: <MetricsLogger>.get_throughputs([key]).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
@@ -514,7 +514,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.throughputs([key]).
+                through: <MetricsLogger>.get_throughputs([key]).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05 if with_throughput is True.
         """
@@ -684,11 +684,20 @@ class MetricsLogger:
                 all_keys.add(path)
                 return d
 
+        def build_nested_dict(stats_dict, key):
+            if isinstance(key, str):
+                return {key: stats_dict}
+            elif len(key) > 1:
+                # Key is tuple of keys so we build a nested dict recursively
+                return {key[0]: build_nested_dict(stats_dict, key[1:])}
+            else:
+                return {key[0]: stats_dict}
+
         # We do one pass over all the stats_dicts_or_loggers to 1. prepend the key if provided and 2. collect all the keys that lead to leaves (which may be lists or values).
         incoming_stats_dicts_with_key = []
         for stats_dict in stats_dicts:
             if key is not None:
-                stats_dict = {key: stats_dict}
+                stats_dict = build_nested_dict(stats_dict, key)
             stats_dict = traverse_and_add_paths(stats_dict)
             incoming_stats_dicts_with_key.append(stats_dict)
 
@@ -850,7 +859,7 @@ class MetricsLogger:
                 object under the logged key then keeps track of the time passed
                 between two consecutive calls to `reduce()` and update its throughput
                 estimate. The current throughput estimate of a key can be obtained
-                through: <MetricsLogger>.throughputs([key]).
+                through: <MetricsLogger>.get_throughputs([key]).
             throughput_ema_coeff: The EMA coefficient to use for throughput tracking.
                 Only used if with_throughput=True. Defaults to 0.05.
         """
@@ -1098,8 +1107,8 @@ class MetricsLogger:
         """
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
-            stats = self._get_key(key)
             with self._threading_lock:
+                stats = self._get_key(key)
                 stats.values = [value]
         # Key cannot be found in `self` -> Simply log as a (new) value.
         else:
@@ -1241,8 +1250,8 @@ class MetricsLogger:
                 if key_error:
                     raise e
 
-    def throughputs(
-        self, key: Optional[Union[str, Tuple[str, ...]]] = None
+    def get_throughputs(
+        self, key: Optional[Union[str, Tuple[str, ...]]] = None, default=None
     ) -> Union[Dict, float]:
         """Returns throughput values for Stats that have throughput tracking enabled.
 
@@ -1258,7 +1267,7 @@ class MetricsLogger:
             key: Optional key or nested key path to get throughput for. If provided, returns just
                 the throughput value for that key or nested structure. If None, returns a nested dict
                 with throughputs for all metrics.
-
+            default: Default value to return if no throughput values are found.
         Returns:
             If key is None: A nested dict with the same structure as self.stats but with "_throughput"
                 appended to leaf keys and throughput values as leaf values. Only includes entries for
@@ -1293,13 +1302,16 @@ class MetricsLogger:
         with self._threading_lock:
             if key is not None:
                 # Get the Stats object or nested structure for the key
-                stats = self._get_key(key)
+                stats = self._get_key(key, key_error=False)
                 if isinstance(stats, Stats):
                     if not stats.has_throughput:
                         raise ValueError(
                             f"Key '{key}' does not have throughput tracking enabled"
                         )
                     return stats.throughput
+                elif stats == {}:
+                    # If the key is not found, return the default value
+                    return default
                 else:
                     # stats is a non-empty dictionary
                     return _nested_throughputs(stats)
@@ -1322,7 +1334,7 @@ class MetricsLogger:
 
             tree.map_structure_with_path(_map, self.stats)
 
-            return throughputs
+            return throughputs if throughputs else default
 
     def compile(self) -> Dict:
         """Compiles all current values and throughputs into a single dictionary.
@@ -1340,7 +1352,7 @@ class MetricsLogger:
         values = self.peek()
 
         # Get all throughputs
-        throughputs = self.throughputs()
+        throughputs = self.get_throughputs()
 
         deep_update(values, throughputs, new_keys_allowed=True)
 

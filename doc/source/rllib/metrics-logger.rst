@@ -344,14 +344,14 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
 
         # Expect the first call to return NaN because we don't have a proper start time for the time delta.
         # From the second call on, expect a value of roughly 5/sec.
-        print(logger.throughputs("lifetime_count"))
+        print(logger.get_throughputs"lifetime_count"))
 
         logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
         # Expect the throughput to be roughly 10/sec now.
-        print(logger.throughputs("lifetime_count"))
+        print(logger.get_throughputs"lifetime_count"))
 
         # You can also get a dict of all throughputs at once:
-        print(logger.throughputs())
+        print(logger.get_throughputs))
 
 
 Measuring throughputs with MetricsLogger.log_time()
@@ -371,7 +371,7 @@ You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLo
             time.sleep(1.0)
 
     # Expect the throughput to be roughly 1.0/sec.
-    print(logger.throughputs("my_block_to_be_timed"))
+    print(logger.get_throughputs"my_block_to_be_timed"))
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks

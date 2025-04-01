@@ -39,12 +39,12 @@ def test_init_with_values(init_values, expected_len, expected_peek):
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
-    assert len(stats) == expected_len
+    check(len(stats), expected_len)
     if expected_len > 0:
-        assert stats.peek() == expected_peek
-        assert stats.peek(compile=False) == [expected_peek]
+        check(stats.peek(), expected_peek)
+        check(stats.peek(compile=False), [expected_peek])
     else:
-        assert np.isnan(stats.peek())
+        check(np.isnan(stats.peek()), True)
 
 
 def test_init_with_window():
@@ -59,8 +59,8 @@ def test_init_with_window():
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
-    assert stats._window == window_size
-    assert isinstance(stats.values, deque)
+    check(stats._window, window_size)
+    check(isinstance(stats.values, deque), True)
 
 
 @pytest.mark.parametrize("reduce_method", ["mean", "min", "max", "sum", None])
@@ -75,7 +75,7 @@ def test_init_with_reduce_methods(reduce_method):
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
     )
-    assert stats._reduce_method == reduce_method
+    check(stats._reduce_method, reduce_method)
 
 
 def test_invalid_init_params():
@@ -133,7 +133,7 @@ def test_push_with_ema():
 
     # EMA formula: new_val = (1.0 - ema_coeff) * old_val + ema_coeff * val
     expected = 1.0 * (1.0 - DEFAULT_EMA_COEFF) + 2.0 * DEFAULT_EMA_COEFF
-    assert abs(stats.peek() - expected) < 1e-6
+    check(abs(stats.peek() - expected) < 1e-6, True)
 
 
 def test_push_with_window():
@@ -150,8 +150,8 @@ def test_push_with_window():
     stats.push(1.0)
     stats.push(2.0)
     stats.push(3.0)  # This should push out 1.0
-    assert stats.peek() == 2.5  # Mean of [2.0, 3.0]
-    assert len(stats) == 2  # Window size is 2
+    check(stats.peek(), 2.5)  # Mean of [2.0, 3.0]
+    check(len(stats), 2)  # Window size is 2
 
 
 @pytest.mark.parametrize(
@@ -175,7 +175,7 @@ def test_reduce_methods(reduce_method, values, expected):
     )
     for val in values:
         stats.push(val)
-    assert stats.peek() == expected
+    check(stats.peek(), expected)
 
 
 def test_reduce_with_clear():
@@ -193,8 +193,8 @@ def test_reduce_with_clear():
     stats.push(2)
 
     reduced_value = stats.reduce()
-    assert reduced_value == 3
-    assert len(stats) == 0  # Stats should be cleared
+    check(reduced_value, 3)
+    check(len(stats), 0)  # Stats should be cleared
 
 
 def test_merge_on_time_axis():
@@ -224,7 +224,7 @@ def test_merge_on_time_axis():
     stats2.push(4)
 
     stats1.merge_on_time_axis(stats2)
-    assert stats1.peek() == 10  # sum of [1, 2, 3, 4]
+    check(stats1.peek(), 10)  # sum of [1, 2, 3, 4]
 
 
 def test_merge_in_parallel():
@@ -266,7 +266,7 @@ def test_merge_in_parallel():
     )
     result.merge_in_parallel(stats1, stats2)
 
-    assert abs(result.peek() - 4.167) < 1e-3
+    check(abs(result.peek() - 4.167) < 1e-3, True)
 
 
 @pytest.mark.parametrize(
@@ -297,7 +297,7 @@ def test_numeric_operations(op, value, expected):
     )
     stats.push(2.0)
 
-    assert op(stats) == expected
+    check(op(stats), expected)
 
 
 def test_state_serialization():
@@ -317,10 +317,10 @@ def test_state_serialization():
     state = stats.get_state()
     loaded_stats = Stats.from_state(state)
 
-    assert loaded_stats._reduce_method == stats._reduce_method
-    assert loaded_stats._window == stats._window
-    assert loaded_stats.peek() == stats.peek()
-    assert len(loaded_stats) == len(stats)
+    check(loaded_stats._reduce_method, stats._reduce_method)
+    check(loaded_stats._window, stats._window)
+    check(loaded_stats.peek(), stats.peek())
+    check(len(loaded_stats), len(stats))
 
 
 def test_similar_to():
@@ -339,14 +339,14 @@ def test_similar_to():
 
     # Similar stats without initial values
     similar = Stats.similar_to(original)
-    assert similar._reduce_method == original._reduce_method
-    assert similar._window == original._window
-    assert len(similar) == 0  # Should start empty
+    check(similar._reduce_method, original._reduce_method)
+    check(similar._window, original._window)
+    check(len(similar), 0)  # Should start empty
 
     # Similar stats with initial values
     similar_with_value = Stats.similar_to(original, init_values=[1, 2])
-    assert len(similar_with_value) == 2
-    assert similar_with_value.peek() == 3  # sum of [1, 2]
+    check(len(similar_with_value), 2)
+    check(similar_with_value.peek(), 3)  # sum of [1, 2]
 
 
 def test_reduce_history():
@@ -367,13 +367,13 @@ def test_reduce_history():
     # Push values and reduce
     stats.push(1)
     stats.push(2)
-    assert stats.reduce() == 3
+    check(stats.reduce(), 3)
     check(stats.get_reduce_history(), [[np.nan], [np.nan], [3]])
 
     # Push more values and reduce
     stats.push(3)
     stats.push(4)
-    assert stats.reduce() == 10
+    check(stats.reduce(), 10)
     check(stats.get_reduce_history(), [[np.nan], [3], [10]])
 
 
@@ -392,15 +392,15 @@ def test_reduce_history_with_clear():
     # Push and reduce multiple times
     stats.push(1)
     stats.push(2)
-    assert stats.reduce() == 3
+    check(stats.reduce(), 3)
     check(stats.get_reduce_history(), [[np.nan], [np.nan], [3]])
-    assert len(stats) == 0  # Values should be cleared
+    check(len(stats), 0)  # Values should be cleared
 
     stats.push(3)
     stats.push(4)
-    assert stats.reduce() == 7
+    check(stats.reduce(), 7)
     check(stats.get_reduce_history(), [[np.nan], [3], [7]])
-    assert len(stats) == 0
+    check(len(stats), 0)
 
 
 def test_basic_throughput():
@@ -417,14 +417,14 @@ def test_basic_throughput():
 
     # First push - throughput should be 0 initially
     stats.push(1)
-    assert stats.peek() == 1
-    assert stats.throughput == np.nan
+    check(stats.peek(), 1)
+    check(stats.throughput, np.nan)
 
     # Wait and push again to measure throughput
     time.sleep(0.1)
     stats.push(2)
-    assert stats.peek() == 3
-    assert 5 < stats.throughput < 30  # Roughly 10 items/second
+    check(stats.peek(), 3)
+    check(stats.throughput, 20, rtol=0.1)
 
 
 def test_throughput_error_conditions():
