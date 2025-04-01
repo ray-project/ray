@@ -180,8 +180,10 @@ def test_enabled_reserved_cpu_less_than_minimum_raises_exception(monkeypatch):
 
 
 def test_enabled_reserved_memory_exceeds_available_memory_raises_exception(monkeypatch):
+    total_system_cpu = 32
     total_system_memory = 128 * 10**9
     system_reserved_memory = (128 * 10**9) + 1
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     monkeypatch.setattr(
         utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
     )
@@ -195,10 +197,12 @@ def test_enabled_reserved_memory_exceeds_available_memory_raises_exception(monke
 def test_enabled_total_system_reserved_memory_exceeds_available_memory_raises_exception(
     monkeypatch,
 ):
+    total_system_cpu = 32
     object_store_memory = 10 * 10**9
     total_system_memory = 128 * 10**9
     # combined with object store, it exceeds available memory
     system_reserved_memory = 119 * 10**9
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     monkeypatch.setattr(
         utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
     )

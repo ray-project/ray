@@ -7,7 +7,7 @@ import ray._private.utils as utils
 
 logger = logging.getLogger(__name__)
 
-# See https://docs.kernel.org/admin-guide/cgroup-v2.html
+# See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights
 # for information about cpu weights
 _CGROUP_CPU_MAX_WEIGHT: int = 10000
 
@@ -44,6 +44,7 @@ class ResourceIsolationConfig:
         self.system_reserved_cpu = system_reserved_cpu
         self.system_reserved_memory = system_reserved_memory
         self.system_reserved_cpu_weight: float = None
+        self.constructed = False
 
         if not enable_resource_isolation:
             if self.system_reserved_cpu:
@@ -164,6 +165,17 @@ class ResourceIsolationConfig:
             )
 
     def add_object_store_memory(self, object_store_memory: int):
+        """This is only supposed to be called once. It also cannot be
+        called if resouce isolation is not enabled.
+        """
+        assert self.is_enabled(), (
+            "Cannot add object_store_memory to system_reserved_memory when "
+            "enable_resource_isolation is False."
+        )
+        assert not self.constructed, (
+            "Cannot add object_store_memory to system_reserved_memory when"
+            "multiple times."
+        )
         self.system_reserved_memory += object_store_memory
         available_system_memory = utils.get_system_memory()
         if self.system_reserved_memory > available_system_memory:
@@ -173,6 +185,7 @@ class ResourceIsolationConfig:
                 f" available={available_system_memory}. Pick a smaller number of bytes for object_store_bytes "
                 "or system_reserved_memory."
             )
+        self.constructed = True
 
     def is_enabled(self) -> bool:
         return self.enable_resource_isolation

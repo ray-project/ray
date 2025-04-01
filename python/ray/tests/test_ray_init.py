@@ -301,7 +301,9 @@ def test_ray_init_resource_isolation_disabled_by_default():
     assert not node.resource_isolation_config.is_enabled()
 
 
-def test_ray_init_with_resource_isolation_default_values():
+def test_ray_init_with_resource_isolation_default_values(monkeypatch):
+    total_system_cpu = 10
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
     ray.init(enable_resource_isolation=True)
     node = ray._private.worker._global_node
     assert node is not None
