@@ -27,14 +27,15 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
         cluster_id_hex="test_cluster_id",
         gcs_address="",
         session_name="test_session",
-        temp_dir=str(tmp_path),
+        temp_dir=str(tmp_path / "temp"),
+        session_dir=str(tmp_path / "session"),
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
-        log_dir=str(tmp_path),
+        log_dir=str(tmp_path / "logs"),
         logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
         logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        socket_dir=str(tmp_path),
+        socket_dir=str(tmp_path / "socket"),
     )
 
 
