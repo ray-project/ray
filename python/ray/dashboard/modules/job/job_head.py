@@ -180,15 +180,28 @@ class JobHead(SubprocessModule):
         self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
 
     async def get_target_agent(
-        self, timeout: float = WAIT_AVAILABLE_AGENT_TIMEOUT
+        self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
     ) -> JobAgentSubmissionClient:
-        if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
-            return await self._get_head_node_agent(timeout)
+        """
+        Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
+        via an agent process.
 
-        return await self._pick_random_agent(timeout)
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via an agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
+        """
+        if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
+            return await self._get_head_node_agent(timeout_s)
+
+        return await self._pick_random_agent(timeout_s)
 
     async def _pick_random_agent(
-        self, timeout: float
+        self, timeout_s: float
     ) -> Optional[JobAgentSubmissionClient]:
         """
         Try to disperse as much as possible to select one of
@@ -206,8 +219,17 @@ class JobHead(SubprocessModule):
 
         If there's no agent available at all, or there's exception, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
+
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via an agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
         """
-        timeout_point = time.time() + timeout
+        timeout_point = time.time() + timeout_s
         exception = None
         while time.time() < timeout_point:
             try:
@@ -219,7 +241,7 @@ class JobHead(SubprocessModule):
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
         raise TimeoutError(
-            f"Failed to pick a random agent within {timeout} seconds. The last exception is {exception}"
+            f"Failed to pick a random agent within {timeout_s} seconds. The last exception is {exception}"
         )
 
     async def _pick_random_agent_once(self) -> JobAgentSubmissionClient:
@@ -269,12 +291,21 @@ class JobHead(SubprocessModule):
 
         return self._agents[head_node_id]
 
-    async def _get_head_node_agent(self, timeout: float) -> JobAgentSubmissionClient:
+    async def _get_head_node_agent(self, timeout_s: float) -> JobAgentSubmissionClient:
         """Retrieves HTTP client for `JobAgent` running on the Head node. If the head
         node does not have an agent, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
+
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via the head node's agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
         """
-        timeout_point = time.time() + timeout
+        timeout_point = time.time() + timeout_s
         exception = None
         while time.time() < timeout_point:
             try:
@@ -286,7 +317,7 @@ class JobHead(SubprocessModule):
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
         raise TimeoutError(
-            f"Failed to get head node agent within {timeout} seconds. The last exception is {exception}"
+            f"Failed to get head node agent within {timeout_s} seconds. The last exception is {exception}"
         )
 
     async def _fetch_all_agent_node_ids(self) -> List[NodeID]:
@@ -404,7 +435,6 @@ class JobHead(SubprocessModule):
             submit_request: JobSubmitRequest = result
 
         try:
-            # TODO
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
