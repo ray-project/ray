@@ -2257,13 +2257,14 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
-cdef void in_actor_store_callback(const CObjectID &object_id) nogil:
+cdef void in_actor_store_callback(const CObjectID &c_object_id) nogil:
     # TODO: Implement the real clean up logic here. The current implementation is just for testing.
     with gil:
+        object_id = ObjectRef(c_object_id.Binary()).hex().encode('ascii')
         in_actor_object_store = ray._private.worker.global_worker.in_actor_object_store
-        print(f"in_actor_store_callback, in_actor_object_store: {in_actor_object_store}, delete key: 123456")
-        if 123456 in in_actor_object_store:
-            del in_actor_object_store[123456]
+        print(f"in_actor_store_callback, object_id: {object_id}, in_actor_object_store: {in_actor_object_store}, delete: {object_id in in_actor_object_store}")
+        if object_id in in_actor_object_store:
+            del in_actor_object_store[object_id]
 
 cdef void pygilstate_release(PyGILState_STATE gstate) nogil:
     with gil:
@@ -4427,6 +4428,10 @@ cdef class CoreWorker:
                 continue
 
             context = worker.get_serialization_context()
+
+            import torch
+            if isinstance(output, torch.Tensor):
+                ray._private.worker.global_worker.in_actor_object_store[return_id.Hex()] = output
 
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes

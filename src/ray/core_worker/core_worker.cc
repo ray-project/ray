@@ -647,6 +647,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       (options_.worker_type != WorkerType::SPILL_WORKER &&
        options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this));
+  plasma_store_provider_->set_in_actor_store_callback(options_.in_actor_store_callback);
+
   memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
       reference_counter_.get(),
@@ -4064,6 +4066,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
+  RAY_LOG(INFO) << "[debug][ProcessSubscribeForObjectEviction] AddObjectOutOfScopeOrFreedCallback " << object_id;
   if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
@@ -4319,6 +4322,7 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
 
   const auto owner_address = message.reference().owner_address();
   ObjectID contained_in_id = ObjectID::FromBinary(message.contained_in_id());
+  RAY_LOG(INFO) << "[debug][ProcessSubscribeForRefRemoved] SetRefRemovedCallback " << object_id;
   reference_counter_->SetRefRemovedCallback(
       object_id, contained_in_id, owner_address, ref_removed_callback);
 }
