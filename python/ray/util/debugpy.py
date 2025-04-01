@@ -4,7 +4,6 @@ import sys
 import threading
 import importlib
 import random
-from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -95,7 +94,7 @@ def _ensure_debugger_port_open_thread_safe():
                         f"Failed to open debugger on any port in range {port_range_start}-{port_range_end}"
                     )
                 else:
-                    log.error(f"Failed to open debugger on any port")
+                    log.error("Failed to open debugger on any port")
                 return
 
             ray._private.worker.global_worker.set_debugger_port(port)
