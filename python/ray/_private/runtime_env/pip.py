@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import sys
+import shlex
 from typing import Dict, List, Optional
 from asyncio import create_task, get_running_loop
 
@@ -16,6 +17,10 @@ from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
+
+
+def _is_pip_cmd(s):
+    return s.strip().startswith("pip ")
 
 
 def _get_pip_hash(pip_dict: Dict) -> str:
@@ -166,15 +171,43 @@ class PipProcessor:
 
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
+    @classmethod
+    async def _run_pip_cmd_requirements(
+        cls,
+        path: str,
+        pip_commands: List[str],
+        cwd: str,
+        pip_env: Dict,
+        logger: logging.Logger,
+    ):
+        virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
+        logger.info("execute pip command to %s", virtualenv_path)
+        for cmd_str in pip_commands:
+            cmd = shlex.split(cmd_str)
+            if cmd[0] != "pip":
+                raise ValueError(f"Unexpected Python requirement: {cmd_str}")
+            await check_output_cmd(
+                [python, "-m"] + cmd, logger=logger, cwd=cwd, env=pip_env
+            )
+
     async def _run(self):
         path = self._target_dir
         logger = self._logger
-        pip_packages = self._pip_config["packages"]
+        pip_dependencies = self._pip_config["packages"]
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
         # look up ray in cwd instead of site packages.
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
+        pip_packages = []
+        pip_commands = []
+
+        for pip_dep in pip_dependencies:
+            if _is_pip_cmd(pip_dep):
+                pip_commands.append(pip_dep)
+            else:
+                pip_packages.append(pip_dep)
         try:
             await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
             python = virtualenv_utils.get_virtualenv_python(path)
@@ -188,13 +221,31 @@ class PipProcessor:
                     logger,
                 )
                 # Install pip packages.
-                await self._install_pip_packages(
-                    path,
-                    pip_packages,
-                    exec_cwd,
-                    self._pip_env,
-                    logger,
-                )
+                if len(pip_packages) > 0:
+                    await self._install_pip_packages(
+                        path,
+                        pip_packages,
+                        exec_cwd,
+                        self._pip_env,
+                        logger,
+                    )
+                # NOTE(Jacky): If there are both pip packages and pip commands in the `pip packages` field,
+                # we will first write all pip packages into `requirements.txt` for installation.
+                # Then pip commands will be executed in the order of pip commands.
+                # Therefore, previously installed packages may be overwritten
+                # so that we do not guarantee that the packages installed by pip_packages or pip_command
+                # will exist in the ray virtual environment.
+                # Users need to determine whether there are pip package dependency conflicts
+                # or pip package dependencies are overwritten.
+                if len(pip_commands) > 0:
+                    await self._run_pip_cmd_requirements(
+                        path,
+                        pip_commands,
+                        exec_cwd,
+                        self._pip_env,
+                        logger,
+                    )
+
                 # Check python environment for conflicts.
                 await self._pip_check(
                     path,
