@@ -395,7 +395,7 @@ class Stats:
         Returns:
             True if this Stats object has throughput tracking enabled, False otherwise.
         """
-        return self._throughput_stats is not None
+        return bool(self._throughput_stats)
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values list according to the constructor settings.
@@ -779,14 +779,14 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "_reduce_history": list(self._reduce_history),
+            "reduce_history": list(self._reduce_history),
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
         return state
 
     @staticmethod
-    def from_state(state: Dict[str, Any]) -> "Stats":
+    def from_state(state: Dict[str, Any], throughputs=False) -> "Stats":
         if "throughput_stats" in state:
             throughput_stats = Stats.from_state(state["throughput_stats"])
             stats = Stats(
@@ -797,6 +797,20 @@ class Stats:
                 clear_on_reduce=state["clear_on_reduce"],
                 throughput=throughput_stats.peek(),
                 throughput_ema_coeff=throughput_stats._ema_coeff,
+            )
+        elif state.get("_throughput", False):
+            # Older checkpoints have a _throughput key that is boolean or
+            # a float (throughput value). They don't have a throughput_ema_coeff
+            # so we use a default of 0.05.
+            # TODO(Artur): Remove this after a few Ray releases.
+            stats = Stats(
+                state["values"],
+                reduce=state["reduce"],
+                window=state["window"],
+                ema_coeff=state["ema_coeff"],
+                clear_on_reduce=state["clear_on_reduce"],
+                throughput=state["_throughput"],
+                throughput_ema_coeff=0.05,
             )
         else:
             stats = Stats(
@@ -809,10 +823,8 @@ class Stats:
                 throughput_ema_coeff=None,
             )
         stats._reduce_history = deque(
-            state["_reduce_history"], maxlen=stats._reduce_history.maxlen
+            state["_hist"], maxlen=stats._reduce_history.maxlen
         )
-        if "throughput_stats" in state:
-            stats._throughput_stats = Stats.from_state(state["throughput_stats"])
         return stats
 
     @staticmethod

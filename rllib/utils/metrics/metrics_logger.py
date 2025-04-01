@@ -7,6 +7,7 @@ from ray.rllib.utils import force_tuple, deep_update
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import PublicAPI
+from ray.util import log_once
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -391,29 +392,35 @@ class MetricsLogger:
                 )
             else:
                 stats = self._get_key(key)
-                if clear_on_reduce != stats._clear_on_reduce:
-                    raise ValueError(
-                        "clear_on_reduce must be the same for all logged values under the same key, "
-                        "but got argument clear_on_reduce={clear_on_reduce} while the existing Stats object {key} "
-                        "has clear_on_reduce={stats._clear_on_reduce}"
+                if clear_on_reduce != stats._clear_on_reduce and log_once(
+                    f"clear_on_reduce_warning_{key}"
+                ):
+                    logger.warning(
+                        f"clear_on_reduce should be the same for all logged values under the same key, "
+                        f"but got argument clear_on_reduce={clear_on_reduce} while the existing Stats object {key} "
+                        f"has clear_on_reduce={stats._clear_on_reduce}."
                     )
-                if with_throughput != stats.has_throughput:
-                    raise ValueError(
-                        "with_throughput must be the same for all logged values under the same key, "
-                        "but got argument with_throughput={with_throughput} while the existing Stats object {key} "
-                        "has has_throughput={stats.has_throughput}"
+                if with_throughput != bool(stats.has_throughput) and log_once(
+                    f"with_throughput_warning_{key}"
+                ):
+                    logger.warning(
+                        f"with_throughput should be the same for all logged values under the same key, "
+                        f"but got argument with_throughput={with_throughput} while the existing Stats object {key} "
+                        f"has has_throughput={stats.has_throughput}. This warning will always be shown if you are using an older checkpoint."
                     )
-                if throughput_ema_coeff != stats._throughput_ema_coeff:
-                    raise ValueError(
-                        "throughput_ema_coeff must be the same for all logged values under the same key, "
-                        "but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
-                        "has throughput_ema_coeff={stats._throughput_ema_coeff}"
+                if throughput_ema_coeff != stats._throughput_ema_coeff and log_once(
+                    f"throughput_ema_coeff_warning_{key}"
+                ):
+                    logger.warning(
+                        f"throughput_ema_coeff should be the same for all logged values under the same key, "
+                        f"but got argument throughput_ema_coeff={throughput_ema_coeff} while the existing Stats object {key} "
+                        f"has throughput_ema_coeff={stats._throughput_ema_coeff}. This warning will always be shown if you are using an older checkpoint."
                     )
-                if window != stats._window:
-                    raise ValueError(
-                        "window must be the same for all logged values under the same key, "
-                        "but got argument window={window} while the existing Stats object {key} "
-                        "has window={stats._window}"
+                if window != stats._window and log_once(f"window_warning_{key}"):
+                    logger.warning(
+                        f"window should be the same for all logged values under the same key, "
+                        f"but got argument window={window} while the existing Stats object {key} "
+                        f"has window={stats._window}."
                     )
                 if isinstance(value, Stats):
                     # If value itself is a `Stats`, we merge it on time axis into self's
@@ -1354,7 +1361,7 @@ class MetricsLogger:
         # Get all throughputs
         throughputs = self.get_throughputs()
 
-        deep_update(values, throughputs, new_keys_allowed=True)
+        deep_update(values, throughputs or {}, new_keys_allowed=True)
 
         def traverse_dict(d):
             if isinstance(d, dict):
