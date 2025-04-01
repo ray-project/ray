@@ -775,6 +775,18 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self):
+        return self.items
+
+
 @ray.remote(num_cpus=0)
 class SignalActor:
     def __init__(self):
