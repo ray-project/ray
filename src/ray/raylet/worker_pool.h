@@ -861,7 +861,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
 
-  // Whether resource isolation is enabled for the core worker.
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup after it is created.
   bool enable_resource_isolation_ = false;
 
   friend class WorkerPoolTest;

@@ -196,7 +196,7 @@ parser.add_argument(
     required=False,
     default=False,
     help=(
-        "If true, core worker enables resource isolation through cgroupv2 by reserving resources for ray system processes."
+        "If true, core worker enables resource isolation by adding itself into appropriate cgroup."
     ),
 )
 

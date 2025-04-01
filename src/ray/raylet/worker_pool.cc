@@ -446,8 +446,11 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   serialized_preload_python_modules);
   }
 
-  worker_command_args.emplace_back(absl::StrFormat(
-      "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
+  // Pass resource isolation flag to python worker.
+  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER) {
+    worker_command_args.emplace_back(absl::StrFormat(
+        "--enable-resource-isolation=%s", enable_resource_isolation_ ? "true" : "false"));
+  }
 
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.

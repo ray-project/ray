@@ -229,7 +229,8 @@ struct CoreWorkerOptions {
   // rather than functional purpose.
   std::string debug_source;
 
-  // Whether resource isolation is enabled for the core worker.
+  // If true, core worker enables resource isolation through cgroupv2 by reserving
+  // resources for ray system processes.
   bool enable_resource_isolation = false;
 };
 }  // namespace core

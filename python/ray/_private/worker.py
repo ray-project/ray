@@ -2275,6 +2275,7 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
+# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
 def connect(
     node,
     session_name: str,
@@ -2321,7 +2322,7 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
-        enable_resource_isolation: If true, core worker enables resource isolation through cgroupv2 by reserving resources for ray system processes.
+        enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
