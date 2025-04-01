@@ -3,12 +3,16 @@ import logging
 import ray
 
 from typing import Any, Dict, List, Optional, Tuple
+
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import ALL_MODULES
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.torch.torch_differentiable_learner import (
     TorchDifferentiableLearner,
 )
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
@@ -19,13 +23,16 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    DIFFERENTIABLE_LEARNER_RESULTS,
 )
+from ray.rllib.utils.metrics.utils import to_snake_case
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     NamedParamDict,
     ResultDict,
+    TensorType,
 )
 
 logger = logging.getLogger("__name__")
@@ -171,22 +178,28 @@ class TorchMetaLearner(TorchLearner):
             params = self._clone_named_parameters()
 
             # Update all differentiable learners.
-            other_losses = []
+            others_loss_per_module = []
+            others_results = {}
             for other in self.others:
                 # TODO (simon): Add the single results to the overall results.
-                params, other_results = other.update(
+                params, other_loss_per_module, other_results = other.update(
                     training_data=training_data,
                     params=params,
                     _no_metrics_reduce=_no_metrics_reduce,
                     **kwargs,
                 )
-                other_losses.append(other_results)
+                others_loss_per_module.append(other_loss_per_module)
+                others_results[to_snake_case(other.__class__.__name__)] = other_results
+
+            # Log training results from the `DifferentiableLearner`s.
+            self.metrics.log_dict(others_results, key=DIFFERENTIABLE_LEARNER_RESULTS)
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
             # all tensor values (no numpy).
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 tensor_minibatch.policy_batches,
                 params,
+                others_loss_per_module,
             )
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
@@ -245,7 +258,10 @@ class TorchMetaLearner(TorchLearner):
     @OverrideToImplementCustomLogic
     @override(TorchLearner)
     def _update(
-        self, batch: Dict[str, Any], params: NamedParamDict
+        self,
+        batch: Dict[str, Any],
+        params: NamedParamDict,
+        others_loss_per_module: List[Dict[ModuleID, TensorType]] = None,
     ) -> Tuple[Any, Any, Any]:
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
@@ -258,14 +274,15 @@ class TorchMetaLearner(TorchLearner):
             and not self._compiled_update_initialized
         ):
             self._compiled_update_initialized = True
-            return self._uncompiled_update(batch, params)
+            return self._uncompiled_update(batch, params, others_loss_per_module)
         else:
-            return self._possibly_compiled_update(batch, params)
+            return self._possibly_compiled_update(batch, params, others_loss_per_module)
 
     def _uncompiled_update(
         self,
         batch: Dict,
         params: NamedParamDict,
+        others_loss_per_module: List[Dict[ModuleID, TensorType]] = None,
         **kwargs,
     ):
         """Performs a single functional update using a batch of data.
@@ -295,7 +312,9 @@ class TorchMetaLearner(TorchLearner):
         # Make a functional forward call to include higher-order gradients in the meta
         # update.
         fwd_out = self._make_functional_call(params, batch)
-        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
+        loss_per_module = self.compute_losses(
+            fwd_out=fwd_out, batch=batch, others_loss_per_module=others_loss_per_module
+        )
         gradients = self.compute_gradients(loss_per_module)
 
         with contextlib.ExitStack() as stack:
@@ -310,6 +329,112 @@ class TorchMetaLearner(TorchLearner):
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
         return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+
+    @override(Learner)
+    def compute_losses(
+        self,
+        *,
+        fwd_out: Dict[str, Any],
+        batch: Dict[str, Any],
+        others_loss_per_module: List[Dict[ModuleID, TensorType]] = None,
+        **kwargs,
+    ) -> Dict[ModuleID, TensorType]:
+        """Computes the loss(es) for the module being optimized.
+
+        This method must be overridden by MultiRLModule-specific Learners in order to
+        define the specific loss computation logic. If the algorithm is single-agent,
+        only `compute_loss_for_module()` should be overridden instead. If the algorithm
+        uses independent multi-agent learning (default behavior for RLlib's multi-agent
+        setups), also only `compute_loss_for_module()` should be overridden, but it will
+        be called for each individual RLModule inside the MultiRLModule.
+        For the functional update to work, no `forward` call should be made
+        within this method, especially not a non-functional one. Instead, use
+        the model outputs provided by `fwd_out`.
+
+        Losses from `DifferentiableLearner` instances in `others_loss_per_module`
+        can be leveraged for more advanced module-wise loss calculations.
+
+        Args:
+            fwd_out: Output from a call to the `forward_train()` method of the
+                underlying MultiRLModule (`self.module`) during training
+                (`self.update()`).
+            batch: The train batch that was used to compute `fwd_out`.
+            others_loss_per_module: A list of losses per module id from the contained
+                `DifferentiableLearner` instances in`self.others`.
+
+        Returns:
+            A dictionary mapping module IDs to individual loss terms.
+        """
+        loss_per_module = {}
+        for module_id in fwd_out:
+            module_batch = batch[module_id]
+            module_fwd_out = fwd_out[module_id]
+
+            module = self.module[module_id].unwrapped()
+            if isinstance(module, SelfSupervisedLossAPI):
+                loss = module.compute_self_supervised_loss(
+                    learner=self,
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                    others_loss_per_module=others_loss_per_module,
+                )
+            else:
+                loss = self.compute_loss_for_module(
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                    others_loss_per_module=others_loss_per_module,
+                )
+            loss_per_module[module_id] = loss
+
+        return loss_per_module
+
+    @OverrideToImplementCustomLogic
+    @override(Learner)
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        config: "AlgorithmConfig",
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType],
+        others_loss_per_module: List[Dict[ModuleID, TensorType]] = None,
+    ) -> TensorType:
+        """Computes the loss for a single module.
+
+        This method calculates the loss for an individual agent. In multi-agent
+        scenarios requiring more complex loss computations, consider overriding the
+        `compute_losses` method instead.
+
+        Losses from `DifferentiableLearner` instances in `others_loss_per_module`
+        can be leveraged for more advanced module-wise loss calculations.
+
+        Args:
+            module_id: The id of the module.
+            config: The AlgorithmConfig specific to the given `module_id`.
+            batch: The train batch for this particular module.
+            fwd_out: The output of the forward pass for this particular module.
+            others_loss_per_module: A list of losses per module id from the contained
+                `DifferentiableLearner` instances in`self.others`.
+
+        Returns:
+            A single total loss tensor. If you have more than one optimizer on the
+            provided `module_id` and would like to compute gradients separately using
+            these different optimizers, simply add up the individual loss terms for
+            each optimizer and return the sum. Also, for recording/logging any
+            individual loss terms, you can use the `Learner.metrics.log_value(
+            key=..., value=...)` or `Learner.metrics.log_dict()` APIs. See:
+            :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for more
+            information.
+        """
+        # By default, `others_loss_per_module` is not used; instead, the superclass
+        # method is called.
+        return super().compute_loss_for_module(
+            module_id=module_id, config=config, batch=batch, fwd_out=fwd_out
+        )
 
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch

@@ -389,9 +389,9 @@ class DifferentiableLearner(Checkpointable):
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
-            return params, self.metrics.reduce()
+            return params, loss_per_module, self.metrics.reduce()
         else:
-            return params, None
+            return params, loss_per_module, None
 
     def _create_iterator_if_necessary(
         self,
