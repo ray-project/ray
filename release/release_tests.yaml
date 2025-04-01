@@ -2113,33 +2113,53 @@
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
-    - __suffix__: full_training
+    - __suffix__: full_training.parquet
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16
 
-    - __suffix__: full_training_torch_dataloader
+    - __suffix__: full_training.parquet.torch_dataloader
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16
 
-    - __suffix__: skip_training
+    - __suffix__: skip_training.parquet
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
-    - __suffix__: skip_training_torch_dataloader
+    - __suffix__: skip_training.parquet.torch_dataloader
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
-    - __suffix__: skip_training.fault_tolerance
+    - __suffix__: skip_training.parquet.fault_tolerance
       run:
         timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
+
+    - __suffix__: full_training.jpeg
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training.jpeg.torch_dataloader
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16
+
+    - __suffix__: skip_training.jpeg
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.jpeg.torch_dataloader
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
 - name: train_horovod_multi_node_test
   group: Train tests

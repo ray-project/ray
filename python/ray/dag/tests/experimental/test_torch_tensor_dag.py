@@ -70,6 +70,10 @@ class TorchTensorWorker:
     def recv(self, tensor):
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
+    def recv_on_gpu(self, tensor):
+        assert tensor.device.type == "cuda"
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
+
     def recv_and_matmul(self, two_d_tensor):
         """
         Receive the tensor and do some expensive computation (matmul).
@@ -87,6 +91,16 @@ class TorchTensorWorker:
         vals = {}
         for i, tensor in tensor_dict.items():
             vals[i] = self.recv(tensor)
+        return vals
+
+    def recv_dict_on_gpu(self, tensor_dict):
+        """
+        Receive a dict of tensors and return a dict of tensors on GPU.
+        It also verifies that the tensors are on GPU.
+        """
+        vals = {}
+        for i, tensor in tensor_dict.items():
+            vals[i] = self.recv_on_gpu(tensor)
         return vals
 
     def compute_with_tuple_args(self, args, i: int):
@@ -249,6 +263,54 @@ def test_torch_tensor_nccl(
         shape = (10 * (i + 1),)
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_shm(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("This test requires GPUs to assign to actors")
+
+    sender = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+    receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Test transferring a single tensor.
+    with InputNode() as inp:
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        # Specify device="gpu" because the default device is "cpu".
+        data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
+        dag = receiver.recv_on_gpu.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    # Check that the transport is set to AUTO (host shared memory and gRPC)
+    # even though sender and receiver have GPUs.
+    assert data_annotated.type_hint.transport == TorchTensorType.AUTO
+    for i in range(3):
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+    compiled_dag.teardown()
+
+    # Test transferring a dict of tensors.
+    with InputNode() as inp:
+        data = sender.send_dict.bind(inp)
+        # Specify device="gpu" because the default device is "cpu".
+        data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
+        dag = receiver.recv_dict_on_gpu.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == TorchTensorType.AUTO
+    for i in range(3):
+        dtype = torch.float16
+        args = {j: (j, (10 * j,), dtype) for j in range(1, i + 1)}
+
+        ref = compiled_dag.execute(args)
+        result = ray.get(ref)
+        assert result == args
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
