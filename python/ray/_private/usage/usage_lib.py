@@ -817,7 +817,7 @@ def get_cluster_config_to_report(
         ):
             pass
         elif result.cloud_provider is not None:
-            result.cloud_provider += "_unkown"
+            result.cloud_provider += "_unknown"
 
         return result
     except Exception as e:
