@@ -779,7 +779,7 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
-            "reduce_history": list(self._reduce_history),
+            "_hist": list(self._reduce_history),
         }
         if self._throughput_stats is not None:
             state["throughput_stats"] = self._throughput_stats.get_state()
