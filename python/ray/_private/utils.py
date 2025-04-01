@@ -1859,7 +1859,7 @@ def parse_node_labels_json(
 def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
-    for key, value in labels.keys():
+    for key, value in labels.items():
         possible_error_message = validate_label_key(key)
         if possible_error_message:
             raise ValueError(possible_error_message)
