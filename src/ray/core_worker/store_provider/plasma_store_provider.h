@@ -97,6 +97,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   ~CoreWorkerPlasmaStoreProvider();
 
+  void set_in_actor_store_callback(std::function<void(const ObjectID &)> in_actor_store_callback);
+
   /// Create and seal an object.
   ///
   /// NOTE: The caller must subsequently call Release() to release the first reference to
@@ -197,6 +199,8 @@ class CoreWorkerPlasmaStoreProvider {
   std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
 
  private:
+  std::function<void(const ObjectID &)> in_actor_store_callback;
+
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
   /// from the input set of remaining IDs and added to the results map.

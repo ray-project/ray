@@ -2257,6 +2257,14 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
+cdef void in_actor_store_callback(const CObjectID &object_id) nogil:
+    # TODO: Implement the real clean up logic here. The current implementation is just for testing.
+    with gil:
+        in_actor_object_store = ray._private.worker.global_worker.in_actor_object_store
+        print(f"in_actor_store_callback, in_actor_object_store: {in_actor_object_store}, delete key: 123456")
+        if 123456 in in_actor_object_store:
+            del in_actor_object_store[123456]
+
 cdef void pygilstate_release(PyGILState_STATE gstate) nogil:
     with gil:
         PyGILState_Release(gstate)
@@ -3013,6 +3021,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
+        options.in_actor_store_callback = in_actor_store_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler

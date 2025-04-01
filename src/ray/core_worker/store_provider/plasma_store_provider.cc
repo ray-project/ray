@@ -53,6 +53,10 @@ BufferTracker::UsedObjects() const {
   return used;
 }
 
+void CoreWorkerPlasmaStoreProvider::set_in_actor_store_callback(std::function<void(const ObjectID &)> in_actor_store_callback) {
+  store_client_->in_actor_store_callback = in_actor_store_callback;
+}
+
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,

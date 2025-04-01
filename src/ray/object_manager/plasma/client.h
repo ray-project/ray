@@ -168,6 +168,8 @@ class PlasmaClient : public PlasmaClientInterface {
   PlasmaClient();
   ~PlasmaClient();
 
+  std::function<void(const ObjectID &)> in_actor_store_callback;
+
   /// Connect to the local plasma store. Return the resulting connection.
   ///
   /// \param store_socket_name The name of the UNIX domain socket to use to

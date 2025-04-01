@@ -105,6 +105,11 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Impl();
   ~Impl();
 
+  // Add a setter for the callback
+  void SetInActorStoreCallback(std::function<void(const ObjectID &)> callback) {
+    in_actor_store_callback_ = callback;
+  }
+
   // PlasmaClient method implementations
 
   Status Connect(const std::string &store_socket_name,
@@ -244,6 +249,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// Add the callback as a member variable
+  std::function<void(const ObjectID &)> in_actor_store_callback_;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
@@ -718,6 +725,11 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   RAY_CHECK(object_entry->second->count >= 0);
 
   if (object_entry->second->count == 0) {
+    if (in_actor_store_callback_) {
+      RAY_LOG(INFO) << "Remove object from in-actor store " << object_id;
+      in_actor_store_callback_(object_id);
+    }
+
     RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
     // object_entry is invalidated in MarkObjectUnused, need to read the fd beforehand.
     // If the fd may be unmapped, we wait for the plasma server to send a ReleaseReply.
@@ -931,7 +943,13 @@ std::string PlasmaClient::Impl::DebugString() {
 // ----------------------------------------------------------------------
 // PlasmaClient
 
-PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {}
+PlasmaClient::PlasmaClient() : impl_(std::make_shared<PlasmaClient::Impl>()) {
+  impl_->SetInActorStoreCallback([this](const ObjectID &object_id) {
+    if (in_actor_store_callback) {
+      in_actor_store_callback(object_id);
+    }
+  });
+}
 
 PlasmaClient::~PlasmaClient() {}
 
