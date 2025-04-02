@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 import time
 from functools import partial
 from concurrent.futures import Executor, Future
-from concurrent.futures._base import _result_or_cancel  # type: ignore
 from typing import (
     Any,
     ParamSpec,
@@ -16,6 +15,20 @@ import random
 import ray
 from ray.util.annotations import PublicAPI
 import ray.exceptions
+
+try:
+    from concurrent.futures._base import _result_or_cancel  # type: ignore
+except ImportError:
+    # Backport private Python 3.12 function to Python 3.9
+    # https://github.com/python/cpython/tree/main/Lib/concurrent/futures/_base.py#L306
+    def _result_or_cancel(fut, timeout=None):
+        try:
+            try:
+                return fut.result(timeout)
+            finally:
+                fut.cancel()
+        finally:
+            del fut
 
 
 # Typing -----------------------------------------------
