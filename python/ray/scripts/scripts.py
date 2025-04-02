@@ -726,7 +726,7 @@ def start(
 
     resources = parse_resources_json(resources, cli_logger, cf)
 
-    # Compose labels passed in with `--labels` and `--labels-from-file`.
+    # Compose labels passed in with `--labels` and `--labels-file`.
     # The label value from `--labels` will overrwite the value of any duplicate keys.
     labels_from_file_dict = parse_node_labels_from_yaml_file(
         labels_file, cli_logger, cf
