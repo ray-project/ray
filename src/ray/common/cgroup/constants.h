@@ -17,6 +17,7 @@
 #pragma once
 
 #include <string_view>
+#include <cstdint>
 
 #ifdef __linux__
 #include <sys/stat.h>
