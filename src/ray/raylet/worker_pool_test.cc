@@ -418,8 +418,8 @@ class WorkerPoolTest : public ::testing::Test {
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
