@@ -382,15 +382,6 @@ class DashboardHead:
         if self.server:
             await self.server.start()
 
-        async def _async_notify():
-            """Notify signals from queue."""
-            while True:
-                co = await dashboard_utils.NotifyQueue.get()
-                try:
-                    await co
-                except Exception:
-                    logger.exception(f"Error notifying coroutine {co}")
-
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
             self._modules_to_load
         )
@@ -438,11 +429,8 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        # Freeze signal after all modules loaded.
-        dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
             self._gcs_check_alive(),
-            _async_notify(),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run(self.server))
