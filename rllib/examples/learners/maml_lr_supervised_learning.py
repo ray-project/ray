@@ -5,7 +5,7 @@ to infinitely many tasks. Each task is defined by a sinusoid curve with random
 amplitude and phase. During training the `DifferentiableLearner` computes the
 training error and performs a functional parameter update. The `TorchMetaLearner`
 uses the updated parameters for its forward pass and computes the test error. It
-then updates parameters as such that they minimize test error. 
+then updates parameters as such that they minimize test error.
 
 During inference the model receives a batch of new examples and makes few-shot
 learning to adapt quickly to the new task.
