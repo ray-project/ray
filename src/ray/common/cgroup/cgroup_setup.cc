@@ -111,19 +111,56 @@ Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
 // Note: enabling controllers in a subcgroup requires that its parent cgroup
 // also has those controllers enabled.
 Status EnableCgroupSubtreeControl(const std::string &subtree_control_path) {
-  std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(out_file.good())
-      << "Failed to open cgroup file " << subtree_control_path;
+  // TODO(hjiang): A workaround for missing sudo permission, should be deleted it
+  // https://github.com/ray-project/ray/pull/51903 works.
+  bool memory_subtree_controller_enabled = false;
+  bool cpu_subtree_controller_enabled = false;
+  {
+    std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
+    RAY_SCHECK_OK_CGROUP(in_file.good())
+        << "Failed to open cgroup file " << subtree_control_path;
 
-  out_file << "+memory";
-  out_file.flush();
-  RAY_SCHECK_OK_CGROUP(out_file.good())
-      << "Failed to flush cgroup file " << subtree_control_path;
+    std::string content((std::istreambuf_iterator<char>(in_file)),
+                        std::istreambuf_iterator<char>());
+    std::string_view content_sv{content};
+    absl::ConsumeSuffix(&content_sv, "\n");
 
-  out_file << "+cpu";
-  out_file.flush();
-  RAY_SCHECK_OK_CGROUP(out_file.good())
-      << "Failed to flush cgroup file " << subtree_control_path;
+    const std::vector<std::string_view> enabled_subtree_controllers =
+        absl::StrSplit(content_sv, ' ');
+    if (std::find(enabled_subtree_controllers.begin(),
+                  enabled_subtree_controllers.end(),
+                  "memory") != enabled_subtree_controllers.end()) {
+      memory_subtree_controller_enabled = true;
+    }
+    if (std::find(enabled_subtree_controllers.begin(),
+                  enabled_subtree_controllers.end(),
+                  "cpu") != enabled_subtree_controllers.end()) {
+      cpu_subtree_controller_enabled = true;
+    }
+  }
+  if (memory_subtree_controller_enabled && cpu_subtree_controller_enabled) {
+    return Status::OK();
+  }
+
+  {
+    std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
+    RAY_SCHECK_OK_CGROUP(out_file.good())
+        << "Failed to open cgroup file " << subtree_control_path;
+
+    if (!memory_subtree_controller_enabled) {
+      out_file << "+memory";
+      out_file.flush();
+      RAY_SCHECK_OK_CGROUP(out_file.good())
+          << "Failed to flush cgroup file " << subtree_control_path;
+    }
+
+    if (!cpu_subtree_controller_enabled) {
+      out_file << "+cpu";
+      out_file.flush();
+      RAY_SCHECK_OK_CGROUP(out_file.good())
+          << "Failed to flush cgroup file " << subtree_control_path;
+    }
+  }
 
   return Status::OK();
 }
