@@ -14,8 +14,7 @@ from ray.util.concurrent.futures.ray_executor import (
 )
 import time
 import typing as T
-from functools import partial
-from multiprocessing import Process
+from multiprocessing import get_context
 
 import ray
 from ray.actor import ActorHandle
@@ -36,6 +35,18 @@ import logging
 # ProcessPoolExecutor uses pickle which can only serialize top-level functions.
 def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
+
+
+# For test_results_are_not_accessible_after_shutdown to avoid pickling a generator
+# for the subprocess to access, use global + fork and the subprocess can attempt
+# to access results after termination. There is probably a better way to do this.
+generator_holder = None
+
+
+def access_results():
+    global generator_holder
+    for result in generator_holder:
+        print(result)
 
 
 class InitializerException(Exception):
@@ -469,13 +480,16 @@ class TestSetupShutdown(TestIsolated):
         assert ex._shutdown_lock
 
         # we run a custom timeout function otherwise ray take 180s to timeout
-        timeout_runner = Process(target=partial(list, r1))
+        global generator_holder
+        generator_holder = r1
+        timeout_runner = get_context("fork").Process(target=access_results)
         timeout = 5
         timeout_runner.start()
         while timeout_runner.is_alive() and timeout > 0:
             time.sleep(1)
             timeout -= 1
-        if timeout_runner.is_alive() and timeout == 0:
+        check = timeout == 0
+        if timeout_runner.is_alive() and check:
             timeout_runner.kill()
             assert True
         else:
