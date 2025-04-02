@@ -33,6 +33,7 @@ def main(args):
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
+            trust_remote_code=True,
         ),
         runtime_env=runtime_env,
         tokenize=tokenize,
@@ -90,5 +91,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = get_parser().parse_args()
-    main(args)
+    parser = get_parser()
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    main(parser.parse_args())

@@ -41,7 +41,7 @@ using tcp = boost::asio::ip::tcp;
 using boost::asio::ip::port_type;
 
 port_type GetFreePort() {
-  boost::asio::io_service io_service;
+  boost::asio::io_context io_service;
   boost::asio::ip::tcp::acceptor acceptor(io_service);
   boost::asio::ip::tcp::endpoint endpoint;
 

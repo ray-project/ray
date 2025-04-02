@@ -2217,8 +2217,8 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   RayTask finished_task;
-  for (auto &worker : leased_workers_) {
-    local_task_manager_->TaskFinished(worker.second, &finished_task);
+  for (auto &cur_worker : leased_workers_) {
+    local_task_manager_->TaskFinished(cur_worker.second, &finished_task);
   }
   AssertNoLeaks();
 }
