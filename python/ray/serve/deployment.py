@@ -237,9 +237,7 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-        replica_scheduler_class: Default[
-            Union[str, ReplicaScheduler, None]
-        ] = DEFAULT.VALUE,
+        replica_scheduler: Default[Union[str, ReplicaScheduler, None]] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
@@ -372,9 +370,9 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
-        if replica_scheduler_class is not DEFAULT.VALUE:
+        if replica_scheduler is not DEFAULT.VALUE:
             # TODO (genesu): ensure this works with passing the class directly.
-            new_deployment_config.replica_scheduler_class = replica_scheduler_class
+            new_deployment_config.replica_scheduler = replica_scheduler
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
