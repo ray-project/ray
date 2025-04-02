@@ -541,7 +541,6 @@ freezegun==1.1.0
     # via -r python/requirements/test-requirements.txt
 frozenlist==1.4.1
     # via
-    #   -r python/requirements.txt
     #   aiohttp
     #   aiosignal
     #   ray
