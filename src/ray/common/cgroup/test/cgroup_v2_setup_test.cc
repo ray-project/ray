@@ -14,9 +14,8 @@
 //
 // Precondition: cgroupv2 has already been mounted as rw.
 //
-// Setup command:
-// sudo umount /sys/fs/cgroup/unified
-// sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
+// TODO(hjiang): Provide documentation and scripts to check cgroupv2 mount status and
+// mount it correctly.
 //
 // Execution command:
 // sudo bazel-bin/src/ray/common/cgroup/test/cgroup_v2_setup_test
