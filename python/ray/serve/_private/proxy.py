@@ -87,8 +87,8 @@ assert HTTP_REQUEST_MAX_RETRIES >= 0, (
     "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
 )
 
-TIMEOUT_ERROR_CODE = "timeout"
-DISCONNECT_ERROR_CODE = "disconnection"
+TIMEOUT_ERROR_CODE = "408"
+DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
@@ -1045,7 +1045,7 @@ class HTTPProxy(GenericProxy):
             )
         except (BackPressureError, DeploymentUnavailableError) as e:
             status = ResponseStatus(
-                code=503,
+                code="503",
                 is_error=True,
                 message=e.message,
             )

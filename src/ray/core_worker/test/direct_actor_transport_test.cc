@@ -114,7 +114,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
-        io_work(io_context),
+        io_work(io_context.get_executor()),
         reference_counter_(std::make_shared<MockReferenceCounter>()),
         submitter_(
             *client_pool_,
@@ -137,7 +137,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   instrumented_io_context io_context;
-  boost::asio::io_service::work io_work;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   ActorTaskSubmitter submitter_;
 

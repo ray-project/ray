@@ -33,7 +33,7 @@ def main(args):
         detokenize = True
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source="llava-hf/llava-1.5-7b-hf",
+        model_source=args.model_source,
         task_type="generate",
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
@@ -54,6 +54,7 @@ def main(args):
     processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
+            model=args.model_source if args.lora_name is None else args.lora_name,
             messages=[
                 {"role": "system", "content": "You are an assistant"},
                 {
@@ -91,4 +92,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = get_parser()
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="llava-hf/llava-1.5-7b-hf",
+        help="Model source.",
+    )
     main(parser.parse_args())
