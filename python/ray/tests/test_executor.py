@@ -210,9 +210,9 @@ class ActorPoolTests(ABC):
 
     def test_get_actor_ids_returns_list_of_strings(self, actor_pool):
         actor_ids = actor_pool.get_actor_ids()
-        assert isinstance(list, actor_ids)
+        assert isinstance(actor_ids, list)
         for i in actor_ids:
-            assert isinstance(str, i)
+            assert isinstance(i, str)
 
     def test_actor_pool_exit_removes_from_pool(self):
         pool = self.apc(num_actors=1)
@@ -382,7 +382,7 @@ class TestExistingInstanceSetup(TestShared):
             result = ex.submit(lambda x: x * x, 100).result()
             assert result == 10_000
             assert ex._context is not None
-            assert isinstance(RayContext, ex._context)
+            assert isinstance(ex._context, RayContext)
             assert ex._context.address_info["address"] == self.address
 
     def test_remote_function_runs_on_specified_instance_with_map(self):
@@ -391,7 +391,7 @@ class TestExistingInstanceSetup(TestShared):
             for result in futures_iter:
                 assert result == 10_000
             assert ex._context is not None
-            assert isinstance(RayContext, ex._context)
+            assert isinstance(ex._context, RayContext)
             assert ex._context.address_info["address"] == self.address
 
     def test_context_manager_does_not_invoke_shutdown_on_existing_instance(self):
@@ -428,8 +428,8 @@ class TestSetupShutdown(TestIsolated):
                 assert n0 == n1
                 assert ex0._context is not None
                 assert ex1._context is not None
-                assert isinstance(RayContext, ex0._context)
-                assert isinstance(RayContext, ex1._context)
+                assert isinstance(ex0._context, RayContext)
+                assert isinstance(ex1._context, RayContext)
                 assert (
                     ex0._context.address_info["node_id"]
                     == ex1._context.address_info["node_id"]
@@ -657,7 +657,7 @@ class TestProcessPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(ppe_iter, "__iter__")
         assert hasattr(ppe_iter, "__next__")
-        assert isinstance(type(ppe_result), ray_result)
+        assert isinstance(ray_result, type(ppe_result))
         assert sorted(ray_result) == sorted(ppe_result)
 
     def test_conformity_with_processpool_using_max_workers(self):
@@ -670,7 +670,7 @@ class TestProcessPool(TestIsolated):
             ray_result = ex.submit(f_process0, 100).result()
         with ProcessPoolExecutor(max_workers=2) as ppe:
             ppe_result = ppe.submit(f_process1, 100).result()
-        assert isinstance(type(ppe_result), ray_result)
+        assert isinstance(ray_result, type(ppe_result))
         assert ray_result == ppe_result
 
     def test_conformity_with_processpool_map_using_max_workers(self):
@@ -689,7 +689,7 @@ class TestProcessPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(ppe_iter, "__iter__")
         assert hasattr(ppe_iter, "__next__")
-        assert isinstance(type(ppe_result), ray_result)
+        assert isinstance(ray_result, type(ppe_result))
         assert sorted(ray_result) == sorted(ppe_result)
 
 
@@ -727,7 +727,7 @@ class TestThreadPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(tpe_iter, "__iter__")
         assert hasattr(tpe_iter, "__next__")
-        assert isinstance(type(tpe_result), ray_result)
+        assert isinstance(ray_result, type(tpe_result))
         assert sorted(ray_result) == sorted(tpe_result)
 
     def test_conformity_with_threadpool_using_max_workers(self):
@@ -763,7 +763,7 @@ class TestThreadPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(tpe_iter, "__iter__")
         assert hasattr(tpe_iter, "__next__")
-        assert isinstance(type(tpe_result), ray_result)
+        assert isinstance(ray_result, type(tpe_result))
         assert sorted(ray_result) == sorted(tpe_result)
 
     def test_conformity_with_threadpool_initializer_initargs(self):
