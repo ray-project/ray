@@ -28,7 +28,6 @@ def _write_fragment(
     uri: str,
     *,
     schema: Optional["pa.Schema"] = None,
-    min_rows_per_file: int = 1024 * 1024,
     max_rows_per_file: int = 64 * 1024 * 1024,
     max_bytes_per_file: Optional[int] = None,
     max_rows_per_group: int = 1024,  # Only useful for v1 writer.
@@ -64,7 +63,6 @@ def _write_fragment(
         reader,
         uri,
         schema=schema,
-        min_rows_per_file=min_rows_per_file,
         max_rows_per_file=max_rows_per_file,
         max_rows_per_group=max_rows_per_group,
         max_bytes_per_file=max_bytes_per_file,
