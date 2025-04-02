@@ -7,6 +7,7 @@ ray_cc_test(
     tags = [
         "cgroup",
         "exclusive",
+        "no_windows",  # Only works on linux.
         "team:core",
     ],
     deps = [
