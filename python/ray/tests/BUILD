@@ -744,6 +744,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_executor.py",
         "test_failure_4.py",
         "test_iter.py",
         "test_multiprocessing.py",
@@ -755,7 +756,6 @@ py_test_module_list(
         "test_reference_counting.py",
         "test_scheduling_2.py",
         "test_tqdm.py",
-        "test_executor.py",
     ],
     tags = [
         "exclusive",
