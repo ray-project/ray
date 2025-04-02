@@ -229,19 +229,19 @@ class JobHead(SubprocessModule):
         Raises:
             TimeoutError: If the operation times out.
         """
-        timeout_point = time.time() + timeout_s
-        exception = None
-        while time.time() < timeout_point:
+        start_time_s = time.time()
+        last_exception = None
+        while time.time() < start_time_s + timeout_s:
             try:
                 return await self._pick_random_agent_once()
             except Exception as e:
-                exception = e
+                last_exception = e
                 logger.exception(
                     f"Failed to pick a random agent, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
         raise TimeoutError(
-            f"Failed to pick a random agent within {timeout_s} seconds. The last exception is {exception}"
+            f"Failed to pick a random agent within {timeout_s} seconds. The last exception is {last_exception}"
         )
 
     async def _pick_random_agent_once(self) -> JobAgentSubmissionClient:
