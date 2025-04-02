@@ -76,6 +76,7 @@ def method(*args, **kwargs):
         "retry_exceptions",
         "_generator_backpressure_num_objects",
         "enable_task_events",
+        "tensor_transport",
     ]
     error_string = (
         "The @ray.method decorator must be applied using at least one of "
@@ -105,6 +106,8 @@ def method(*args, **kwargs):
             ]
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
+        if "tensor_transport" in kwargs:
+            method.__ray_tensor_transport__ = kwargs["tensor_transport"]
         return method
 
     return annotate_method
@@ -159,6 +162,7 @@ class ActorMethod:
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
+        tensor_transport = None,
     ):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
@@ -190,6 +194,8 @@ class ActorMethod:
             self._actor_hard_ref = actor
         else:
             self._actor_hard_ref = None
+
+        self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
         raise TypeError(
@@ -332,6 +338,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
+        tensor_transport=None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -347,12 +354,61 @@ class ActorMethod:
             _generator_backpressure_num_objects = (
                 self._generator_backpressure_num_objects
             )
+        if tensor_transport is None:
+            tensor_transport = self._tensor_transport
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
 
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
+
+            for arg in args:
+                if isinstance(arg, ray.ObjectRef):
+                    worker = ray._private.worker.global_worker
+                    tensor_meta = worker.in_actor_object_refs.get(arg, None)
+                    if tensor_meta is None:
+                        continue
+
+                    src_actor, tensor_meta = tensor_meta
+
+                    def send(self, obj_id, dst_rank):
+                        import torch.distributed as dist
+                        worker = ray._private.worker.global_worker
+                        assert obj_id in worker.in_actor_object_store, worker.in_actor_object_store
+                        tensors = worker.in_actor_object_store[obj_id]
+                        for tensor in tensors:
+                            dist.send(tensor, dst_rank)
+
+                    def recv(self, obj_id, src_rank, tensor_meta):
+                        import torch
+                        import torch.distributed as dist
+                        worker = ray._private.worker.global_worker
+                        tensors = []
+                        for meta in tensor_meta:
+                            shape, dtype = meta
+                            tensor = torch.zeros(shape, dtype=dtype)
+                            dist.recv(tensor, src_rank)
+                            tensors.append(tensor)
+                        worker.in_actor_object_store[obj_id] = tensors
+
+                    from ray.experimental.channel import ChannelContext
+
+                    ctx = ChannelContext.get_current()
+                    for group_id, actors in ctx.communicators.items():
+                        src_rank = None
+                        dst_rank = None
+                        for i, a in enumerate(actors):
+                            if a._ray_actor_id == src_actor._ray_actor_id:
+                                src_rank = i
+                            if a._ray_actor_id == actor._ray_actor_id:
+                                dst_rank = i
+                        assert src_rank is not None
+                        assert dst_rank is not None
+                        assert src_rank != dst_rank
+
+                    src_actor.__ray_call__.remote(send, arg.hex(), dst_rank)
+                    actor.__ray_call__.remote(recv, arg.hex(), src_rank, tensor_meta)
 
             return actor._actor_method_call(
                 self._method_name,
@@ -373,7 +429,24 @@ class ActorMethod:
         if self._decorator is not None:
             invocation = self._decorator(invocation)
 
-        return invocation(args, kwargs)
+        obj_ref = invocation(args, kwargs)
+        if tensor_transport is not None:
+            assert tensor_transport == "nccl"
+            assert num_returns == 1
+
+            def get_tensor_sizes(self, obj_id):
+                worker = ray._private.worker.global_worker
+                return [(t.shape, t.dtype) for t in worker.in_actor_object_store[obj_id]]
+
+            actor = self._actor_hard_ref or self._actor_ref()
+            tensor_meta = actor.__ray_call__.remote(get_tensor_sizes, obj_ref.hex())
+            # Metadata: (actor that hosts the object, tensor shapes)
+            # Driver will provide the NCCL metadata upon submission of a
+            # dependent task.
+            worker = ray._private.worker.global_worker
+            worker.in_actor_object_refs[obj_ref] = (self._actor_ref(), tensor_meta)
+
+        return obj_ref
 
     def __getstate__(self):
         return {
@@ -461,6 +534,7 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
+        self.tensor_transport = {}
 
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
@@ -515,6 +589,9 @@ class _ActorClassMethodMetadata(object):
                 self.generator_backpressure_num_objects[
                     method_name
                 ] = method.__ray_generator_backpressure_num_objects__
+
+            if hasattr(method, "__ray_tensor_transport__"):
+                self.tensor_transport[method_name] = method.__ray_tensor_transport__
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -1262,6 +1339,7 @@ class ActorClass:
             meta.method_meta.retry_exceptions,
             meta.method_meta.generator_backpressure_num_objects,
             meta.method_meta.enable_task_events,
+            meta.method_meta.tensor_transport,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_cluster_and_job,
@@ -1349,6 +1427,7 @@ class ActorHandle:
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
+        method_tensor_transport,
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1372,6 +1451,7 @@ class ActorHandle:
             method_generator_backpressure_num_objects
         )
         self._ray_method_enable_task_events = method_enable_task_events
+        self._ray_method_tensor_transport = method_tensor_transport
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -1415,6 +1495,7 @@ class ActorHandle:
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
                     signature=self._ray_method_signatures[method_name],
+                    tensor_transport=self._ray_method_tensor_transport.get(method_name),
                 )
                 setattr(self, method_name, method)
 

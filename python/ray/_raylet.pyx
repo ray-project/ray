@@ -4398,7 +4398,7 @@ cdef class CoreWorker:
 
             context = worker.get_serialization_context()
 
-            serialized_object = context.serialize(output)
+            serialized_object = context.serialize(output, return_id.Hex())
             data_size = serialized_object.total_bytes
             metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:

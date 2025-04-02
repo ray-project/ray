@@ -74,6 +74,10 @@ class _SerializationContext:
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
 
+    @property
+    def use_external_transport(self) -> bool:
+        return self._use_external_transport
+
     def reset_out_of_band_tensors(
         self, tensors: List["torch.Tensor"]
     ) -> Tuple[List["torch.Tensor"], Set[int]]:
