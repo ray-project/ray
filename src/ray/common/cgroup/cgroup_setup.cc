@@ -295,7 +295,7 @@ Status CgroupSetup::AddSystemProcess(pid_t pid) {
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
     const AppProcCgroupMetadata &ctx) {
-  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(0))
+  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(kUnlimitedCgroupMemory))
       << "Ray doesn't support per-task resource constraint.";
 
   std::ofstream out_file(cgroup_v2_default_app_proc_filepath_,

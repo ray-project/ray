@@ -57,7 +57,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // cgroup will be killed recursively via SIGKILL.
   ~CgroupSetup() override;
 
-  // Add ray system processes into the system cgroup.
+  // Add the specified process into the system cgroup.
   Status AddSystemProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
@@ -87,6 +87,7 @@ class CgroupSetup : public BaseCgroupSetup {
   //
   // TODO(hjiang): As of now there's a bug for returning StatusOr<> at windows, switch
   // after the issue resolved.
+  // Link: https://github.com/ray-project/ray/pull/50761
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 
   // File path of PIDs for root cgroup.

@@ -24,6 +24,8 @@
 
 namespace ray {
 
+// A constant made for cgroup usage, which indicates no memory constraint.
+inline constexpr uint64_t kUnlimitedCgroupMemory = 0;
 // Default cgroup directory.
 inline constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
 // Process filename within a cgroup.
