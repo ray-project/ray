@@ -1,11 +1,9 @@
 import pytest
-import click
 from ray._private.label_utils import (
     parse_node_labels_string,
     parse_node_labels_from_yaml_file,
     validate_node_labels,
 )
-from ray.autoscaler._private.cli_logger import cf, cli_logger
 import sys
 import tempfile
 
@@ -13,24 +11,24 @@ import tempfile
 def test_parse_node_labels_from_string():
     # Empty label argument passed
     labels_string = ""
-    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    labels_dict = parse_node_labels_string(labels_string)
     assert labels_dict == {}
 
     # Valid label key with empty value
     labels_string = "region="
-    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    labels_dict = parse_node_labels_string(labels_string)
     assert labels_dict == {"region": ""}
 
     # Multiple valid label keys and values
     labels_string = "ray.io/accelerator-type=A100,region=us-west4"
-    labels_dict = parse_node_labels_string(labels_string, cli_logger, cf)
+    labels_dict = parse_node_labels_string(labels_string)
     assert labels_dict == {"ray.io/accelerator-type": "A100", "region": "us-west4"}
 
     # Invalid label
     labels_string = "ray.io/accelerator-type=type=A100"
-    with pytest.raises(click.exceptions.ClickException) as e:
-        parse_node_labels_string(labels_string, cli_logger, cf)
-    assert "is not a valid string of key-value pairs" in str(e)
+    with pytest.raises(ValueError) as e:
+        parse_node_labels_string(labels_string)
+    assert "Label value is not a key-value pair" in str(e)
 
 
 def test_parse_node_labels_from_yaml_file():
@@ -38,16 +36,20 @@ def test_parse_node_labels_from_yaml_file():
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
         test_file.write("")
         test_file.flush()  # Ensure data is written
-        with pytest.raises(click.exceptions.ClickException) as e:
-            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
-            assert "is not a valid YAML string" in str(e)
+        with pytest.raises(ValueError) as e:
+            parse_node_labels_from_yaml_file(test_file.name)
+        assert "The format after deserialization is not a key-value pair map" in str(e)
+
+    # With non-existent yaml file
+    with pytest.raises(FileNotFoundError):
+        parse_node_labels_from_yaml_file("missing-file.yaml")
 
     # Valid label key with empty value
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
         test_file.write('"ray.io/accelerator-type": ""')
         test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
-        assert labels_dict == {"ray.io/accelerator-type": ""}
+        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
+    assert labels_dict == {"ray.io/accelerator-type": ""}
 
     # Multiple valid label keys and values
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
@@ -55,28 +57,28 @@ def test_parse_node_labels_from_yaml_file():
             '"ray.io/accelerator-type": "A100"\n"region": "us"\n"market-type": "spot"'
         )
         test_file.flush()  # Ensure data is written
-        labels_dict = parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
-        assert labels_dict == {
-            "ray.io/accelerator-type": "A100",
-            "region": "us",
-            "market-type": "spot",
-        }
+        labels_dict = parse_node_labels_from_yaml_file(test_file.name)
+    assert labels_dict == {
+        "ray.io/accelerator-type": "A100",
+        "region": "us",
+        "market-type": "spot",
+    }
 
     # Non-string label key
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
         test_file.write('{100: "A100"}')
         test_file.flush()  # Ensure data is written
-        with pytest.raises(click.exceptions.ClickException) as e:
-            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
-            assert "is not a valid YAML string" in str(e)
+        with pytest.raises(ValueError) as e:
+            parse_node_labels_from_yaml_file(test_file.name)
+    assert "The key is not string type." in str(e)
 
     # Non-string label value
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('{100: "A100"}')
+        test_file.write('{"gpu": 100}')
         test_file.flush()  # Ensure data is written
-        with pytest.raises(click.exceptions.ClickException) as e:
-            parse_node_labels_from_yaml_file(test_file.name, cli_logger, cf)
-            assert "is not a valid YAML string" in str(e)
+        with pytest.raises(ValueError) as e:
+            parse_node_labels_from_yaml_file(test_file.name)
+    assert 'The value of "gpu" is not string type' in str(e)
 
 
 def test_validate_node_labels():

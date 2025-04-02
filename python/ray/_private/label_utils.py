@@ -13,61 +13,41 @@ LABEL_PREFIX_REGEX = (
 LABEL_REGEX = r"^[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?$"
 
 
-def parse_node_labels_string(
-    labels_str: str, cli_logger, cf, command_arg="--labels"
-) -> Dict[str, str]:
-    try:
-        labels = {}
-        if labels_str == "":
-            return labels
-        # Labels argument should consist of a string of key=value pairs
-        # separated by commas. Labels follow Kubernetes label syntax.
-        label_pairs = labels_str.split(",")
-        for pair in label_pairs:
-            # Split each pair by `=`
-            key_value = pair.split("=")
-            if len(key_value) != 2:
-                raise ValueError("Label value is not a key-value pair.")
-            key = key_value[0].strip()
-            value = key_value[1].strip()
-            labels[key] = value
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid string of key-value pairs, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={labels_str}"),
-            str(e),
-            cf.bold(f'{command_arg}="key1=val1,key2=val2"'),
-        )
+def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
+    labels = {}
+    if labels_str == "":
+        return labels
+    # Labels argument should consist of a string of key=value pairs
+    # separated by commas. Labels follow Kubernetes label syntax.
+    label_pairs = labels_str.split(",")
+    for pair in label_pairs:
+        # Split each pair by `=`
+        key_value = pair.split("=")
+        if len(key_value) != 2:
+            raise ValueError("Label value is not a key-value pair.")
+        key = key_value[0].strip()
+        value = key_value[1].strip()
+        labels[key] = value
+
     return labels
 
 
-def parse_node_labels_from_yaml_file(
-    path: str, cli_logger, cf, command_arg="--labels-file"
-) -> Dict[str, str]:
-    try:
-        if path == "":
-            return {}
-        with open(path, "r") as file:
-            # Expects valid YAML content
-            labels = yaml.safe_load(file)
-            if not isinstance(labels, dict):
-                raise ValueError(
-                    "The format after deserialization is not a key-value pair map"
-                )
-            for key, value in labels.items():
-                if not isinstance(key, str):
-                    raise ValueError("The key is not string type.")
-                if not isinstance(value, str):
-                    raise ValueError(f'The value of the "{key}" is not string type')
-    except Exception as e:
-        cli_logger.abort(
-            "The file at `{}` is not a valid YAML file, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={path}"),
-            str(e),
-            cf.bold(f"{command_arg}='gpu_type: A100\nregion: us'"),
-        )
+def parse_node_labels_from_yaml_file(path: str) -> Dict[str, str]:
+    if path == "":
+        return {}
+    with open(path, "r") as file:
+        # Expects valid YAML content
+        labels = yaml.safe_load(file)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map."
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of "{key}" is not string type.')
+
     return labels
 
 

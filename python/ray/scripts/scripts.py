@@ -25,12 +25,14 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_string,
+)
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
     load_class,
     parse_resources_json,
-    parse_node_labels_from_yaml_file,
-    parse_node_labels_string,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
@@ -728,10 +730,26 @@ def start(
 
     # Compose labels passed in with `--labels` and `--labels-file`.
     # The label value from `--labels` will overrwite the value of any duplicate keys.
-    labels_from_file_dict = parse_node_labels_from_yaml_file(
-        labels_file, cli_logger, cf
-    )
-    labels_from_string = parse_node_labels_string(labels, cli_logger, cf)
+    try:
+        labels_from_file_dict = parse_node_labels_from_yaml_file(labels_file)
+    except Exception as e:
+        cli_logger.abort(
+            "The file at `{}` is not a valid YAML file, detailed error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels-file={labels_file}"),
+            str(e),
+            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
+        )
+    try:
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception as e:
+        cli_logger.abort(
+            "`{}` is not a valid string of key-value pairs, detail error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels={labels}"),
+            str(e),
+            cf.bold('--labels="key1=val1,key2=val2"'),
+        )
     labels_dict = (
         {**labels_from_file_dict, **labels_from_string}
         if labels_from_file_dict
