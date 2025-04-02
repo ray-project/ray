@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Precondition: cgroup V2 has already been mounted as rw.
+// Precondition: cgroupv2 has already been mounted as rw.
 //
 // Setup command:
 // sudo umount /sys/fs/cgroup/unified
@@ -57,10 +57,11 @@ class Cgroupv2SetupTest : public ::testing::Test {
         app_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
   void TearDown() override {
-    // Check the node-wise subcgroup folder has been deleted.
+    // Check the application subcgroup folder has been deleted.
     std::error_code err_code;
     bool exists = std::filesystem::exists(app_cgroup_folder_, err_code);
-    ASSERT_FALSE(err_code);
+    ASSERT_FALSE(err_code) << "Check file existence failed because "
+                           << err_code.message();
     ASSERT_FALSE(exists);
   }
 
@@ -74,7 +75,7 @@ class Cgroupv2SetupTest : public ::testing::Test {
 };
 
 TEST_F(Cgroupv2SetupTest, SetupTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
 
   // Check internal cgroup is created successfully.
   std::error_code err_code;
@@ -88,8 +89,8 @@ TEST_F(Cgroupv2SetupTest, SetupTest) {
   ASSERT_TRUE(exists);
 }
 
-TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
+TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
 
   pid_t pid = fork();
   ASSERT_NE(pid, -1);
@@ -102,7 +103,7 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
     perror("execlp");
   }
 
-  RAY_ASSERT_OK(cgroup_setup.AddInternalProcess(pid));
+  RAY_ASSERT_OK(cgroup_setup.AddSystemProcess(pid));
   AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
 
   // Kill testing process.
@@ -110,7 +111,7 @@ TEST_F(Cgroupv2SetupTest, AddInternalProcessTest) {
 }
 
 TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::Tag{}};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
 
   pid_t pid = fork();
   ASSERT_NE(pid, -1);

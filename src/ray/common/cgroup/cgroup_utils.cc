@@ -28,13 +28,14 @@ Status KillAllProcAndWait(const std::string &cgroup_folder) { return Status::OK(
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "ray/common/cgroup/constants.h"
 
 namespace ray {
 
 namespace {
 
 void GetAllPidsForCgroup(const std::string &cgroup_directory, std::vector<pid_t> *pids) {
-  std::ifstream cgroup_proc_file(ray::JoinPaths(cgroup_directory, "cgroup.procs"));
+  std::ifstream cgroup_proc_file(ray::JoinPaths(cgroup_directory, kProcFilename));
   RAY_CHECK(cgroup_proc_file.good());  // Sanity check.
 
   std::string pid_str;
@@ -56,7 +57,7 @@ std::vector<pid_t> GetAllPidsForCgroup(const std::string &cgroup_directory) {
   return pids;
 }
 
-// Block wait until all provided processes exit.
+// Waits until all provided processes exit.
 void BlockWaitProcExit(const std::vector<pid_t> &pids) {
   for (pid_t cur_pid : pids) {
     // Intentionally ignore return value.
@@ -69,13 +70,14 @@ void BlockWaitProcExit(const std::vector<pid_t> &pids) {
 Status KillAllProcAndWait(const std::string &cgroup_folder) {
   const auto existing_pids = GetAllPidsForCgroup(cgroup_folder);
 
-  const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
+  // Writing "1" to `cgroup.kill` file recursively kills all processes inside.
+  const std::string kill_proc_file = ray::JoinPaths(cgroup_folder, kProcKillFilename);
   std::ofstream f{kill_proc_file, std::ios::app | std::ios::out};
   f << "1";
   f.flush();
   if (!f.good()) {
     return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-           << "Fails to kill all processes under the cgroup " << cgroup_folder;
+           << "Failed to kill all processes under the cgroup " << cgroup_folder;
   }
 
   BlockWaitProcExit(existing_pids);

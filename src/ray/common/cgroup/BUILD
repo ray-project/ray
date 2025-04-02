@@ -63,6 +63,7 @@ ray_cc_library(
     srcs = ["cgroup_utils.cc"],
     hdrs = ["cgroup_utils.h"],
     deps = [
+        ":constants",
         "//src/ray/common:status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",

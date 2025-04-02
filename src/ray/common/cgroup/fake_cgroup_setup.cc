@@ -20,10 +20,10 @@ namespace ray {
 
 Status FakeCgroupSetup::AddSystemProcess(pid_t pid) {
   absl::MutexLock lock(&mtx_);
-  const bool is_new = internal_cgroup_.emplace(pid).second;
+  const bool is_new = system_cgroup_.emplace(pid).second;
   if (!is_new) {
     return Status::InvalidArgument("")
-           << "Failed to add " << pid << " into internal cgroup.";
+           << "Failed to add " << pid << " into system cgroup.";
   }
   return Status::OK();
 }
@@ -40,10 +40,10 @@ ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
 
 void FakeCgroupSetup::CleanupSystemProcess(pid_t pid) {
   absl::MutexLock lock(&mtx_);
-  auto iter = internal_cgroup_.find(pid);
-  RAY_CHECK(iter != internal_cgroup_.end())
+  auto iter = system_cgroup_.find(pid);
+  RAY_CHECK(iter != system_cgroup_.end())
       << "PID " << pid << " hasn't be added into system cgroup.";
-  internal_cgroup_.erase(iter);
+  system_cgroup_.erase(iter);
 }
 
 void FakeCgroupSetup::CleanupCgroupContext(const AppProcCgroupMetadata &ctx) {

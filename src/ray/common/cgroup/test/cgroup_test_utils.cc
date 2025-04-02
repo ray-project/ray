@@ -35,9 +35,9 @@ void AssertPidInCgroup(pid_t pid, const std::string &proc_filepath) {
 
   const std::unordered_set<std::string_view> pid_parts = absl::StrSplit(pids_sv, ' ');
   ASSERT_TRUE(pid_parts.find(std::to_string(pid)) != pid_parts.end())
-      << "In cgroup proc file " << proc_filepath << ", all pids include "
-      << DebugStringWrapper<std::unordered_set<std::string_view> >(pid_parts)
-      << " and new pid is " << pid;
+      << "Couldn't find pid " << pid << "in cgroup proc file " << proc_filepath
+      << ", all pids include "
+      << DebugStringWrapper<std::unordered_set<std::string_view> >(pid_parts);
 }
 
 }  // namespace ray

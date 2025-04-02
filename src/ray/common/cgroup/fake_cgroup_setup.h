@@ -64,7 +64,7 @@ class FakeCgroupSetup : public BaseCgroupSetup {
 
   absl::Mutex mtx_;
   // Stores process id of ray system (i.e. raylet, GCS, etc).
-  absl::flat_hash_set<pid_t> internal_cgroup_ ABSL_GUARDED_BY(mtx_);
+  absl::flat_hash_set<pid_t> system_cgroup_ ABSL_GUARDED_BY(mtx_);
   // Stores process id of application process (aka. user applications).
   // Maps from cgroup folder to its pids.
   absl::flat_hash_map<CgroupFolder, absl::flat_hash_set<pid_t>> cgroup_to_pids_
