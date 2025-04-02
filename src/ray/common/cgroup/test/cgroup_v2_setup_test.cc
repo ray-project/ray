@@ -26,11 +26,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <thread>
 #include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <string_view>
+#include <thread>
 #include <unordered_set>
 
 #include "ray/common/cgroup/cgroup_setup.h"
