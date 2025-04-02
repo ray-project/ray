@@ -232,11 +232,8 @@ bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
     return false;
   }
 
-  // Get the labels
-  auto labels = it->second.GetLocalView().labels
-
-                // Check if node labels satisfy all label constraints
-                for (const auto &constraint : label_selector.label_constraints()) {
+  // Check if node labels satisfy all label constraints
+  for (const auto &constraint : label_selector.label_constraints()) {
     if
       !NodeLabelMatchesConstraint(*(it->second), constraint) { return false; }
   }
