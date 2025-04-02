@@ -105,7 +105,7 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    @validator("scaling_function", always=True)
+    @validator("aggregation_function", always=True)
     def aggregation_function_valid(cls, aggregation_function: str):
         if aggregation_function not in cls._aggregation_functions:
             raise ValueError(
