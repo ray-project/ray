@@ -474,7 +474,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     target_groups = serve_details.target_groups
     assert len(target_groups) == 2
     # sort target_groups by protocol
-    target_groups.sort(key=lambda x: x.protocol)
+    target_groups.sort(key=lambda x: x.protocol.lower())
     assert len(target_groups[0].targets) == 1
     assert target_groups[0].protocol == "gRPC"
     assert target_groups[0].route_prefix == "/"

@@ -686,7 +686,7 @@ def test_proxy_state_manager_get_targets(all_nodes):
     assert len(targets) == 0
 
     with pytest.raises(ValueError):
-        manager.get_target_info("invalid_protocol")
+        manager.get_targets("invalid_protocol")
 
 
 if __name__ == "__main__":
