@@ -141,7 +141,7 @@ def test_log_file_exists(shutdown_only):
     # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_component = [
-        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
         (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),

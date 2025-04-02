@@ -96,8 +96,6 @@ struct NodeManagerConfig {
   uint64_t report_resources_period_ms;
   /// The store socket name.
   std::string store_socket_name;
-  /// The path to the ray temp dir.
-  std::string temp_dir;
   /// The path of this ray log dir.
   std::string log_dir;
   /// The path of this ray session dir.
@@ -811,8 +809,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
-  /// The path to the ray temp dir.
-  std::string temp_dir_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
 

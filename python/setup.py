@@ -364,7 +364,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm>=0.7.2",
+                "vllm>=0.8.2",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -393,7 +393,6 @@ if setup_spec.type == SetupType.RAY:
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
-        "aiosignal",
         "frozenlist",
         "requests",
     ]

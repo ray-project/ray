@@ -35,7 +35,7 @@ from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
 )
-from ray.dashboard.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.utils import async_loop_forever
@@ -144,7 +144,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         self._collect_memory_info = False
 
-        DataSource.nodes.signal.append(self._update_stubs)
         # The time where the module is started.
         self._module_start_time = time.time()
         # The time it takes until the head node is registered. None means
@@ -169,23 +168,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._actor_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="node_head_actor_executor"
         )
-
-    async def _update_stubs(self, change):
-        if change.old:
-            node_id, node_info = change.old
-            self._stubs.pop(node_id, None)
-        if change.new:
-            # TODO(fyrestone): Handle exceptions.
-            node_id, node_info = change.new
-            address = "{}:{}".format(
-                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
-            )
-            options = ray_constants.GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True
-            )
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._stubs[node_id] = stub
 
     def get_internal_states(self):
         return {
@@ -279,8 +261,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
-                DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
+                node_id = self._dead_node_queue.popleft()
+                DataSource.nodes.pop(node_id, None)
+                self._stubs.pop(node_id, None)
         DataSource.nodes[node_id] = node
+        # TODO(fyrestone): Handle exceptions.
+        address = "{}:{}".format(
+            node["nodeManagerAddress"], int(node["nodeManagerPort"])
+        )
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            address, options, asynchronous=True
+        )
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        self._stubs[node_id] = stub
 
     async def _update_nodes(self):
         """
@@ -558,7 +552,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 actor_dicts = await self._get_all_actors()
                 # Update actors
-                DataSource.actors.reset(actor_dicts)
+                DataSource.actors = actor_dicts
 
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
@@ -569,7 +563,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
 
                 # Update node's actor info
-                DataSource.node_actors.reset(node_actors)
+                DataSource.node_actors = node_actors
 
                 logger.info("Received %d actor info from GCS.", len(actor_dicts))
 
@@ -710,6 +704,31 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             detail=actors[actor_id],
         )
 
+    @routes.get("/test/dump")
+    async def dump(self, req) -> aiohttp.web.Response:
+        """
+        Dump all data from datacenter. This is used for testing purpose only.
+        """
+        key = req.query.get("key")
+        if key is None:
+            all_data = {
+                k: dict(v)
+                for k, v in DataSource.__dict__.items()
+                if not k.startswith("_")
+            }
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message="Fetch all data from datacenter success.",
+                **all_data,
+            )
+        else:
+            data = dict(DataSource.__dict__.get(key))
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message=f"Fetch {key} from datacenter success.",
+                **{key: data},
+            )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
@@ -717,6 +736,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._update_node_physical_stats(),
             self._update_actors(),
             self._cleanup_actors(),
+            DataOrganizer.purge(),
+            DataOrganizer.organize(self._node_executor),
         )
 
     @staticmethod

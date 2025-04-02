@@ -239,7 +239,6 @@ NodeManager::NodeManager(
       store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
-      temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
       wait_manager_(/*is_object_local*/
