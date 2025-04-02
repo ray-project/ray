@@ -296,8 +296,8 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --only-tags=cgroup --build-type cgroup
-        --privileged --cache-test-results
+      - sudo bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --only-tags=cgroup
+        --build-type cgroup --privileged --cache-test-results
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp
