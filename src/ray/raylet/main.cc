@@ -102,6 +102,7 @@ DEFINE_string(plasma_directory,
               "/tmp",
               "The shared memory directory of the object store.");
 #endif
+DEFINE_string(fallback_directory, "", "The directory for fallback allocation files.");
 DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
@@ -213,6 +214,7 @@ int main(int argc, char *argv[]) {
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
+  const std::string fallback_directory = FLAGS_fallback_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
@@ -240,7 +242,8 @@ int main(int argc, char *argv[]) {
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
-  boost::asio::io_service::work main_work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      main_service_work(main_service.get_executor());
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
@@ -439,7 +442,7 @@ int main(int argc, char *argv[]) {
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
-        object_manager_config.fallback_directory = temp_dir;
+        object_manager_config.fallback_directory = fallback_directory;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =

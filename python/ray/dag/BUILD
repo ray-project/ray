@@ -167,3 +167,15 @@ py_test(
     ],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_cpu_communicator_dag",
+    size = "medium",
+    srcs = dag_tests_srcs,
+    tags = [
+        "exclusive",
+        "ray_dag_tests",
+        "team:core",
+    ],
+    deps = [":dag_lib"],
+)

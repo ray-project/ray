@@ -368,14 +368,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
-      io_work_(io_service_),
+      io_work_(io_service_.get_executor()),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_),
+      task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
@@ -2633,7 +2633,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_,
                       function,
                       args,
-                      1,
+                      /*num_returns*/ 0,
                       new_resource,
                       new_placement_resources,
                       "" /* debugger_breakpoint */,
@@ -3350,8 +3350,6 @@ Status CoreWorker::ExecuteTask(
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(!return_objects->empty());
-    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
