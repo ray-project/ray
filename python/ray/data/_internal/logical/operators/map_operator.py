@@ -69,7 +69,7 @@ class AbstractUDFMap(AbstractMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        include_task_idx: bool = False,
+        include_task_ctx: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -89,6 +89,8 @@ class AbstractUDFMap(AbstractMap):
                 `fn` if `fn` is a callable class.
             min_rows_per_bundled_input: The target number of rows to pass to
                 ``MapOperator._add_bundled_input()``.
+            include_task_ctx: Whether to include the task context as the second
+                argument passed to ``fn``.
             compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
                 Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
             ray_remote_args_fn: A function that returns a dictionary of remote args
@@ -112,7 +114,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_kwargs = fn_kwargs
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
-        self._include_task_idx = include_task_idx
+        self._include_task_ctx = include_task_ctx
         self._ray_remote_args_fn = ray_remote_args_fn
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
@@ -157,7 +159,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        include_task_idx: bool = False,
+        include_task_ctx: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -171,7 +173,7 @@ class MapBatches(AbstractUDFMap):
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
-            include_task_idx=include_task_idx,
+            include_task_ctx=include_task_ctx,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
