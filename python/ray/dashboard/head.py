@@ -429,11 +429,8 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        # Freeze signal after all modules loaded.
-        dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
             self._gcs_check_alive(),
-            dashboard_utils.NotifyQueue.watch_and_notify_forever(),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run(self.server))

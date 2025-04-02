@@ -145,7 +145,6 @@ class NodeHead(SubprocessModule):
         self._stubs = {}
         self._collect_memory_info = False
 
-        DataSource.nodes.signal.append(self._update_stubs)
         # The time where the module is started.
         self._module_start_time = time.time()
         # The time it takes until the head node is registered. None means
@@ -172,23 +171,6 @@ class NodeHead(SubprocessModule):
         )
 
         self._background_tasks: Set[asyncio.Task] = set()
-
-    async def _update_stubs(self, change):
-        if change.old:
-            node_id, node_info = change.old
-            self._stubs.pop(node_id, None)
-        if change.new:
-            # TODO(fyrestone): Handle exceptions.
-            node_id, node_info = change.new
-            address = "{}:{}".format(
-                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
-            )
-            options = ray_constants.GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True
-            )
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._stubs[node_id] = stub
 
     def get_internal_states(self):
         return {
@@ -282,8 +264,20 @@ class NodeHead(SubprocessModule):
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
-                DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
+                node_id = self._dead_node_queue.popleft()
+                DataSource.nodes.pop(node_id, None)
+                self._stubs.pop(node_id, None)
         DataSource.nodes[node_id] = node
+        # TODO(fyrestone): Handle exceptions.
+        address = "{}:{}".format(
+            node["nodeManagerAddress"], int(node["nodeManagerPort"])
+        )
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            address, options, asynchronous=True
+        )
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        self._stubs[node_id] = stub
 
     async def _update_nodes(self):
         """
@@ -559,7 +553,7 @@ class NodeHead(SubprocessModule):
 
                 actor_dicts = await self._get_all_actors()
                 # Update actors
-                DataSource.actors.reset(actor_dicts)
+                DataSource.actors = actor_dicts
 
                 # Update node actors and job actors.
                 node_actors = defaultdict(dict)
@@ -570,7 +564,7 @@ class NodeHead(SubprocessModule):
                         node_actors[node_id][actor_id_bytes] = updated_actor_table
 
                 # Update node's actor info
-                DataSource.node_actors.reset(node_actors)
+                DataSource.node_actors = node_actors
 
                 logger.info("Received %d actor info from GCS.", len(actor_dicts))
 

@@ -207,7 +207,6 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
-  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -242,7 +241,8 @@ int main(int argc, char *argv[]) {
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
-  boost::asio::io_service::work main_work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      main_service_work(main_service.get_executor());
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
@@ -414,7 +414,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
-        node_manager_config.temp_dir = temp_dir;
         node_manager_config.log_dir = log_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
