@@ -1310,6 +1310,7 @@ class MetricsLogger:
             if key is not None:
                 # Get the Stats object or nested structure for the key
                 stats = self._get_key(key, key_error=False)
+
                 if isinstance(stats, Stats):
                     if not stats.has_throughput:
                         raise ValueError(

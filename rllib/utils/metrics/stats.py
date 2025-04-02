@@ -395,7 +395,7 @@ class Stats:
         Returns:
             True if this Stats object has throughput tracking enabled, False otherwise.
         """
-        return bool(self._throughput_stats)
+        return self._throughput_stats is not None
 
     def reduce(self, compile: bool = True) -> Union[Any, List[Any]]:
         """Reduces the internal values list according to the constructor settings.
