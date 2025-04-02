@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <thread>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <string_view>
@@ -100,8 +102,9 @@ TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
   if (pid == 0) {
     // Spawn a process running long enough, so it could be added into internal cgroup.
     // It won't affect test runtime, because it will be killed later.
-    execlp("sleep", "sleep", "3600", nullptr);
-    perror("execlp");
+    std::this_thread::sleep_for(std::chrono::seconds(3600));
+    // Exit without flushing the buffer.
+    std::_Exit(0);
   }
 
   RAY_ASSERT_OK(cgroup_setup.AddSystemProcess(pid));
@@ -119,10 +122,11 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
 
   // Child process.
   if (pid == 0) {
-    // Spawn a process running long enough, so it could be added into application cgroup.
+    // Spawn a process running long enough, so it could be added into internal cgroup.
     // It won't affect test runtime, because it will be killed later.
-    execlp("sleep", "sleep", "3600", nullptr);
-    perror("execlp");
+    std::this_thread::sleep_for(std::chrono::seconds(3600));
+    // Exit without flushing the buffer.
+    std::_Exit(0);
   }
 
   AppProcCgroupMetadata app_metadata;
