@@ -53,6 +53,78 @@ class LocalityScope(str, enum.Enum):
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
 
 
+class LocalityScheduleMixin:
+    def __init__(
+        self,
+        prefer_local_node_routing: bool = False,
+        prefer_local_az_routing: bool = False,
+        self_availability_zone: Optional[str] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._prefer_local_node_routing = prefer_local_node_routing
+        self._prefer_local_az_routing = prefer_local_az_routing
+        self._self_availability_zone = self_availability_zone
+
+        # Colocated replicas (e.g. wrt node, AZ)
+        self._colocated_replica_ids: DefaultDict[
+            LocalityScope, Set[ReplicaID]
+        ] = defaultdict(set)
+
+    def discard_colocated_replica_ids_on_replica_actor_died(
+        self, replica_id: ReplicaID
+    ):
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def update_discard_colocated_replica_ids_with_replicas(
+        self, replicas: List[RunningReplica]
+    ):
+        new_colocated_replica_ids = defaultdict(set)
+
+        for r in replicas:
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
+                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
+            if (
+                self._self_availability_zone is not None
+                and r.availability_zone == self._self_availability_zone
+            ):
+                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
+                    r.replica_id
+                )
+
+        self._colocated_replica_ids = new_colocated_replica_ids
+
+    def apply_locality_scheduling(self) -> Set[ReplicaID]:
+        if (
+            self._prefer_local_node_routing
+            and not _get_request_scheduling_context().tried_same_node
+            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
+        ):
+            # Attempt to schedule requests to replicas on the
+            # same node at most once
+            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+            _set_request_scheduling_context(tried_same_node=True)
+        elif (
+            self._prefer_local_az_routing
+            and not _get_request_scheduling_context().tried_same_az
+            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
+        ):
+            # Attempt to schedule requests to replicas in the same
+            # AZ at most once
+            candidate_replica_ids = self._colocated_replica_ids[
+                LocalityScope.AVAILABILITY_ZONE
+            ]
+            _set_request_scheduling_context(tried_same_az=True)
+        else:
+            # On subsequent iterations or when there are no replicas on the same
+            # node or AZ, consider all available replicas.
+            candidate_replica_ids = self._replica_id_set
+            _set_request_scheduling_context(should_backoff=True)
+        return candidate_replica_ids
+
+
 class MultiplexScheduleMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -146,39 +218,6 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
-class LocalityScheduleMixin:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def apply_locality_scheduling(self) -> Set[ReplicaID]:
-        if (
-            self._prefer_local_node_routing
-            and not _get_request_scheduling_context().tried_same_node
-            and len(self._colocated_replica_ids[LocalityScope.NODE]) > 0
-        ):
-            # Attempt to schedule requests to replicas on the
-            # same node at most once
-            candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
-            _set_request_scheduling_context(tried_same_node=True)
-        elif (
-            self._prefer_local_az_routing
-            and not _get_request_scheduling_context().tried_same_az
-            and len(self._colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE]) > 0
-        ):
-            # Attempt to schedule requests to replicas in the same
-            # AZ at most once
-            candidate_replica_ids = self._colocated_replica_ids[
-                LocalityScope.AVAILABILITY_ZONE
-            ]
-            _set_request_scheduling_context(tried_same_az=True)
-        else:
-            # On subsequent iterations or when there are no replicas on the same
-            # node or AZ, consider all available replicas.
-            candidate_replica_ids = self._replica_id_set
-            _set_request_scheduling_context(should_backoff=True)
-        return candidate_replica_ids
-
-
 class PowerOfTwoChoicesReplicaScheduler(
     MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
@@ -224,12 +263,9 @@ class PowerOfTwoChoicesReplicaScheduler(
         self,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
-        prefer_local_node_routing: bool = False,
-        prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
         self_actor_handle: Optional[ActorHandle] = None,
-        self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
         create_replica_wrapper_func: Optional[
@@ -241,10 +277,9 @@ class PowerOfTwoChoicesReplicaScheduler(
         super().__init__(*args, **kwargs)
         self._deployment_id = deployment_id
         self._handle_source = handle_source
-
         self._self_node_id = self_node_id
         self._self_actor_handle = self_actor_handle
-        self._self_availability_zone = self_availability_zone
+
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
 
@@ -263,11 +298,6 @@ class PowerOfTwoChoicesReplicaScheduler(
         # lazily to avoid an error due to the event being attached to the wrong loop.
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
         self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
-
-        # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: DefaultDict[
-            LocalityScope, Set[ReplicaID]
-        ] = defaultdict(set)
 
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
@@ -381,8 +411,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         """Drop replica from replica set so it's not considered for future requests."""
         self._replicas.pop(replica_id, None)
         self._replica_id_set.discard(replica_id)
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
+        self.discard_colocated_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -405,8 +434,8 @@ class PowerOfTwoChoicesReplicaScheduler(
         """
         new_replicas = {}
         new_replica_id_set = set()
-        new_colocated_replica_ids = defaultdict(set)
         self.update_multiplexed_model_ids_with_replicas(replicas)
+        self.update_discard_colocated_replica_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
@@ -420,15 +449,6 @@ class PowerOfTwoChoicesReplicaScheduler(
 
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
-            if self._self_node_id is not None and r.node_id == self._self_node_id:
-                new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
-            if (
-                self._self_availability_zone is not None
-                and r.availability_zone == self._self_availability_zone
-            ):
-                new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(
-                    r.replica_id
-                )
 
         if self._replica_id_set != new_replica_id_set:
             replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
@@ -444,7 +464,6 @@ class PowerOfTwoChoicesReplicaScheduler(
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
-        self._colocated_replica_ids = new_colocated_replica_ids
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
