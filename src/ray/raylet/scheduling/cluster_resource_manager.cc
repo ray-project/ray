@@ -234,8 +234,9 @@ bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
 
   // Check if node labels satisfy all label constraints
   for (const auto &constraint : label_selector.label_constraints()) {
-    if
-      !NodeLabelMatchesConstraint(*(it->second), constraint) { return false; }
+    if (!NodeLabelMatchesConstraint(*(it->second), constraint)) {
+      return false;
+    }
   }
 
   return true;
