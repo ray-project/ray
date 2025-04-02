@@ -12,7 +12,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.utils import load_class
-from ray.dashboard.modules.snapshot.utils import HealthChecker
+from ray.dashboard.modules.api.utils import HealthChecker
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
