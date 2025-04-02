@@ -13,8 +13,11 @@ fi
 DEPLOY_ENVIRONMENT="${1:-development}"
 
 PY_VERSION_CODES=(py39 py310 py311 py312)
+WHEEL_PY_VERSION_CODES=(cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312)
 
 TMP="$(mktemp -d)"
+
+HOSTTYPE="x86_64"
 
 if [[ "${DEPLOY_ENVIRONMENT}" == "staging" ]]; then
     readonly ORG_DATA_BUCKET=anyscale-staging-organization-data-us-west-2
@@ -47,6 +50,11 @@ for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     gunzip -k "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz"
 done
 
+for WHEEL_PY_VERSION_CODE in "${WHEEL_PY_VERSION_CODES[@]}"; do
+    WHEEL_FILE="ray-${RAY_VERSION}-${WHEEL_PY_VERSION_CODE}-manylinux2014_${HOSTTYPE}.whl"
+    aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${TMP}/${WHEEL_FILE}"
+done
+
 if [[ "${BUILDKITE:-}" == "true" ]]; then
     eval "$(aws sts assume-role \
         --role-arn "${DEPLOY_ROLE}" \
@@ -55,10 +63,13 @@ if [[ "${BUILDKITE:-}" == "true" ]]; then
 fi
 
 RAY_COMMIT="$(git rev-parse HEAD)"
+
+S3_PATH_PREFIX="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}"
+
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     # Must keep this consistent with the image.
-    ANYSCALE_PRESTART_DATA_PATH_TARGZ="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
-    ANYSCALE_PRESTART_DATA_PATH_TAR="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar"
+    ANYSCALE_PRESTART_DATA_PATH_TARGZ="${S3_PATH_PREFIX}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TAR="${S3_PATH_PREFIX}/ray-opt-${PY_VERSION_CODE}.tar"
 
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
         "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TARGZ}"
@@ -67,13 +78,17 @@ for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
 done
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     # Must keep this consistent with the image.
-    ANYSCALE_PRESTART_DATA_PATH_TARGZ="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
-    ANYSCALE_PRESTART_DATA_PATH_TAR="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar"
+    ANYSCALE_PRESTART_DATA_PATH_TARGZ="${S3_PATH_PREFIX}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TAR="${S3_PATH_PREFIX}/ray-opt-${PY_VERSION_CODE}-min.tar"
 
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz" \
         "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TARGZ}"
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar" \
         "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TAR}"
+done
+for WHEEL_PY_VERSION_CODE in "${WHEEL_PY_VERSION_CODES[@]}"; do
+    WHEEL_FILE="ray-${RAY_VERSION}-${WHEEL_PY_VERSION_CODE}-manylinux2014_${HOSTTYPE}.whl"
+    aws s3 cp "${TMP}/${WHEEL_FILE}" "s3://${ORG_DATA_BUCKET}/${S3_PATH_PREFIX}/${WHEEL_FILE}"
 done
 
 # Cleanup temp dir.

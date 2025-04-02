@@ -280,7 +280,7 @@ cp LICENSE.runtime "${CONTEXT_TMP}/LICENSE"
 aws s3 cp "${S3_TEMP}/download_anyscale_data" "${CONTEXT_TMP}/download_anyscale_data"
 chmod +x "${CONTEXT_TMP}/download_anyscale_data"
 
-# Must keep this consistent with anyscale/ci/upload-ray-site-pkg.sh
+# Must keep this consistent with anyscale/ci/upload-rayturbo-artifacts.sh
 if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
   if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
     ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${FULL_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
