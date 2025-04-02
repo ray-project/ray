@@ -212,7 +212,7 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         Returns
         -------
         Future
-            A future representing the result of the task
+            A future representing the result of the task.
 
         """
 

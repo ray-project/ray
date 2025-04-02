@@ -33,7 +33,7 @@ from ray._private.worker import RayContext
 import logging
 
 
-# ProcessPoolExecutor uses pickle which can only serialize top-level functions
+# ProcessPoolExecutor uses pickle which can only serialize top-level functions.
 def f_process1(x):
     return len([i for i in range(x) if i % 2 == 0])
 
@@ -575,7 +575,7 @@ class TestRunningTasks(TestIsolated):
     def test_remote_function_map_using_max_workers(self):
         with RayExecutor(max_workers=3) as ex:
             assert ex.actor_pool is not None
-            pool = getattr(ex.actor_pool, "pool")
+            pool = ex.actor_pool.pool
             assert pool is not None
             assert len(pool) == 3
             time_start = time.monotonic()
