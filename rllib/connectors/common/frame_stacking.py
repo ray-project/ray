@@ -72,7 +72,7 @@ class _FrameStacking(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # Learner connector pipeline. Episodes have been finalized/numpy'ized.
+        # Learner connector pipeline. Episodes have been numpy'ized.
         if self._as_learner_connector:
             for sa_episode in self.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False
@@ -85,12 +85,14 @@ class _FrameStacking(ConnectorV2):
                     new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
+                    # But return a copy to avoid non-contiguous memory in the object
+                    # store (which is very expensive to deserialize).
                     return np.transpose(
                         np.lib.stride_tricks.as_strided(
                             s, shape=new_shape, strides=new_strides
                         ),
                         axes=[0, 2, 3, 1],
-                    )
+                    ).copy()
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for
@@ -113,7 +115,7 @@ class _FrameStacking(ConnectorV2):
         # Env-to-module pipeline. Episodes still operate on lists.
         else:
             for sa_episode in self.single_agent_episode_iterator(episodes):
-                assert not sa_episode.is_finalized
+                assert not sa_episode.is_numpy
                 # Get the list of observations to stack.
                 obs_stack = sa_episode.get_observations(
                     indices=slice(-self.num_frames, None),

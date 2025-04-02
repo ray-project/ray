@@ -14,18 +14,27 @@
 
 #include "ray/raylet/local_object_manager.h"
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
+#include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "src/ray/object_manager/ownership_based_object_directory.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -366,7 +375,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   void AssertNoLeaks() {
     // TODO(swang): Assert this for all tests.
-    ASSERT_TRUE(manager.pinned_objects_size_ == 0);
+    ASSERT_EQ(manager.pinned_objects_size_, 0);
     ASSERT_TRUE(manager.pinned_objects_.empty());
     ASSERT_TRUE(manager.spilled_objects_url_.empty());
     ASSERT_TRUE(manager.objects_pending_spill_.empty());
@@ -789,7 +798,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   // Now, there's only one object that is current spilling.
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
-  // availlable).
+  // available).
   manager.SpillObjectUptoMaxThroughput();
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
@@ -1253,7 +1262,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, 0);
 
-  // But 1 spilled object shoudl be deleted
+  // But 1 spilled object should be deleted
   ASSERT_EQ(GetCurrentSpilledCount(), free_objects_batch_size - 1);
   ASSERT_EQ(GetCurrentSpilledBytes(), object_size * (free_objects_batch_size - 1));
 
@@ -1358,7 +1367,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1404,7 +1413,7 @@ TEST_F(LocalObjectManagerTest, TestRetryDeleteSpilledObjects) {
   io_service_.run_one();
   // assert the request is retried.
   ASSERT_EQ(1, worker_pool.io_worker_client->FailDeleteSpilledObject());
-  // retry exhaused.
+  // retry exhausted.
   io_service_.run_one();
   ASSERT_EQ(0, worker_pool.io_worker_client->FailDeleteSpilledObject());
 }
@@ -1564,7 +1573,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1646,7 +1655,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);
@@ -1719,7 +1728,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   // Spill all objects.
   bool spilled = false;
   manager.SpillObjects(object_ids, [&](const Status &status) {
-    RAY_CHECK(status.ok());
+    RAY_CHECK_OK(status);
     spilled = true;
   });
   ASSERT_FALSE(spilled);

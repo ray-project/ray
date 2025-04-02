@@ -17,6 +17,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
@@ -109,25 +112,6 @@ class GrpcClient {
     stub_ = GrpcService::NewStub(channel_);
   }
 
-  GrpcClient(const std::string &address,
-             const int port,
-             ClientCallManager &call_manager,
-             int num_threads,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    grpc::ChannelArguments argument = CreateDefaultChannelArguments();
-    grpc::ResourceQuota quota;
-    quota.SetMaxThreads(num_threads);
-    argument.SetResourceQuota(quota);
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-
-    channel_ = BuildChannel(address, port, argument);
-    stub_ = GrpcService::NewStub(channel_);
-  }
-
   /// Create a new `ClientCall` and send request.
   ///
   /// \tparam Request Type of the request message.
@@ -204,12 +188,12 @@ class GrpcClient {
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
-  /// Whether to use TLS.
-  bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
   /// Whether CallMethod is invoked.
   std::atomic<bool> call_method_invoked_ = false;
+  /// Whether to use TLS.
+  bool use_tls_;
 };
 
 }  // namespace rpc

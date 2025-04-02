@@ -1,3 +1,5 @@
+import yaml
+
 GRAFANA_INI_TEMPLATE = """
 [security]
 allow_embedding = true
@@ -22,15 +24,27 @@ providers:
       path: {dashboard_output_folder}
 """
 
-GRAFANA_DATASOURCE_TEMPLATE = """apiVersion: 1
 
-datasources:
-  - name: {prometheus_name}
-    url: {prometheus_host}
-    type: prometheus
-    isDefault: true
-    access: proxy
-"""
+def GRAFANA_DATASOURCE_TEMPLATE(
+    prometheus_name, prometheus_host, jsonData, secureJsonData
+):
+    return yaml.safe_dump(
+        {
+            "apiVersion": 1,
+            "datasources": [
+                {
+                    "name": prometheus_name,
+                    "url": prometheus_host,
+                    "type": "prometheus",
+                    "isDefault": True,
+                    "access": "proxy",
+                    "jsonData": jsonData,
+                    "secureJsonData": secureJsonData,
+                }
+            ],
+        }
+    )
+
 
 PROMETHEUS_YML_TEMPLATE = """# my global config
 global:

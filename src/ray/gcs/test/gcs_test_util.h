@@ -17,7 +17,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -68,7 +71,8 @@ struct Mocker {
                               required_placement_resources,
                               "",
                               0,
-                              TaskID::Nil());
+                              TaskID::Nil(),
+                              "");
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,
@@ -81,7 +85,7 @@ struct Mocker {
                                      detached,
                                      name,
                                      ray_namespace);
-    return builder.Build();
+    return std::move(builder).ConsumeAndBuild();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(
@@ -421,7 +425,7 @@ struct Mocker {
     for (size_t i = 0; i < request_resources.size(); i++) {
       auto &resource = request_resources[i];
       auto count = count_array[i];
-      auto bundle = constraint.add_min_bundles();
+      auto bundle = constraint.add_resource_requests();
       bundle->set_count(count);
       bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
                                                                     resource.end());

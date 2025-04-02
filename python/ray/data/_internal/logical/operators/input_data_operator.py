@@ -1,3 +1,4 @@
+import functools
 from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -26,7 +27,6 @@ class InputData(LogicalOperator):
         )
         self.input_data = input_data
         self.input_data_factory = input_data_factory
-        self._output_metadata_cache = None
 
     def output_data(self) -> Optional[List[RefBundle]]:
         if self.input_data is None:
@@ -34,16 +34,13 @@ class InputData(LogicalOperator):
         return self.input_data
 
     def aggregate_output_metadata(self) -> BlockMetadata:
-        """Get aggregated output metadata, using cache if available."""
+        return self._cached_output_metadata
+
+    @functools.cached_property
+    def _cached_output_metadata(self) -> BlockMetadata:
         if self.input_data is None:
             return BlockMetadata(None, None, None, None, None)
 
-        if self._output_metadata_cache is None:
-            self._output_metadata_cache = self._compute_output_metadata()
-        return self._output_metadata_cache
-
-    def _compute_output_metadata(self) -> BlockMetadata:
-        """Compute the output metadata without caching."""
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=self._size_bytes(),

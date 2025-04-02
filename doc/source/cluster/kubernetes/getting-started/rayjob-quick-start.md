@@ -28,6 +28,7 @@ To understand the following content better, you should understand the difference
 
 * RayCluster configuration
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
+  * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
   * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
@@ -62,6 +63,14 @@ To understand the following content better, you should understand the difference
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
   * `DELETE_RAYJOB_CR_AFTER_JOB_FINISHES` (Optional, added in version 1.2.0): Set this environment variable for the KubeRay operator, not the RayJob resource. If you set this environment variable to true, the RayJob custom resource itself is deleted if you also set `shutdownAfterJobFinishes` to true. Note that KubeRay deletes all resources created by the RayJob, including the Kubernetes Job.
+* Others
+  * `suspend` (Optional): If `suspend` is true, KubeRay deletes both the RayCluster and the submitter. Note that Kueue also implements scheduling strategies by mutating this field. Avoid manually updating this field if you use Kueue to schedule RayJob.
+  * `deletionPolicy` (Optional, alpha in v1.3.0): Indicates what resources of the RayJob are deleted upon job completion. Valid values are `DeleteCluster`, `DeleteWorkers`, `DeleteSelf` or `DeleteNone`. If unset, deletion policy is based on `spec.shutdownAfterJobFinishes`. This field requires the `RayJobDeletionPolicy` feature gate to be enabled.
+    * `DeleteCluster` - Deletion policy to delete the RayCluster custom resource, and its Pods, on job completion.
+    * `DeleteWorkers` - Deletion policy to delete only the worker Pods on job completion.
+    * `DeleteSelf` - Deletion policy to delete the RayJob custom resource (and all associated resources) on job completion.
+    * `DeleteNone` - Deletion policy to delete no resources on job completion.
+
 
 ## Example: Run a simple Ray job with RayJob
 
@@ -77,9 +86,22 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ## Step 3: Install a RayJob
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.41.0/2.41.0-aarch64/g' | kubectl apply -f -
 ```
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
+```sh
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml
+```
+:::
+
+::::
+
 
 ## Step 4: Verify the Kubernetes cluster status
 
@@ -158,19 +180,35 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
+
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.41.0/2.41.0-aarch64/g' | kubectl apply -f -
 ```
 
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml
+```
+
+:::
+
+::::
+
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted
-because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always
-be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted
+because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job
+when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -192,7 +230,7 @@ kubectl get raycluster
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

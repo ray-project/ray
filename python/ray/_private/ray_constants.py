@@ -65,10 +65,6 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
-# Sync with src/ray/common/constants.h
-AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
-AUTOSCALER_NAMESPACE = "__autoscaler"
-
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -78,7 +74,8 @@ DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
 )
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
-    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", 0.3
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
+    0.3,
 )
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
@@ -90,11 +87,6 @@ CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
 # TODO(swang): Ideally this should be pulled directly from the
 # config in case the user overrides it.
 DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
-# The default maximum number of bytes that the non-primary Redis shards are
-# allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
-# The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
@@ -144,6 +136,7 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
+DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 DEFAULT_DASHBOARD_AGENT_LISTEN_PORT = 52365
 # Default resource requirements for actors when no resource requirements are
@@ -221,7 +214,11 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+# TODO (kevin85421): Currently, I don't encourage Ray users to configure
+# `RAY_LOGGER_LEVEL` until its scope and expected behavior are clear and
+# easy to understand. Now, only Ray developers should use it.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
@@ -347,6 +344,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
@@ -385,9 +384,9 @@ DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
 
-# The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
+# The default gRPC max message size is 4 MiB, we use a larger number of 512 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
-GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+GRPC_CPP_MAX_MESSAGE_SIZE = 512 * 1024 * 1024
 
 # The gRPC send & receive max length for "dashboard agent" server.
 # NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
@@ -424,14 +423,6 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
-# Accelerator constants
-NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
-
-CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
-NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
-TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-NPU_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
-
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
@@ -458,6 +449,15 @@ DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
 
 
 def gcs_actor_scheduling_enabled():
@@ -518,7 +518,22 @@ RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
 
+# Write export API event of all resource types to file if enabled.
+# RAY_enable_export_api_write_config will not be considered if
+# this is enabled.
 RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
+
+# Comma separated string containing individual resource
+# to write export API events for. This configuration is only used if
+# RAY_enable_export_api_write is not enabled. Full list of valid
+# resource types in ExportEvent.SourceType enum in
+# src/ray/protobuf/export_api/export_event.proto
+# Example config:
+# `export RAY_enable_export_api_write_config='EXPORT_SUBMISSION_JOB,EXPORT_ACTOR'`
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR = os.environ.get(
+    "RAY_enable_export_api_write_config", ""
+)
+RAY_ENABLE_EXPORT_API_WRITE_CONFIG = RAY_ENABLE_EXPORT_API_WRITE_CONFIG_STR.split(",")
 
 RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
     "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6

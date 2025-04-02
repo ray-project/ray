@@ -8,12 +8,23 @@ import pytest
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
-from ray.data.datasource.file_based_datasource import (
-    OPEN_FILE_MAX_ATTEMPTS,
-    FileBasedDatasource,
-    _open_file_with_retry,
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.path_util import _has_file_extension, _is_local_windows_path
+
+
+@pytest.mark.parametrize(
+    "path, extensions, has_extension",
+    [
+        ("foo.csv", ["csv"], True),
+        ("foo.csv", ["json", "csv"], True),
+        ("foo.csv", ["json", "jsonl"], False),
+        ("foo.parquet.crc", ["parquet"], False),
+        ("foo.parquet.crc", ["crc"], True),
+        ("foo.csv", None, True),
+    ],
 )
-from ray.data.datasource.path_util import _is_local_windows_path
+def test_has_file_extension(path, extensions, has_extension):
+    assert _has_file_extension(path, extensions) == has_extension
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
@@ -79,36 +90,35 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.input_files() == [csv_path]
 
 
-def test_open_file_with_retry(ray_start_regular_shared):
-    class FlakyFileOpener:
-        def __init__(self, max_attempts: int):
-            self.retry_attempts = 0
-            self.max_attempts = max_attempts
+def test_flaky_datasource(ray_start_regular_shared):
 
-        def open(self):
-            self.retry_attempts += 1
-            if self.retry_attempts < self.max_attempts:
-                raise OSError(
-                    "When creating key x in bucket y: AWS Error SLOW_DOWN during "
-                    "PutObject operation: Please reduce your request rate."
-                )
-            return "dummy"
+    from ray.data._internal.datasource.csv_datasource import CSVDatasource
 
-    original_max_attempts = OPEN_FILE_MAX_ATTEMPTS
-    try:
-        # Test openning file successfully after retries.
-        opener = FlakyFileOpener(3)
-        assert _open_file_with_retry("dummy", lambda: opener.open()) == "dummy"
+    class Counter:
+        def __init__(self):
+            self.value = 0
 
-        # Test exhausting retries and failed eventually.
-        ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = 3
-        opener = FlakyFileOpener(4)
-        with pytest.raises(OSError):
-            _open_file_with_retry("dummy", lambda: opener.open())
-    finally:
-        ray.data.datasource.file_based_datasource.OPEN_FILE_MAX_ATTEMPTS = (
-            original_max_attempts
-        )
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    class FlakyCSVDatasource(CSVDatasource):
+        def __init__(self, paths, **csv_datasource_kwargs):
+            super().__init__(paths, **csv_datasource_kwargs)
+            CounterActor = ray.remote(Counter)
+            self.counter = CounterActor.remote()
+
+        def _read_stream(self, f: "pyarrow.NativeFile", path: str):
+            count = self.counter.increment.remote()
+            if ray.get(count) == 1:
+                raise RuntimeError("AWS Error INTERNAL_FAILURE")
+            else:
+                for block in CSVDatasource._read_stream(self, f, path):
+                    yield block
+
+    datasource = FlakyCSVDatasource(["example://iris.csv"])
+    ds = ray.data.read_datasource(datasource)
+    assert len(ds.take()) == 20
 
 
 def test_windows_path():

@@ -19,25 +19,23 @@ import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
+import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
 const BundleResourceRequirements = ({
   bundles,
-  sx,
 }: {
   bundles: Bundle[];
   sx?: SxProps<Theme>;
 }) => {
-  return (
-    <Box sx={sx}>
-      {bundles.map(({ unit_resources }, index) => {
-        return `{${Object.entries(unit_resources || {})
-          .map(([key, val]) => `${key}: ${val}`)
-          .join(", ")}}, `;
-      })}
-    </Box>
-  );
+  const resources = bundles.map(({ unit_resources }) => unit_resources);
+  const resourceString =
+    resources.length === 0
+      ? "-"
+      : resources.map((resource) => JSON.stringify(resource)).join(", ");
+
+  return <OverflowCollapsibleCell text={resourceString} maxWidth={300} />;
 };
 
 const PlacementGroupTable = ({
@@ -180,21 +178,7 @@ const PlacementGroupTable = ({
                     <StatusChip type="placementGroup" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={<BundleResourceRequirements bundles={bundles} />}
-                      arrow
-                    >
-                      <BundleResourceRequirements
-                        sx={{
-                          display: "block",
-                          width: "100px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        bundles={bundles}
-                      />
-                    </Tooltip>
+                    <BundleResourceRequirements bundles={bundles} />
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}

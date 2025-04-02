@@ -23,10 +23,6 @@ register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .env_runners(
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
@@ -34,7 +30,7 @@ config = (
     .training(
         train_batch_size_per_learner=1024,
         minibatch_size=128,
-        lr=0.0002 * (args.num_gpus or 1) ** 0.5,
+        lr=0.0002 * (args.num_learners or 1) ** 0.5,
         gamma=0.95,
         lambda_=0.5,
     )

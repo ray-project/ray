@@ -5,14 +5,13 @@ import sys
 import ray.experimental.collective as collective
 
 import pytest
+from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
-from ray.dag import InputNode, MultiOutputNode
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -148,10 +147,10 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         recvs = [
             # Each of the 2 workers receives from the other.
             workers[0].recv.bind(
-                collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
+                collectives[1].with_tensor_transport(transport="nccl")
             ),
             workers[1].recv.bind(
-                collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+                collectives[0].with_tensor_transport(transport="nccl")
             ),
         ]
         dag = MultiOutputNode(recvs)
@@ -160,7 +159,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -170,7 +168,7 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         collectives = collective.allreduce.bind(computes)
         # Sender is workers[0] and receiver is workers[1].
         dag = workers[1].recv.bind(
-            collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+            collectives[0].with_tensor_transport(transport="nccl")
         )
         dag = MultiOutputNode([dag, collectives[1]])
 
@@ -178,7 +176,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -187,9 +184,10 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
 @pytest.mark.parametrize(
     "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
 )
-def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
+def test_custom_comm(ray_start_regular, monkeypatch):
     """
-    Test a custom GPU communicator is reused when possible.
+    Test a custom GPU communicator is used when specified and a default
+    communicator is used otherwise.
     """
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
@@ -202,15 +200,17 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         collectives = collective.allreduce.bind(computes, transport=comm)
         collectives = collective.allreduce.bind(collectives)
         dag = workers[0].recv.bind(
-            collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
+            collectives[1].with_tensor_transport(transport="nccl")
         )
         dag = MultiOutputNode([dag, collectives[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+            (frozenset(workers), None),
+        },
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -220,16 +220,16 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         collectives = collective.allreduce.bind(computes)
         collectives = collective.allreduce.bind(collectives)
-        dag = workers[0].recv.bind(
-            collectives[1].with_type_hint(TorchTensorType(transport=comm))
-        )
+        dag = workers[0].recv.bind(collectives[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, collectives[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
-        {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
+        {
+            (frozenset(workers), comm),
+            (frozenset(workers), None),
+        },
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -255,16 +255,13 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
         allreduce = collective.allreduce.bind(tensors, transport=comm)
-        dag = workers[0].recv.bind(
-            allreduce[1].with_type_hint(TorchTensorType(transport=comm))
-        )
+        dag = workers[0].recv.bind(allreduce[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, allreduce[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -278,7 +275,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         allreduce1 = collective.allreduce.bind(tensors, transport=comm_1)
         allreduce2 = collective.allreduce.bind(allreduce1, transport=comm_2)
         dag = workers[0].recv.bind(
-            allreduce2[1].with_type_hint(TorchTensorType(transport=comm_3))
+            allreduce2[1].with_tensor_transport(transport=comm_3)
         )
         dag = MultiOutputNode([dag, allreduce2[0]])
 
@@ -290,7 +287,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
             (frozenset(workers), comm_2),
             (frozenset(workers), comm_3),
         },
-        (frozenset(workers), comm_3),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)

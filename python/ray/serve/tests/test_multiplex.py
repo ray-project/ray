@@ -8,7 +8,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
@@ -21,7 +21,7 @@ from ray.serve.multiplex import _ModelMultiplexWrapper
 def _get_replica_scheduler(handle: DeploymentHandle) -> ReplicaScheduler:
     # TODO(edoakes): we shouldn't be reaching into private fields, but better
     # to isolate it to one place (this function).
-    return handle._get_or_create_router()._asyncio_router._replica_scheduler
+    return handle._router._asyncio_router._replica_scheduler
 
 
 @pytest.fixture()

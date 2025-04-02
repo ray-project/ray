@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -461,7 +460,10 @@ message TaskSpec {
   bytes job_id = 5;
   // Task ID of the task.
   bytes task_id = 6;
-  // Task ID of the parent task.
+  // Task ID of the parent task. If the parent is a normal task, it will be the task's ID.
+  // If the parent runs in a concurrent actor (async actor or threaded actor),
+  // it will be the actor's creation task ID.
+  // See https://github.com/ray-project/ray/pull/32157 for more context.
   bytes parent_task_id = 7;
   // A count of the number of tasks submitted by the parent task before this one.
   uint64 parent_counter = 8;
@@ -556,6 +558,12 @@ message TaskSpec {
   // this field contains the detached actor id.
   // Otherwise it's empty and is originated from a driver.
   bytes root_detached_actor_id = 40;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if environment variable
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 42;
 }
 
 message TaskInfoEntry {
@@ -589,6 +597,9 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if the flag is enabled.
+  optional string call_site = 27;
 }
 
 message Bundle {
@@ -986,6 +997,10 @@ message NamedActorInfo {
 
 message LineageReconstructionTask {
   string name = 1;
-  map<string, double> resources = 2;
-  TaskStatus status = 3;
+  TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
+  map<string, string> labels = 3;
 }

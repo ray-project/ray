@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/array.h"
+#include "ray/util/thread_utils.h"
 #include "ray/util/util.h"
 
 template <typename Duration>
@@ -59,7 +60,9 @@ class InstrumentedIOContextWithThread {
    */
   explicit InstrumentedIOContextWithThread(const std::string &thread_name,
                                            bool enable_lag_probe = false)
-      : io_service_(enable_lag_probe), work_(io_service_), thread_name_(thread_name) {
+      : io_service_(enable_lag_probe),
+        work_(io_service_.get_executor()),
+        thread_name_(thread_name) {
     io_thread_ = std::thread([this] {
       SetThreadName(this->thread_name_);
       io_service_.run();
@@ -88,7 +91,8 @@ class InstrumentedIOContextWithThread {
 
  private:
   instrumented_io_context io_service_;
-  boost::asio::io_service::work work_;  // to keep io_service_ running
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      work_;  // to keep io_service_ running
   std::thread io_thread_;
   std::string thread_name_;
 };
@@ -145,7 +149,8 @@ class IOContextProvider {
   instrumented_io_context &GetIOContext() const {
     constexpr int index = Policy::template GetDedicatedIOContextIndex<T>();
     static_assert(
-        index >= -1 && index < Policy::kAllDedicatedIOContextNames.size(),
+        index >= -1 &&
+            index < static_cast<int>(Policy::kAllDedicatedIOContextNames.size()),
         "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
         "can only be -1 or within range of kAllDedicatedIOContextNames");
 

@@ -61,8 +61,9 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, Sequence
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -79,7 +80,7 @@ parser.set_defaults(
 )
 
 
-class EnvRenderCallback(DefaultCallbacks):
+class EnvRenderCallback(RLlibCallback):
     """A custom callback to render the environment.
 
     This can be used to create videos of the episodes for some or all EnvRunners
@@ -131,7 +132,7 @@ class EnvRenderCallback(DefaultCallbacks):
             return
 
         # If we have a vector env, only render the sub-env at index 0.
-        if isinstance(env.unwrapped, gym.vector.VectorEnv):
+        if isinstance(env.unwrapped, (gym.vector.VectorEnv, VectorMultiAgentEnv)):
             image = env.unwrapped.envs[0].render()
         # Render the gym.Env.
         else:
@@ -281,7 +282,7 @@ if __name__ == "__main__":
             entropy_coeff=0.01,
             num_epochs=10,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
+            lr=0.00015 * (args.num_learners or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
         )

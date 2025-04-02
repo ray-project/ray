@@ -23,7 +23,14 @@ class TestPolicyMap(unittest.TestCase):
         # This is testing policy map which is something that will be deprecated in
         # favor of MultiAgentRLModules in the future. So we'll disable the RLModule API
         # for this test for now.
-        config = PPOConfig().framework("tf2")
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .framework("tf2")
+        )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
         act_space = gym.spaces.Discrete(10000)

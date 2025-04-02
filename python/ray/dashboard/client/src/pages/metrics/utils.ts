@@ -2,6 +2,7 @@ import { get } from "../../service/requestHandlers";
 
 const GRAFANA_HEALTHCHECK_URL = "/api/grafana_health";
 const PROMETHEUS_HEALTHCHECK_URL = "/api/prometheus_health";
+const TIMEZONE_URL = "/timezone";
 
 export type DashboardUids = {
   default: string;
@@ -24,6 +25,11 @@ type GrafanaHealthcheckRsp = {
 type PrometheusHealthcheckRsp = {
   result: boolean;
   msg: string;
+};
+
+type TimezoneRsp = {
+  offset: string;
+  value: string;
 };
 
 const fetchGrafanaHealthcheck = async () => {
@@ -67,4 +73,22 @@ export const getMetricsInfo = async () => {
   } catch (e) {}
 
   return info;
+};
+
+export type TimezoneInfo = {
+  offset: string;
+  value: string;
+};
+
+export const getTimeZoneInfo = async () => {
+  try {
+    const resp = await get<TimezoneRsp>(TIMEZONE_URL);
+    if (resp.data) {
+      return {
+        offset: resp.data.offset,
+        value: resp.data.value,
+      };
+    }
+  } catch (e) {}
+  return null;
 };

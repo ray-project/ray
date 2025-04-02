@@ -102,7 +102,7 @@ spec:
           # resource accounting. K8s requests are not used by Ray.
           resources:
             limits:
-              # Slightly less than 16 to accomodate placement on 16 vCPU virtual machine.
+              # Slightly less than 16 to accommodate placement on 16 vCPU virtual machine.
               cpu: "14"
               memory: "54Gi"
               # The node that hosts this pod should have at least 1000Gi disk space,

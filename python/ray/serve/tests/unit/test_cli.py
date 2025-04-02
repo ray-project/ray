@@ -21,9 +21,15 @@ def test_convert_args_to_dict():
     ):
         convert_args_to_dict(("bad_arg",))
 
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+    with pytest.raises(
+        click.ClickException, match="Invalid application argument 'bad_arg='"
+    ):
+        convert_args_to_dict(("bad_arg=",))
+
+    assert convert_args_to_dict(("key1=val1", "key2=val2", "key3=nested=val")) == {
         "key1": "val1",
         "key2": "val2",
+        "key3": "nested=val",
     }
 
 

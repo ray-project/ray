@@ -46,6 +46,35 @@ def insert_test_dir_in_pythonpath():
 
 
 @pytest.mark.asyncio
+async def test_working_dir_cleanup(tmpdir, ray_start_regular):
+    gcs_aio_client = gcs_utils.GcsAioClient(
+        address=ray.worker.global_worker.gcs_client.address
+    )
+
+    plugin = WorkingDirPlugin(tmpdir, gcs_aio_client)
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    # Iterate over the files and storing creation metadata.
+    creation_metadata = {}
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time = file_metadata.st_ctime
+        creation_metadata[file] = creation_time
+
+    time.sleep(1)
+
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time_after = file_metadata.st_ctime
+        assert creation_metadata[file] != creation_time_after
+
+
+@pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
     gcs_aio_client = gcs_utils.GcsAioClient(

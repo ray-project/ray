@@ -14,6 +14,7 @@
 
 #pragma once
 #include <memory>
+#include <utility>
 
 #include "ray/common/runtime_env_manager.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"

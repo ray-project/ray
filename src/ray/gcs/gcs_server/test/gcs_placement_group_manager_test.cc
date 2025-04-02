@@ -15,6 +15,8 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -83,14 +85,14 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         cluster_resource_manager_(io_service_) {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>();
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
-        mock_placement_group_scheduler_,
-        gcs_table_storage_,
+        mock_placement_group_scheduler_.get(),
+        gcs_table_storage_.get(),
         *gcs_resource_manager_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
@@ -148,9 +150,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   }
 
   std::shared_ptr<GcsInitData> LoadDataFromDataStorage() {
-    auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
+    auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
     std::promise<void> promise;
-    gcs_init_data->AsyncLoad([&promise] { promise.set_value(); });
+    gcs_init_data->AsyncLoad({[&promise] { promise.set_value(); }, io_service_});
     RunIOService();
     promise.get_future().get();
     return gcs_init_data;
@@ -158,7 +160,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   void RunIOService() { io_service_.poll(); }
 
-  ExponentialBackOff GetExpBackOff() { return ExponentialBackOff(0, 1); }
+  ExponentialBackoff GetExpBackOff() { return ExponentialBackoff(0, 1); }
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
@@ -166,10 +168,10 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
 
  protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  instrumented_io_context io_service_;
 
  private:
-  instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
@@ -554,7 +556,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
       /* cpu_num */ 1.0,
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(job_id, *job_table_data, nullptr));
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_}));
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
     ++registered_placement_group_count;
@@ -854,11 +857,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::NO_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 2);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 2);
   }
 
   /// Feasible, but failed to commit resources.
@@ -872,11 +875,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 3);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 3);
   }
 
   // Check that the placement_group scheduling state is `FINISHED`.
@@ -915,8 +918,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   auto scheduling_done_ns = absl::GetCurrentTimeNanos();
 
   /// Make sure the creation time is correctly recorded.
-  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() != 0);
-  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() != 0);
+  ASSERT_NE(placement_group->GetStats().scheduling_latency_us(), 0);
+  ASSERT_NE(placement_group->GetStats().end_to_end_creation_latency_us(), 0);
   // The way to measure latency is a little brittle now. Alternatively, we can mock
   // the absl::GetCurrentNanos() to a callback method and have more accurate test.
   auto scheduling_latency_us =
@@ -981,7 +984,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
       /* job_id */ job_id);
   auto job_table_data = Mocker::GenJobTableData(job_id);
   job_table_data->set_is_dead(true);
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(job_id, *job_table_data, nullptr));
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(
+      job_id, *job_table_data, {[](auto) {}, io_service_}));
 
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request, [&registered_placement_group_count](Status status) {
@@ -1011,8 +1015,3 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
