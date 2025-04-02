@@ -795,7 +795,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             from ray.data.extensions.object_extension import ArrowPythonObjectArray
 
             logger.debug(
-                f"Complex nested structure detected, using object serialization"
+                "Complex nested structure detected, using object serialization"
             )
             return ArrowPythonObjectArray.from_objects(arr)
 
