@@ -327,7 +327,7 @@ on each ``reduce()`` operation.
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` automatically compiles an extra key for each such metric, adding the suffix ``_throughput``
 to the original key and assigning it the value for the throughput per second.
 
-You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.throughputs` method to access the throughput value.
+You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.get_throughputs` method to access the throughput value.
 
 .. testcode::
 
