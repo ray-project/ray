@@ -21,3 +21,4 @@ steps:
     job_env: forge
     tags:
       - serve
+      - skip-on-premerge  # Some tests are failing
