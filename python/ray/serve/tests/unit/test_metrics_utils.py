@@ -141,8 +141,9 @@ class TestInMemoryMetricsStore:
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1}, timestamp=1)
         s.add_metrics_point({"m1": 2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
+        assert s.aggregate_avg(["m1"]) == 1.5
+        assert s.aggregate_max(["m1"]) == 2
+        assert s.aggregate_min(["m1"]) == 1
 
     def test_out_of_order_insert(self):
         s = InMemoryMetricsStore()
@@ -151,53 +152,34 @@ class TestInMemoryMetricsStore:
         s.add_metrics_point({"m1": 3}, timestamp=3)
         s.add_metrics_point({"m1": 2}, timestamp=2)
         s.add_metrics_point({"m1": 4}, timestamp=4)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 3
-        assert s.max("m1", window_start_timestamp_s=0) == 5
+        assert s.aggregate_avg(["m1"]) == 3
+        assert s.aggregate_max(["m1"]) == 5
+        assert s.aggregate_min(["m1"]) == 1
 
     def test_window_start_timestamp(self):
         s = InMemoryMetricsStore()
-        assert s.window_average("m1", window_start_timestamp_s=0) is None
-        assert s.max("m1", window_start_timestamp_s=0) is None
+        assert s.aggregate_avg(["m1"]) == 0.0
+        assert s.aggregate_max(["m1"]) == 0.0
+        assert s.aggregate_min(["m1"]) == 0.0
 
         s.add_metrics_point({"m1": 1}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1
+        assert s.aggregate_avg(["m1"]) == 1
+        s.prune_keys_and_compact_data(10)
         assert (
-            s.window_average("m1", window_start_timestamp_s=10, do_compact=False)
-            is None
+            s.aggregate_avg(["m1"])
+            == 0.0
         )
-
-    def test_compaction_window(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=1)
-        s.add_metrics_point({"m1": 2}, timestamp=2)
-
-        assert (
-            s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1.5
-        )
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-        # First record should be removed.
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-    def test_compaction_max(self):
-        s = InMemoryMetricsStore()
-
-        s.add_metrics_point({"m1": 1}, timestamp=2)
-        s.add_metrics_point({"m1": 2}, timestamp=1)
-
-        assert s.max("m1", window_start_timestamp_s=0, do_compact=False) == 2
-
-        s.window_average("m1", window_start_timestamp_s=1.1, do_compact=True)
-
-        assert s.window_average("m1", window_start_timestamp_s=0, do_compact=False) == 1
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
         s.add_metrics_point({"m1": 1, "m2": -1}, timestamp=1)
         s.add_metrics_point({"m1": 2, "m2": -2}, timestamp=2)
-        assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
-        assert s.max("m1", window_start_timestamp_s=0) == 2
-        assert s.max("m2", window_start_timestamp_s=0) == -1
+        assert s.aggregate_avg(["m1"]) == 1.5
+        assert s.aggregate_avg(["m2"]) == -1.5
+        assert s.aggregate_max(["m1"]) == 2
+        assert s.aggregate_max(["m2"]) == -1
+        assert s.aggregate_min(["m1"]) == 1
+        assert s.aggregate_min(["m2"]) == -2
 
     def test_prune_keys_and_compact_data(self):
         s = InMemoryMetricsStore()
