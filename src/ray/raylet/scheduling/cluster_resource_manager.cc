@@ -224,8 +224,8 @@ bool ClusterResourceManager::HasAvailableResources(
                                                ignore_object_store_memory_requirement);
 }
 
-bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
-                                               const rpc::LabelSelector &label_selector) const {
+bool ClusterResourceManager::HasRequiredLabels(
+    scheduling::NodeID node_id, const rpc::LabelSelector &label_selector) const {
   // Get the node
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
