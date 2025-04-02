@@ -277,9 +277,10 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_));
 
   // Setup application cgroup.
+  // TODO(hjiang): For milestone-2 per-task-based reservation and limitation, we need to
+  // add subtree control to subcgroup as well, not needed for milestone-1.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_app_folder_));
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_default_app_folder_));
-  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control));
 
   return Status::OK();
 }
