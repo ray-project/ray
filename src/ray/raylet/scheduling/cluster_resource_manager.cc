@@ -225,7 +225,7 @@ bool ClusterResourceManager::HasAvailableResources(
 }
 
 bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
-                                               rpc::LabelSelector &label_selector) const {
+                                               const rpc::LabelSelector &label_selector) const {
   // Get the node
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
@@ -243,7 +243,7 @@ bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
 }
 
 bool ClusterResourceManager::NodeLabelMatchesConstraint(
-    const Node &node, rpc::LabelConstraint &constraint) {
+    const Node &node, const rpc::LabelConstraint &constraint) {
   const auto &key = constraint.label_key();
   const auto &match_operator = constraint.operator_();
   const auto &values = constraint.label_values();
