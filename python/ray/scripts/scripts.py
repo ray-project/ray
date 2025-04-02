@@ -646,7 +646,7 @@ Windows powershell users need additional escaping:
     hidden=True,
     default="",
     type=str,
-    help="a path to a YAML file containing a serialized dictionary mapping of labels.",
+    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
 )
 @click.option(
     "--include-log-monitor",
