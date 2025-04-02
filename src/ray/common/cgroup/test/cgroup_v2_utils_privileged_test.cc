@@ -44,6 +44,12 @@ TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotOfCgroupV2Type) {
   EXPECT_EQ(CheckCgroupV2MountedRW("/tmp").code(), StatusCode::InvalidArgument);
 }
 
+TEST(CgroupV2UtilsTest, SubtreeControllerEnable) {
+  // Subtree controller has been enabled proper in cgroup CI test environment and anywhere
+  // to execute cgroup related operations.
+  RAY_ASSERT_OK(CheckCgroupV2MountedRW("/sys/fs/cgroup"));
+}
+
 }  // namespace
 
 }  // namespace ray::internal

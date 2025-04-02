@@ -33,6 +33,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include <sys/vfs.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -42,6 +43,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "ray/common/cgroup/constants.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -120,6 +122,39 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
+Status CheckRootCgroupSubtreeController(const std::string &directory) {
+  const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
+  std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
+  if (!in_file.good()) {
+    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+           << "Failed to open cgroup file " << subtree_control_path;
+  }
+
+  std::string content((std::istreambuf_iterator<char>(in_file)),
+                      std::istreambuf_iterator<char>());
+  std::string_view content_sv{content};
+  absl::ConsumeSuffix(&content_sv, "\n");
+
+  const std::vector<std::string_view> enabled_subtree_controllers =
+      absl::StrSplit(content_sv, ' ');
+  if (std::find(enabled_subtree_controllers.begin(),
+                enabled_subtree_controllers.end(),
+                "memory") == enabled_subtree_controllers.end()) {
+    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+           << "Root cgroup " << directory
+           << " doesn't enable memory controller for subtree.";
+  }
+  if (std::find(enabled_subtree_controllers.begin(),
+                enabled_subtree_controllers.end(),
+                "cpu") != enabled_subtree_controllers.end()) {
+    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+           << "Root cgroup " << directory
+           << " doesn't enable cpu controller for subtree.";
+  }
+
+  return Status::OK();
+}
+
 }  // namespace internal
 
 Status InitializeCgroupV2Directory(const std::string &directory,
@@ -133,6 +168,11 @@ Status InitializeCgroupV2Directory(const std::string &directory,
 
   // Check cgroup accessibility before setup.
   if (Status s = internal::CheckCgroupV2MountedRW(directory); !s.ok()) {
+    return s;
+  }
+
+  // Check cgroup subtree control before setup.
+  if (Status s = internal::CheckRootCgroupSubtreeController(directory); !s.ok()) {
     return s;
   }
 

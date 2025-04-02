@@ -5,6 +5,7 @@ ray_cc_library(
     srcs = ["cgroup_setup.cc"],
     hdrs = ["cgroup_setup.h"],
     deps = [
+        ":constants",
         "//src/ray/util",
         "@com_google_absl//absl/strings:str_format",
     ],

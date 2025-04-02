@@ -31,6 +31,12 @@ namespace internal {
 // \param directory: user provided mounted cgroupv2 directory.
 Status CheckCgroupV2MountedRW(const std::string &directory);
 
+// Checks whether root cgroupv2 (whether it's at host machine or inside of container) has
+// enabled memory and CPU subtree controller.
+//
+// \param directory: user provided mounted cgroupv2 directory.
+Status CheckRootCgroupSubtreeController(const std::string &directory);
+
 }  // namespace internal
 
 // Util function to initialize cgroupv2 directory for the given [node_id].
