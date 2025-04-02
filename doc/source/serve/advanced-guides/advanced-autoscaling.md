@@ -154,6 +154,23 @@ or equal to the upscale and downscale delay values. For instance, if you set
 `upscale_delay_s = 3`, but keep `metrics_interval_s = 10`, the autoscaler only
 upscales roughly every 10 seconds.
 
+* **aggregation_function [default_value="mean"]**: One of `"mean","min","max"`.
+This parameter determines how time-series autoscaling metrics (i.e
+ongoing_requests) are aggregated over the `look_back_period_s`. Autoscaling
+decisions are only made when the output of this function is *consistently* above
+or below `target_ongoing_requests` for `upscale_delay_s` or `downscale_delay_s`
+for each replica. The function output is number of requests per single replica.
+* 
+  * `"mean"`: The rounded mean of the windowed timeseries is used.
+  * `"min"`: The minimum value of the windowed timeseries is used.
+  * `"max"`: The maximum value of the windowed timeseries is used.
+
+:::{note}
+This parameter modifies the autoscaling metrics aggregation only. This means it 
+impacts autoscaling decisions, but should not impact node-level prometheus 
+metrics/logs (i.e `running_requests_per_replica`).
+:::
+
 * **look_back_period_s [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
 

@@ -326,12 +326,12 @@ class ReplicaMetricsManager:
             else:
                 self._request_counter.inc(tags={"route": route})
 
-    def _push_autoscaling_metrics(self) -> Dict[str, Any]:
+    def _push_autoscaling_metrics(self) -> None:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.aggregate_avg([self._replica_id])[0],
+            metrics_store=self._metrics_store,
             send_timestamp=time.time(),
         )
 

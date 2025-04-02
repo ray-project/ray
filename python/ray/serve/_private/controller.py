@@ -46,6 +46,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.metrics_utils import InMemoryMetricsStore
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -260,13 +261,18 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
+        self,
+        replica_id: str,
+        metrics_store: InMemoryMetricsStore,
+        send_timestamp: float
     ):
+        """Record metrics for autoscaling directly from replicas. Either this
+        method or `record_handle_metrics` should be called, but not both"""
         logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
+            f"Received metrics from replica {replica_id} for autoscaling."
         )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, send_timestamp
+            replica_id, metrics_store, send_timestamp
         )
 
     def record_handle_metrics(
@@ -275,21 +281,20 @@ class ServeController:
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[str, float],
+        metrics_store: InMemoryMetricsStore,
         send_timestamp: float,
     ):
+        """Record metrics for autoscaling directly from replicas. Either this
+        method or `record_handle_metrics` should be called, but not both"""
         logger.debug(
-            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
-            f"{queued_requests} queued requests and {running_requests} running requests"
+            f"Received metrics from handle {handle_id} for deployment {deployment_id}"
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             deployment_id=deployment_id,
             handle_id=handle_id,
             actor_id=actor_id,
             handle_source=handle_source,
-            queued_requests=queued_requests,
-            running_requests=running_requests,
+            metrics_store=metrics_store,
             send_timestamp=send_timestamp,
         )
 

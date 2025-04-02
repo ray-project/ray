@@ -229,6 +229,10 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
+    # Determines how handle metrics are aggregated to make scaling decisions.
+    aggregation_function: str = "mean"
+    _aggregation_functions = {"mean", "max", "min"}
+
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
@@ -274,6 +278,14 @@ class AutoscalingConfig(BaseModel):
                 DeprecationWarning,
             )
         return v
+
+    @validator("aggregation_function", always=True)
+    def aggregation_function_valid(cls, aggregation_function: str):
+        if aggregation_function not in cls._aggregation_functions:
+            raise ValueError(
+                f"scaling_function must be one of {list(cls._aggregation_functions)}"
+            )
+        return aggregation_function
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

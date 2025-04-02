@@ -367,7 +367,7 @@ class RouterMetricsManager:
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
-            **self._get_aggregated_requests(),
+            metrics_store=self._get_metrics_store()
         )
 
     def _add_autoscaling_metrics_point(self):
@@ -389,25 +389,11 @@ class RouterMetricsManager:
         start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
-    def _get_aggregated_requests(self):
-        running_requests = dict()
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
-            look_back_period = self.autoscaling_config.look_back_period_s
-            self.metrics_store.prune_keys_and_compact_data(
-                time.time() - look_back_period
-            )
-            running_requests = {
-                replica_id: self.metrics_store.aggregate_avg([replica_id])[0]
-                # If data hasn't been recorded yet, return current
-                # number of queued and ongoing requests.
-                or num_requests
-                for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
-            }
+    def _get_metrics_store(self):
+        look_back_period = self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(look_back_period)
 
-        return {
-            "queued_requests": self.num_queued_requests,
-            "running_requests": running_requests,
-        }
+        return self.metrics_store
 
     async def shutdown(self):
         """Shutdown metrics manager gracefully."""
