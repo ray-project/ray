@@ -76,7 +76,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -113,6 +113,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import mars
     import modin
@@ -1373,12 +1374,6 @@ class Dataset:
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
 
-        When `target_num_rows_per_block` is set, it repartitions :class:`Dataset`
-        to honor target number of rows per :ref:`blocks <dataset_concept>`. Note
-        that the system will internally figure out the number of rows per
-        :ref:`blocks <dataset_concept>` for optimal execution, based on the
-        `target_num_rows_per_block`.
-
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
 
@@ -1408,9 +1403,16 @@ class Dataset:
 
         Args:
             num_blocks: Number of blocks after repartitioning.
-            target_num_rows_per_block: The target number of rows per block to
+            target_num_rows_per_block: [Experimental] The target number of rows per block to
                 repartition. Note that either `num_blocks` or
-                `target_num_rows_per_block` must be set, but not both.
+                `target_num_rows_per_block` must be set, but not both. When
+                `target_num_rows_per_block` is set, it only repartitions
+                :class:`Dataset` :ref:`blocks <dataset_concept>` that are larger than
+                `target_num_rows_per_block`. Note that the system will internally
+                figure out the number of rows per :ref:`blocks <dataset_concept>` for
+                optimal execution, based on the `target_num_rows_per_block`. This is
+                the current behavior because of the implementation and may change in
+                the future.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -4773,6 +4775,24 @@ class Dataset:
             label_type_spec=label_type_spec,
             additional_type_spec=additional_type_spec,
         )
+
+    @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
+    def to_daft(self) -> "daft.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
+
+        This will convert all the data inside the Ray Dataset into a Daft DataFrame in a zero-copy way
+        (using Arrow as the intermediate data format).
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A `Daft DataFrame`_ created from this dataset.
+        """
+        import daft
+
+        return daft.from_ray_dataset(self)
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)

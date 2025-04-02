@@ -16,6 +16,8 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -1220,7 +1222,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesWithoutTaskEvents) {
 
   task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
 
-  boost::asio::io_service io;
+  boost::asio::io_context io;
   boost::asio::deadline_timer timer(
       io,
       boost::posix_time::milliseconds(
@@ -1248,7 +1250,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
   task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
 
   // Wait for longer than the default timer
-  boost::asio::io_service io;
+  boost::asio::io_context io;
   boost::asio::deadline_timer timer(
       io,
       boost::posix_time::milliseconds(
@@ -1349,11 +1351,11 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
 
   // Evict all of them with tasks with single attempt, no parent, same job, no worker id.
   {
-    auto task_ids = GenTaskIDs(num_limit);
+    auto tids = GenTaskIDs(num_limit);
     auto job_id = 0;
     auto attempt_number = 0;
     for (size_t i = 0; i < num_limit; i++) {
-      auto events = GenTaskEvents({task_ids[i]},
+      auto events = GenTaskEvents({tids[i]},
                                   /* attempt_number */ attempt_number,
                                   job_id,
                                   GenProfileEvents("event", 1, 1),
@@ -1581,7 +1583,7 @@ TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
     task_manager->OnJobFinished(JobID::FromInt(0), 3);
 
     // Wait for longer than the default timer
-    boost::asio::io_service io;
+    boost::asio::io_context io;
     boost::asio::deadline_timer timer(
         io,
         boost::posix_time::milliseconds(

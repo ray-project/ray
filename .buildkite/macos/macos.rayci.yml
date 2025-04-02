@@ -111,6 +111,7 @@ steps:
       - python
       - macos_wheels
       - oss
+      - flaky
       - skip_on_premerge
     job_env: MACOS
     instance_type: macos

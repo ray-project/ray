@@ -14,7 +14,7 @@
 
 #include "ray/core_worker/transport/thread_pool.h"
 
-#include <boost/asio/post.hpp>
+#include <memory>
 
 namespace ray {
 namespace core {

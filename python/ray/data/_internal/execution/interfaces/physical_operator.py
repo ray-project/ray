@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import uuid
 
 import ray
@@ -457,7 +457,7 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def shutdown(self) -> None:
+    def shutdown(self, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
@@ -569,3 +569,12 @@ class PhysicalOperator(Operator):
         Actors.
         """
         return ""
+
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors.
+
+        This method will be called in add_output API in OpState. Subclasses can
+        override it to return counts for Alive, Restarting and Pending
+        Actors.
+        """
+        return 0, 0, 0

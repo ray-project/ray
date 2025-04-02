@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
@@ -61,7 +65,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
-    work_ = std::make_unique<boost::asio::io_service::work>(*io_service_);
+    work_ = std::make_unique<
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+        io_service_->get_executor());
     thread_io_service_.reset(new std::thread([this] { io_service_->run(); }));
 
     // Wait until server starts listening.
@@ -115,7 +121,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
-  std::unique_ptr<boost::asio::io_service::work> work_;
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      work_;
 };
 
 TEST_P(GlobalStateAccessorTest, TestJobTable) {

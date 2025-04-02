@@ -16,9 +16,15 @@ import torch
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
-from image_classification.factory import ImageClassificationFactory
+from image_classification.image_classification_parquet.factory import (
+    ImageClassificationParquetFactory,
+)
+from image_classification.image_classification_jpeg.factory import (
+    ImageClassificationJpegFactory,
+)
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 # TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
@@ -31,6 +37,7 @@ class TrainLoopRunner:
         self.model = ray.train.torch.prepare_model(model)
 
         self.loss_fn = factory.get_loss_fn()
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # Training progress state.
@@ -45,6 +52,9 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+        logger.info(
+            f"Restoring from checkpoint: {checkpoint} for worker {ray.train.get_context().get_world_rank()}"
+        )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -60,6 +70,9 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
+        logger.info(
+            f"Starting training for {self.benchmark_config.num_epochs} epochs for worker {ray.train.get_context().get_world_rank()}"
+        )
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
@@ -77,7 +90,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+            logger.info(f"Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -90,7 +103,7 @@ class TrainLoopRunner:
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
         if self._train_batch_idx > 0:
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+                logger.info(f"Skipping {self._train_batch_idx} batches...")
 
             for _ in range(self._train_batch_idx):
                 with self._metrics["train/iter_skip_batch"].timer():
@@ -167,8 +180,7 @@ class TrainLoopRunner:
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
+                f"Starting @ epoch={self._train_epoch_idx}, batch={self._train_batch_idx}"
             )
 
         val_dataloader = self.factory.get_val_dataloader()
@@ -206,6 +218,7 @@ class TrainLoopRunner:
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
+
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
@@ -232,9 +245,8 @@ class TrainLoopRunner:
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-                f"{ray.train.get_checkpoint()}"
+                f"Restored to epoch={self._train_epoch_idx}, train_batch_idx={self._train_batch_idx} "
+                f"from checkpoint: {ray.train.get_checkpoint()}"
             )
 
     def save_checkpoint(self, local_dir: str):
@@ -252,8 +264,7 @@ class TrainLoopRunner:
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
+                f"Saved @ epoch={self._train_epoch_idx}, train_batch_idx={self._train_batch_idx}"
             )
 
     def get_metrics(self) -> Dict[str, float]:
@@ -333,8 +344,10 @@ def main():
     benchmark_config: BenchmarkConfig = cli_to_config()
     logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 
-    if benchmark_config.task == "image_classification":
-        factory = ImageClassificationFactory(benchmark_config)
+    if benchmark_config.task == "image_classification_parquet":
+        factory = ImageClassificationParquetFactory(benchmark_config)
+    elif benchmark_config.task == "image_classification_jpeg":
+        factory = ImageClassificationJpegFactory(benchmark_config)
     else:
         raise ValueError
 

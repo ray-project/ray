@@ -22,7 +22,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 CLOUD = "serve_release_tests_cloud"
-SERVE_CONFIG_FILE = "serve_llama_3dot1_8b_tp1.yaml"
 
 
 @click.command()
@@ -30,15 +29,19 @@ SERVE_CONFIG_FILE = "serve_llama_3dot1_8b_tp1.yaml"
 @click.option("--serve-config-file", type=str)
 @click.option("--run-probes", type=bool, default=True)
 @click.option("--run-perf-profiler", type=bool, default=True)
+@click.option("--skip-hf-token", type=bool, default=False)
+@click.option("--timeout", type=int, default=600)
 def main(
     image_uri: Optional[str],
     serve_config_file: str,
     run_probes: bool,
     run_perf_profiler: bool,
+    skip_hf_token: bool,
+    timeout: int,
 ):
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
-    env_vars = get_hf_token_env_var()
+    env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -48,6 +51,7 @@ def main(
         working_dir=".",
         cloud=CLOUD,
         env_vars=env_vars,
+        timeout_s=timeout,
     ) as service_info:
         api_url = service_info["api_url"]
         api_token = service_info["api_token"]
@@ -61,7 +65,10 @@ def main(
             exit_code = pytest.main(
                 [
                     "./probes",
-                    "--timeout=30",
+                    # Some tests (e.g. test_json_mode) take a long time to run,
+                    # so we set a relative long timeout. See
+                    # https://github.com/vllm-project/vllm/issues/14151
+                    "--timeout=90",
                     "--durations=10",
                     "-s",
                     "-vv",

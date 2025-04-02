@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -29,8 +34,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/subreaper.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -97,6 +102,7 @@ DEFINE_string(plasma_directory,
               "/tmp",
               "The shared memory directory of the object store.");
 #endif
+DEFINE_string(fallback_directory, "", "The directory for fallback allocation files.");
 DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
@@ -137,7 +143,7 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stdout_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+    ray::RedirectStdoutOncePerProcess(stdout_redirection_options);
   }
 
   if (!FLAGS_stderr_filepath.empty()) {
@@ -147,7 +153,7 @@ int main(int argc, char *argv[]) {
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stderr_redirection_options.rotation_max_file_count =
         ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStderr(stderr_redirection_options);
+    ray::RedirectStderrOncePerProcess(stderr_redirection_options);
   }
 
   // Backward compatibility notes:
@@ -208,6 +214,7 @@ int main(int argc, char *argv[]) {
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
+  const std::string fallback_directory = FLAGS_fallback_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
@@ -235,7 +242,8 @@ int main(int argc, char *argv[]) {
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
-  boost::asio::io_service::work main_work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      main_service_work(main_service.get_executor());
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
@@ -434,7 +442,7 @@ int main(int argc, char *argv[]) {
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
-        object_manager_config.fallback_directory = temp_dir;
+        object_manager_config.fallback_directory = fallback_directory;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =

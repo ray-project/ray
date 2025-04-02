@@ -14,13 +14,15 @@
 
 #include "ray/core_worker/transport/task_receiver.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/task/task.h"
-#include "ray/gcs/pb_util.h"
 
 using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
@@ -85,11 +87,6 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
 
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask()) {
-      // Decrease to account for the dummy object id returned by the actor
-      // creation task.
-      num_returns--;
-    }
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;

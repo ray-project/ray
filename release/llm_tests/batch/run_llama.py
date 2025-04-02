@@ -1,33 +1,6 @@
-import argparse
-
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--tp-size",
-        type=int,
-        default=1,
-        help="Tensor parallel size",
-    )
-    parser.add_argument(
-        "--pp-size",
-        type=int,
-        default=1,
-        help="Pipeline parallel size.",
-    )
-    parser.add_argument(
-        "--concurrency", type=int, default=1, help="Number of concurrency (replicas)."
-    )
-    parser.add_argument(
-        "--vllm-use-v1",
-        action="store_true",
-        default=False,
-    )
-    return parser.parse_args()
+from args_utils import get_parser
 
 
 def main(args):
@@ -52,14 +25,15 @@ def main(args):
         tokenize = True
         detokenize = True
 
-    processor_config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
+    process_config_dict = dict(
+        model_source=args.model_source,
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
+            trust_remote_code=True,
         ),
         runtime_env=runtime_env,
         tokenize=tokenize,
@@ -69,9 +43,29 @@ def main(args):
         concurrency=concurrency,
     )
 
+    # Enable LoRA.
+    if args.dynamic_lora_loading_path:
+        if args.lora_name is None:
+            raise ValueError(
+                "lora_name must be specified if dynamic_lora_loading_path is provided"
+            )
+        if args.max_lora_rank is None:
+            raise ValueError(
+                "max_lora_rank must be specified if dynamic_lora_loading_path is provided"
+            )
+
+        process_config_dict[
+            "dynamic_lora_loading_path"
+        ] = args.dynamic_lora_loading_path
+        process_config_dict["engine_kwargs"]["enable_lora"] = True
+        process_config_dict["engine_kwargs"]["max_lora_rank"] = args.max_lora_rank
+
+    processor_config = vLLMEngineProcessorConfig(**process_config_dict)
+
     processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
+            model=args.model_source if args.lora_name is None else args.lora_name,
             messages=[
                 {"role": "system", "content": "You are a calculator"},
                 {"role": "user", "content": f"{row['id']} ** 3 = ?"},
@@ -97,5 +91,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    parser = get_parser()
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    main(parser.parse_args())

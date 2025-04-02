@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 
@@ -605,9 +611,10 @@ void NormalTaskSubmitter::PushNormalTask(
                                             get_task_failure_cause_reply_status,
                                             get_task_failure_cause_reply);
                 };
-            auto &lease_entry = worker_to_lease_entry_[addr];
-            RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
+            auto &cur_lease_entry = worker_to_lease_entry_[addr];
+            RAY_CHECK(cur_lease_entry.lease_client);
+            cur_lease_entry.lease_client->GetTaskFailureCause(cur_lease_entry.task_id,
+                                                              callback);
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {

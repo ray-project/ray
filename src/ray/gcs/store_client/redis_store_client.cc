@@ -15,9 +15,13 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
+#include <memory>
+#include <queue>
 #include <regex>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
@@ -506,7 +510,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service;
 
   auto thread = std::make_unique<std::thread>([&]() {
-    boost::asio::io_service::work work(io_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        io_service.get_executor());
     io_service.run();
   });
 

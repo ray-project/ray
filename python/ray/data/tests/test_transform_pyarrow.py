@@ -63,7 +63,7 @@ def test_shuffle():
 
 def test_arrow_concat_empty():
     # Test empty.
-    assert concat([]) == []
+    assert concat([]) == pa.table([])
 
 
 def test_arrow_concat_single_block():
