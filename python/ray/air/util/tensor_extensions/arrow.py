@@ -788,6 +788,21 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if len(arr) > 0 and np.isscalar(arr[0]):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
+        # Check for complex nested structures (arrays of objects containing other objects)
+        if (
+            isinstance(arr, np.ndarray)
+            and arr.dtype == np.dtype("O")
+            and len(arr) > 0
+            and isinstance(arr[0], np.ndarray)
+        ):
+            # This is a complex nested structure - fallback to object serialization
+            from ray.data.extensions.object_extension import ArrowPythonObjectArray
+
+            logger.debug(
+                f"Complex nested structure detected, using object serialization"
+            )
+            return ArrowPythonObjectArray.from_objects(arr)
+
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
