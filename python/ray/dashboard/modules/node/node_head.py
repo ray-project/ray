@@ -732,7 +732,6 @@ class NodeHead(SubprocessModule):
 
     async def run(self):
         await super().run()
-        dashboard_utils.SignalManager.freeze()
         coros = [
             dashboard_utils.NotifyQueue.watch_and_notify_forever(),
             self._update_nodes(),
