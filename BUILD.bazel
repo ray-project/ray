@@ -3628,7 +3628,6 @@ genrule(
         ":cp_raylet_so",
         ":python_sources",
         ":install_py_proto",
-        ":cp_redis",
         ":cp_raylet",
         ":cp_gcs_server",
     ] + select({
