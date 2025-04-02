@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import pyarrow.parquet as pq
 
@@ -28,6 +28,7 @@ class BigQueryDatasink(Datasink[None]):
         dataset: str,
         max_retry_cnt: int = DEFAULT_MAX_RETRY_CNT,
         overwrite_table: Optional[bool] = True,
+        job_config: Optional[Any] = None,
     ) -> None:
         _check_import(self, module="google.cloud", package="bigquery")
         _check_import(self, module="google.cloud", package="bigquery_storage")
@@ -37,6 +38,7 @@ class BigQueryDatasink(Datasink[None]):
         self.dataset = dataset
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
+        self.job_config = job_config
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
@@ -71,14 +73,15 @@ class BigQueryDatasink(Datasink[None]):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> None:
-        def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
+        def _write_single_block(block: Block, project_id: str, dataset: str, job_config) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery
 
             block = BlockAccessor.for_block(block).to_arrow()
 
             client = bigquery_datasource._create_client(project_id=project_id)
-            job_config = bigquery.LoadJobConfig(autodetect=True)
+            if job_config is None:
+                job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
 
@@ -123,7 +126,7 @@ class BigQueryDatasink(Datasink[None]):
         # Launch a remote task for each block within this write task
         ray.get(
             [
-                _write_single_block.remote(block, self.project_id, self.dataset)
+                _write_single_block.remote(block, self.project_id, self.dataset, self.job_config)
                 for block in blocks
             ]
         )
