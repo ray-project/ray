@@ -4,7 +4,7 @@ General Debugging
 =======================
 
 Distributed applications are more powerful yet complicated than non-distributed ones. Some of Ray's behavior might catch
-users off guard while there may be sound arguments for these design choices. 
+users off guard while there may be sound arguments for these design choices.
 
 This page lists some common issues users may run into. In particular, users think of Ray as running on their local machine, and
 while this is sometimes true, this leads to a lot of issues.
@@ -24,7 +24,7 @@ if the Cluster was started previously.
 
 **Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all Workers. It won’t be.
 
-**Fix**: Use Runtime Environments to pass environment variables explicity.
+**Fix**: Use Runtime Environments to pass environment variables explicitly.
 If you call ``ray.init(runtime_env=...)``,
 then the Workers will have the environment variable set.
 
@@ -114,8 +114,7 @@ of Ray Tasks itself, e.g.
 
 This will error with message:
 
-.. testoutput::
-  :options: +MOCK
+.. code-block::
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
@@ -225,3 +224,57 @@ This document discusses some common problems that people run into when using Ray
 as well as some known problems. If you encounter other problems, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
+
+Capture task and actor call sites
+---------------------------------
+
+Ray can optionally capture and display the stacktrace of where your code invokes tasks, creates actors or invokes actor tasks. This feature can help with debugging and understanding the execution flow of your application.
+
+To enable call site capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
+
+- Ray captures the stacktrace when creating tasks, actors or calling actor methods
+- The call site stacktrace is visible in:
+  - Ray Dashboard UI under the task details and actor details pages
+  - ``ray list task --detail`` CLI command output
+  - State API responses
+
+Note that stacktrace capture is disabled by default to avoid any performance overhead. Only enable it when needed for debugging purposes.
+
+Example:
+
+.. NOTE(edoakes): test is skipped because it reinitializes Ray.
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    # Enable stacktrace capture
+    ray.init(runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}})
+
+    @ray.remote
+    def my_task():
+        return 42
+
+    # Capture the stacktrace upon task invocation.
+    future = my_task.remote()
+    result = ray.get(future)
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    # Capture stacktrace upon actor creation.
+    counter = Counter.remote()
+
+    # Capture stacktrace upon method invocation.
+    counter.increment.remote()
+
+
+The stacktrace shows the exact line numbers and call stack where the task was invoked, actor was created and methods were invoked.
+
+This feature is currently only supported for Python and C++ tasks.

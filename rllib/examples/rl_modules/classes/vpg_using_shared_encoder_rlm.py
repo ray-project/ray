@@ -1,20 +1,25 @@
+import torch
+
 from ray.rllib.core import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-
-torch, nn = try_import_torch()
 
 
 SHARED_ENCODER_ID = "shared_encoder"
 
 
-class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
-    """A VPG (vanilla pol. gradient)-style RLModule using a shared encoder."""
+# __sphinx_doc_policy_begin__
+class VPGPolicyAfterSharedEncoder(TorchRLModule):
+    """A VPG (vanilla pol. gradient)-style RLModule using a shared encoder.
+    # __sphinx_doc_policy_end__
 
-    @override(TorchRLModule)
+        The shared encoder RLModule must be held by the same MultiRLModule, under which
+        this RLModule resides. The shared encoder's forward is called before this
+        RLModule's forward and returns the embeddings under the "encoder_embeddings"
+        key.
+    # __sphinx_doc_policy_2_begin__
+    """
+
     def setup(self):
         super().setup()
 
@@ -22,116 +27,144 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
         embedding_dim = self.model_config["embedding_dim"]
         hidden_dim = self.model_config["hidden_dim"]
 
-        self._pi_head = nn.Sequential(
-            nn.Linear(embedding_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, self.action_space.n),
+        self._pi_head = torch.nn.Sequential(
+            torch.nn.Linear(embedding_dim, hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, self.action_space.n),
         )
 
-    @override(RLModule)
     def _forward(self, batch, **kwargs):
-        # Features can be found in the batch under the "encoder_features" key.
+        # Embeddings can be found in the batch under the "encoder_embeddings" key.
         embeddings = batch["encoder_embeddings"]
         logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
 
-class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
-    """A VPG (vanilla policy gradient)-style MultiRLModule with shared encoder.
+# __sphinx_doc_policy_2_end__
 
-    This MultiRLModule needs to be configured appropriately as follows:
 
-    .. testcode::
-        :skipif: true
+# __sphinx_doc_mrlm_begin__
+class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
+    """VPG (vanilla pol. gradient)-style MultiRLModule handling a shared encoder.
+    # __sphinx_doc_mrlm_end__
 
-        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        This MultiRLModule needs to be configured appropriately as follows:
 
-        EMBEDDING_DIM = 64  # encoder output (feature) dim
-        HIDDEN_DIM = 64  # hidden dim for the policy nets
+        .. testcode::
 
-        config.rl_module(
-            rl_module_spec=MultiRLModuleSpec(
-                module_specs={
-                    # Central/shared encoder net.
-                    SHARED_ENCODER_ID: RLModuleSpec(
-                        module_class=SharedTorchEncoder,
-                        model_config={"embedding_dim": EMBEDDING_DIM},
-                    ),
-                    # Arbitrary number of policy nets (w/o encoder sub-net).
-                    "p0": RLModuleSpec(
-                        module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config={
-                            "embedding_dim": EMBEDDING_DIM,
-                            "hidden_dim": HIDDEN_DIM,
+    # __sphinx_doc_how_to_run_begin__
+            import gymnasium as gym
+            from ray.rllib.algorithms.ppo import PPOConfig
+            from ray.rllib.core import MultiRLModuleSpec, RLModuleSpec
+            from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+
+            single_agent_env = gym.make("CartPole-v1")
+
+            EMBEDDING_DIM = 64  # encoder output dim
+
+            config = (
+                PPOConfig()
+                .environment(MultiAgentCartPole, env_config={"num_agents": 2})
+                .multi_agent(
+                    # Declare the two policies trained.
+                    policies={"p0", "p1"},
+                    # Agent IDs of `MultiAgentCartPole` are 0 and 1. They are mapped to
+                    # the two policies with ModuleIDs "p0" and "p1", respectively.
+                    policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
+                )
+                .rl_module(
+                    rl_module_spec=MultiRLModuleSpec(
+                        rl_module_specs={
+                            # Shared encoder.
+                            SHARED_ENCODER_ID: RLModuleSpec(
+                                module_class=SharedEncoder,
+                                model_config={"embedding_dim": EMBEDDING_DIM},
+                                observation_space=single_agent_env.observation_space,
+                            ),
+                            # Large policy net.
+                            "p0": RLModuleSpec(
+                                module_class=VPGPolicyAfterSharedEncoder,
+                                model_config={
+                                    "embedding_dim": EMBEDDING_DIM,
+                                    "hidden_dim": 1024,
+                                },
+                            ),
+                            # Small policy net.
+                            "p1": RLModuleSpec(
+                                module_class=VPGPolicyAfterSharedEncoder,
+                                model_config={
+                                    "embedding_dim": EMBEDDING_DIM,
+                                    "hidden_dim": 64,
+                                },
+                            ),
                         },
                     ),
-                    "p1": RLModuleSpec(
-                        module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config={
-                            "embedding_dim": EMBEDDING_DIM,
-                            "hidden_dim": HIDDEN_DIM,
-                        },
-                    ),
-                },
-            ),
-        )
+                )
+            )
+            algo = config.build()
+            print(algo.get_module())
+    # __sphinx_doc_how_to_run_end__
 
-    Also note that in order to learn properly, a special, multi-agent Learner that
-    accounts for the shared encoder must be setup. This Learner should have only a
-    single optimizer (for all submodules: encoder and all policy nets) in order to not
-    destabilize learning. The latter would happen if more than one optimizer would try
-    to optimize the same shared encoder submodule.
+        Also note that in order to learn properly, a special, multi-agent Learner
+        accounting for the shared encoder must be setup. This Learner should have only
+        one optimizer (used to train all submodules: encoder and the n policy nets) in
+        order to not destabilize learning. The latter would happen if more than one
+        optimizer would try to alternatingly optimize the same shared encoder submodule.
+    # __sphinx_doc_mrlm_2_begin__
     """
 
-    @override(MultiRLModule)
     def setup(self):
+        # Call the super's setup().
         super().setup()
 
         # Assert, we have the shared encoder submodule.
         assert (
             SHARED_ENCODER_ID in self._rl_modules
-            and isinstance(self._rl_modules[SHARED_ENCODER_ID], SharedTorchEncoder)
+            and isinstance(self._rl_modules[SHARED_ENCODER_ID], SharedEncoder)
             and len(self._rl_modules) > 1
         )
+        # Assign the encoder to a convenience attribute.
+        self.encoder = self._rl_modules[SHARED_ENCODER_ID]
 
-    @override(MultiRLModule)
-    def _forward(self, forward_fn_name, batch, **kwargs):
+    def _forward(self, batch, **kwargs):
+        # Collect our policies' outputs in this dict.
         outputs = {}
-        encoder_forward_fn = getattr(
-            self._rl_modules[SHARED_ENCODER_ID], forward_fn_name
-        )
 
-        for policy_id in batch.keys():
-            self._check_module_exists(policy_id)
+        # Loop through the policy nets (through the given batch's keys).
+        for policy_id, policy_batch in batch.items():
             rl_module = self._rl_modules[policy_id]
-            forward_fn = getattr(rl_module, forward_fn_name)
 
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
-            embeddings = encoder_forward_fn(batch[policy_id])
-            # Pass the policy's features through the policy net.
-            batch[policy_id]["encoder_embeddings"] = embeddings
-            outputs[policy_id] = forward_fn(batch[policy_id], **kwargs)
+            policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
+
+            # Pass the policy's embeddings through the policy net.
+            outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
 
         return outputs
 
 
-class SharedTorchEncoder(TorchRLModule):
-    """A shared encoder that can be used with VPGTorchRLModuleUsingSharedEncoder."""
+# __sphinx_doc_mrlm_2_end__
 
-    @override(TorchRLModule)
+
+# __sphinx_doc_encoder_begin__
+class SharedEncoder(TorchRLModule):
+    """A shared encoder that can be used with `VPGMultiRLModuleWithSharedEncoder`."""
+
     def setup(self):
         super().setup()
 
         input_dim = self.observation_space.shape[0]
         embedding_dim = self.model_config["embedding_dim"]
 
-        self._encoder = nn.Sequential(
-            nn.Linear(input_dim, embedding_dim),
+        # A very simple encoder network.
+        self._net = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, embedding_dim),
         )
 
     def _forward(self, batch, **kwargs):
-        # Pass observations through the encoder and return outputs.
-        embeddings = self._encoder(batch[Columns.OBS])
-        return {"encoder_embeddings": embeddings}
+        # Pass observations through the net and return outputs.
+        return {"encoder_embeddings": self._net(batch[Columns.OBS])}
+
+
+# __sphinx_doc_encoder_end__

@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.util.types import Device
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -17,10 +18,12 @@ logger = logging.getLogger(__name__)
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    CPU = "cpu"
 
     def __init__(
         self,
-        transport: Optional[Union[str, GPUCommunicator]] = AUTO,
+        transport: Optional[Union[str, Communicator]] = AUTO,
+        device: Device = Device.DEFAULT,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -39,6 +42,10 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
+            device: Target device for tensor transport. Options:
+                - "default": Retains the same device type as the sender.
+                - "cpu": Moves tensor to CPU on the receiver. Not compatible with NCCL transport.
+                - "gpu" or "cuda": Moves tensor to GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -51,7 +58,7 @@ class TorchTensorType(ChannelOutputType):
         performance if a non-default transport is used. However, if either flag
         is set, then the user must ensure that the condition is met.
 
-        If using this type as an accelerated DAG annotation, an exception will
+        If using this type as a Compiled Graph annotation, an exception will
         be thrown in the following cases, and the DAG will be torn down. To
         continue execution, a new DAG must be created:
         1. If _static_shape=True, and the found tensors don't match the
@@ -61,21 +68,25 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
+        self._device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
-        if isinstance(transport, GPUCommunicator):
-            self._custom_nccl_group = transport
-            transport = self.NCCL
+        self._communicator: Optional[Communicator] = None
+        if isinstance(transport, Communicator):
+            self._communicator = transport
+            transport = transport.get_transport_name()
 
-        if transport not in [self.AUTO, self.NCCL]:
+        if transport not in [self.AUTO, self.NCCL, self.CPU]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, "
+                "or TorchTensorType.CPU"
             )
+        if device == Device.CPU and transport == self.NCCL:
+            raise ValueError("NCCL transport is not supported with CPU target device.")
         self.transport = transport
 
-        self._nccl_group_id: Optional[str] = None
+        self._communicator_id: Optional[str] = None
 
         if self._static_shape and self.transport == self.AUTO:
             logger.info(
@@ -87,6 +98,10 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
+
+    @property
+    def device(self) -> Device:
+        return self._device
 
     @property
     def static_shape(self):
@@ -107,16 +122,13 @@ class TorchTensorType(ChannelOutputType):
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.deserialize_tensor(b)
+            return ctx.serialization_context.deserialize_tensor(b, self.device)
 
         ray.util.serialization.register_serializer(
             torch.Tensor,
             serializer=serialize,
             deserializer=deserialize,
         )
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        raise ValueError("TorchTensorType cannot contain other types")
 
     def create_channel(
         self,
@@ -149,23 +161,23 @@ class TorchTensorType(ChannelOutputType):
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the NCCL group if one is specified.
         """
-        return self._custom_nccl_group
+        return self._communicator
 
-    def set_nccl_group_id(self, group_id: str) -> None:
-        self._nccl_group_id = group_id
+    def set_communicator_id(self, group_id: str) -> None:
+        self._communicator_id = group_id
 
     @property
-    def nccl_group_id(self) -> Optional[str]:
-        return self._nccl_group_id
+    def communicator_id(self) -> Optional[str]:
+        return self._communicator_id
 
     def __deepcopy__(self, memo):
         """
-        Deep copy all the fields except for the custom NCCL group. The custom
-        NCCL group should not be deep copied because it can be shared across
+        Deep copy all the fields except for the NCCL group. The NCCL group
+        should not be deep copied because it can be shared across
         `TorchTensorType` instances.
         """
         copy = TorchTensorType(
@@ -173,6 +185,6 @@ class TorchTensorType(ChannelOutputType):
             _static_shape=self._static_shape,
             _direct_return=self._direct_return,
         )
-        copy._custom_nccl_group = self._custom_nccl_group
-        copy._nccl_group_id = self._nccl_group_id
+        copy._communicator = self._communicator
+        copy._communicator_id = self._communicator_id
         return copy

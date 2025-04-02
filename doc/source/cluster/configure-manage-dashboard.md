@@ -225,8 +225,15 @@ By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You 
 Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated above. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
+#### Customize headers for requests from the Ray dashboard to Prometheus
+
+If Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to send them to Prometheus:
+1. `{"Header1": "Value1", "Header2": "Value2"}`
+2. `[["Header1", "Value1"], ["Header2", "Value2"], ["Header2", "Value3"]]`
+
+
 #### Alternate Grafana host location
-By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the browsers of dashboard users can access it.
+By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000`. You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the dashboard browsers of can access it.
 
 If Grafana is exposed with NGINX ingress on a Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
 
@@ -251,7 +258,7 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Dashboard message: either Prometheus or Grafana server is not deteced
+##### Dashboard message: either Prometheus or Grafana server is not detected
 If you have followed the instructions above to set up everything, run the connection checks below in your browser:
 * check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
 * check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.

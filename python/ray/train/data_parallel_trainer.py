@@ -12,9 +12,10 @@ from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func, count_required_parameters
+from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
 from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -273,17 +274,17 @@ class DataParallelTrainer(BaseTrainer):
 
             get_or_create_state_actor()
 
-    @PublicAPI(stability="beta")
     @classmethod
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
-        cls: Type["DataParallelTrainer"],
+        cls,
         path: str,
         train_loop_per_worker: Optional[
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
         train_loop_config: Optional[Dict] = None,
         **kwargs,
-    ) -> "DataParallelTrainer":
+    ):
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
         Args:
@@ -300,9 +301,7 @@ class DataParallelTrainer(BaseTrainer):
         See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
         for descriptions of the other arguments.
 
-        Returns:
-            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
-            subclass that is calling this method.
+        Returns a restored instance of the `DataParallelTrainer`.
         """
         return super(DataParallelTrainer, cls).restore(
             path=path,

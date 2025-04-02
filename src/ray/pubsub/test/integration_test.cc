@@ -14,6 +14,8 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"

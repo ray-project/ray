@@ -50,7 +50,7 @@ class TaskPoolMapOperator(MapOperator):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
+            ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
         """
         super().__init__(
             map_transformer,
@@ -71,6 +71,7 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_static_args = {
             **(self._ray_remote_args or {}),
             "num_returns": "streaming",
+            "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
@@ -85,14 +86,18 @@ class TaskPoolMapOperator(MapOperator):
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
-        data_context = self.data_context
-        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+        if (
+            "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
             dynamic_ray_remote_args["_generator_backpressure_num_objects"] = (
-                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
+
+        data_context = self.data_context
 
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
@@ -103,7 +108,7 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._submit_data_task(gen, bundle)
 
-    def shutdown(self):
+    def shutdown(self, force: bool = False):
         # Cancel all active tasks.
         for _, task in self._data_tasks.items():
             ray.cancel(task.get_waitable())
@@ -116,7 +121,8 @@ class TaskPoolMapOperator(MapOperator):
                 # a different error, or cancellation failed. In all cases, we
                 # swallow the exception.
                 pass
-        super().shutdown()
+
+        super().shutdown(force)
 
     def progress_str(self) -> str:
         return ""

@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <map>
+#include <memory>
+#include <thread>
+#include <vector>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -22,9 +27,9 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/actor_scheduling_util.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
+#include "ray/core_worker/transport/scheduling_util.h"
 #include "ray/core_worker/transport/thread_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
@@ -94,7 +99,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// io service, which is fine since it only ever fires if no tasks are running.
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
-  boost::thread::id main_thread_id_;
+  std::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;

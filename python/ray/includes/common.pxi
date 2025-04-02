@@ -11,6 +11,9 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kStreamingGeneratorReturn,
+    kGcsAutoscalerStateNamespace,
+    kGcsAutoscalerV2EnabledKey,
+    kGcsAutoscalerClusterConfigKey,
 )
 
 from ray.exceptions import (
@@ -59,7 +62,7 @@ cdef class GcsClientOptions:
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
 
-cdef int check_status(const CRayStatus& status) nogil except -1:
+cdef int check_status(const CRayStatus& status) except -1 nogil:
     if status.ok():
         return 0
 
@@ -69,6 +72,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
+        raise ValueError(message)
+    elif status.IsAlreadyExists():
         raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
@@ -102,7 +107,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RaySystemError(message)
 
-cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
+cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) except -1 nogil:
     """
     Same as check_status, except that it raises RpcError for timeout. This is for
     backward compatibility: on timeout, `ray.get` raises GetTimeoutError, while
@@ -119,3 +124,6 @@ WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
 STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn
+GCS_AUTOSCALER_STATE_NAMESPACE = kGcsAutoscalerStateNamespace.decode()
+GCS_AUTOSCALER_V2_ENABLED_KEY = kGcsAutoscalerV2EnabledKey.decode()
+GCS_AUTOSCALER_CLUSTER_CONFIG_KEY = kGcsAutoscalerClusterConfigKey.decode()

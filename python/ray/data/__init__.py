@@ -3,7 +3,8 @@
 import pandas  # noqa
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
+
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
@@ -18,6 +19,7 @@ from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
     Datasource,
+    FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
 )
@@ -27,6 +29,7 @@ from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
+    from_daft,
     from_dask,
     from_huggingface,
     from_items,
@@ -41,6 +44,7 @@ from ray.data.read_api import (  # noqa: F401
     from_torch,
     range,
     range_tensor,
+    read_audio,
     read_avro,
     read_bigquery,
     read_binary_files,
@@ -61,6 +65,7 @@ from ray.data.read_api import (  # noqa: F401
     read_sql,
     read_text,
     read_tfrecords,
+    read_videos,
     read_webdataset,
 )
 
@@ -77,8 +82,8 @@ try:
     # disabled it's deserialization by default. To ensure that users can load data
     # written with earlier version of Ray Data, we enable auto-loading of serialized
     # tensor extensions.
-    pyarrow_version = _get_pyarrow_version()
-    if not isinstance(pyarrow_version, str):
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None:
         # PyArrow is mocked in documentation builds. In this case, we don't need to do
         # anything.
         pass
@@ -90,7 +95,7 @@ try:
         )
 
         if (
-            parse_version(pyarrow_version) >= parse_version("14.0.1")
+            pyarrow_version >= parse_version("14.0.1")
             and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
             pa.PyExtensionType.set_auto_load(True)
@@ -115,10 +120,12 @@ __all__ = [
     "Datasource",
     "ExecutionOptions",
     "ExecutionResources",
+    "FileShuffleConfig",
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
+    "from_daft",
     "from_dask",
     "from_items",
     "from_arrow",
@@ -135,6 +142,7 @@ __all__ = [
     "from_huggingface",
     "range",
     "range_tensor",
+    "read_audio",
     "read_avro",
     "read_text",
     "read_binary_files",
@@ -153,6 +161,7 @@ __all__ = [
     "read_parquet_bulk",
     "read_sql",
     "read_tfrecords",
+    "read_videos",
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",

@@ -9,7 +9,6 @@ import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-import ray
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -353,9 +352,10 @@ class WebDatasetDatasource(FileBasedDatasource):
             )
 
         # S3 can raise transient errors during iteration
-        ctx = ray.data.DataContext.get_current()
         files = iterate_with_retry(
-            get_tar_file_iterator, "iterate tar file", match=ctx.retried_io_errors
+            get_tar_file_iterator,
+            "iterate tar file",
+            match=self._data_context.retried_io_errors,
         )
 
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)

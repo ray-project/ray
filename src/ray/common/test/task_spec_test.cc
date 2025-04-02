@@ -157,48 +157,67 @@ TEST(TaskSpecTest, TestRootDetachedActorId) {
 }
 
 TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
-  TaskSpecBuilder task_spec_builder;
-  task_spec_builder.SetNormalTaskSpec(
-      0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
-  ASSERT_TRUE(task_spec_builder.Build().RootDetachedActorId().IsNil());
   ActorID actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
-  task_spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), actor_id);
-  ASSERT_EQ(task_spec_builder.Build().RootDetachedActorId(), actor_id);
 
-  TaskSpecBuilder actor_spec_builder;
-  actor_spec_builder.SetActorCreationTaskSpec(actor_id,
-                                              /*serialized_actor_handle=*/"",
-                                              rpc::SchedulingStrategy(),
-                                              /*max_restarts=*/0,
-                                              /*max_task_retries=*/0,
-                                              /*dynamic_worker_options=*/{},
-                                              /*max_concurrency=*/1,
-                                              /*is_detached=*/false,
-                                              /*name=*/"",
-                                              /*ray_namespace=*/"",
-                                              /*is_asyncio=*/false,
-                                              /*concurrency_groups=*/{},
-                                              /*extension_data=*/"",
-                                              /*execute_out_of_order=*/false,
-                                              /*root_detached_actor_id=*/ActorID::Nil());
-  ASSERT_TRUE(actor_spec_builder.Build().RootDetachedActorId().IsNil());
-  actor_spec_builder.SetActorCreationTaskSpec(actor_id,
-                                              /*serialized_actor_handle=*/"",
-                                              rpc::SchedulingStrategy(),
-                                              /*max_restarts=*/0,
-                                              /*max_task_retries=*/0,
-                                              /*dynamic_worker_options=*/{},
-                                              /*max_concurrency=*/1,
-                                              /*is_detached=*/true,
-                                              /*name=*/"",
-                                              /*ray_namespace=*/"",
-                                              /*is_asyncio=*/false,
-                                              /*concurrency_groups=*/{},
-                                              /*extension_data=*/"",
-                                              /*execute_out_of_order=*/false,
-                                              /*root_detached_actor_id=*/actor_id);
-  ASSERT_EQ(actor_spec_builder.Build().RootDetachedActorId(), actor_id);
+  {
+    TaskSpecBuilder task_spec_builder;
+    task_spec_builder.SetNormalTaskSpec(
+        0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+    ASSERT_TRUE(
+        std::move(task_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
+  }
+
+  {
+    TaskSpecBuilder task_spec_builder;
+    task_spec_builder.SetNormalTaskSpec(
+        0, false, "", rpc::SchedulingStrategy(), actor_id);
+    ASSERT_EQ(std::move(task_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
+              actor_id);
+  }
+
+  {
+    TaskSpecBuilder actor_spec_builder;
+    actor_spec_builder.SetActorCreationTaskSpec(
+        actor_id,
+        /*serialized_actor_handle=*/"",
+        rpc::SchedulingStrategy(),
+        /*max_restarts=*/0,
+        /*max_task_retries=*/0,
+        /*dynamic_worker_options=*/{},
+        /*max_concurrency=*/1,
+        /*is_detached=*/false,
+        /*name=*/"",
+        /*ray_namespace=*/"",
+        /*is_asyncio=*/false,
+        /*concurrency_groups=*/{},
+        /*extension_data=*/"",
+        /*execute_out_of_order=*/false,
+        /*root_detached_actor_id=*/ActorID::Nil());
+    ASSERT_TRUE(
+        std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId().IsNil());
+  }
+
+  {
+    TaskSpecBuilder actor_spec_builder;
+    actor_spec_builder.SetActorCreationTaskSpec(actor_id,
+                                                /*serialized_actor_handle=*/"",
+                                                rpc::SchedulingStrategy(),
+                                                /*max_restarts=*/0,
+                                                /*max_task_retries=*/0,
+                                                /*dynamic_worker_options=*/{},
+                                                /*max_concurrency=*/1,
+                                                /*is_detached=*/true,
+                                                /*name=*/"",
+                                                /*ray_namespace=*/"",
+                                                /*is_asyncio=*/false,
+                                                /*concurrency_groups=*/{},
+                                                /*extension_data=*/"",
+                                                /*execute_out_of_order=*/false,
+                                                /*root_detached_actor_id=*/actor_id);
+    ASSERT_EQ(std::move(actor_spec_builder).ConsumeAndBuild().RootDetachedActorId(),
+              actor_id);
+  }
 }
 
 TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {

@@ -9,19 +9,18 @@ import requests
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
 
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
         self.usage_stats_prompt_enabled = ray_usage_lib.usage_stats_prompt_enabled()
         self.cluster_config_to_report = None
-        self.session_dir = dashboard_head.session_dir
         self.client = ray_usage_lib.UsageReportClient()
         # The total number of report succeeded.
         self.total_success = 0
@@ -30,9 +29,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
-        self._dashboard_url_base = (
-            f"http://{dashboard_head.http_host}:{dashboard_head.http_port}"
-        )
+        self._dashboard_url_base = f"http://{self.http_host}:{self.http_port}"
         # We want to record stats for anyone who has run ray with grafana or
         # prometheus at any point in time during a ray session.
         self._grafana_ran_before = False
@@ -48,7 +45,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/usage_stats_enabled")
         async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched usage stats enabled",
                 usage_stats_enabled=self.usage_stats_enabled,
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
@@ -57,9 +54,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/cluster_id")
         async def get_cluster_id(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched cluster id",
-                cluster_id=self._dashboard_head.gcs_client.cluster_id.hex(),
+                cluster_id=self.gcs_client.cluster_id.hex(),
             )
 
     def _check_grafana_running(self):
@@ -135,8 +132,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_success,
                 self.total_failed,
                 self.seq_no,
-                self._dashboard_head.gcs_client.address,
-                self._dashboard_head.gcs_client.cluster_id.hex(),
+                self.gcs_address,
+                self.gcs_client.cluster_id.hex(),
             )
 
             error = None
@@ -171,7 +168,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         assert not self.usage_stats_enabled
 
         try:
-            if ray_usage_lib.is_ray_init_cluster(self._dashboard_head.gcs_client):
+            if ray_usage_lib.is_ray_init_cluster(self.gcs_client):
                 return
 
             data = ray_usage_lib.generate_disabled_report_data()

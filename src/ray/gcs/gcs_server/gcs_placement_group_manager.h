@@ -15,8 +15,12 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <deque>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -303,7 +307,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff,
+                                      ExponentialBackoff backoff,
                                       bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
@@ -408,7 +412,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// it's not set. This will be used to generate the deferred time for this pg.
   void AddToPendingQueue(std::shared_ptr<GcsPlacementGroup> pg,
                          std::optional<int64_t> rank = std::nullopt,
-                         std::optional<ExponentialBackOff> exp_backer = std::nullopt);
+                         std::optional<ExponentialBackoff> exp_backer = std::nullopt);
   void RemoveFromPendingQueue(const PlacementGroupID &pg_id);
 
   /// Try to create placement group after a short time.
@@ -471,7 +475,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// need to post retry job to io context. And when schedule pending placement
   /// group, we always start with the one with the smallest key.
   absl::btree_multimap<int64_t,
-                       std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+                       std::pair<ExponentialBackoff, std::shared_ptr<GcsPlacementGroup>>>
       pending_placement_groups_;
 
   /// The infeasible placement_groups that can't be scheduled currently.

@@ -14,17 +14,21 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include "absl/strings/str_format.h"
+#include <memory>
+#include <utility>
+#include <vector>
 
 namespace ray {
 namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory factory)
+                                             RayletFactory factory,
+                                             std::function<Status(void)> check_signals)
     : plasma_(plasma),
-      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(factory) {}
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(
+          std::move(check_signals))),
+      raylet_client_factory_(std::move(std::move(factory))) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -49,7 +53,7 @@ void MutableObjectProvider::RegisterWriterChannel(
     // `object` is now a nullptr.
   }
 
-  if (remote_reader_node_ids.size() == 0) {
+  if (remote_reader_node_ids.empty()) {
     return;
   }
 
@@ -144,7 +148,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
 
   std::shared_ptr<Buffer> object_backing_store;
-  if (!tmp_written_so_far) {
+  if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received (or until the two last chunks are
     // received, if the metadata happens to span both). The metadata will end up being
@@ -166,7 +170,13 @@ void MutableObjectProvider::HandlePushMutableObject(
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is large enough to hold both the data and the
   // metadata.
-  memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
+  size_t chunk_offset = 0;
+  for (absl::string_view cord_chunk : request.payload().Chunks()) {
+    memcpy(object_backing_store->Data() + offset + chunk_offset,
+           cord_chunk.data(),
+           cord_chunk.size());
+    chunk_offset += cord_chunk.size();
+  }
 
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
@@ -216,8 +226,8 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &writer_object_id,
-    std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-        remote_readers) {
+    const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+        &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
   // The corresponding ReadRelease() will be automatically called when
@@ -262,16 +272,16 @@ void MutableObjectProvider::PollWriterClosure(
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
-  // TODO(jhumphri): Decompose this.
+// TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, NULL);
-#endif
+  pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 
+#endif
   SetThreadName("worker.channel_io");
   io_context.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";

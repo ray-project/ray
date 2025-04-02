@@ -24,12 +24,13 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
@@ -81,6 +82,8 @@ namespace ray {
 // interface of event reporter
 class BaseEventReporter {
  public:
+  virtual ~BaseEventReporter() = default;
+
   virtual void Init() = 0;
 
   virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
@@ -102,12 +105,11 @@ class LogEventReporter : public BaseEventReporter {
                    int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
-  virtual ~LogEventReporter();
+  ~LogEventReporter() override;
 
-  virtual void Report(const rpc::Event &event,
-                      const nlohmann::json &custom_fields) override;
+  void Report(const rpc::Event &event, const nlohmann::json &custom_fields) override;
 
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+  void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
  private:
   virtual std::string replaceLineFeed(std::string message);
@@ -117,13 +119,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
-  virtual void Init() override {}
+  void Init() override {}
 
-  virtual void Close() override {}
+  void Close() override {}
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
+  std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
   std::string log_dir_;
@@ -328,7 +330,8 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
 class RayExportEvent {
  public:
-  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+  explicit RayExportEvent(ExportEventDataPtr event_data_ptr)
+      : event_data_ptr_(event_data_ptr) {}
 
   ~RayExportEvent();
 
@@ -342,6 +345,11 @@ class RayExportEvent {
  private:
   ExportEventDataPtr event_data_ptr_;
 };
+
+bool IsExportAPIEnabledSourceType(
+    std::string source_type,
+    bool enable_export_api_write_global,
+    std::vector<std::string> enable_export_api_write_config_str);
 
 /// Ray Event initialization.
 ///

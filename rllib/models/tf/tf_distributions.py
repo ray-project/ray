@@ -62,7 +62,7 @@ class TfDistribution(Distribution, abc.ABC):
 
 @DeveloperAPI
 class TfCategorical(TfDistribution):
-    """Wrapper class for Categorical distribution.
+    r"""Wrapper class for Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).

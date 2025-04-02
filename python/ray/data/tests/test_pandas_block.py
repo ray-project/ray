@@ -9,11 +9,151 @@ import pytest
 
 import ray
 import ray.data
-from ray.data._internal.pandas_block import PandasBlockAccessor
+from ray.data._internal.pandas_block import (
+    PandasBlockAccessor,
+    PandasBlockColumnAccessor,
+    PandasBlockBuilder,
+)
+from ray.data._internal.util import is_null
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 # Set seed for the test for size as it related to sampling
 np.random.seed(42)
+
+
+def simple_series(null):
+    return pd.Series([1, 2, null, 6])
+
+
+@pytest.mark.parametrize("arr", [simple_series(None), simple_series(np.nan)])
+class TestPandasBlockColumnAccessor:
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 3),
+            (False, 4),
+        ],
+    )
+    def test_count(self, arr, ignore_nulls, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.count(ignore_nulls=ignore_nulls, as_py=True)
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 9),
+            (False, np.nan),
+        ],
+    )
+    def test_sum(self, arr, ignore_nulls, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.sum(ignore_nulls=ignore_nulls, as_py=True)
+        assert result == expected or is_null(result) and is_null(expected)
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 1),
+            (False, np.nan),
+        ],
+    )
+    def test_min(self, arr, ignore_nulls, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.min(ignore_nulls=ignore_nulls, as_py=True)
+        assert result == expected or is_null(result) and is_null(expected)
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 6),
+            (False, np.nan),
+        ],
+    )
+    def test_max(self, arr, ignore_nulls, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.max(ignore_nulls=ignore_nulls, as_py=True)
+        assert result == expected or is_null(result) and is_null(expected)
+
+    @pytest.mark.parametrize(
+        "ignore_nulls, expected",
+        [
+            (True, 3.0),
+            (False, np.nan),
+        ],
+    )
+    def test_mean(self, arr, ignore_nulls, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.mean(ignore_nulls=ignore_nulls, as_py=True)
+        assert result == expected or is_null(result) and is_null(expected)
+
+    @pytest.mark.parametrize(
+        "provided_mean, expected",
+        [
+            (3.0, 14.0),
+            (None, 14.0),
+        ],
+    )
+    def test_sum_of_squared_diffs_from_mean(self, arr, provided_mean, expected):
+        accessor = PandasBlockColumnAccessor(arr)
+        result = accessor.sum_of_squared_diffs_from_mean(
+            ignore_nulls=True, mean=provided_mean, as_py=True
+        )
+        assert result == expected or is_null(result) and is_null(expected)
+
+    def test_to_pylist(self, arr):
+        accessor = PandasBlockColumnAccessor(arr)
+
+        result = accessor.to_pylist()
+        expected = arr.to_list()
+
+        assert all(
+            [a == b or is_null(a) and is_null(b) for a, b in zip(expected, result)]
+        )
+
+
+class TestPandasBlockColumnAccessorAllNullSeries:
+    @pytest.fixture
+    def all_null_series(self):
+        return pd.Series([None] * 3, dtype=np.float64)
+
+    def test_count_all_null(self, all_null_series):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        # When ignoring nulls, count should be 0; otherwise, count returns length.
+        assert accessor.count(ignore_nulls=True, as_py=True) == 0
+        assert accessor.count(ignore_nulls=False, as_py=True) == len(all_null_series)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    def test_sum_all_null(self, all_null_series, ignore_nulls):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        result = accessor.sum(ignore_nulls=ignore_nulls)
+        assert is_null(result)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    def test_min_all_null(self, all_null_series, ignore_nulls):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        result = accessor.min(ignore_nulls=ignore_nulls, as_py=True)
+        assert is_null(result)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    def test_max_all_null(self, all_null_series, ignore_nulls):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        result = accessor.max(ignore_nulls=ignore_nulls)
+        assert is_null(result)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    def test_mean_all_null(self, all_null_series, ignore_nulls):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        result = accessor.mean(ignore_nulls=ignore_nulls)
+        assert is_null(result)
+
+    @pytest.mark.parametrize("ignore_nulls", [True, False])
+    def test_sum_of_squared_diffs_all_null(self, all_null_series, ignore_nulls):
+        accessor = PandasBlockColumnAccessor(all_null_series)
+        result = accessor.sum_of_squared_diffs_from_mean(
+            ignore_nulls=ignore_nulls, mean=None
+        )
+        assert is_null(result)
 
 
 def test_append_column(ray_start_regular_shared):
@@ -26,6 +166,32 @@ def test_append_column(ray_start_regular_shared):
 
     expected_block = pd.DataFrame({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
+
+
+def test_pandas_block_timestamp_ns(ray_start_regular_shared):
+    # Input data with nanosecond precision timestamps
+    data_rows = [
+        {"col1": 1, "col2": pd.Timestamp("2023-01-01T00:00:00.123456789")},
+        {"col1": 2, "col2": pd.Timestamp("2023-01-01T01:15:30.987654321")},
+        {"col1": 3, "col2": pd.Timestamp("2023-01-01T02:30:15.111111111")},
+        {"col1": 4, "col2": pd.Timestamp("2023-01-01T03:45:45.222222222")},
+        {"col1": 5, "col2": pd.Timestamp("2023-01-01T05:00:00.333333333")},
+    ]
+
+    # Initialize PandasBlockBuilder
+    pandas_builder = PandasBlockBuilder()
+    for row in data_rows:
+        pandas_builder.add(row)
+    pandas_block = pandas_builder.build()
+
+    assert pd.api.types.is_datetime64_ns_dtype(pandas_block["col2"])
+
+    for original_row, result_row in zip(
+        data_rows, pandas_block.to_dict(orient="records")
+    ):
+        assert (
+            original_row["col2"] == result_row["col2"]
+        ), "Timestamp mismatch in PandasBlockBuilder output"
 
 
 @pytest.mark.skipif(

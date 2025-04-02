@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -23,7 +26,9 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -38,11 +43,9 @@ using ray::WorkerID;
 
 using ray::Language;
 
-using MessageType = ray::protocol::MessageType;
 // Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
 namespace ray {
 
@@ -56,7 +59,7 @@ class PinObjectsInterface {
       const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
-  virtual ~PinObjectsInterface(){};
+  virtual ~PinObjectsInterface() = default;
 };
 
 /// Interface for leasing workers. Abstract for testing.
@@ -169,7 +172,7 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Inteface for getting resource reports.
+/// Interface for getting resource reports.
 class ResourceTrackingInterface {
  public:
   virtual void GetResourceLoad(
@@ -247,6 +250,10 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
       const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
@@ -256,45 +263,13 @@ class RayletClientInterface : public PinObjectsInterface,
 
 namespace raylet {
 
-class RayletConnection {
- public:
-  /// Connect to the raylet.
-  ///
-  /// \param raylet_socket The name of the socket to use to connect to the raylet.
-  /// \param worker_id A unique ID to represent the worker.
-  /// \param is_worker Whether this client is a worker. If it is a worker, an
-  ///        additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a
-  ///        driver.
-  /// \return The connection information.
-  RayletConnection(instrumented_io_context &io_service,
-                   const std::string &raylet_socket,
-                   int num_retries,
-                   int64_t timeout);
-
-  ray::Status WriteMessage(MessageType type,
-                           flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
-  ray::Status AtomicRequestReply(MessageType request_type,
-                                 MessageType reply_type,
-                                 std::vector<uint8_t> *reply_message,
-                                 flatbuffers::FlatBufferBuilder *fbb = nullptr);
-
- private:
-  /// Shutdown the raylet if the local connection is disconnected.
-  void ShutdownIfLocalRayletDisconnected(const Status &status);
-  /// The connection to raylet.
-  std::shared_ptr<ServerConnection> conn_;
-  /// A mutex to protect stateful operations of the raylet client.
-  std::mutex mutex_;
-  /// A mutex to protect write operations of the raylet client.
-  std::mutex write_mutex_;
-};
-
+/// Raylet client is responsible for communication with raylet. It implements
+/// [RayletClientInterface] and works on worker registration, lease management, etc.
 class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
+  /// \param raylet_conn connection to raylet.
   /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
@@ -314,25 +289,14 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet.
   /// \param startup_token The startup token of the process assigned to
   /// it during startup as a command line argument.
-  RayletClient(instrumented_io_context &io_service,
+  RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
-               const std::string &raylet_socket,
-               const WorkerID &worker_id,
-               rpc::WorkerType worker_type,
-               const JobID &job_id,
-               const int &runtime_env_hash,
-               const Language &language,
-               const std::string &ip_address,
-               Status *status,
-               NodeID *raylet_id,
-               int *port,
-               const std::string &serialized_job_config,
-               StartupToken startup_token);
+               const WorkerID &worker_id);
 
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  explicit RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
@@ -387,9 +351,8 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \param release_resources: true if the dirct call blocking needs to release
-  /// resources. \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -407,13 +370,14 @@ class RayletClient : public RayletClientInterface {
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
-  /// \return ray::Status.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids,
-                   const std::vector<rpc::Address> &owner_addresses,
-                   int num_returns,
-                   int64_t timeout_milliseconds,
-                   const TaskID &current_task_id,
-                   WaitResultPair *result);
+  /// \return ray::StatusOr containing error status or the set of object ids that were
+  /// found.
+  ray::StatusOr<absl::flat_hash_set<ObjectID>> Wait(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &owner_addresses,
+      int num_returns,
+      int64_t timeout_milliseconds,
+      const TaskID &current_task_id);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -539,6 +503,11 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      override;
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,

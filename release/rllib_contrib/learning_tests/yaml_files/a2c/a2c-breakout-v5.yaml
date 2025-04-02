@@ -14,7 +14,7 @@ a2c-breakoutnoframeskip-v5:
         rollout_fragment_length: auto
         clip_rewards: True
         num_workers: 5
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_gpus: 1
         lr_schedule: [
             [0, 0.0007],

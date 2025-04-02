@@ -269,10 +269,10 @@
                     "description": "disable Ray from automatically detecting /dev/shm size for the container",
                     "default": false
                 },
-              "use_podman"  :  {
-                "type": "boolean",
-                "description": "Use 'podman' command in place of 'docker'",
-                "default": false
+                "use_podman"  :  {
+                    "type": "boolean",
+                    "description": "Use 'podman' command in place of 'docker'",
+                    "default": false
                 }
             }
         },

@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/actor_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -158,7 +163,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
       actor_handle->ExecuteOutOfOrder(),
       /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
       owned);
-  bool inserted;
+  bool inserted = false;
   {
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
@@ -190,9 +195,9 @@ void ActorManager::WaitForActorRefDeleted(
     std::function<void(const ActorID &)> actor_ref_deleted_callback) {
   // GCS actor manager will wait until the actor has been created before polling the
   // owner. This should avoid any asynchronous problems.
-  auto callback = [actor_id, actor_ref_deleted_callback](const ObjectID &object_id) {
-    actor_ref_deleted_callback(actor_id);
-  };
+  auto callback =
+      [actor_id, actor_ref_deleted_callback = std::move(actor_ref_deleted_callback)](
+          const ObjectID &object_id) { actor_ref_deleted_callback(actor_id); };
 
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
@@ -224,14 +229,14 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     actor_task_submitter_.DisconnectActor(actor_id,
                                           actor_data.num_restarts(),
-                                          /*is_dead=*/false,
+                                          /*dead=*/false,
                                           actor_data.death_cause(),
                                           /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
     actor_task_submitter_.DisconnectActor(actor_id,
                                           actor_data.num_restarts(),
-                                          /*is_dead=*/true,
+                                          /*dead=*/true,
                                           actor_data.death_cause(),
                                           gcs::IsActorRestartable(actor_data));
     // We cannot erase the actor handle here because clients can still
@@ -258,7 +263,7 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
 
 ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
   {
-    absl::MutexLock lock(&cache_mutex_);
+    absl::MutexLock cache_lock(&cache_mutex_);
     auto it = cached_actor_name_to_ids_.find(actor_name);
     if (it != cached_actor_name_to_ids_.end()) {
       absl::MutexLock lock(&mutex_);
@@ -313,7 +318,7 @@ void ActorManager::SubscribeActorState(const ActorID &actor_id) {
 }
 
 void ActorManager::MarkActorKilledOrOutOfScope(
-    std::shared_ptr<ActorHandle> actor_handle) {
+    const std::shared_ptr<ActorHandle> &actor_handle) {
   RAY_CHECK(actor_handle != nullptr);
   const auto &actor_id = actor_handle->GetActorID();
   const auto &actor_name = actor_handle->GetName();

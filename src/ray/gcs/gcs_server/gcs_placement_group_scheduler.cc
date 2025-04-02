@@ -14,6 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -398,12 +404,13 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      [this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-          Status status) {
-        RAY_CHECK_OK(status);
-        CommitAllBundles(
-            lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-      }));
+      {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
+           Status status) {
+         RAY_CHECK_OK(status);
+         CommitAllBundles(
+             lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+       },
+       io_context_}));
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(

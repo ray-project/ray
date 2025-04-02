@@ -13,12 +13,12 @@ from ray._private.accelerators import get_accelerator_manager_for_resource
     return_value=4,
 )
 def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_only):
-    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     # Delete the cache so it can be re-populated the next time
     # we call get_accelerator_manager_for_resource
     del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["GPU"] == 3
 
 
@@ -28,7 +28,7 @@ def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_on
 )
 def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
     ray.init()
-    mock_get_amd_device_ids.called
+    _ = mock_get_amd_device_ids.called
     assert (
         AMDGPUAcceleratorManager.get_current_node_accelerator_type()
         == "AMD-Instinct-MI300X-OAM"
@@ -41,29 +41,29 @@ def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
 )
 def test_visible_amd_gpu_type_bad_device_id(mock_get_num_accelerators, shutdown_only):
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
-    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,1,2")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
         "1",
         "2",
     ]
 
-    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,2,7")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0,2,7")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
         "2",
         "7",
     ]
 
-    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "")
     assert AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
 
-    del os.environ["ROCR_VISIBLE_DEVICES"]
+    del os.environ["HIP_VISIBLE_DEVICES"]
     assert (
         AMDGPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
     )
@@ -71,17 +71,17 @@ def test_get_current_process_visible_accelerator_ids(monkeypatch):
 
 def test_set_current_process_visible_accelerator_ids():
     AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
-    assert os.environ["ROCR_VISIBLE_DEVICES"] == "0"
+    assert os.environ["HIP_VISIBLE_DEVICES"] == "0"
 
     AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
-    assert os.environ["ROCR_VISIBLE_DEVICES"] == "0,1"
+    assert os.environ["HIP_VISIBLE_DEVICES"] == "0,1"
 
     AMDGPUAcceleratorManager.set_current_process_visible_accelerator_ids(
         ["0", "1", "7"]
     )
-    assert os.environ["ROCR_VISIBLE_DEVICES"] == "0,1,7"
+    assert os.environ["HIP_VISIBLE_DEVICES"] == "0,1,7"
 
-    del os.environ["ROCR_VISIBLE_DEVICES"]
+    del os.environ["HIP_VISIBLE_DEVICES"]
 
 
 if __name__ == "__main__":

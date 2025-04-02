@@ -78,7 +78,6 @@ class PPOConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -93,7 +92,7 @@ class PPOConfig(AlgorithmConfig):
 
         tune.Tuner(
             "PPO",
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
             param_space=config,
         ).fit()
 
@@ -154,18 +153,12 @@ class PPOConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-
-            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(module_class=DefaultPPOTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -290,17 +283,6 @@ class PPOConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Warn about new API stack on by default.
-        if self.enable_rl_module_and_learner:
-            logger.warning(
-                f"You are running {self.algo_class.__name__} on the new API stack! "
-                "This is the new default behavior for this algorithm. If you don't "
-                "want to use the new API stack, set `config.api_stack("
-                "enable_rl_module_and_learner=False,"
-                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-            )
-
         # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
         # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user
         # confusion.
@@ -316,7 +298,7 @@ class PPOConfig(AlgorithmConfig):
             not self.enable_rl_module_and_learner
             and self.minibatch_size > self.train_batch_size
         ):
-            raise ValueError(
+            self._value_error(
                 f"`minibatch_size` ({self.minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
                 f" will be split into {self.minibatch_size} chunks, each of which "
@@ -327,7 +309,7 @@ class PPOConfig(AlgorithmConfig):
             mbs = self.minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
-                raise ValueError(
+                self._value_error(
                     f"`minibatch_size` ({mbs}) must be <= "
                     f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
                     f" will be split into {mbs} chunks, each of which is iterated over "
@@ -343,17 +325,23 @@ class PPOConfig(AlgorithmConfig):
             and self.batch_mode == "truncate_episodes"
             and not self.use_gae
         ):
-            raise ValueError(
+            self._value_error(
                 "Episode truncation is not supported without a value "
                 "function (to estimate the return at the end of the truncated"
                 " trajectory). Consider setting "
                 "batch_mode=complete_episodes."
             )
 
-        # Entropy coeff schedule checking.
+        # New API stack checks.
         if self.enable_rl_module_and_learner:
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
+                self._value_error(
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
+                )
             if self.entropy_coeff_schedule is not None:
-                raise ValueError(
+                self._value_error(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
                     "`entropy_coeff` setting to setup a schedule."
                 )
@@ -363,7 +351,7 @@ class PPOConfig(AlgorithmConfig):
                 description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0")
+            self._value_error("`entropy_coeff` must be >= 0.0")
 
     @property
     @override(AlgorithmConfig)
@@ -436,7 +424,7 @@ class PPO(Algorithm):
 
         # Perform a learner update step on the collected episodes.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (

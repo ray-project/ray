@@ -1,14 +1,12 @@
 import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-    TorchTensorAllocator,
-)
+from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
+from ray.experimental.channel.utils import get_devices
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -21,10 +19,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _NcclGroup(GPUCommunicator):
+class _NcclGroup(Communicator):
     """
     Represents an actor's NCCL communicator. This is the default NCCL communicator
-    to be used in aDAG if a custom communicator is not provided.
+    to be used in Compiled Graph if a custom communicator is not provided.
 
     This class is not thread-safe.
     """
@@ -103,10 +101,8 @@ class _NcclGroup(GPUCommunicator):
 
             import cupy as cp
 
-            from ray.air._internal import torch_utils
-
             # TODO(swang): Allow default device to be overridden.
-            device = torch_utils.get_devices()[0]
+            device = get_devices()[0]
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )
@@ -253,32 +249,97 @@ class _NcclGroup(GPUCommunicator):
             raise RayChannelError("NCCL group has been destroyed.")
         return buf
 
+    def _exec_collective(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        operation: "Callable[..., None]",
+        *operation_args,
+    ):
+        if self._closed:
+            raise RayChannelError("NCCL group has been destroyed.")
+
+        assert send_buf.dtype == recv_buf.dtype, (
+            "Ray Compiled Graph derived the dtype of recv_buf from send_buf, "
+            "so send_buf and recv_buf must have the same dtype. "
+            "If you see this error, please file an issue at Ray repository."
+        )
+
+        operation(*operation_args)
+
+        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+        # need to synchronize here and check that the channel is still open to
+        # ensure that the receive buffer is valid.
+        # TODO(swang): Avoid CUDA synchronization.
+        # TODO(wxdeng): This synchronize will be optional after merging the unify PR.
+        self._cuda_stream.synchronize()
+        if self._closed:
+            raise RayChannelError(
+                "NCCL group has been destroyed during allreduce operation. "
+                "There may be a dtype mismatch between input tensors from "
+                "different ranks."
+            )
+
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        operation_args = [
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.allGather,
+            *operation_args,
+        )
+
     def allreduce(
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
-        if self._closed:
-            raise RayChannelError("NCCL group has been destroyed.")
-
-        self._comm.allReduce(
+        operation_args = [
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
             self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.allReduce,
+            *operation_args,
         )
 
-        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
-        # need to synchronize here and check that the channel is still open to
-        # ensure that the receive buffer is valid.
-        # TODO(swang): Avoid CUDA synchronization.
-        # TODO(wxdeng): Use check_async_error.
-        self._cuda_stream.synchronize()
-        if self._closed:
-            raise RayChannelError("NCCL group has been destroyed.")
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ):
+        operation_args = [
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            recv_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            op.value,
+            self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.reduceScatter,
+            *operation_args,
+        )
 
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
@@ -307,3 +368,6 @@ class _NcclGroup(GPUCommunicator):
             # flag is True when they exit from the abort.
             self._comm.abort()
             self._comm.destroy()
+
+    def get_transport_name(self) -> str:
+        return "nccl"

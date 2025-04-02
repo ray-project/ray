@@ -19,6 +19,11 @@ from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray._private.test_utils import SignalActor
 from ray.core.generated import gcs_pb2
+from ray._private.utils import hex_to_binary
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+
+from ray.util.state import list_actors
+
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -280,6 +285,44 @@ def test_actor_import_counter(ray_start_10_cpus):
         return ray.get(actor.get_val.remote())
 
     assert ray.get(g.remote()) == num_remote_functions - 1
+
+
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_exit_actor(ray_start_regular, enable_concurrency_group):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
+    class TestActor:
+        def exit(self):
+            ray.actor.exit_actor()
+
+    num_actors = 30
+    actor_class_name = TestActor.__ray_metadata__.class_name
+
+    actors = [TestActor.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    ray.wait([actor.exit.remote() for actor in actors], timeout=10.0)
+
+    invoke_state_api_n(
+        lambda res: len(res) == 0,
+        list_actors,
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
+
+    invoke_state_api(
+        lambda res: len(res) == num_actors,
+        list_actors,
+        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        limit=1000,
+    )
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -1045,6 +1088,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
     )
 
 
+@pytest.mark.parametrize("enable_concurrency_group", [True, False])
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1054,13 +1098,17 @@ def test_actor_creation_latency(ray_start_regular_shared):
         "ray.kill",
     ],
 )
-def test_atexit_handler(ray_start_regular_shared, exit_condition):
-    @ray.remote
+def test_atexit_handler(
+    ray_start_regular_shared, exit_condition, enable_concurrency_group
+):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
     class A:
         def __init__(self, tmpfile, data):
             import atexit
 
-            def f(*args, **kwargs):
+            def f():
                 with open(tmpfile, "w") as f:
                     f.write(data)
                     f.flush()
@@ -1266,7 +1314,8 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
         core_worker = ray._private.worker.global_worker.core_worker
         refs = [child_actor.child.remote(), child.remote()]
         expected = {ref.task_id().hex() for ref in refs}
-        task_id = ray.get_runtime_context().task_id
+        task_id_hex = ray.get_runtime_context().get_task_id()
+        task_id = ray.TaskID(hex_to_binary(task_id_hex))
         children_task_ids = core_worker.get_pending_children_task_ids(task_id)
         actual = {task_id.hex() for task_id in children_task_ids}
         ray.get(refs)
@@ -1342,7 +1391,8 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
             refs = [child.remote(sig) for _ in range(2)]
             core_worker = ray._private.worker.global_worker.core_worker
             expected = {ref.task_id().hex() for ref in refs}
-            task_id = ray.get_runtime_context().task_id
+            task_id_hex = ray.get_runtime_context().get_task_id()
+            task_id = ray.TaskID(hex_to_binary(task_id_hex))
             children_task_ids = core_worker.get_pending_children_task_ids(task_id)
             actual = {task_id.hex() for task_id in children_task_ids}
             await sig.wait.remote()
