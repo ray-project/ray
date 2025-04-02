@@ -224,6 +224,73 @@ bool ClusterResourceManager::HasAvailableResources(
                                                ignore_object_store_memory_requirement);
 }
 
+bool ClusterResourceManager::HasRequiredLabels(scheduling::NodeID node_id,
+                                               rpc::LabelSelector &label_selector) const {
+  // Get the node
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  // Get the labels
+  auto labels = it->second.GetLocalView().labels
+
+                // Check if node labels satisfy all label constraints
+                for (const auto &constraint : label_selector.label_constraints()) {
+    if
+      !NodeLabelMatchesConstraint(*(it->second), constraint) { return false; }
+  }
+
+  return true;
+}
+
+bool ClusterResourceManager::NodeLabelMatchesConstraint(
+    const Node &node, rpc::LabelConstraint &constraint) {
+  const auto &key = constraint.label_key();
+  const auto &match_operator = constraint.operator_();
+  const auto &values = constraint.label_values();
+
+  if (match_operator == LabelSelectorOperator.LABEL_OPERATOR_IN) {
+    // Check for equals or in() labels
+    if (IsNodeLabelInValues(node, key, values)) {
+      return true;
+    }
+  } else if (match_operator == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN) {
+    // Check for not equals (!) or not in (!in()) labels
+    if (!IsNodeLabelInValues(node, key, values)) {
+      return true;
+    }
+  } else {
+    RAY_CHECK(false) << "Node label match operator type must be one of `label_equals`, "
+                        "`label_not_equals`、"
+                        "`label_in`, or `label_not_in`.";
+  }
+  return false;
+}
+
+bool ClusterResourceManager::IsNodeLabelEqual(const Node &node,
+                                              const std::string &key,
+                                              const std::string &value) const {
+  const auto &node_labels = node.GetLocalView().labels;
+  if (!node_labels.contains(key)) {
+    return false;
+  }
+
+  return node_labels.get(key) == value
+}
+
+bool ClusterResourceManager::IsNodeLabelInValues(
+    const Node &node,
+    const std::string &key,
+    const absl::flat_hash_set<std::string> &values) const {
+  const auto &node_labels = node.GetLocalView().labels;
+  if (!node_labels.contains(key)) {
+    return false;
+  }
+
+  return values.contains(node_labels.at(key));
+}
+
 bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
                                                        const ResourceSet &resource_set) {
   auto it = nodes_.find(node_id);

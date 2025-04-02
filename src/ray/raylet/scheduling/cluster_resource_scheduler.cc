@@ -115,6 +115,7 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
+                                             const rpc::LabelSelector &label_selector,
                                              scheduling::NodeID node_id) const {
   // It's okay if the local node's pull manager is at capacity because we
   // will eventually spill the task back from the waiting queue if its args
@@ -123,6 +124,7 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
              node_id,
              resource_request,
              /*ignore_object_store_memory_requirement*/ node_id == local_node_id_) &&
+         cluster_resource_manager_->HasRequiredLabels(node_id, label_selector) &&
          NodeAvailable(node_id);
 }
 
@@ -275,10 +277,11 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 bool ClusterResourceScheduler::IsSchedulableOnNode(
     scheduling::NodeID node_id,
     const absl::flat_hash_map<std::string, double> &shape,
+    const rpc::LabelSelector &label_selector,
     bool requires_object_store_memory) {
   auto resource_request =
       ResourceMapToResourceRequest(shape, requires_object_store_memory);
-  return IsSchedulable(resource_request, node_id);
+  return IsSchedulable(resource_request, label_selector, node_id);
 }
 
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
@@ -292,6 +295,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
                           task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                          task_spec.GetLabelSelector(),
                           requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
@@ -313,6 +317,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   if (!best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                           task_spec.GetLabelSelector(),
                            requires_object_store_memory)) {
     // Prefer waiting on the local node if possible
     // since the local node is chosen for a reason (e.g. spread).

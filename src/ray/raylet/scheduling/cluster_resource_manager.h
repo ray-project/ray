@@ -110,6 +110,14 @@ class ClusterResourceManager {
   bool HasFeasibleResources(scheduling::NodeID node_id,
                             const ResourceRequest &resource_request) const;
 
+  /// Check if a node has the necessary labels to satisfy the label selector for a Task.
+  bool HasRequiredLabels(scheduling::NodeID node_id,
+                         rpc::LabelSelector &label_selector) const;
+
+  /// Check if a node satisfies a given LabelConstraint.
+  bool NodeLabelMatchesConstraint(scheduling::NodeID node_id,
+                                  rpc::LabelConstraint &constraint) const;
+
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,

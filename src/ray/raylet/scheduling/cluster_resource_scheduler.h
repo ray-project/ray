@@ -124,6 +124,7 @@ class ClusterResourceScheduler {
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
+                           const rpc::LabelSelector &label_selector,
                            bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
@@ -161,6 +162,7 @@ class ClusterResourceScheduler {
   ///
   ///  \return: Whether the request can be scheduled.
   bool IsSchedulable(const ResourceRequest &resource_request,
+                     rpc::LabelSelector &label_selector,
                      scheduling::NodeID node_id) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
