@@ -176,6 +176,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
             total_loss,
             sum((list(param.values()) for mid, param in params.items()), []),
             create_graph=True,
+            retain_graph=True,
             allow_unused=True,
         )
 

@@ -188,7 +188,7 @@ class TorchMetaLearner(TorchLearner):
             others_loss_per_module = []
             others_results = {}
             for other, other_training_data in zip(self.others, others_training_data):
-                # TODO (simon): Add the single results to the overall results.
+                # TODO (simon): Maybe return all losses from each other's update step.
                 params, other_loss_per_module, other_results = other.update(
                     training_data=other_training_data,
                     params=params,
