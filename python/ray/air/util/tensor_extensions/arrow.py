@@ -1161,103 +1161,69 @@ class ArrowVariableShapedTensorArray(
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
-    ) -> "ArrowVariableShapedTensorArray":
+        cls,
+        arr: Union[np.ndarray, Iterable[np.ndarray]],
+        column_name: Optional[str] = None,
+    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
-        Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
-        of heterogeneous-shaped, homogeneous-typed tensors.
+        Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
+        tensors. If given fixed-shape tensor elements, this will return an
+        ``ArrowTensorArray``; if given variable-shape tensor elements, this will return
+        an ``ArrowVariableShapedTensorArray``.
 
         Args:
-            arr: An ndarray or an iterable of heterogeneous-shaped ndarrays.
+            arr: An ndarray or an iterable of ndarrays.
+            column_name: Optional. Used only in logging outputs to provide
+                additional details.
 
         Returns:
-            An ArrowVariableShapedTensorArray containing len(arr) tensors of
-            heterogeneous shape.
+            - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
+              ``len(arr)`` tensors of fixed shape.
+            - If variable-shaped tensor elements, an ``ArrowVariableShapedTensorArray``
+              containing ``len(arr)`` tensors of variable shape.
+            - If scalar elements, a ``pyarrow.Array``.
         """
-        # Implementation note - Arrow representation of ragged tensors:
-        #
-        # We represent an array of ragged tensors using a struct array containing two
-        # fields:
-        #  - data: a variable-sized list array, where each element in the array is a
-        #    tensor element stored in a 1D (raveled) variable-sized list of the
-        #    underlying scalar data type.
-        #  - shape: a variable-sized list array containing the shapes of each tensor
-        #    element.
-        if not isinstance(arr, (list, tuple, np.ndarray)):
-            raise ValueError(
-                "ArrowVariableShapedTensorArray can only be constructed from an "
-                f"ndarray or a list/tuple of ndarrays, but got: {type(arr)}"
-            )
-        if len(arr) == 0:
-            # Empty ragged tensor arrays are not supported.
-            raise ValueError("Creating empty ragged tensor arrays is not supported.")
+        if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
+            arr = list(arr)
 
-        # Whether all subndarrays are contiguous views of the same ndarray.
-        shapes, sizes, raveled = [], [], []
-        ndim = None
-        for a in arr:
-            a = np.asarray(a)
-            if ndim is not None and a.ndim != ndim:
-                raise ValueError(
-                    "ArrowVariableShapedTensorArray only supports tensor elements that "
-                    "all have the same number of dimensions, but got tensor elements "
-                    f"with dimensions: {ndim}, {a.ndim}"
+        if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
+            # Stack ndarrays and pass through to ndarray handling logic below.
+            try:
+                arr = np.stack(arr, axis=0)
+            except ValueError as ve:
+                logger.warning(
+                    f"Failed to stack lists due to: {ve}; "
+                    f"falling back to using np.array(..., dtype=object)",
+                    exc_info=ve,
                 )
-            ndim = a.ndim
-            shapes.append(a.shape)
-            sizes.append(a.size)
-            # Convert to 1D array view; this should be zero-copy in the common case.
-            # NOTE: If array is not in C-contiguous order, this will convert it to
-            # C-contiguous order, incurring a copy.
-            a = np.ravel(a, order="C")
-            raveled.append(a)
-        # Get size offsets and total size.
-        sizes = np.array(sizes)
-        size_offsets = np.cumsum(sizes)
-        total_size = size_offsets[-1]
-        # Concatenate 1D views into a contiguous 1D array.
-        if all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled)):
-            # An optimized zero-copy path if raveled tensor elements are already
-            # contiguous in memory, e.g. if this tensor array has already done a
-            # roundtrip through our Arrow representation.
-            np_data_buffer = raveled[-1].base
-        else:
-            np_data_buffer = np.concatenate(raveled)
-        dtype = np_data_buffer.dtype
-        pa_dtype = pa.from_numpy_dtype(dtype)
-        if pa.types.is_string(pa_dtype):
-            if dtype.byteorder == ">" or (
-                dtype.byteorder == "=" and sys.byteorder == "big"
-            ):
-                raise ValueError(
-                    "Only little-endian string tensors are supported, "
-                    f"but got: {dtype}"
+
+                # ndarray stacking may fail if the arrays are heterogeneously-shaped.
+                arr = np.array(arr, dtype=object)
+
+        if not isinstance(arr, np.ndarray):
+            raise ValueError(
+                f"Must give ndarray or iterable of ndarrays, got {type(arr)} {arr}"
+            )
+
+        try:
+            timestamp_dtype = _try_infer_pa_timestamp_type(arr)
+
+            if timestamp_dtype:
+                # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
+                #       precisions that are nested inside a list type, but won't do it,
+                #       if these are top-level ndarray. To work this around we have to cast
+                #       ndarray values manually
+                arr = _coerce_np_datetime_to_pa_timestamp_precision(
+                    arr, timestamp_dtype, column_name
                 )
-            pa_dtype = pa.binary(dtype.itemsize)
-        if dtype.type is np.bool_:
-            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
-            # bit-pack the booleans before handing the buffer off to Arrow.
-            # NOTE: Arrow expects LSB bit-packed ordering.
-            # NOTE: This creates a copy.
-            np_data_buffer = np.packbits(np_data_buffer, bitorder="little")
-        data_buffer = pa.py_buffer(np_data_buffer)
-        # Construct underlying data array.
-        value_array = pa.Array.from_buffers(pa_dtype, total_size, [None, data_buffer])
-        # Construct array for offsets into the 1D data array, where each offset
-        # corresponds to a tensor element.
-        size_offsets = np.insert(size_offsets, 0, 0)
-        offset_array = pa.array(size_offsets)
-        data_array = pa.LargeListArray.from_arrays(offset_array, value_array)
-        # We store the tensor element shapes so we can reconstruct each tensor when
-        # converting back to NumPy ndarrays.
-        shape_array = pa.array(shapes)
-        # Build storage array containing tensor data and the tensor element shapes.
-        storage = pa.StructArray.from_arrays(
-            [data_array, shape_array],
-            ["data", "shape"],
-        )
-        type_ = ArrowVariableShapedTensorType(pa_dtype, ndim)
-        return pa.ExtensionArray.from_storage(type_, storage)
+
+            return cls._from_numpy(arr)
+        except Exception as e:
+            data_str = ""
+            if column_name:
+                data_str += f"column: '{column_name}', "
+            data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
+            raise ArrowConversionError(data_str) from e
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
