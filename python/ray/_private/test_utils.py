@@ -1993,7 +1993,7 @@ def external_ray_cluster_activity_hook1():
 
     class TestRayActivityResponse(BaseModel, extra=Extra.allow):
         """
-        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        Redefinition of dashboard.modules.api.api_head.RayActivityResponse
         used in test_component_activities_hook to mimic typical
         usage of redefining or extending response type.
         """
