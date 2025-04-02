@@ -14,6 +14,9 @@ import contextvars
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     @abstractmethod
     async def choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False

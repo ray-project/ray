@@ -66,8 +66,9 @@ class MultiplexScheduleMixin:
         # Whenever there is a match, we will remove the model id from this set.
         self._multiplexed_model_id_fallback_match: Set[str] = set()
 
-    def update_replicas(self, replicas: List[RunningReplica]):
-        super().update_replicas(replicas)
+    def update_multiplexed_model_ids_with_replicas(
+        self, replicas: List[RunningReplica]
+    ):
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
         for r in replicas:
@@ -146,6 +147,9 @@ class MultiplexScheduleMixin:
 
 
 class LocalityScheduleMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def apply_locality_scheduling(self) -> Set[ReplicaID]:
         if (
             self._prefer_local_node_routing
@@ -231,11 +235,13 @@ class PowerOfTwoChoicesReplicaScheduler(
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        *args,
+        **kwargs,
     ):
+        super().__init__(*args, **kwargs)
         self._deployment_id = deployment_id
         self._handle_source = handle_source
-        self._prefer_local_node_routing = prefer_local_node_routing
-        self._prefer_local_az_routing = prefer_local_az_routing
+
         self._self_node_id = self_node_id
         self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
@@ -400,6 +406,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         new_replicas = {}
         new_replica_id_set = set()
         new_colocated_replica_ids = defaultdict(set)
+        self.update_multiplexed_model_ids_with_replicas(replicas)
 
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
