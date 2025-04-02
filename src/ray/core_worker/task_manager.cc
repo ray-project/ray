@@ -972,8 +972,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   // If the actor isn't dead and it's a user exception, we should update the seq no. If an
   // actor is dead and restarted, the seqno is reset, and we don't need to update it when
   // resubmitting a task.
-  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
-                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
+  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
