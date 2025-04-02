@@ -171,6 +171,9 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         patch(
             "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v0"
         ) as mock_generate_async_v0,
+        patch(
+            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v1"
+        ) as mock_generate_async_v1,
     ):
         mock_engine.from_engine_args.return_value = AsyncMock()
         num_running_requests = 0
@@ -207,6 +210,7 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
             )
 
         mock_generate_async_v0.side_effect = mock_generate
+        mock_generate_async_v1.side_effect = mock_generate
 
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
@@ -227,7 +231,10 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
         await asyncio.gather(*tasks)
 
         # Verify all requests were processed
-        assert mock_generate_async_v0.call_count == 10
+        assert (
+            mock_generate_async_v0.call_count == 10
+            or mock_generate_async_v1.call_count == 10
+        )
 
 
 @pytest.mark.asyncio
