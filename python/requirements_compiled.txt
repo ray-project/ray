@@ -1723,7 +1723,7 @@ pytest-forked==1.4.0
     # via -r python/requirements/test-requirements.txt
 pytest-httpserver==1.0.6
     # via -r python/requirements/test-requirements.txt
-pytest-lazy-fixtures=1.1.2
+pytest-lazy-fixtures==1.1.2
     # via -r python/requirements/test-requirements.txt
 pytest-mock==3.14.0
     # via -r python/requirements/ml/data-test-requirements.txt
