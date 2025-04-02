@@ -5,13 +5,13 @@ import sys
 import ray.experimental.collective as collective
 
 import pytest
+from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
-from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
