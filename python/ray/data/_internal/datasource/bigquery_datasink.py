@@ -76,6 +76,10 @@ class BigQueryDatasink(Datasink[None]):
             from google.cloud import bigquery
 
             block = BlockAccessor.for_block(block).to_arrow()
+            
+            if block.num_rows == 0:
+                logger.info("Empty block detected. Skipping write to BigQuery.")
+                return
 
             client = bigquery_datasource._create_client(project_id=project_id)
             job_config = bigquery.LoadJobConfig(autodetect=True)
