@@ -551,7 +551,8 @@ For multimodal models that can process both text and images:
         :sync: server
 
         .. code-block:: python
-
+            
+            # This example needs >= 40GB of GRAM per GPU to work (e.g. L40S, A100, etc.)
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
 
