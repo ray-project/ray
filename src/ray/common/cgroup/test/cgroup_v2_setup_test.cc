@@ -16,6 +16,8 @@
 //
 // TODO(hjiang): Provide documentation and scripts to check cgroupv2 mount status and
 // mount it correctly.
+// Link:
+// https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/8/html/managing_monitoring_and_updating_the_kernel/using-cgroups-v2-to-control-distribution-of-cpu-time-for-applications_managing-monitoring-and-updating-the-kernel#mounting-cgroups-v2_using-cgroups-v2-to-control-distribution-of-cpu-time-for-applications
 //
 // Execution command:
 // sudo bazel-bin/src/ray/common/cgroup/test/cgroup_v2_setup_test
