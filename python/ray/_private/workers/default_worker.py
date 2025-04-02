@@ -190,6 +190,15 @@ parser.add_argument(
         "to import before accepting work."
     ),
 )
+parser.add_argument(
+    "--enable-resource-isolation",
+    type=bool,
+    required=False,
+    default=False,
+    help=(
+        "If true, core worker enables resource isolation by adding itself into appropriate cgroup."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -269,6 +278,7 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
+        enable_resource_isolation=args.enable_resource_isolation,
     )
 
     worker = ray._private.worker.global_worker
