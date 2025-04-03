@@ -404,7 +404,7 @@ class RayExecutor(Executor):
     """
 
     futures: list[Future[Any]]
-    actor_pool: _AbstractActorPool
+    actor_pool: _AbstractActorPool  #: :no-index:
 
     def __init__(
         self,
@@ -497,13 +497,13 @@ class RayExecutor(Executor):
         return
 
     def submit(self, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> Future[T]:
-        """
+        r"""
         Submits a function to be executed in the actor pool with the given arguments.
 
         Parameters
         -----------
         fn : Callable[]
-            A function to be executed in the actor pool as fn(*args, **kwargs)
+            A function to be executed in the actor pool as fn(\*args, \*\*kwargs)
 
         Returns
         -------
@@ -536,7 +536,7 @@ class RayExecutor(Executor):
         timeout: Optional[float] = None,
         chunksize: int = 1,
     ) -> Iterator[T]:
-        """
+        r"""
         Map a function over a series of iterables. Multiple series of iterables
         will be zipped together, and each zipped tuple will be treated as a
         single set of arguments.
@@ -556,14 +556,14 @@ class RayExecutor(Executor):
         Returns
         -------
         Iterator
-            An iterator equivalent to: map(func, *iterables) but the calls may
+            An iterator equivalent to: map(func, \*iterables) but the calls may
             be evaluated out-of-order.
 
         Raises
         ------
             TimeoutError: If the entire result iterator could not be generated
                 before the given timeout.
-            Exception: If fn(*args) raises for any values.
+            Exception: If fn(\*args) raises for any values.
 
         Usage example 1:
 
