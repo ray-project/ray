@@ -140,3 +140,6 @@ DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
 WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
+
+KUBERAY_OPERATOR_DEFAULT_ACCESS_KEY = "KubeRayOperator"
+KUBERAY_OPERATOR_DEFAULT_ACCESS_SECRET = "S3ViZVJheU9wZXJhdG9y"

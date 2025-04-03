@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
+from ray.autoscaler._private.constants import (
+    WORKER_LIVENESS_CHECK_KEY,
+    KUBERAY_OPERATOR_DEFAULT_ACCESS_KEY,
+    KUBERAY_OPERATOR_DEFAULT_ACCESS_SECRET,
+)
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
@@ -334,6 +338,96 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             json.dumps(payload),
             headers={**headers, "Content-type": "application/json-patch+json"},
             verify=verify,
+        )
+        if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+
+class KubeRayHttpApiClient(IKubernetesHttpApiClient):
+    def __init__(
+        self,
+        namespace: str,
+        kuberay_operator_address: str,
+        kuberay_crd_version: str = KUBERAY_CRD_VER,
+    ):
+        self._namespace = namespace
+        self._kuberay_operator_address = kuberay_operator_address
+        self._kuberay_crd_version = kuberay_crd_version
+        self._headers = {
+            "AccessKey": KUBERAY_OPERATOR_DEFAULT_ACCESS_KEY,
+            "AccessSecret": KUBERAY_OPERATOR_DEFAULT_ACCESS_SECRET,
+            "Content-Type": "application/json",
+        }
+
+    def _url_from_resource(
+        self,
+        path: str,
+    ) -> str:
+        """Convert resource path to REST URL for KubeRay operator.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+                Supported resource types are "pods" and "rayclusters".
+        """
+
+        if not self._kuberay_operator_address.startswith("http://"):
+            kuberay_operator_address = "http://" + self._kuberay_operator_address
+        if path.startswith("pods"):
+            api_group = "/api/v1"
+        elif path.startswith("rayclusters"):
+            api_group = "/apis/ray.io/" + self._kuberay_crd_version
+        else:
+            raise NotImplementedError(
+                "Tried to access unknown entity at {}".format(path)
+            )
+        return (
+            kuberay_operator_address
+            + api_group
+            + "/namespaces/"
+            + self._namespace
+            + "/"
+            + path
+        )
+
+    def get(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST GET of resource with proper headers.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+
+        Returns:
+            The JSON response of the GET request.
+
+        Raises:
+            HTTPError: If the GET request fails.
+        """
+        url = self._url_from_resource(path)
+
+        result = requests.get(url, headers=self._headers)
+        if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Wrapper for REST PATCH of resource with proper headers
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+            payload: The JSON patch payload.
+
+        Returns:
+            The JSON response of the PATCH request.
+
+        Raises:
+            HTTPError: If the PATCH request fails.
+        """
+        url = self._url_from_resource(path)
+
+        result = requests.patch(
+            url,
+            json.dumps(payload),
+            headers=self._headers,
         )
         if not result.status_code == 200:
             result.raise_for_status()
