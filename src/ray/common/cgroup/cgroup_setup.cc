@@ -116,11 +116,15 @@ Status EnableCgroupSubtreeControl(const std::string &subtree_control_path) {
       << "Failed to open cgroup file " << subtree_control_path;
 
   out_file << "+memory";
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to write to cgroup file " << subtree_control_path;
   out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to flush cgroup file " << subtree_control_path;
 
   out_file << "+cpu";
+  RAY_SCHECK_OK_CGROUP(out_file.good())
+      << "Failed to write to cgroup file " << subtree_control_path;
   out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to flush cgroup file " << subtree_control_path;
