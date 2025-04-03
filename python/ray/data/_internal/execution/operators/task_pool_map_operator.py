@@ -154,6 +154,7 @@ class TaskPoolMapOperator(MapOperator):
 
     def all_inputs_done(self):
         super().all_inputs_done()
+
         if (
             self._concurrency is not None
             and self._metrics.num_inputs_received < self._concurrency
