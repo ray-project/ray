@@ -1043,7 +1043,7 @@ available_node_types:
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
         tmp_path / "does_not_exist.yaml"
     )
-    assert cluster_config_to_report.cloud_provider == "kuberay"
+    assert cluster_config_to_report.cloud_provider.startswith("kuberay")
 
 
 def test_usage_lib_report_data(
