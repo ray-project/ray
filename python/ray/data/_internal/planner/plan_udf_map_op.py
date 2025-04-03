@@ -163,7 +163,47 @@ def plan_filter_op(
 
         def filter_batch_fn(block: "pa.Table") -> "pa.Table":
             try:
-                return block.filter(expression)
+                import pyarrow as pa
+                import pyarrow.compute as pc
+
+                # Get the original schema
+                original_schema = block.schema
+
+                # Apply the filter
+                filtered_table = block.filter(expression)
+
+                # Check if the schema has changed
+                if filtered_table.schema != original_schema:
+                    # Identify columns that need to be re-encoded
+                    needs_reencoding = False
+                    new_columns = []
+
+                    for i, field in enumerate(original_schema):
+                        col_name = field.name
+                        orig_type = field.type
+
+                        # Get the filtered column
+                        filtered_col = filtered_table[col_name]
+                        filtered_type = filtered_table.schema.field(col_name).type
+
+                        # Check if the column should be dictionary-encoded
+                        if pa.types.is_dictionary(
+                            orig_type
+                        ) and not pa.types.is_dictionary(filtered_type):
+                            # Re-encode as dictionary
+                            needs_reencoding = True
+                            encoded_col = pc.dictionary_encode(filtered_col)
+                            new_columns.append(encoded_col)
+                        else:
+                            new_columns.append(filtered_col)
+
+                    if needs_reencoding:
+                        # Create a new table with the re-encoded columns
+                        return pa.Table.from_arrays(
+                            new_columns, names=filtered_table.column_names
+                        )
+
+                return filtered_table
             except Exception as e:
                 _handle_debugger_exception(e)
 
