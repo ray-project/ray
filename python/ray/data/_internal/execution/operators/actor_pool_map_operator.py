@@ -292,19 +292,6 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_pool.shutdown(force=force)
         super().shutdown(force)
 
-        # Warn if the user specified a batch or block size that prevents full
-        # parallelization across the actor pool. We only know this information after
-        # execution has completed.
-        min_workers = self._actor_pool.min_size()
-        if len(self._output_blocks_stats) < min_workers:
-            # The user created a stream that has too few blocks to begin with.
-            logger.warning(
-                "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the Dataset should consist of at least "
-                f"{min_workers} distinct blocks. Consider increasing "
-                "the parallelism when creating the Dataset."
-            )
-
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
             return locality_string(
