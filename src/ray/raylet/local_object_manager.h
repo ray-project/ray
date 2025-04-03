@@ -103,6 +103,8 @@ class LocalObjectManager {
   /// \return True if spilling is in progress.
   void SpillObjectUptoMaxThroughput();
 
+  /// TODO(dayshah): This function is only used for testing, we should remove and just
+  /// keep SpillObjectsInternal.
   /// Spill objects to external storage.
   ///
   /// \param objects_ids_to_spill The objects to be spilled.

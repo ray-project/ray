@@ -264,9 +264,10 @@ void LocalObjectManager::SpillObjectsInternal(
     std::function<void(const ray::Status &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   // Filter for the objects that can be spilled.
-  // TODO(dayshah): The logic here should be moved to SpillObjectsOfSize. We can do all of
-  // this logic while creating what we pass into object_ids here and don't need to
-  // recreate objects_to_spill.
+  // TODO(dayshah): The logic in this loop should be moved to SpillObjectsOfSize. We can
+  // do this logic while creating what we pass into object_ids here and don't need
+  // to recreate objects_to_spill. The error status is also thrown away in the callback
+  // here as a debug log, so we wouldn't know if we failed to spill because of the check.
   for (const auto &id : object_ids) {
     // We should not spill an object that we are not the primary copy for, or
     // objects that are already being spilled.
