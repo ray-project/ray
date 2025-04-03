@@ -264,9 +264,8 @@ class MetricsLogger:
             # Log n simple float values under the "loss" key. By default, all logged
             # values under that key are averaged, once `reduce()` is called.
             logger.log_value("loss", 0.01, window=10)
-            logger.log_value("loss", 0.02)  # don't have to repeat `window` if key
-                                            # already exists
-            logger.log_value("loss", 0.03)
+            logger.log_value("loss", 0.02, window=10)
+            logger.log_value("loss", 0.03, window=10)
 
             # Peek at the current (reduced) value.
             # Note that in the underlying structure, the internal values list still
@@ -275,7 +274,7 @@ class MetricsLogger:
 
             # Log 10x (window size) the same value.
             for _ in range(10):
-                logger.log_value("loss", 0.05)
+                logger.log_value("loss", 0.05, window=10)
             check(logger.peek("loss"), 0.05)
 
             # Internals check (note that users should not be concerned with accessing
@@ -295,15 +294,15 @@ class MetricsLogger:
 
             # Log n values without reducing them (we want to just collect some items).
             logger.log_value("some_items", 5.0, reduce=None)
-            logger.log_value("some_items", 6.0)
-            logger.log_value("some_items", 7.0)
+            logger.log_value("some_items", 6.0, reduce=None)
+            logger.log_value("some_items", 7.0, reduce=None)
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_items"), [5.0, 6.0, 7.0])
             # If you don't want the internal list to grow indefinitely, you should set
             # `clear_on_reduce=True`:
             logger.log_value("some_more_items", -5.0, reduce=None, clear_on_reduce=True)
-            logger.log_value("some_more_items", -6.0)
-            logger.log_value("some_more_items", -7.0)
+            logger.log_value("some_more_items", -6.0, reduce=None, clear_on_reduce=True)
+            logger.log_value("some_more_items", -7.0, reduce=None, clear_on_reduce=True )
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_more_items"), [-5.0, -6.0, -7.0])
             # Reducing everything (and return plain values, not `Stats` objects).
@@ -392,6 +391,12 @@ class MetricsLogger:
                 )
             else:
                 stats = self._get_key(key)
+                if reduce != stats._reduce_method and log_once(f"reduce_warning_{key}"):
+                    logger.warning(
+                        f"reduce should be the same for all logged values under the same key, "
+                        f"but got argument reduce={reduce} while the existing Stats object {key} "
+                        f"has reduce={stats._reduce_method}."
+                    )
                 if clear_on_reduce != stats._clear_on_reduce and log_once(
                     f"clear_on_reduce_warning_{key}"
                 ):
@@ -761,8 +766,9 @@ class MetricsLogger:
                 elif stats_or_values is not base_stats:
                     more_stats.append(stats_or_values)
 
-            # For cases where we can reduce, we reduce to a single value
-            if base_stats._reduce_method is not None:
+            # For cases where we can reduce, create a new Stats object with the peeded, reduced value
+            # Don't reduce if we use a window (merge in parallel instead)
+            if base_stats._reduce_method is not None and base_stats._inf_window:
                 # Note that we may take a mean of means here, which is not the same as a mean of all values
                 # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
 
@@ -786,11 +792,7 @@ class MetricsLogger:
                 base_stats = Stats.similar_to(
                     base_stats, init_values=temp_stats.peek(compile=False)
                 )
-                self._set_key(key, base_stats)
-                continue
-
-            # For other cases, we can't reduce, we merge in parallel (also applies to case (1))
-            if len(more_stats) > 0:
+            elif len(more_stats) > 0:
                 # There are more than one incoming parallel others -> Merge all of them
                 # in parallel.
                 base_stats.merge_in_parallel(*more_stats)
@@ -959,8 +961,7 @@ class MetricsLogger:
             nonlocal PATH
             PATH = path
 
-            # Check if this is a lifetime stat (clear_on_reduce=False and reduce="sum")
-            # that belongs to a non-root logger
+            # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
             is_lifetime_stat = (
                 not stats._clear_on_reduce
                 and stats._reduce_method == "sum"
@@ -968,16 +969,20 @@ class MetricsLogger:
             )
 
             # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
-            if is_lifetime_stat and not self._is_root_logger:
-                original_clear_on_reduce = stats._clear_on_reduce
-                # Modify to clear lifetime stats in non-root loggers
-                stats._clear_on_reduce = True
-                values = stats.reduce()
-                # Restore the original setting
-                stats._clear_on_reduce = original_clear_on_reduce
+            # We need to do this so that lifetime stats are accumulated only in the root logger
+            if not self._is_root_logger:
+                if is_lifetime_stat:
+                    original_clear_on_reduce = stats._clear_on_reduce
+                    # Modify to clear lifetime stats in non-root loggers
+                    stats._clear_on_reduce = True
+                    values = stats.reduce(compile=False)
+                    # Restore the original setting
+                    stats._clear_on_reduce = original_clear_on_reduce
+                else:
+                    # For root logger or non-lifetime stats, reduce normally
+                    values = stats.reduce(compile=False)
             else:
-                # For root logger or non-lifetime stats, reduce normally
-                values = stats.reduce()
+                values = stats.reduce(compile=True)
 
             path_key = tuple(path)
 

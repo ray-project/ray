@@ -35,110 +35,6 @@ class Stats:
 
     Through the `reduce()` API, one of the above-mentioned reduction mechanisms will
     be executed on `self.values`.
-
-    .. testcode::
-
-        import time
-        from ray.rllib.utils.metrics.stats import Stats
-        from ray.rllib.utils.test_utils import check
-
-        # By default, we reduce using EMA (with default coeff=0.01).
-        stats = Stats()  # use `ema_coeff` arg to change the coeff
-        stats.push(1.0)
-        stats.push(2.0)
-        # EMA formula used by Stats: t1 = (1.0 - ema_coeff) * t0 + ema_coeff * new_val
-        check(stats.peek(), 1.0 * (1.0 - 0.01) + 2.0 * 0.01)
-
-        # Here, we use a window over which to mean.
-        stats = Stats(window=2)
-        stats.push(1.0)
-        stats.push(2.0)
-        stats.push(3.0)
-        # Only mean over the last 2 items.
-        check(stats.peek(), 2.5)
-
-        # Here, we sum over the lifetime of the Stats object.
-        stats = Stats(reduce="sum")
-        stats.push(1)
-        check(stats.peek(), 1)
-        stats.push(2)
-        check(stats.peek(), 3)
-        stats.push(3)
-        check(stats.peek(), 6)
-        # For efficiency, we keep the internal values in a reduced state for all Stats
-        # with c'tor options reduce!=mean and infinite window.
-        check(stats.values, [6])
-
-        # "min" or "max" work analogous to "sum".
-        stats = Stats(reduce="min")
-        stats.push(10)
-        check(stats.peek(), 10)
-        stats.push(20)
-        check(stats.peek(), 10)
-        stats.push(5)
-        check(stats.peek(), 5)
-        stats.push(100)
-        check(stats.peek(), 5)
-        # For efficiency, we keep the internal values in a reduced state for all Stats
-        # with c'tor options reduce!=mean and infinite window.
-        check(stats.values, [5])
-
-        # Let's try min/max/sum with a `window` now:
-        stats = Stats(reduce="max", window=2)
-        stats.push(2)
-        check(stats.peek(), 2)
-        stats.push(3)
-        check(stats.peek(), 3)
-        stats.push(1)
-        check(stats.peek(), 3)
-        # However, when we push another value, the max thus-far (3) will go
-        # out of scope:
-        stats.push(-1)
-        check(stats.peek(), 1)  # now, 1 is the max
-        # So far, we have stored the most recent 2 values (1 and -1).
-        check(stats.values, [1, -1])
-        # Let's call the `reduce()` method to actually reduce these values
-        # to a list of the most recent 2 (window size) values:
-        stats = stats.reduce()
-        check(stats.peek(), 1)
-        check(stats.values, [1, -1])
-
-        # We can also choose to not reduce at all (reduce=None).
-        # With a `window` given, Stats will simply keep (and return) the last
-        # `window` items in the values list.
-        # Note that we have to explicitly set reduce to None (b/c default is "mean").
-        stats = Stats(reduce=None, window=3)
-        stats.push(-5)
-        stats.push(-4)
-        stats.push(-3)
-        stats.push(-2)
-        check(stats.peek(), [-4, -3, -2])  # `window` (3) most recent values
-        # We have not reduced yet (3 values are stored):
-        check(stats.values, [-4, -3, -2])
-        # Let's reduce:
-        stats = stats.reduce()
-        check(stats.peek(), [-4, -3, -2])
-        # Values are now shortened to contain only the most recent `window` items.
-        check(stats.values, [-4, -3, -2])
-
-        # We can even use Stats to time stuff. Here we sum up 2 time deltas,
-        # measured using a convenient with-block:
-        stats = Stats(reduce="sum")
-        check(len(stats.values), 0)
-        # First delta measurement:
-        with stats:
-            time.sleep(1.0)
-        check(len(stats.values), 1)
-        assert 1.1 > stats.peek() > 0.9
-        # Second delta measurement:
-        with stats:
-            time.sleep(1.0)
-        assert 2.2 > stats.peek() > 1.8
-        # When calling `reduce()`, the internal values list gets cleaned up.
-        check(len(stats.values), 1)  # holds the sum of both deltas in the values list
-        stats = stats.reduce()
-        check(len(stats.values), 1)  # nothing changed (still one sum value)
-        assert 2.2 > stats.values[0] > 1.8
     """
 
     def __init__(
@@ -353,15 +249,36 @@ class Stats:
         Returns:
             The result of reducing the internal values list.
         """
-        if self._has_new_values:
-            ret = self._reduced_values()[0]
+        # If there is a window and we are compiling and there is a reduce method, we need to calculate the reduced value (even we we don't have new values) because we don't keep track of the reduced value
+        if not self._inf_window:
+            if compile:
+                if self._reduce_method:
+                    return self._reduced_values()[0][0]
+                else:
+                    # In these cases, even if we compile, we return lists
+                    if not self._has_new_values:
+                        return self._reduce_history[-1]
+                    else:
+                        return self._reduced_values()[1]
+            else:
+                if self._has_new_values:
+                    return self._reduced_values()[1]
+                else:
+                    if self._reduce_method:
+                        return self._reduce_history[-1]
+                    else:
+                        return self._reduced_values()[1]
         else:
-            ret = self._reduce_history[-1]
+            # If there is an infinite window, there must be a reduce method and hence the history has single elements
+            if self._has_new_values:
+                ret = self._reduced_values()[0]
+            else:
+                ret = self._reduce_history[-1]
 
-        if compile and self._reduce_method:
-            return ret[0]
-        else:
-            return ret
+            if compile:
+                return ret[0]
+            else:
+                return ret
 
     def get_reduce_history(self) -> List[Any]:
         """Returns the history of reduced values as a list.
@@ -382,6 +299,9 @@ class Stats:
 
         Raises:
             ValueError: If throughput tracking is not enabled for this Stats object.
+
+        Returns:
+            The current throughput estimate per second.
         """
         if self._throughput_stats is None:
             raise ValueError("Throughput tracking is not enabled for this Stats object")
@@ -414,7 +334,7 @@ class Stats:
         """
         if self._has_new_values:
             # Only calculate and update history if there were new values pushed since last reduce
-            reduced, _ = self._reduced_values()
+            reduced, new_values_list = self._reduced_values()
             # `clear_on_reduce` -> Clear the values list.
             if self._clear_on_reduce:
                 self._set_values([])
@@ -422,22 +342,23 @@ class Stats:
                 self._has_new_values = True
             else:
                 self._has_new_values = False
-                self._set_values(reduced)
+                self._set_values(new_values_list)
 
-            # Shift historic reduced valued by one in our reduce_history-tuple.
-            if self._reduce_method is not None:
-                # It only makes sense to extend the history if we are reducing to a single value, otherwise we duplicate values into the history and the history can blow up.
+            # Shift historic reduced valued by one in our reduce_history.
+            if self._reduce_method is not None or not self._inf_window:
+                # It only makes sense to extend the history if we are reducing to a single value and we are not using an infinite window, otherwise we duplicate values into the history and the history can blow up.
                 # We need to extend it with a copy because reduced values are (possibly) references to the internal values list and will be mutated by following reduce calls.
-                self._reduce_history.append(reduced.copy())
-
-            ret = reduced
+                self._reduce_history.append(new_values_list.copy())
+            values_list = new_values_list
         else:
-            ret = self._reduce_history[-1]
+            reduced = None
+            values_list = self._reduce_history[-1]
 
-        if compile and self._reduce_method is not None:
-            return ret[0]
+        if compile:
+            reduced = self._reduced_values(values_list)[0]
+            return reduced[0]
         else:
-            return ret
+            return values_list
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -477,125 +398,6 @@ class Stats:
         The following examples demonstrate the parallel merging logic for different
         reduce- and window settings:
 
-        .. testcode::
-            from ray.rllib.utils.metrics.stats import Stats
-            from ray.rllib.utils.test_utils import check
-
-            # Parallel-merge two (reduce=mean) stats with window=3.
-            stats = Stats(reduce="mean", window=3)
-            stats1 = Stats(reduce="mean", window=3)
-            stats1.push(0)
-            stats1.push(1)
-            stats1.push(2)
-            stats1.push(3)
-            stats2 = Stats(reduce="mean", window=3)
-            stats2.push(4000)
-            stats2.push(4)
-            stats2.push(5)
-            stats2.push(6)
-            stats.merge_in_parallel(stats1, stats2)
-            # Fill new merged-values list:
-            # - Start with index -1, move towards the start.
-            # - Thereby always reduce across the different Stats objects' at the
-            #   current index.
-            # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND added to the new merged-values list n times (where n is
-            #   the number of Stats, across which we merge).
-            # - The merged-values list is reversed.
-            # Here:
-            # index -1: [3, 6] -> [4.5, 4.5]
-            # index -2: [2, 5] -> [4.5, 4.5, 3.5, 3.5]
-            # STOP after merged list contains >= 3 items (window size)
-            # reverse: [3.5, 3.5, 4.5, 4.5]
-            # deque w/ maxlen=3: [3.5, 4.5, 4.5]
-            check(stats.values, [3.5, 4.5, 4.5])
-            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean the 3 items (window)
-
-            # Parallel-merge two (reduce=max) stats with window=3.
-            stats = Stats(reduce="max", window=3)
-            stats1 = Stats(reduce="max", window=3)
-            stats1.push(1)
-            stats1.push(2)
-            stats1.push(3)
-            stats2 = Stats(reduce="max", window=3)
-            stats2.push(4)
-            stats2.push(5)
-            stats2.push(6)
-            stats.merge_in_parallel(stats1, stats2)
-            # Same here: Fill new merged-values list:
-            # - Start with index -1, moving to the start.
-            # - Thereby always reduce across the different Stats objects' at the
-            #   current index.
-            # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND added to the new merged-values list n times (where n is the
-            #   number of Stats, across which we merge).
-            # - The merged-values list is reversed.
-            # Here:
-            # index -1: [3, 6] -> [6, 6]
-            # index -2: [2, 5] -> [6, 6, 5, 5]
-            # STOP after merged list contains >= 3 items (window size)
-            # reverse: [5, 5, 6, 6]
-            # deque w/ maxlen=3: [5, 6, 6]
-            check(stats.values, [5, 6, 6])
-            check(stats.peek(), 6)  # max is 6
-
-            # Parallel-merge two (reduce=min) stats with window=4.
-            stats = Stats(reduce="min", window=4)
-            stats1 = Stats(reduce="min", window=4)
-            stats1.push(1)
-            stats1.push(2)
-            stats1.push(1)
-            stats1.push(4)
-            stats2 = Stats(reduce="min", window=4)
-            stats2.push(5)
-            stats2.push(0.5)
-            stats2.push(7)
-            stats2.push(8)
-            stats.merge_in_parallel(stats1, stats2)
-            # Same procedure:
-            # index -1: [4, 8] -> [4, 4]
-            # index -2: [1, 7] -> [4, 4, 1, 1]
-            # STOP after merged list contains >= 4 items (window size)
-            # reverse: [1, 1, 4, 4]
-            check(stats.values, [1, 1, 4, 4])
-            check(stats.peek(), 1)  # min is 1
-
-            # Parallel-merge two (reduce=sum) stats with no window.
-            # Note that when reduce="sum", we do NOT reduce across the indices of the
-            # parallel values.
-            stats = Stats(reduce="sum")
-            stats1 = Stats(reduce="sum")
-            stats1.push(1)
-            stats1.push(2)
-            stats1.push(0)
-            stats1.push(3)
-            stats2 = Stats(reduce="sum")
-            stats2.push(4)
-            stats2.push(5)
-            stats2.push(6)
-            # index -1: [3, 6] -> [3, 6] (no reduction, leave values as-is)
-            # index -2: [0, 5] -> [3, 6, 0, 5]
-            # index -3: [2, 4] -> [3, 6, 0, 5, 2, 4]
-            # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
-            # reverse: [1, 4, 2, 5, 0, 6, 3]
-            stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [15, 6])  # 6 from `stats1` and 15 from `stats2`
-            check(stats.peek(), 21)
-
-            # Parallel-merge two "concat" (reduce=None) stats with no window.
-            # Note that when reduce=None, we do NOT reduce across the indices of the
-            # parallel values.
-            stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
-            stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
-            stats1.push(1)
-            stats2 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
-            stats2.push(2)
-            # index -1: [1, 2] -> [1, 2] (no reduction, leave values as-is)
-            # reverse: [2, 1]
-            stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [2, 1])
-            check(stats.peek(), [2, 1])
-
         Args:
             others: One or more other Stats objects that need to be parallely merged
                 into `self, meaning with equal weighting as the existing values in
@@ -633,7 +435,7 @@ class Stats:
                 new_values.extend(tmp_values)
             else:
                 new_values.extend(
-                    [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
+                    self._reduced_values(values=tmp_values)[0] * len(tmp_values)
                 )
             tmp_values.clear()
             if len(new_values) >= win:

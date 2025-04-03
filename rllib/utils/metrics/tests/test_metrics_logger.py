@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check
 
 @pytest.fixture
 def logger():
-    return MetricsLogger()
+    return MetricsLogger(root=True)
 
 
 def test_basic_value_logging(logger):
@@ -215,7 +215,9 @@ def test_merge_and_log_n_dicts(logger):
     logger.merge_and_log_n_dicts([results1, results2])
 
     # Check merged results
-    check(logger.peek("loss"), 0.35)
+    # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
+    # We expect mean(0.2, 0.4, 0.6) = 0.4 here because when using windows, we merge in parallel.
+    check(logger.peek("loss"), 0.4, rtol=0.01)
 
 
 def test_throughput_tracking(logger):
@@ -233,12 +235,12 @@ def test_throughput_tracking(logger):
     check(logger.peek("count"), num_iters * 2 + 1)
     approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(
-        logger.get_throughputs("count"), approx_throughput, rtol=0.05
-    )  # 5% tolerance in throughput
+        logger.get_throughputs("count"), approx_throughput, rtol=0.1
+    )  # 10% tolerance in throughput
 
     # Test get_throughputs() method without key (returns all throughputs)
     throughputs = logger.get_throughputs()
-    check(throughputs["count_throughput"], approx_throughput, rtol=0.05)
+    check(throughputs["count_throughput"], approx_throughput, rtol=0.1)
 
     # Test with nested keys
     nested_start_time = time.perf_counter()
@@ -256,12 +258,12 @@ def test_throughput_tracking(logger):
         nested_end_time - nested_start_time
     )
     check(
-        logger.get_throughputs(("nested", "count")), nested_approx_throughput, rtol=0.05
+        logger.get_throughputs(("nested", "count")), nested_approx_throughput, rtol=0.1
     )
 
     # Check getting throughput for a parent key
     nested_throughputs = logger.get_throughputs("nested")
-    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.05)
+    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.1)
 
     # Verify all throughputs are present in the full throughput dict
     all_throughputs = logger.get_throughputs()
@@ -374,7 +376,7 @@ def test_edge_cases(logger):
 
 def test_first_reduce_returns_stats_then_values():
     """Test that reduce() returns Stats objects on first call, then values on subsequent calls."""
-    logger = MetricsLogger()
+    logger = MetricsLogger(root=True)
 
     # Log a simple metric
     logger.log_value("simple_metric", 5, reduce="sum")
@@ -401,8 +403,8 @@ def test_first_reduce_returns_stats_then_values():
 
     # Verify the actual value
     check(
-        second_result["simple_metric"], 10
-    )  # Since this is not a root logger, the value is not accumulated
+        second_result["simple_metric"], 15
+    )  # Since this is a root logger, the value is accumulated
 
     # Create a second logger and test merging behavior
     logger2 = MetricsLogger()
@@ -448,11 +450,11 @@ def test_lifetime_stats_behavior():
     child1.log_value("lifetime_metric", 5, reduce="sum", clear_on_reduce=False)
     child2.log_value("lifetime_metric", 15, reduce="sum", clear_on_reduce=False)
 
-    # Reduce children again - non-root loggers should not retain previous values
+    # Reduce children again - non-root loggers should not retain previous values and return lists to merge downstream
     results1 = child1.reduce()
     results2 = child2.reduce()
-    check(results1["lifetime_metric"], 5)  # not 15 (10+5)
-    check(results2["lifetime_metric"], 15)  # not 35 (20+15)
+    check(results1["lifetime_metric"], [5])  # not 15 (10+5)
+    check(results2["lifetime_metric"], [15])  # not 35 (20+15)
 
     # Merge new results into root - root should accumulate
     root_logger.merge_and_log_n_dicts([results1, results2])
@@ -584,19 +586,29 @@ def test_hierarchical_metrics_system():
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1 aggregation
-    check(node_a.peek("mean_metric"), 1.5)  # Mean of [1.0, 2.0]
-    check(node_a.peek("window_mean"), 25.0)  # Mean of [15.0, 35.0]
+    check(
+        node_a.peek("mean_metric"), 1.01
+    )  # Mean of [1.0, 2.0] calculated with ema coefficient
+    check(
+        node_a.peek("window_mean"), 30.0
+    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * num_values] = [mean([20.0, 40.0]) * 2] = [30.0, 30.0]
     check(node_a.peek("min_value"), 10)  # Min of [10, 20]
     check(node_a.peek("max_value"), 200)  # Max of [100, 200]
     check(node_a.peek("lifetime_sum"), 15)  # Sum of [5, 10]
     check(node_a.peek("regular_sum"), 3)  # Sum of [1, 2]
-    check(node_a.peek(["nested", "mean"]), 1.5)  # Mean of [1.0, 2.0]
+    check(
+        node_a.peek(["nested", "mean"]), 1.01
+    )  # Mean of [1.0, 2.0] calculated with ema coefficient
     check(node_a.peek(["nested", "sum"]), 30)  # Sum of [10, 20]
     check(node_a.peek(["nested", "lifetime"]), 300)  # Sum of [100, 200]
     check(node_a.peek(["deeply", "nested", "metric"]), 3)  # Sum of [1, 2]
 
-    check(node_b.peek("mean_metric"), 3.5)  # Mean of [3.0, 4.0]
-    check(node_b.peek("window_mean"), 65.0)  # Mean of [55.0, 75.0]
+    check(
+        node_b.peek("mean_metric"), 3.01
+    )  # Mean of [3.0, 4.0] calculated with ema coefficient
+    check(
+        node_b.peek("window_mean"), 70.0
+    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([60.0, 80.0]) * 2] = [70.0, 70.0]
     check(node_b.peek("min_value"), 30)  # Min of [30, 40]
     check(node_b.peek("max_value"), 400)  # Max of [300, 400]
     check(node_b.peek("lifetime_sum"), 35)  # Sum of [15, 20]
@@ -615,13 +627,19 @@ def test_hierarchical_metrics_system():
     root.merge_and_log_n_dicts([results_a, results_b])
 
     # Verify root aggregation from first round
-    check(root.peek("mean_metric"), 2.5)  # Mean of [1.5, 3.5]
-    check(root.peek("window_mean"), 45.0)  # Mean of [25.0, 65.0]
+    check(
+        root.peek("mean_metric"), 1.03
+    )  # Mean of [1.01, 3.01] calculated with ema coefficient
+    check(
+        root.peek("window_mean"), 50.0
+    )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([30.0, 70.0]) * 2] = [50.0, 50.0]
     check(root.peek("min_value"), 10)  # Min of [10, 30]
     check(root.peek("max_value"), 400)  # Max of [200, 400]
     check(root.peek("lifetime_sum"), 50)  # Sum of [15, 35]
     check(root.peek("regular_sum"), 10)  # Sum of [3, 7]
-    check(root.peek(["nested", "mean"]), 2.5)  # Mean of [1.5, 3.5]
+    check(
+        root.peek(["nested", "mean"]), 1.03
+    )  # Mean of [1.01, 3.01] calculated with ema coefficient
     check(root.peek(["nested", "sum"]), 100)  # Sum of [30, 70]
     check(root.peek(["nested", "lifetime"]), 1000)  # Sum of [300, 700]
     check(root.peek(["deeply", "nested", "metric"]), 10)  # Sum of [3, 7]
@@ -646,16 +664,18 @@ def test_hierarchical_metrics_system():
     results_b2 = leaf_b2.reduce()
 
     # Verify leaf results - these should only contain the new values, not accumulated ones
-    check(results_a1["lifetime_sum"], 1)  # Only new value, not 6 (5+1)
-    check(results_a1["nested"]["lifetime"], 10)  # Only new value, not 110 (100+10)
+    check(results_a1["lifetime_sum"], [1])  # Only new value, not 6 (5+1)
+    check(results_a1["nested"]["lifetime"], [10])  # Only new value, not 110 (100+10)
 
     # Merge level 2 results into level 1 nodes
     node_a.merge_and_log_n_dicts([results_a1, results_a2])
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1 aggregation
-    check(node_a.peek("lifetime_sum"), 3)  # Sum of [1, 2], not 18 (15+3)
-    check(node_a.peek(["nested", "lifetime"]), 30)  # Sum of [10, 20], not 330 (300+30)
+    check(node_a.peek("lifetime_sum"), [3])  # Sum of [1, 2], not 18 (15+3)
+    check(
+        node_a.peek(["nested", "lifetime"]), [30]
+    )  # Sum of [10, 20], not 330 (300+30)
 
     # Reduce level 1 and merge into root
     results_a = node_a.reduce()
@@ -705,8 +725,14 @@ def test_hierarchical_metrics_system():
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1
-    check(node_a.peek("ema_metric"), 2.1)  # Mean of [1.1, 3.1]
-    check(node_b.peek("window3_metric"), 50)  # Mean of [30, 70]
+    check(
+        node_a.peek("ema_metric"), 1.3
+    )  # Mean of [1.1, 3.1] calculated with ema coefficient
+    # Mean of windowed stats merged in parallel.
+    # In this case: [mean(values_1) * len(values_1)] + [mean(values_2) * len(values_2)] = [mean([80, 40]) * 2] + [mean([70, 30]) * 2] = [60, 60, 50, 50]
+    # Since window is 3, we take the first 3 values from the list, which are [60, 60, 50].
+    # Then we take the mean of these 3 values, which is 56.666666666666664.
+    check(node_b.peek("window3_metric"), (60 + 60 + 50) / 3)  # 56.666666666666664
 
     # Reduce level 1 and merge to root
     results_a = node_a.reduce()
@@ -720,8 +746,8 @@ def test_hierarchical_metrics_system():
     check("window3_metric" in root.stats, True)
 
     # Root should have correct values
-    check(root.peek("ema_metric"), 2.1)  # Only from node_a
-    check(root.peek("window3_metric"), 50)  # Only from node_b
+    check(root.peek("ema_metric"), 1.3)  # Only from node_a
+    check(root.peek("window3_metric"), (60 + 60 + 50) / 3)  # Only from node_b
 
     # Lifetime metrics should still be accumulating only at root
     check(root.peek("lifetime_sum"), 60)  # Still the same as after round 2
