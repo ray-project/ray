@@ -442,10 +442,8 @@ def debug(address: str, verbose: bool):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
-    "of available system memory capped by "
-    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
-    "but can be set higher.",
+    "By default, this is 30% of available system memory capped by "
+    "the shm size and 200G but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -657,15 +655,7 @@ Windows powershell users need additional escaping:
     help="Enable resource isolation through cgroupv2 by reserving memory and cpu "
     "resources for ray system processes. To use, only cgroupv2 (not cgroupv1) must "
     "be enabled with read and write permissions for the raylet. Cgroup memory and "
-    "cpu controllers must also be enabled. "
-    "By default, the minimum of "
-    "10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and "
-    "25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus "
-    "object_store_memory will be reserved."
-    "By default, the minimum of "
-    "20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and "
-    "1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved. "
-    "By default, the cgroup used for resource isolation will be /sys/fs/cgroup.",
+    "cpu controllers must also be enabled.",
 )
 @click.option(
     "--system-reserved-cpu",
@@ -673,9 +663,8 @@ Windows powershell users need additional escaping:
     type=float,
     help="The amount of cpu cores to reserve for ray system processes. Cores can be "
     "fractional i.e. 0.5 means half a cpu core. "
-    "By default, the minimum of "
-    "20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and "
-    "1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved. "
+    "By default, the min of 20% and 1 core will be reserved."
+    "Must be >= 0.5 and < total number of available cores. "
     "This option only works if --enable-resource-isolation is set.",
 )
 @click.option(
@@ -683,10 +672,8 @@ Windows powershell users need additional escaping:
     required=False,
     type=int,
     help="The amount of memory (in bytes) to reserve for ray system processes. "
-    "By default, the minimum of "
-    "10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and "
-    "25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus "
-    "object_store_memory will be reserved. "
+    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
+    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
     "This option only works if --enable-resource-isolation is set.",
 )
 @click.option(

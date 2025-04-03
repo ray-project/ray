@@ -1379,11 +1379,8 @@ def init(
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-            By default, this is 30%
-            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
-            of available system memory capped by
-            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-            but can be set higher.
+            By default, this is 30% of available system memory capped by
+            the shm size and 200G but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -1424,23 +1421,15 @@ def init(
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
-            By default, the minimum of
-            10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and
-            25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus object_store_memory
-            will be reserved.
-            By default, the minimum of 20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and
-            1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved.
-            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
         system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
             fractional i.e. 0.5 means half a cpu core.
-            By default, the minimum of
-            20% (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_PROPORTION) and
-            1 core (ray_constants.DEFAULT_SYSTEM_RESERVED_CPU_CORES) will be reserved.
+            By default, the min of 20% and 1 core will be reserved.
+            Must be >= 0.5 cores and < total number of available cores.
+            Cannot be less than 0.5 cores.
             This option only works if enable_resource_isolation is True.
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
-            By default, the minimum of
-            10% (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION) and
-            25Gi (ray_constants.DEFAULT_SYSTEM_RESERVED_MEMORY_MAX_BYTES) plus object_store_memory will be reserved.
+            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
+            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
             This option only works if enable_resource_isolation is True.
         _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
             By default, the cgroup used for resource isolation will be /sys/fs/cgroup.

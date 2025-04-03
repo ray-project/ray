@@ -295,19 +295,21 @@ os.kill(os.getpid(), signal.SIGTERM)
 
 
 def test_ray_init_resource_isolation_disabled_by_default():
-    ray.init()
+    ray.init(address="local")
     node = ray._private.worker._global_node
     assert node is not None
     assert not node.resource_isolation_config.is_enabled()
+    ray.shutdown()
 
 
 def test_ray_init_with_resource_isolation_default_values(monkeypatch):
     total_system_cpu = 10
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    ray.init(enable_resource_isolation=True)
+    ray.init(address="local", enable_resource_isolation=True)
     node = ray._private.worker._global_node
     assert node is not None
     assert node.resource_isolation_config.is_enabled()
+    ray.shutdown()
 
 
 def test_ray_init_with_resource_isolation_override_defaults(monkeypatch):
@@ -322,6 +324,7 @@ def test_ray_init_with_resource_isolation_override_defaults(monkeypatch):
         utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
     )
     ray.init(
+        address="local",
         enable_resource_isolation=True,
         _cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
@@ -331,11 +334,12 @@ def test_ray_init_with_resource_isolation_override_defaults(monkeypatch):
     node = ray._private.worker._global_node
     assert node is not None
     assert node.resource_isolation_config.is_enabled()
-    assert node.resource_isolation_config.system_reserved_cpu == 1
+    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
     assert (
         node.resource_isolation_config.system_reserved_memory
         == system_reserved_memory + object_store_memory
     )
+    ray.shutdown()
 
 
 if __name__ == "__main__":

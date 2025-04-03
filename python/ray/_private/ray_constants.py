@@ -79,7 +79,7 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
 )
 
 # The following values are only used when resource isolation is enabled
-# The default number of bytes to reserve for ray system processes
+# ===== The default number of bytes to reserve for ray system processes
 DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
     "RAY_DEFAULT_DEFAULT_SYSTEM_RESERVED_MEMORY_BYTES", (25) * (10**9)
 )
