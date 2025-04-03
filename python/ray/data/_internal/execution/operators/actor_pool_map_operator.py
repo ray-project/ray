@@ -1,4 +1,5 @@
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -274,6 +275,17 @@ class ActorPoolMapOperator(MapOperator):
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
         self._inputs_done = True
+
+        if self._metrics.num_inputs_received < self._actor_pool.min_size():
+            warnings.warn(
+                f"The minimum number of concurrent actors for '{self.name}' is set to "
+                f"{self._actor_pool.min_size()}, but the operator only received "
+                f"{self._metrics.num_inputs_received} input(s). This means that the "
+                f"operator can launch at most {self._metrics.num_inputs_received} "
+                f"task(s), and won't fully utilize the available concurrency. You "
+                "might be able to increase the number of concurrent tasks by "
+                "configuring `override_num_blocks` earlier in the pipeline."
+            )
 
     def shutdown(self, force: bool = False):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
