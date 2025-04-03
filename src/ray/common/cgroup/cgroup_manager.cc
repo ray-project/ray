@@ -1,4 +1,4 @@
-// Copyright 2024 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
-
-#include <cstdint>
-#include <string>
-
-#include "ray/common/cgroup/constants.h"
-#include "ray/util/compat.h"
+#include "ray/common/cgroup/cgroup_manager.h"
 
 namespace ray {
 
-// Context used to setup cgroupv2 for a task / actor.
-struct AppProcCgroupMetadata {
-  // A unique id to uniquely identity a certain task / actor attempt.
-  std::string id;
-  // PID for the process.
-  pid_t pid;
-
-  // Memory-related spec.
-  //
-  // Unit: bytes. Corresponds to cgroup V2 `memory.max`, which enforces hard cap on max
-  // memory consumption. 0 means no limit.
-  uint64_t max_memory = 0;
-};
+// Here the possible types of cgroup setup classes are small, so we use if-else branch
+// instead of registry pattern.
+BaseCgroupSetup &GetCgroupSetup(bool enable_resource_isolation) {
+  if (enable_resource_isolation) {
+    // TODO(hjiang): Enable real cgroup setup after PR:
+    // https://github.com/ray-project/ray/pull/49941
+    static NoopCgroupSetup noop_cgroup_setup{};
+    return noop_cgroup_setup;
+  }
+  static NoopCgroupSetup noop_cgroup_setup{};
+  return noop_cgroup_setup;
+}
 
 }  // namespace ray
