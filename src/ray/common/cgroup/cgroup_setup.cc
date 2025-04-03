@@ -34,6 +34,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -125,6 +126,8 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 // TODO(hjiang): Adapt to status check macro in PR
 // https://github.com/ray-project/ray/pull/49941
 Status CheckBaseCgroupSubtreeController(const std::string &directory) {
+  constexpr std::array<std::string_view, 2> kRequiredControllers = {"memory", "cpu"};
+
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
   if (!in_file.good()) {
@@ -139,23 +142,16 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
 
   const std::vector<std::string_view> enabled_subtree_controllers =
       absl::StrSplit(content_sv, ' ');
-  if (std::find(enabled_subtree_controllers.begin(),
-                enabled_subtree_controllers.end(),
-                "memory") == enabled_subtree_controllers.end()) {
-    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-           << "Base cgroup " << directory
-           << " doesn't enable memory controller for subtree."
-           << " Check to see if the parent of " << directory
-           << "has the memory controller enabled.";
-  }
-  if (std::find(enabled_subtree_controllers.begin(),
-                enabled_subtree_controllers.end(),
-                "cpu") != enabled_subtree_controllers.end()) {
-    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-           << "Base cgroup " << directory
-           << " doesn't enable memory controller for subtree."
-           << " Check to see if the parent of " << directory
-           << "has the cpu controller enabled.";
+  for (const auto &cur_controller : kRequiredControllers) {
+    if (std::find(enabled_subtree_controllers.begin(),
+                  enabled_subtree_controllers.end(),
+                  cur_controller) == enabled_subtree_controllers.end()) {
+      return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+             << "Base cgroup " << directory << " doesn't enable " << cur_controller
+             << " controller for subtree."
+             << " Check to see if the parent of " << directory << "has the "
+             << cur_controller << " controller enabled.";
+    }
   }
 
   return Status::OK();
