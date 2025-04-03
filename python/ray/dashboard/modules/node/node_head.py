@@ -729,7 +729,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 **{key: data},
             )
 
-    async def run(self, server):
+    async def run(self):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
