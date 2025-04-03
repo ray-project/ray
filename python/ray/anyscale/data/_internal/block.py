@@ -1,8 +1,11 @@
 import collections
 import logging
-from typing import Tuple, List, Sequence, Dict, Iterator, TYPE_CHECKING
+from typing import Tuple, List, Sequence, Dict, Iterator, TYPE_CHECKING, Any
+
+import numpy as np
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.anyscale.data._internal.util.numpy import find_insertion_index
 from ray.anyscale.data.aggregate_vectorized import (
     MIN_PYARROW_VERSION_VECTORIZED_AGGREGATIONS,
 )
@@ -251,6 +254,59 @@ class OptimizedTableBlockMixin(TableBlockAccessor):
             return agg._combine_column(accumulator_col)
 
         return _combine_column_legacy(agg, accumulator_col)
+
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ):
+        partitions = []
+
+        columns = sort_key.get_columns()
+        descending = sort_key.get_descending()
+
+        key_columns = [
+            BlockColumnAccessor.for_column(self._table[col]).to_numpy()
+            for col in columns
+        ]
+
+        # To obtain partition indices from boundaries we employ following algorithm:
+        #
+        #   1. For every boundary value we determine insertion index into the
+        #      list of key column values (ie, for boundary value ``b`` we determine
+        #      an index i, such that ``key_column[i] <= b < key_column[i+1]``, thus
+        #      determining the boundary of 2 partitions established by b).
+        #
+        #   2. Subsequently, list of such insertion indexes is traversed to derive
+        #      partitions as ``table[insertion_index[i], insertion_index[i+1]``
+        #
+        insertion_indices = np.arange(len(boundaries))
+
+        for idx, boundary in enumerate(boundaries):
+            # Avoid repeating insertion index search for duplicated boundaries
+            #
+            # NOTE: Boundaries currently are not de-duplicated and hence we have
+            #       to skip repeating insertion point searches here.
+            if idx > 0 and boundary == boundaries[idx - 1]:
+                insertion_indices[idx] = insertion_indices[idx - 1]
+            else:
+                insertion_indices[idx] = find_insertion_index(
+                    key_columns,
+                    boundary,
+                    descending,
+                    # NOTE: Search for next insertion index could be started off the
+                    #       last one, rather than 0
+                    _start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
+                )
+
+        last_idx = 0
+        for idx in insertion_indices:
+            partitions.append(self._table[last_idx:idx])
+            last_idx = idx
+
+        partitions.append(self._table[last_idx:])
+
+        return partitions
 
 
 def _combine_column_legacy(agg: "AggregateFn", accumulator_col: BlockColumn) -> AggType:
