@@ -126,8 +126,6 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 // TODO(hjiang): Adapt to status check macro in PR
 // https://github.com/ray-project/ray/pull/49941
 Status CheckBaseCgroupSubtreeController(const std::string &directory) {
-  constexpr std::array<std::string_view, 2> kRequiredControllers = {"memory", "cpu"};
-
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
   if (!in_file.good()) {
