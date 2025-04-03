@@ -188,9 +188,9 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
       bytes_to_spill += ray_object->GetSize();
       objects_to_spill.push_back(object_id);
       ++num_to_spill;
-    }
-    if (num_to_spill == max_fused_object_count_) {
-      break;
+      if (num_to_spill == max_fused_object_count_) {
+        break;
+      }
     }
     ++idx;
   }
