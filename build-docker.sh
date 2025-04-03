@@ -39,12 +39,20 @@ while [[ $# -gt 0 ]]; do
             shift
             PYTHON_VERSION="$1"
         ;;
+        --build-version)
+            shift
+            BUILD_VERSION="$1"
+        ;;
         *)
             echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
             exit 1
     esac
     shift
 done
+
+if [[ -z "$BUILD_VERSION" ]]; then
+    BUILD_VERSION="dev$GPU"
+fi
 
 export DOCKER_BUILDKIT=1
 
@@ -56,14 +64,17 @@ fi
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
-    -t "rayproject/base-deps:dev$GPU" "docker/base-deps"
+    -t "rayproject/base-deps:$BUILD_VERSION" "docker/base-deps"
 )
+
+echo RUNNING "${BUILD_CMD[@]}"
+echo
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "rayproject/base-deps:dev$GPU SHA:$IMAGE_SHA"
+    echo "rayproject/base-deps:$BUILD_VERSION SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
@@ -85,14 +96,17 @@ WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg FULL_BASE_IMAGE="rayproject/base-deps:dev$GPU"
+    --build-arg FULL_BASE_IMAGE="rayproject/base-deps:$BUILD_VERSION"
     --build-arg WHEEL_PATH=".whl/${WHEEL}"
-    -t "rayproject/ray:dev$GPU" "$RAY_BUILD_DIR"
+    -t "rayproject/ray:$BUILD_VERSION" "$RAY_BUILD_DIR"
 )
+
+echo RUNNING "${BUILD_CMD[@]}"
+echo
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "rayproject/ray:dev$GPU SHA:$IMAGE_SHA"
+    echo "rayproject/ray:$BUILD_VERSION SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
