@@ -22,6 +22,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_client.h"
+#include "absl/synchronization/mutex.h"
 
 namespace ray::rpc {
 
@@ -53,15 +54,14 @@ class GrpcStubManager {
 
   // Get a grpc client in round-robin style.
   GrpcClient<T> *GetGrpcClient() {
-    // Get grpc stub doesn't require sequential consistency, atomicity is enough.
-    const size_t idx = client_index_.load(std::memory_order::memory_order_relaxed);
-    const size_t next_idx = (idx + 1) % grpc_clients_.size();
-    client_index_.store(next_idx, std::memory_order::memory_order_relaxed);
-    return grpc_clients_[next_idx].get();
+    absl::MutexLock lock(&client_index_mutex_);
+    client_index_ = (client_index_ + 1) % grpc_clients_.size();
+    return grpc_clients_[client_index_].get();
   }
 
  private:
-  std::atomic<size_t> client_index_{0};
+  absl::Mutex client_index_mutex_;
+  size_t client_index_ ABSL_GUARDED_BY(client_index_mutex_) = 0;
   std::vector<std::unique_ptr<GrpcClient<T>>> grpc_clients_;
 };
 
