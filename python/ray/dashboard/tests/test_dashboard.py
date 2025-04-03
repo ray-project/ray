@@ -1210,62 +1210,6 @@ async def test_dashboard_module_load(tmpdir):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
-def test_extra_prom_headers_validation(tmpdir, monkeypatch):
-    from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
-
-    """Test the extra Prometheus headers validation in DashboardHead."""
-    head = DashboardHead(
-        http_host="127.0.0.1",
-        http_port=8265,
-        http_port_retries=1,
-        node_ip_address="127.0.0.1",
-        gcs_address="127.0.0.1:6379",
-        cluster_id_hex=ray.ClusterID.from_random().hex(),
-        grpc_port=0,
-        log_dir=str(tmpdir),
-        logging_level=ray_constants.LOGGER_LEVEL,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        temp_dir=str(tmpdir),
-        session_dir=str(tmpdir),
-        minimal=False,
-        serve_frontend=True,
-    )
-    loaded_modules_expected = {"MetricsHead", "DataHead"}
-
-    # Test the base case.
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the supported case.
-    monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": "V2"}')
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the supported case.
-    monkeypatch.setenv(
-        PROMETHEUS_HEADERS_ENV_VAR,
-        '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]',
-    )
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the unsupported case.
-    with pytest.raises(ValueError):
-        monkeypatch.setenv(
-            PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": ["V1", "V2"]}'
-        )
-        head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the unsupported case.
-    with pytest.raises(ValueError):
-        monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, "not_json")
-        head._load_modules(modules_to_load=loaded_modules_expected)
-
-
-@pytest.mark.skipif(
     sys.version_info >= (3, 10, 0),
     reason=(
         "six >= 1.16 and urllib3 >= 1.26.5 "

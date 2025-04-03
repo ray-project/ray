@@ -28,6 +28,7 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
         gcs_address="",
         session_name="test_session",
         temp_dir=str(tmp_path),
+        session_dir=str(tmp_path),
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
