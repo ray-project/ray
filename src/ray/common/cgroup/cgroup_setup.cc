@@ -256,6 +256,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
     RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_,
                                               /*to=*/cgroup_v2_system_proc_filepath_));
   }
+  RAY_LOG(INFO) << "Directory is root cgroup: " << is_root_cgroup;
 
   auto status = EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_);
   if (!status.ok()) {
