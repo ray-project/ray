@@ -1,6 +1,6 @@
 import os
 
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_bool, env_integer, env_float
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
@@ -92,4 +92,6 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
 )
 
 # Maximum time to wait for the subprocess module to be ready.
-SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float("RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0)
+SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
+    "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0
+)
