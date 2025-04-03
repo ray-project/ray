@@ -16,6 +16,7 @@ from ray.air.util.tensor_extensions.arrow import (
 )
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext
+from ray.data._internal.arrow_ops.transform_pyarrow import to_numpy
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -198,6 +199,29 @@ def test_convert_to_pyarrow_array_object_ext_type_fallback():
     pa_array = convert_to_pyarrow_array(column_values, column_name)
 
     assert pa_array.to_pylist() == column_values.tolist()
+
+
+def test_convert_nesteed_struct_to_numpy_and_convert_back():
+    # Tests if the converter can handle the conversion of nested
+    # Arrow structs to numpy arrays and back,
+    nested_array = pa.array(
+        [
+            {"a": 1, "b": 2},
+            {"a": 3, "b": 4},
+        ]
+    )
+
+    arr = to_numpy(nested_array, zero_copy_only=False)
+    assert arr.shape == (2,)
+    assert arr.dtype == np.dtype("O")  # Object dtype
+    # Convert back to Arrow
+    arr = ArrowTensorArray.from_numpy(arr)
+    assert arr.type == pa.struct(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.int64()),
+        ]
+    )
 
 
 if __name__ == "__main__":

@@ -789,8 +789,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         cls,
         arr: np.ndarray,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
-        if len(arr) > 0 and np.isscalar(arr[0]):
+        if len(arr) > 0 and (np.isscalar(arr[0]) or arr.dtype == object):
             # Elements are scalar so a plain Arrow Array will suffice.
+            # Elements that are object dtype are converted to Arrow directly,
+            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
             return pa.array(arr)
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
