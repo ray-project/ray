@@ -782,7 +782,7 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         fake_column_ds.to_pandas()
 
 
-def test_filter_with_dict_schema(ray_start_regular_shared, tmp_path):
+def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     """Test filtering with dictionary column."""
 
     file_path = tmp_path / "dictionary_test.parquet"
@@ -810,7 +810,8 @@ def test_filter_with_dict_schema(ray_start_regular_shared, tmp_path):
     # Ensure schema remains unchanged
     assert (
         original_schema == filtered_schema
-    ), f"Schema changed after filtering, original_schema: {original_schema}, filtered_schema:{filtered_schema} "
+    ), f"Schema changed after filtering, original_schema: \
+        {original_schema}, filtered_schema:{filtered_schema} "
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):
