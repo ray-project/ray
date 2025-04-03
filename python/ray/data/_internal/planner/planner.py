@@ -75,6 +75,7 @@ def _register_default_plan_logical_op_fns():
         return InputDataBuffer(
             data_context,
             input_data=logical_op.input_data,
+            input_data_iter=logical_op.input_data_iter,
             input_data_factory=logical_op.input_data_factory,
         )
 
