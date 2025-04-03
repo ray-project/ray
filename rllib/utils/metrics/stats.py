@@ -408,12 +408,14 @@ class Stats:
                 `self`.
         """
         # Make sure `others` have same reduction settings.
-        assert all(
-            self._reduce_method == o._reduce_method
-            and self._window == o._window
-            and self._ema_coeff == o._ema_coeff
-            for o in others
-        )
+        for o in others:
+            assert (
+                self._reduce_method == o._reduce_method
+            ), f"Mismatch beweteen stats {str(self)} (reduce_method={self._reduce_method}) and {str(o)} (reduce_method={o._reduce_method})"
+            assert (
+                self._ema_coeff == o._ema_coeff
+            ), f"Mismatch beweteen stats {str(self)} (ema_coeff={self._ema_coeff}) and {str(o)} (ema_coeff={o._ema_coeff})"
+
         win = self._window or float("inf")
 
         # Take turns stepping through `self` and `*others` values, thereby moving
