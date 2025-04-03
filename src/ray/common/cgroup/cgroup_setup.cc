@@ -174,15 +174,11 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
-// TODO(hjiang): Adapt to status check macro in PR
-// https://github.com/ray-project/ray/pull/49941
 Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
-  if (!in_file.good()) {
-    return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+  RAY_SCHECK_OK_CGROUP (in_file.good())
            << "Failed to open cgroup file " << subtree_control_path;
-  }
 
   std::string content((std::istreambuf_iterator<char>(in_file)),
                       std::istreambuf_iterator<char>());
@@ -202,6 +198,8 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
              << cur_controller << " controller enabled.";
     }
   }
+
+  return Status::OK();
 }
 
 // Use unix syscall `mkdir` instead of STL filesystem library because the former provides
