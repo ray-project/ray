@@ -354,14 +354,14 @@ def _get_num_gpus(
 
 
 def _get_num_tpus(
-    custom_resource_dict: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
     k8s_resources: Dict[str, Dict[str, str]],
 ) -> Optional[int]:
     """Get TPU custom resource annotation from custom_resource_dict in ray_start_params,
     or k8s_resources, with priority for custom_resource_dict.
     """
     if "TPU" in custom_resource_dict:
-        return int(custom_resource_dict["TPU"])
+        return custom_resource_dict["TPU"]
     else:
         for typ in ["limits", "requests"]:
             tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")
