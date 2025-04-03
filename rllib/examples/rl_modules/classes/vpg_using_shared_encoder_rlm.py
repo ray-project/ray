@@ -55,8 +55,14 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
     # __sphinx_doc_how_to_run_begin__
             import gymnasium as gym
             from ray.rllib.algorithms.ppo import PPOConfig
-            from ray.rllib.core import MultiRLModuleSpec, RLModuleSpec
+            from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
             from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+            from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
+                SHARED_ENCODER_ID,
+                SharedEncoder,
+                VPGPolicyAfterSharedEncoder,
+                VPGMultiRLModuleWithSharedEncoder
+            )
 
             single_agent_env = gym.make("CartPole-v1")
 
@@ -66,14 +72,16 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                 PPOConfig()
                 .environment(MultiAgentCartPole, env_config={"num_agents": 2})
                 .multi_agent(
-                    # Declare the two policies trained.
-                    policies={"p0", "p1"},
+                    policies={"p0", "p1",SHARED_ENCODER_ID},
                     # Agent IDs of `MultiAgentCartPole` are 0 and 1. They are mapped to
                     # the two policies with ModuleIDs "p0" and "p1", respectively.
-                    policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
+                    policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}",
+                    # Declare the two policies trained.
+                    policies_to_train={"p0", "p1"}
                 )
                 .rl_module(
                     rl_module_spec=MultiRLModuleSpec(
+                        multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
                         rl_module_specs={
                             # Shared encoder.
                             SHARED_ENCODER_ID: RLModuleSpec(
@@ -101,8 +109,8 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
                     ),
                 )
             )
-            algo = config.build()
-            print(algo.get_module())
+            algo = config.build_algo()
+            print(algo.get_module("p0")) # also can be "p1" and SHARED_ENCODER_ID
     # __sphinx_doc_how_to_run_end__
 
         Also note that in order to learn properly, a special, multi-agent Learner
@@ -126,7 +134,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Assign the encoder to a convenience attribute.
         self.encoder = self._rl_modules[SHARED_ENCODER_ID]
 
-    def _forward(self, batch, **kwargs):
+    def _pi(self, batch, **kwargs):
         # Collect our policies' outputs in this dict.
         outputs = {}
 
@@ -136,12 +144,21 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
 
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
-            policy_batch["encoder_embeddings"] = self.encoder._forward(batch[policy_id])
+            policy_batch["encoder_embeddings"] = self.encoder._forward(policy_batch)["encoder_embeddings"]
 
             # Pass the policy's embeddings through the policy net.
-            outputs[policy_id] = rl_module._forward(batch[policy_id], **kwargs)
+            outputs[policy_id] = rl_module._forward(policy_batch, **kwargs)
 
         return outputs
+
+    def _forward_exploration(self, batch, **kwargs):
+        return self._pi(batch, **kwargs)
+
+    def _forward_inference(self, batch, **kwargs):
+        return self._pi(batch, **kwargs)
+
+    def _forward_train(self, batch, **kwargs):
+        return self._pi(batch, **kwargs)
 
 
 # __sphinx_doc_mrlm_2_end__
