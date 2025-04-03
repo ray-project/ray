@@ -80,7 +80,6 @@ void CoreWorkerClient::PushNormalTask(std::unique_ptr<PushTaskRequest> request,
 }
 
 /// Get the estimated size in bytes of the given task.
-//
 static const int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   int64_t size = kBaseRequestSize;
   for (auto &arg : request.task_spec().args()) {
