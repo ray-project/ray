@@ -41,7 +41,7 @@ class ResourceManager:
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
     # when `ReservationOpResourceAllocator` is enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.75
 
     # The fraction of the object store capacity that will be used as the default object
     # store memory limit for the streaming executor,
