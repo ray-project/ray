@@ -212,7 +212,7 @@ class LanceDatasink(_BaseLanceDatasink):
         self.read_version: Optional[int] = None
 
     @property
-    def min_rows_per_file(self) -> int:
+    def min_rows_per_write(self) -> int:
         return self.min_rows_per_file
 
     def get_name(self) -> str:
