@@ -125,8 +125,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   // the same thread.
   ThreadChecker thread_checker_;
 
-  // Running Job IDs, used to report metrics.
-  absl::flat_hash_set<JobID> running_job_ids_;
+  // Running Job Start Times, used to report metrics.
+  // Maps JobID to job start time in milliseconds since epoch.
+  absl::flat_hash_map<JobID, int64_t> running_job_start_times_;
 
   // Number of finished jobs since start of this GCS Server, used to report metrics.
   int64_t finished_jobs_count_ = 0;

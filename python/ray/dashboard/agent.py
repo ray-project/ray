@@ -180,38 +180,43 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
+        launch_http_server = True
         if self.http_server:
             try:
                 await self.http_server.start(modules)
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
+            except Exception as e:
+                # TODO(kevin85421): We should fail the agent if the HTTP server
+                # fails to start to avoid hiding the root cause. However,
+                # agent processes are not cleaned up correctly after some tests
+                # finish. If we fail the agent, the CI will always fail until
+                # we fix the leak.
                 logger.exception(
-                    "Failed to start http server. Agent will stay alive but "
-                    "disable the http service."
+                    f"Failed to start HTTP server with exception: {e}. "
+                    "The agent will stay alive but the HTTP service will be disabled.",
                 )
+                launch_http_server = False
 
-        # Writes agent address to kv.
-        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
-        # -1 should indicate that http server is not started.
-        http_port = -1 if not self.http_server else self.http_server.http_port
-        grpc_port = -1 if not self.server else self.grpc_port
-        put_by_node_id = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-            json.dumps([self.ip, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-        put_by_ip = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-            json.dumps([self.node_id, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
+        if launch_http_server:
+            # Writes agent address to kv.
+            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+            # -1 should indicate that http server is not started.
+            http_port = -1 if not self.http_server else self.http_server.http_port
+            grpc_port = -1 if not self.server else self.grpc_port
+            put_by_node_id = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+                json.dumps([self.ip, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            put_by_ip = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+                json.dumps([self.node_id, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
-        await asyncio.gather(put_by_node_id, put_by_ip)
+            await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 

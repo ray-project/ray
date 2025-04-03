@@ -4,7 +4,7 @@ import lance
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.test_utils import wait_for_condition

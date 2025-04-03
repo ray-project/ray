@@ -472,39 +472,252 @@ ray_cc_library(
 
 ray_cc_library(
     name = "plasma_store_server_lib",
-    srcs = [
-        "src/ray/object_manager/plasma/create_request_queue.cc",
-        "src/ray/object_manager/plasma/dlmalloc.cc",
-        "src/ray/object_manager/plasma/eviction_policy.cc",
-        "src/ray/object_manager/plasma/get_request_queue.cc",
-        "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
-        "src/ray/object_manager/plasma/object_store.cc",
-        "src/ray/object_manager/plasma/plasma_allocator.cc",
-        "src/ray/object_manager/plasma/stats_collector.cc",
-        "src/ray/object_manager/plasma/store.cc",
-        "src/ray/object_manager/plasma/store_runner.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/common.h",
-        "src/ray/object_manager/plasma/allocator.h",
-        "src/ray/object_manager/plasma/create_request_queue.h",
-        "src/ray/object_manager/plasma/eviction_policy.h",
-        "src/ray/object_manager/plasma/get_request_queue.h",
-        "src/ray/object_manager/plasma/object_lifecycle_manager.h",
-        "src/ray/object_manager/plasma/object_store.h",
-        "src/ray/object_manager/plasma/plasma_allocator.h",
-        "src/ray/object_manager/plasma/stats_collector.h",
-        "src/ray/object_manager/plasma/store.h",
-        "src/ray/object_manager/plasma/store_runner.h",
-        "src/ray/thirdparty/dlmalloc.c",
-    ],
+    srcs = ["src/ray/object_manager/plasma/store_runner.cc"],
+    hdrs = ["src/ray/object_manager/plasma/store_runner.h"],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     deps = [
-        ":plasma_client",
-        ":stats_lib",
-        "//src/ray/common:network",
+        ":object_lifecycle_manager",
+        ":plasma_object_store",
+        ":plasma_allocator",
+        ":plasma_store",
+        "//src/ray/common:asio",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
     ],
+)
+
+ray_cc_library(
+    name = "plasma_store",
+    srcs = ["src/ray/object_manager/plasma/store.cc"],
+    hdrs = ["src/ray/object_manager/plasma/store.h"],
+    deps = [
+        ":object_lifecycle_manager",
+        ":object_manager_common",
+        ":object_manager_plasma_common",
+        ":plasma_object_store",
+        ":plasma_allocator",
+        ":plasma_create_request_queue",
+        ":plasma_connection_protocol",
+        ":plasma_eviction_policy",
+        ":plasma_get_request_queue",
+        ":plasma_malloc",
+        ":stats_metric",
+        "//src/ray/common:asio",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/util",
+        "@boost//:bind",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_get_request_queue",
+    srcs = ["src/ray/object_manager/plasma/get_request_queue.cc"],
+    hdrs = ["src/ray/object_manager/plasma/get_request_queue.h"],
+    deps = [
+        ":plasma_connection_protocol",
+        ":object_lifecycle_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+    ],
+)
+
+ray_cc_library(
+    name = "object_lifecycle_manager",
+    srcs = ["src/ray/object_manager/plasma/object_lifecycle_manager.cc"],
+    hdrs = ["src/ray/object_manager/plasma/object_lifecycle_manager.h"],
+    deps = [
+        ":plasma_connection_protocol",
+        ":object_manager_common",
+        ":plasma_object_store",
+        ":plasma_allocator",
+        ":plasma_eviction_policy",
+        ":stats_collector",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_collector",
+    srcs = ["src/ray/object_manager/plasma/stats_collector.cc"],
+    hdrs = ["src/ray/object_manager/plasma/stats_collector.h"],
+    deps = [
+        ":object_manager_plasma_common",
+        ":stats_metric",
+        "//src/ray/util:counter_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_malloc",
+    srcs = [
+        "src/ray/object_manager/plasma/dlmalloc.cc",
+        "src/ray/object_manager/plasma/malloc.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/plasma/malloc.h",
+        "src/ray/thirdparty/dlmalloc.c",
+    ],
+    deps = [
+        ":object_manager_plasma_common",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_eviction_policy",
+    srcs = ["src/ray/object_manager/plasma/eviction_policy.cc"],
+    hdrs = ["src/ray/object_manager/plasma/eviction_policy.h"],
+    deps = [
+        ":object_manager_common",
+        ":object_manager_plasma_common",
+        ":plasma_object_store",
+        ":plasma_allocator",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_object_store",
+    srcs = ["src/ray/object_manager/plasma/object_store.cc"],
+    hdrs = ["src/ray/object_manager/plasma/object_store.h"],
+    deps = [
+        ":plasma_allocator_interface",
+        ":object_manager_plasma_common",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_allocator_interface",
+    hdrs = ["src/ray/object_manager/plasma/allocator.h"],
+    deps = [
+        ":object_manager_common",
+        ":object_manager_plasma_common",
+        ":plasma_generated",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_allocator",
+    srcs = ["src/ray/object_manager/plasma/plasma_allocator.cc"],
+    hdrs = ["src/ray/object_manager/plasma/plasma_allocator.h"],
+    deps = [
+        ":object_manager_common",
+        ":plasma_allocator_interface",
+        ":plasma_malloc",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_create_request_queue",
+    srcs = ["src/ray/object_manager/plasma/create_request_queue.cc"],
+    hdrs = ["src/ray/object_manager/plasma/create_request_queue.h"],
+    deps = [
+        ":object_manager_common",
+        ":object_manager_plasma_common",
+        ":plasma_connection_protocol",
+        "//src/ray/common:file_system_monitor",
+        "//src/ray/common:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_plasma_common",
+    srcs = ["src/ray/object_manager/plasma/plasma.cc"],
+    hdrs = [
+        "src/ray/object_manager/plasma/common.h",
+        "src/ray/object_manager/plasma/plasma.h",
+    ],
+    deps = [
+        ":object_manager_common",
+        ":plasma_generated",
+        "//src/ray/common:id",
+        "//src/ray/util:compat",
+        "//src/ray/util:macros",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "plasma_generated",
+    hdrs = ["src/ray/object_manager/plasma/plasma_generated.h"],
+    deps = ["@com_github_google_flatbuffers//:flatbuffers"],
+)
+
+ray_cc_library(
+    name = "plasma_connection_protocol",
+    srcs = [
+        "src/ray/object_manager/plasma/connection.cc",
+        "src/ray/object_manager/plasma/protocol.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/plasma/connection.h",
+        "src/ray/object_manager/plasma/protocol.h",
+    ],
+    deps = [
+        ":fling",
+        ":object_manager_common",
+        ":object_manager_plasma_common",
+        ":plasma_generated",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:compat",
+        "//src/ray/util:logging",
+        "@com_github_google_flatbuffers//:flatbuffers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "fling",
+    srcs = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.cc",
+        ],
+    }),
+    hdrs = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "src/ray/object_manager/plasma/fling.h",
+        ],
+    }),
+    deps = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "//src/ray/util:logging",
+        ],
+    }),
 )
 
 FLATC_ARGS = [
@@ -573,6 +786,7 @@ ray_cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
@@ -1009,9 +1223,8 @@ ray_cc_library(
     name = "scheduling_options",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_options.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduling_context",
+        "//src/ray/common:ray_config",
     ],
 )
 
@@ -1019,8 +1232,8 @@ ray_cc_library(
     name = "scheduling_context",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_context.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -1029,8 +1242,8 @@ ray_cc_library(
     name = "scheduler_internal",
     hdrs = ["src/ray/raylet/scheduling/internal.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
         "//src/ray/protobuf:node_manager_cc_proto",
     ],
 )
@@ -1041,8 +1254,9 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/cluster_resource_manager.h"],
     deps = [
         ":local_resource_manager",
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:logging",
@@ -1086,6 +1300,9 @@ ray_cc_library(
         ":scheduler_internal",
         ":scheduler_resource_reporter",
         ":stats_lib",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1105,9 +1322,8 @@ ray_cc_library(
     name = "local_task_manager_interface",
     hdrs = ["src/ray/raylet/scheduling/local_task_manager_interface.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduler_internal",
+        "//src/ray/common:task_common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1119,8 +1335,10 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/local_resource_manager.h"],
     deps = [
         ":gcs_client_lib",
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_syncer",
+        "//src/ray/common:task_common",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/util:logging",
@@ -1135,9 +1353,8 @@ ray_cc_library(
     srcs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.cc"],
     hdrs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduling_policy",
+        "//src/ray/common:task_common",
     ],
 )
 
@@ -1147,11 +1364,10 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.h"],
     deps = [
         ":cluster_resource_manager",
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduling_context",
         ":scheduling_policy",
         ":scorer",
+        "//src/ray/common:task_common",
     ],
 )
 
@@ -1225,10 +1441,7 @@ ray_cc_library(
     name = "scorer",
     srcs = ["src/ray/raylet/scheduling/policy/scorer.cc"],
     hdrs = ["src/ray/raylet/scheduling/policy/scorer.h"],
-    deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
-    ],
+    deps = ["//src/ray/common:task_common"],
 )
 
 ray_cc_library(
@@ -1237,9 +1450,9 @@ ray_cc_library(
     hdrs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.h"],
     deps = [
         ":local_task_manager_interface",
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduler_internal",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:task_common",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -1248,9 +1461,8 @@ ray_cc_library(
     name = "scheduling_policy",
     hdrs = ["src/ray/raylet/scheduling/policy/scheduling_policy.h"],
     deps = [
-        # TODO(Ziy1-Tan): replace it with sub-dependencies. Refer to https://github.com/ray-project/ray/issues/51677
-        ":ray_common",
         ":scheduling_options",
+        "//src/ray/common:task_common",
     ],
 )
 
@@ -1529,6 +1741,11 @@ ray_cc_library(
         ":stats_lib",
         ":thread_pool",
         ":worker_rpc",
+        "//src/ray/common/cgroup:base_cgroup_setup",
+        "//src/ray/common/cgroup:cgroup_context",
+        "//src/ray/common/cgroup:cgroup_manager",
+        "//src/ray/common/cgroup:constants",
+        "//src/ray/common/cgroup:scoped_cgroup_handle",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
         "//src/ray/util:container_util",
@@ -2343,6 +2560,7 @@ ray_cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
+        "//src/ray/common:test_util"
     ],
 )
 
@@ -2574,6 +2792,7 @@ ray_cc_test(
         ":gcs_server_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
+        "//src/ray/common:test_util",
     ],
 )
 
