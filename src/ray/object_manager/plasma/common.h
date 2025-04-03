@@ -60,7 +60,7 @@ struct Allocation {
   /// Pointer to the allocated memory.
   void *address;
   /// Num bytes of the allocated memory.
-  int64_t size;
+  size_t size;
   /// The file descriptor of the memory mapped file where the memory allocated.
   MEMFD_TYPE fd;
   /// The offset in bytes in the memory mapped file of the allocated memory.
@@ -68,7 +68,7 @@ struct Allocation {
   /// Device number of the allocated memory.
   int device_num;
   /// the total size of this mapped memory.
-  int64_t mmap_size;
+  size_t mmap_size;
   /// if it was fallback allocated.
   bool fallback_allocated;
 
@@ -80,11 +80,11 @@ struct Allocation {
  private:
   // Only created by Allocator
   Allocation(void *address,
-             int64_t size,
+             size_t size,
              MEMFD_TYPE fd,
              ptrdiff_t offset,
              int device_num,
-             int64_t mmap_size,
+             size_t mmap_size,
              bool fallback_allocated)
       : address(address),
         size(size),
