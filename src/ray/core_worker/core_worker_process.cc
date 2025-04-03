@@ -346,9 +346,8 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
       << "The `Shutdown` interface is for driver only.";
   auto global_worker = GetCoreWorker();
   RAY_CHECK(global_worker);
-  global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
-                            /*exit_detail*/ "Shutdown by ray.shutdown().");
-  global_worker->Shutdown();
+  global_worker->Exit(
+      rpc::WorkerExitType::INTENDED_USER_EXIT, "Shutdown by ray.shutdown().", nullptr);
   {
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get().reset();
