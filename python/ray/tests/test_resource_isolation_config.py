@@ -1,4 +1,6 @@
+import os
 import pytest
+import sys
 
 from ray._private import utils
 from ray._private.resource_isolation_config import ResourceIsolationConfig
@@ -220,3 +222,10 @@ def test_enabled_reserved_memory_less_than_minimum_raises_exception(monkeypatch)
             enable_resource_isolation=True,
             system_reserved_memory=system_reserved_memory,
         )
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
