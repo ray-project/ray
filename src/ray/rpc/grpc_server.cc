@@ -204,6 +204,14 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       continue;
     }
     auto *server_call = static_cast<ServerCall *>(tag);
+
+    const auto &factory = server_call->GetServerCallFactory();
+    // NOTE: For these handlers that have set it to -1, we set default (per
+    //       thread) buffer at 32, though it doesn't have any impact on concurrency
+    //       (since we're recreating new instance of `ServerCall` as soon as one
+    //       gets occupied therefore not serving as back-pressure mechanism)
+    const bool is_unbounded_rpc = factory.GetMaxActiveRPCs() == -1;
+
     bool delete_call = false;
     // A new call is needed after the server sends a reply, no matter the reply is
     // successful or failed.
@@ -211,6 +219,14 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
+        if (is_unbounded_rpc) {
+          // Create a new `ServerCall` to accept the next incoming request.
+          // We create this before handling the request only when no back pressure
+          // limit is set. So that the it can be populated by the completion queue
+          // in the background if a new request comes in.
+          factory.CreateCall();
+        }
+
         // We've received a new incoming request. Now this call object is used to
         // track this request.
         server_call->HandleRequest();
@@ -245,10 +261,11 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       // for more details.
       delete_call = true;
     }
+
     if (delete_call) {
-      if (need_new_call && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+      if (need_new_call && !is_unbounded_rpc) {
         // Create a new `ServerCall` to accept the next incoming request.
-        server_call->GetServerCallFactory().CreateCall();
+        factory.CreateCall();
       }
       delete server_call;
     }
