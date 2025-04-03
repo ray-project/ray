@@ -100,12 +100,14 @@ void LogPidsInsideOfCgroup(const std::string &proc_filepath) {
 
 Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   std::ifstream in_file(from.data());
-  RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << to;
+  RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << from;
   std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << from;
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << to;
 
   pid_t pid = 0;
+  RAY_LOG(INFO) << "Before moving PID from " << from << " to " << to;
   while (in_file >> pid) {
+    RAY_LOG(INFO) << "Move PID " << pid << " from " << from << " to " << to;
     out_file << pid << std::endl;
   }
   out_file.flush();
