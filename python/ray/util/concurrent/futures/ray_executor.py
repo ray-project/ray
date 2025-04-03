@@ -387,10 +387,6 @@ class RayExecutor(Executor):
         The type of actor pool to use: either 'random' (which will assign tasks
         to randomly selected actors), or 'roundrobin' (which will simply assign
         tasks to actors sequentially.
-    futures : list[Future[Any]]
-        Aggregated Futures from initiated tasks
-    actor_pool : _AbstractActorPool
-        A container of Actor objects over which the tasks will be distributed.
 
     All additional keyword arguments are passed to ray.init()
     (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
@@ -403,8 +399,10 @@ class RayExecutor(Executor):
     Note: excluding an address will initialise a local Ray cluster.
     """
 
+    #: Aggregated Futures from initiated tasks.
     futures: list[Future[Any]]
-    actor_pool: _AbstractActorPool  #: :no-index:
+    #: A container of Actor objects over which the tasks will be distributed.
+    actor_pool: _AbstractActorPool
 
     def __init__(
         self,
