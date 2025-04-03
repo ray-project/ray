@@ -25,7 +25,7 @@ CgroupSetup::CgroupSetup() {
   RAY_UNUSED(cgroup_v2_default_app_proc_filepath_);
   RAY_UNUSED(cgroup_v2_system_folder_);
   RAY_UNUSED(cgroup_v2_system_proc_filepath_);
-  RAY_UNUSED(cgroup_v2_folder_);
+  RAY_UNUSED(node_cgroup_v2_folder_);
 }
 Status CgroupSetup::AddSystemProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
@@ -221,15 +221,16 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
   // Cgroup folders for the current ray node.
-  cgroup_v2_folder_ = ray::JoinPaths(directory, absl::StrFormat("ray_node_%s", node_id));
-  root_cgroup_procs_filepath_ = ray::JoinPaths(cgroup_v2_folder_, kProcFilename);
+  node_cgroup_v2_folder_ =
+      ray::JoinPaths(directory, absl::StrFormat("ray_node_%s", node_id));
+  root_cgroup_procs_filepath_ = ray::JoinPaths(directory, kProcFilename);
   root_cgroup_subtree_control_filepath_ =
-      ray::JoinPaths(cgroup_v2_folder_, kSubtreeControlFilename);
-  cgroup_v2_app_folder_ = ray::JoinPaths(cgroup_v2_folder_, "ray_application");
+      ray::JoinPaths(node_cgroup_v2_folder_, kSubtreeControlFilename);
+  cgroup_v2_app_folder_ = ray::JoinPaths(node_cgroup_v2_folder_, "ray_application");
   cgroup_v2_default_app_folder_ = ray::JoinPaths(cgroup_v2_app_folder_, "default");
   cgroup_v2_default_app_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_default_app_folder_, kProcFilename);
-  cgroup_v2_system_folder_ = ray::JoinPaths(cgroup_v2_folder_, "system");
+  cgroup_v2_system_folder_ = ray::JoinPaths(node_cgroup_v2_folder_, "system");
   cgroup_v2_system_proc_filepath_ =
       ray::JoinPaths(cgroup_v2_system_folder_, kProcFilename);
   const std::string cgroup_v2_app_subtree_control =
@@ -238,7 +239,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_system_folder_, kProcFilename);
 
   // Create subcgroup for current node.
-  RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_folder_));
+  RAY_RETURN_NOT_OK(internal::MakeDirectory(node_cgroup_v2_folder_));
 
   // Create the system cgroup.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_system_folder_));
@@ -255,7 +256,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // ray processes into system cgroup.
   RAY_ASSIGN_OR_RETURN(const bool is_root_cgroup, IsRootCgroup(directory));
   if (!is_root_cgroup) {
-    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_folder_,
+    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_,
                                               /*to=*/cgroup_v2_system_proc_filepath_));
   }
   RAY_LOG(INFO) << "Directory is root cgroup: " << is_root_cgroup;
@@ -263,10 +264,11 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   auto status = EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_);
   if (!status.ok()) {
     LogPidsInsideOfCgroup("/sys/fs/cgroup/cgroup.procs");
-    LogPidsInsideOfCgroup(cgroup_v2_folder_ + "/cgroup.procs");
-    LogPidsInsideOfCgroup(cgroup_v2_folder_ + "/ray_application/cgroup.procs");
-    LogPidsInsideOfCgroup(cgroup_v2_folder_ + "/ray_application/default/cgroup.procs");
-    LogPidsInsideOfCgroup(cgroup_v2_folder_ + "/system/cgroup.procs");
+    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/cgroup.procs");
+    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/ray_application/cgroup.procs");
+    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ +
+                          "/ray_application/default/cgroup.procs");
+    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/system/cgroup.procs");
   }
   RAY_RETURN_NOT_OK(status);
 

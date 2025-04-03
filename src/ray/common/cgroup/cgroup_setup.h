@@ -105,7 +105,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // File path for cgroup v2 internal process pids.
   std::string cgroup_v2_system_proc_filepath_;
   // Cgroup folder for the current ray node.
-  std::string cgroup_v2_folder_;
+  std::string node_cgroup_v2_folder_;
 };
 
 }  // namespace ray
