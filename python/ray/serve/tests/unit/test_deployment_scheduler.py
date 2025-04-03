@@ -433,6 +433,30 @@ def test_best_fit_node():
         },
     )
 
+    # Custom resource prioritization: customx is more important than customy
+    os.environ["RAY_SERVE_CUSTOM_RESOURCES"] = "customx,customy"
+    original = Resources.CUSTOM_PRIORITY
+    Resources.CUSTOM_PRIORITY = ["customx", "customy"]
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=Resources(customx=1, customy=1),
+        available_resources={
+            "node1": Resources(customx=2, customy=5),
+            "node2": Resources(customx=2, customy=1),
+        },
+    )
+
+    # If customx and customy are equal, GPU should determine best fit
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=Resources(customx=1, customy=1, GPU=1),
+        available_resources={
+            "node1": Resources(customx=2, customy=2, GPU=10),
+            "node2": Resources(customx=2, customy=2, GPU=2),
+        },
+    )
+
+    # restore
+    Resources.CUSTOM_PRIORITY = original
+
 
 def test_schedule_replica():
     """Test DeploymentScheduler._schedule_replica()"""

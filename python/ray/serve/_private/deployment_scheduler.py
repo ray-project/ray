@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -38,6 +39,10 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    # Custom resource priority from environment variable
+    CUSTOM_PRIORITY = [
+        r for r in os.environ.get("RAY_SERVE_CUSTOM_RESOURCES", "").split(",") if r
+    ]
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
@@ -77,18 +82,23 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. GPU
-        2. CPU
-        3. memory
-        4. custom resources
-        This means a resource with a larger number of GPUs is always
-        sorted higher than a resource with a smaller number of GPUs,
-        regardless of the values of the other resource types. Similarly
-        for CPU next, memory next, etc.
+        1. Custom resources defined in RAY_SERVE_CUSTOM_RESOURCES (in order)
+        2. GPU
+        3. CPU
+        4. memory
+        5. Other custom resources
+        This means a resource with a larger number of high-priority resources is always
+        sorted higher than one with fewer, regardless of other types.
         """
 
         keys = set(self.keys()) | set(other.keys())
-        keys = keys - {"GPU", "CPU", "memory"}
+        custom_keys = keys - {"GPU", "CPU", "memory"}
+
+        for key in self.CUSTOM_PRIORITY:
+            if self.get(key) < other.get(key):
+                return True
+            elif self.get(key) > other.get(key):
+                return False
 
         if self.get("GPU") < other.get("GPU"):
             return True
@@ -105,7 +115,7 @@ class Resources(dict):
         elif self.get("memory") > other.get("memory"):
             return False
 
-        for key in keys:
+        for key in custom_keys - set(self.CUSTOM_PRIORITY):
             if self.get(key) < other.get(key):
                 return True
             elif self.get(key) > other.get(key):
