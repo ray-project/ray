@@ -53,9 +53,9 @@ class Cgroupv2SetupTest : public ::testing::Test {
   Cgroupv2SetupTest()
       : node_id_("node_id"),
         node_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id"),
-        internal_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/internal"),
-        internal_cgroup_proc_filepath_(
-            "/sys/fs/cgroup/ray_node_node_id/internal/cgroup.procs"),
+        system_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/system"),
+        system_cgroup_proc_filepath_(
+            "/sys/fs/cgroup/ray_node_node_id/system/cgroup.procs"),
         app_cgroup_folder_("/sys/fs/cgroup/ray_node_node_id/ray_application"),
         app_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
@@ -71,8 +71,8 @@ class Cgroupv2SetupTest : public ::testing::Test {
  protected:
   const std::string node_id_;
   const std::string node_cgroup_folder_;
-  const std::string internal_cgroup_folder_;
-  const std::string internal_cgroup_proc_filepath_;
+  const std::string system_cgroup_folder_;
+  const std::string system_cgroup_proc_filepath_;
   const std::string app_cgroup_folder_;
   const std::string app_cgroup_proc_filepath_;
 };
@@ -80,9 +80,9 @@ class Cgroupv2SetupTest : public ::testing::Test {
 TEST_F(Cgroupv2SetupTest, SetupTest) {
   CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
 
-  // Check internal cgroup is created successfully.
+  // Check system cgroup is created successfully.
   std::error_code err_code;
-  bool exists = std::filesystem::exists(internal_cgroup_folder_, err_code);
+  bool exists = std::filesystem::exists(system_cgroup_folder_, err_code);
   ASSERT_FALSE(err_code);
   ASSERT_TRUE(exists);
 
@@ -100,7 +100,7 @@ TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
 
   // Child process.
   if (pid == 0) {
-    // Spawn a process running long enough, so it could be added into internal cgroup.
+    // Spawn a process running long enough, so it could be added into system cgroup.
     // It won't affect test runtime, because it will be killed later.
     std::this_thread::sleep_for(std::chrono::seconds(3600));
     // Exit without flushing the buffer.
@@ -108,10 +108,10 @@ TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
   }
 
   RAY_ASSERT_OK(cgroup_setup.AddSystemProcess(pid));
-  AssertPidInCgroup(pid, internal_cgroup_proc_filepath_);
+  AssertPidInCgroup(pid, system_cgroup_proc_filepath_);
 
   // Kill testing process.
-  RAY_ASSERT_OK(KillAllProcAndWait(internal_cgroup_folder_));
+  RAY_ASSERT_OK(KillAllProcAndWait(system_cgroup_folder_));
 }
 
 TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
@@ -122,7 +122,7 @@ TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
 
   // Child process.
   if (pid == 0) {
-    // Spawn a process running long enough, so it could be added into internal cgroup.
+    // Spawn a process running long enough, so it could be added into system cgroup.
     // It won't affect test runtime, because it will be killed later.
     std::this_thread::sleep_for(std::chrono::seconds(3600));
     // Exit without flushing the buffer.
