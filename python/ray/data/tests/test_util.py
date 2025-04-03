@@ -41,9 +41,30 @@ def test_cached_remote_fn():
 
 def test_null_sentinel():
     """Check that NULL_SENTINEL sorts greater than any other value."""
+
+    assert NULL_SENTINEL != NULL_SENTINEL
+    assert NULL_SENTINEL < NULL_SENTINEL
+    assert NULL_SENTINEL <= NULL_SENTINEL
+    assert not NULL_SENTINEL > NULL_SENTINEL
+    assert not NULL_SENTINEL >= NULL_SENTINEL
+
+    # With NoneType
+    assert None > NULL_SENTINEL
+    assert None >= NULL_SENTINEL
+    assert NULL_SENTINEL < None
+    assert NULL_SENTINEL <= None
+    assert NULL_SENTINEL != None  # noqa: E711
+
+    # With np.nan
+    assert np.nan > NULL_SENTINEL
+    assert np.nan >= NULL_SENTINEL
+    assert NULL_SENTINEL < np.nan
+    assert NULL_SENTINEL <= np.nan
+    assert NULL_SENTINEL != np.nan
+
+    # Rest
     assert NULL_SENTINEL > 1000
     assert NULL_SENTINEL > "abc"
-    assert NULL_SENTINEL == NULL_SENTINEL
     assert NULL_SENTINEL != 1000
     assert NULL_SENTINEL != "abc"
     assert not NULL_SENTINEL < 1000

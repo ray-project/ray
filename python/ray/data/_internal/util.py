@@ -68,17 +68,28 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-class _NullSentinel:
-    """Sentinel value that sorts greater than any other value."""
+class _OrderedNullSentinel:
+    """Sentinel value that sorts greater than any other non-null value.
+
+    NOTE: Semantic of this sentinel is closely mirroring that one of
+          ``np.nan`` for the purpose of consistency in handling of
+          ``None``s and ``np.nan``s.
+    """
 
     def __eq__(self, other):
-        return isinstance(other, _NullSentinel)
-
-    def __lt__(self, other):
         return False
 
+    def __lt__(self, other):
+        # not None < _OrderedNullSentinel
+        # _OrderedNullSentinel < _OrderedNullSentinel
+        # _OrderedNullSentinel < None
+        # _OrderedNullSentinel < np.nan
+        return isinstance(other, _OrderedNullSentinel) or is_null(other)
+
     def __le__(self, other):
-        return isinstance(other, _NullSentinel)
+        # NOTE: This is just a shortened version of
+        #   self < other or self == other
+        return self.__lt__(other)
 
     def __gt__(self, other):
         return not self.__le__(other)
@@ -90,7 +101,7 @@ class _NullSentinel:
         return id(self)
 
 
-NULL_SENTINEL = _NullSentinel()
+NULL_SENTINEL = _OrderedNullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
