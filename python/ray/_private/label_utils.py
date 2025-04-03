@@ -5,12 +5,19 @@ from typing import Dict
 import ray._private.ray_constants as ray_constants
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
+# https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+
+# Regex for mandatory name (DNS label) or value
+# Examples:
+#   Valid matches: "a", "label-name", "a-._b", "123", "this_is_a_valid_label"
+#   Invalid matches: "-abc", "abc-", "my@label", "a" * 64
+LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
+
 # Regex for optional prefix (DNS subdomain)
-LABEL_PREFIX_REGEX = (
-    r"^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)$"
-)
-# Regex for mandatory name (label key without prefix) or value
-LABEL_REGEX = r"^[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?$"
+# Examples:
+#   Valid matches: "abc", "sub.domain.example", "my-label", "123.456.789"
+#   Invalid matches: "-abc", "prefix_", "sub..domain", sub.$$.example
+LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
 
 def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
