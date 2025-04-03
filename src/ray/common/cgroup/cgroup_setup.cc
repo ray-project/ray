@@ -177,8 +177,8 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP (in_file.good())
-           << "Failed to open cgroup file " << subtree_control_path;
+  RAY_SCHECK_OK_CGROUP(in_file.good())
+      << "Failed to open cgroup file " << subtree_control_path;
 
   std::string content((std::istreambuf_iterator<char>(in_file)),
                       std::istreambuf_iterator<char>());
