@@ -238,7 +238,8 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // all processes (including operating system processes) into system cgroup, because
   // only leaf cgroups can contain processes for cgroupv2. Otherwise we only move known
   // ray processes into system cgroup.
-  if (!IsRootCgroup(directory)) {
+  RAY_ASSIGN_OR_RETURN(const bool is_root_cgroup, IsRootCgroup(directory));
+  if (!is_root_cgroup) {
     RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_,
                                               /*to=*/cgroup_v2_system_proc_filepath_));
   }
