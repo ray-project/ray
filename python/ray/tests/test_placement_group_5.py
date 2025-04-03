@@ -653,18 +653,19 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
     )
 
 
-# Test deleting a detached-pg created by other jobs.
+# Test deleting a pg with pending actor.
 # details: https://github.com/ray-project/ray/pull/51125
 # Specific test steps:
-#   1. Launch a detached placement group with only 1 bundle.
-#   2. Create two detached actors using the aforementioned pg. At this point,
+#   1. Launch a placement group with only 1 bundle.
+#   2. Create two actors using the aforementioned pg. At this point,
 #      the latter actor will definitely be pending in scheduling due to insufficient pg
 #      bundle resources.
-#   3. Use ray.shutdown and ray.init to transform the current process into the
-#      driver of another ray-job.
-#   4. Remove the pg while one actor is pending in scheduling. Before the current PR,
+#   3. Remove the pg while one actor is pending in scheduling. Before the current PR,
 #      the observed phenomenon will be that the raylet crashes due to a failed check.
-def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
+@pytest.mark.parametrize("lifetime", [None, "detached"])
+def test_remove_placement_group_with_actor_waiting_on_resource(
+    ray_start_cluster, lifetime
+):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -672,7 +673,7 @@ def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
 
     pg = ray.util.placement_group(
         [{"CPU": 1}],
-        lifetime="detached",
+        lifetime=lifetime,
         name="test",
     )
 
@@ -682,7 +683,7 @@ def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
             return os.getppid()
 
     actor = Actor.options(
-        lifetime="detached",
+        lifetime=lifetime,
         num_cpus=1.0,
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=pg, placement_group_bundle_index=0
@@ -692,7 +693,7 @@ def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
     raylet = psutil.Process(ray.get(actor.get_raylet_pid.remote()))
 
     _ = Actor.options(
-        lifetime="detached",
+        lifetime=lifetime,
         num_cpus=1.0,
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=pg, placement_group_bundle_index=0
@@ -701,11 +702,8 @@ def test_remove_detached_placement_group_cross_ray_job(ray_start_cluster):
 
     assert raylet.is_running()
 
-    ray.shutdown()
-
-    # In a new ray-job.
-    ray.init(address=cluster.address, namespace="test")
-    pg = ray.util.get_placement_group("test")
+    # make sure the new actor on raylet pending queue.
+    time.sleep(5)
     ray.util.remove_placement_group(pg)
 
     # Ensure GCS finish remove pg.
