@@ -143,7 +143,6 @@ class JSONDatasource(FileBasedDatasource):
             try:
                 yield from self._read_with_pyarrow_read_json(buffer)
             except pa.ArrowInvalid as e:
-                # If read with PyArrow fails, try falling back to native json.load().
                 logger.warning(
                     f"Error reading with pyarrow.json.read_json(). "
                     f"Falling back to native json.load(), which may be slower. "
@@ -152,29 +151,26 @@ class JSONDatasource(FileBasedDatasource):
                 yield from self._read_with_python_json(buffer)
 
         is_jsonl = path.endswith(".jsonl")
+
         if is_jsonl:
             buffer_size = DataContext.get_current().target_max_block_size
-            buffer = bytearray()
-            partial_line = ""
+            partial_line = b""
 
             while True:
                 chunk = f.read(buffer_size)
                 if not chunk:
-                    if partial_line:
-                        buffer.extend(partial_line.encode("utf-8"))
-                        yield from _try_read_json(pa.py_buffer(buffer))
                     break
 
-                lines = chunk.decode("utf-8").split("\n")
-                lines[0] = partial_line + lines[0]
+                data = partial_line + chunk
+                lines = data.split(b"\n")
                 partial_line = lines.pop()
 
                 for line in lines:
-                    buffer.extend((line + "\n").encode("utf-8"))
+                    yield from _try_read_json(pa.py_buffer(line))
 
-                if buffer:
-                    yield from _try_read_json(pa.py_buffer(buffer))
-                    buffer.clear()
+            if partial_line.strip():
+                yield from _try_read_json(pa.py_buffer(partial_line))
+
         else:
-            buffer: pa.lib.Buffer = f.read_buffer()
+            buffer = f.read_buffer()
             yield from _try_read_json(buffer)
