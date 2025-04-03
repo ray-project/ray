@@ -276,7 +276,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // only leaf cgroups can contain processes for cgroupv2. Otherwise we only move known
   // ray processes into system cgroup.
   if (!IsRootCgroup(directory)) {
-    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
+    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_,
                                               /*to=*/cgroup_v2_system_proc_filepath_));
   }
 
@@ -293,7 +293,7 @@ Status CgroupSetup::CleanupCgroups() {
 
   // Move all internal processes into root cgroup and delete system cgroup.
   RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_system_folder_,
-                                            /*to=*/root_cgroup_procs_filepath_.data()));
+                                            /*to=*/root_cgroup_procs_filepath_));
 
   // Cleanup all ray application cgroup folders.
   std::error_code err_code;
