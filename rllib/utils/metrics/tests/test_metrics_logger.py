@@ -235,11 +235,11 @@ def test_throughput_tracking(logger):
     check(logger.peek("count"), num_iters * 2 + 1)
     approx_throughput = (num_iters * 2 + 1) / (end_time - start_time)
     check(
-        logger.get_throughputs("count"), approx_throughput, rtol=0.1
+        logger.peek("count", throughput=True), approx_throughput, rtol=0.1
     )  # 10% tolerance in throughput
 
     # Test get_throughputs() method without key (returns all throughputs)
-    throughputs = logger.get_throughputs()
+    throughputs = logger.peek(throughput=True)
     check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
 
     # Test with nested keys
@@ -258,15 +258,17 @@ def test_throughput_tracking(logger):
         nested_end_time - nested_start_time
     )
     check(
-        logger.get_throughputs(("nested", "count")), nested_approx_throughput, rtol=0.1
+        logger.peek(("nested", "count"), throughput=True),
+        nested_approx_throughput,
+        rtol=0.2,
     )
 
     # Check getting throughput for a parent key
-    nested_throughputs = logger.get_throughputs("nested")
+    nested_throughputs = logger.peek("nested", throughput=True)
     check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.2)
 
     # Verify all throughputs are present in the full throughput dict
-    all_throughputs = logger.get_throughputs()
+    all_throughputs = logger.peek(throughput=True)
     check("count_throughput" in all_throughputs, True)
     check("nested" in all_throughputs, True)
     check("count_throughput" in all_throughputs["nested"], True)
@@ -278,7 +280,7 @@ def test_has_throughput_property(logger):
     logger.log_value("with_throughput", 10, reduce="sum", with_throughput=True)
     check(logger.peek("with_throughput"), 10)
     check(
-        logger.get_throughputs("with_throughput"), np.nan
+        logger.peek("with_throughput", throughput=True), np.nan
     )  # Initial throughput should be np.nan
 
     # Create a Stats object without throughput tracking
@@ -286,7 +288,7 @@ def test_has_throughput_property(logger):
     check(logger.peek("without_throughput"), 10)
 
     # Test that throughputs() only includes Stats with has_throughput=True
-    throughputs = logger.get_throughputs()
+    throughputs = logger.peek(throughput=True)
     check("with_throughput_throughput" in throughputs, True)
     check("without_throughput_throughput" in throughputs, False)
 

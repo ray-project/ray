@@ -153,12 +153,19 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...], None] = None,
         default=None,
         compile: bool = True,
+        throughput: bool = False,
     ) -> Any:
         """Returns the reduced values found in this MetricsLogger.
 
         Note that calling this method does NOT cause an actual underlying value list
         reduction, even though reduced values are being returned. It'll keep all
         internal structures as-is.
+
+        Args:
+            key: The key to peek at.
+            default: The default value to return if the key is not found.
+            compile: If True, the result is compiled into a single value if possible.
+            throughput: If True, the throughput is returned.
 
         .. testcode::
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -193,6 +200,9 @@ class MetricsLogger:
             The (reduced) values of the (possibly nested) sub-structure found under
             the given key or key sequence.
         """
+        if throughput:
+            return self.get_throughputs(key=key, default=default)
+
         # Create a reduced view of the entire stats structure.
         def _nested_peek(stats):
             return tree.map_structure(

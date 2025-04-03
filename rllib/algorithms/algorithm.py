@@ -1340,12 +1340,13 @@ class Algorithm(Checkpointable, Trainable):
                             (train_mean_time - (time.time() - t0))
                             # Multiply by our own (eval) throughput to get the timesteps
                             # to do (per worker).
-                            * self.metrics.get_throughputs(
+                            * self.metrics.peek(
                                 (
                                     EVALUATION_RESULTS,
                                     ENV_RUNNER_RESULTS,
                                     NUM_ENV_STEPS_SAMPLED_LIFETIME,
                                 ),
+                                throughput=True,
                                 default=0.0,
                             )
                             / num_healthy_workers
