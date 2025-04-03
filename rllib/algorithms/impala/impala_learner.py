@@ -73,7 +73,7 @@ class IMPALALearner(Learner):
         # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
-        #self._gpu_loader_in_queue = queue.Queue()
+        self._gpu_loader_in_queue = queue.Queue()
 
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
@@ -85,29 +85,29 @@ class IMPALALearner(Learner):
         # # self._learner_thread_out_queue = deque(maxlen=1)
 
         # Create and start the GPU loader thread(s).
-        #if self.config.num_gpus_per_learner > 0:
-        #    self._gpu_loader_threads = [
-        #        _GPULoaderThread(
-        #            in_queue=self._gpu_loader_in_queue,
-        #            out_queue=self._learner_thread_in_queue,
-        #            device=self._device,
-        #            metrics_logger=self.metrics,
-        #        )
-        #        for _ in range(self.config.num_gpu_loader_threads)
-        #    ]
-        #    for t in self._gpu_loader_threads:
-        #        t.start()
+        if self.config.num_gpus_per_learner > 0:
+            self._gpu_loader_threads = [
+                _GPULoaderThread(
+                    in_queue=self._gpu_loader_in_queue,
+                    out_queue=self._learner_thread_in_queue,
+                    device=self._device,
+                    metrics_logger=self.metrics,
+                )
+                for _ in range(self.config.num_gpu_loader_threads)
+            ]
+            for t in self._gpu_loader_threads:
+                t.start()
 
         # Create and start the Learner thread.
-        #self._learner_thread = _LearnerThread(
-        #    update_method=Learner.update,
-        #    in_queue=self._learner_thread_in_queue,
-        #    # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
-        #    #  metrics each 20 updates" logic right now.
-        #    # out_queue=self._learner_thread_out_queue,
-        #    learner=self,
-        #)
-        #self._learner_thread.start()
+        self._learner_thread = _LearnerThread(
+            update_method=Learner.update,
+            in_queue=self._learner_thread_in_queue,
+            # TODO (sven): Figure out a way to use a results queue instaad of the "reduce
+            #  metrics each 20 updates" logic right now.
+            # out_queue=self._learner_thread_out_queue,
+            learner=self,
+        )
+        self._learner_thread.start()
 
     @override(Learner)
     def update(

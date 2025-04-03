@@ -6,12 +6,13 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 @ray.remote
 class BatchDispatcher:
-    def __init__(self):
-
+    def __init__(self, sync_freq):
         self._learners = []
-        self._batch_refs = []
+        self._batch_refs = None
         self._total_timesteps = 0
         self._learner_idx = 0
+        self._updates = 0
+        self.sync_freq = sync_freq
 
     def sync(self):
         return None
@@ -19,20 +20,39 @@ class BatchDispatcher:
     def set_other_actors(self, *, metrics_actor, learners):
         self._metrics_actor = metrics_actor
         self._learners = learners
+        self._batch_refs = {i: [] for i in range(len(self._learners))}
 
-    def add_batch(self, batch_ref):
+    def add_batch(self, batch_ref, learner_idx: int):
         assert isinstance(batch_ref["batch"], ray.ObjectRef)
-        self._batch_refs.append(batch_ref["batch"])
 
-        while len(self._batch_refs) >= len(self._learners):
-            for idx, learner in enumerate(self._learners):
+        # No Learners set yet, just return.
+        if not self._learners:
+            return
+
+        self._batch_refs[learner_idx].append(batch_ref["batch"])
+
+        #print(f"DISPATCH: Received batch for learner {learner_idx}")
+
+        # Call `update`, while we have at least one batch ref per Learner.
+        while all(br for br in self._batch_refs.values()):
+            #print("DISPATCH: Calling all learners ...")
+            call_refs = [
                 learner.update.remote(
-                    self._batch_refs.pop(0),
+                    self._batch_refs[idx].pop(0),
                     self._total_timesteps,
                     send_weights=(idx == self._learner_idx),
-                )
+                ) for idx, learner in enumerate(self._learners)
+            ]
+            if self._updates % self.sync_freq == 0:
+                #print(f"DISPATCH: Trying to sync with learner {self._learner_idx} ...")
+                ray.get(call_refs[self._learner_idx])
+                #print(f"DISPATCH: Done synching")
+
             self._learner_idx += 1
             self._learner_idx %= len(self._learners)
+            self._updates += 1
+
+        #print("DISPATCH: Done dispatching")
 
 
 @ray.remote
@@ -71,7 +91,6 @@ class MetricsActor:
         return metrics
 
 
-
 @ray.remote
 class WeightsServerActor:
     """A simple weights (reference) server actor to distribute model weights.
@@ -101,5 +120,3 @@ class WeightsServerActor:
     def get(self) -> Dict[str, ray.ObjectRef]:
         """Returns the current weights ray reference."""
         return self._weights_ref
-
-
