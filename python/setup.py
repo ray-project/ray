@@ -393,7 +393,6 @@ if setup_spec.type == SetupType.RAY:
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
-        "frozenlist",
         "requests",
     ]
 

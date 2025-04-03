@@ -606,7 +606,6 @@ autodoc_mock_imports = [
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",

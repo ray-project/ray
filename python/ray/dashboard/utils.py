@@ -17,7 +17,6 @@ from enum import IntEnum
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
-from frozenlist import FrozenList  # noqa: F401
 from packaging.version import Version
 
 import ray

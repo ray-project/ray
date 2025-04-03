@@ -783,7 +783,6 @@ frozenlist==1.4.1 \
     --hash=sha256:fe1a06da377e3a1062ae5fe0926e12b84eceb8a50b350ddca72dc85015873f74
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   -r python/requirements.txt
     #   aiohttp
     #   aiosignal
     #   ray
