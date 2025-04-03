@@ -6,6 +6,7 @@ import os
 from typing import Optional, Union
 import multidict
 
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.subprocesses.module import (
@@ -138,7 +139,13 @@ class SubprocessModuleHandle:
         Wait for the module to be ready. This is called after start_module()
         and can be blocking.
         """
-        self.process_ready_event.wait()
+        if not self.process_ready_event.wait(
+            dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT
+        ):
+            raise RuntimeError(
+                f"Module {self.module_cls.__name__} failed to start. "
+                f"Timeout after {dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT} seconds."
+            )
 
         module_name = self.module_cls.__name__
         if sys.platform == "win32":

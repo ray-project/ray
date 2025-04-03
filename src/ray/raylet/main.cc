@@ -24,6 +24,7 @@
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/cgroup/cgroup_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -88,10 +89,12 @@ DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.")
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
-DEFINE_bool(enable_physical_mode,
+// TODO(hjiang): At the moment only enablement flag is added, I will add other flags for
+// CPU and memory resource reservation in the followup PR.
+DEFINE_bool(enable_resource_isolation,
             false,
-            "Whether physical mode is enaled, which applies constraint to tasks' "
-            "resource consumption.");
+            "Enable resource isolation through cgroupv2 by reserving resources for ray "
+            "system processes.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -207,7 +210,6 @@ int main(int argc, char *argv[]) {
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
-  const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
@@ -226,14 +228,13 @@ int main(int argc, char *argv[]) {
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
-  // Setup cgroup preparation if specified.
-  // TODO(hjiang): Depends on
-  // - https://github.com/ray-project/ray/pull/48833, which checks cgroup V2 availability.
-  // - https://github.com/ray-project/ray/pull/48828, which sets up cgroup preparation for
-  // cgroup related operations.
+  // Get cgroup setup instance and perform necessary resource setup.
+  ray::GetCgroupSetup(FLAGS_enable_resource_isolation);
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
+  node_manager_config.enable_resource_isolation = FLAGS_enable_resource_isolation;
+
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
   SetThreadName("raylet");
@@ -415,7 +416,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
-        node_manager_config.temp_dir = temp_dir;
         node_manager_config.log_dir = log_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;

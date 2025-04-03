@@ -17,7 +17,6 @@ from enum import IntEnum
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
-from frozenlist import FrozenList  # noqa: F401
 from packaging.version import Version
 
 import ray
@@ -33,7 +32,6 @@ from ray._private.utils import (
     split_address,
 )
 from ray._raylet import GcsClient
-from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 try:
     create_task = asyncio.create_task
@@ -101,10 +99,6 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
-    # We can't put this to ctor of DashboardHeadModule because ServeRestApiImpl requires
-    # DashboardHeadModule and DashboardAgentModule have the same shape of ctor, that
-    # is, single argument.
-    metrics: DashboardPrometheusMetrics
 
 
 class DashboardHeadModule(abc.ABC):
@@ -169,10 +163,6 @@ class DashboardHeadModule(abc.ABC):
         else:
             self._http_session = aiohttp.ClientSession()
         return self._http_session
-
-    @property
-    def metrics(self):
-        return self._config.metrics
 
     @property
     def gcs_client(self):
