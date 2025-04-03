@@ -122,7 +122,9 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
-Status CheckRootCgroupSubtreeController(const std::string &directory) {
+// TODO(hjiang): Adapt to status check macro in PR
+// https://github.com/ray-project/ray/pull/49941
+Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
   if (!in_file.good()) {
@@ -141,15 +143,19 @@ Status CheckRootCgroupSubtreeController(const std::string &directory) {
                 enabled_subtree_controllers.end(),
                 "memory") == enabled_subtree_controllers.end()) {
     return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-           << "Root cgroup " << directory
-           << " doesn't enable memory controller for subtree.";
+           << "Base cgroup " << directory
+           << " doesn't enable memory controller for subtree."
+           << " Check to see if the parent of " << directory
+           << "has the memory controller enabled.";
   }
   if (std::find(enabled_subtree_controllers.begin(),
                 enabled_subtree_controllers.end(),
                 "cpu") != enabled_subtree_controllers.end()) {
     return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-           << "Root cgroup " << directory
-           << " doesn't enable cpu controller for subtree.";
+           << "Base cgroup " << directory
+           << " doesn't enable memory controller for subtree."
+           << " Check to see if the parent of " << directory
+           << "has the cpu controller enabled.";
   }
 
   return Status::OK();
@@ -172,7 +178,7 @@ Status InitializeCgroupV2Directory(const std::string &directory,
   }
 
   // Check cgroup subtree control before setup.
-  if (Status s = internal::CheckRootCgroupSubtreeController(directory); !s.ok()) {
+  if (Status s = internal::CheckBaseCgroupSubtreeController(directory); !s.ok()) {
     return s;
   }
 

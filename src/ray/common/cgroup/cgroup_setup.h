@@ -32,10 +32,10 @@ namespace internal {
 Status CheckCgroupV2MountedRW(const std::string &directory);
 
 // Checks whether root cgroupv2 (whether it's at host machine or inside of container) has
-// enabled memory and CPU subtree controller.
+// enabled memory and cpu subtree controller.
 //
 // \param directory: user provided mounted cgroupv2 directory.
-Status CheckRootCgroupSubtreeController(const std::string &directory);
+Status CheckBaseCgroupSubtreeController(const std::string &directory);
 
 }  // namespace internal
 

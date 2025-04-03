@@ -21,7 +21,7 @@ namespace ray {
 
 // A constant made for cgroup usage, which indicates no memory constraint.
 inline constexpr uint64_t kUnlimitedMemory = 0;
-// Subtree filename within a cgroup.
+// Subtree controller filename within a cgroup.
 inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
 
 }  // namespace ray
