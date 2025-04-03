@@ -135,4 +135,8 @@ sudo apt-get clean
 
 EOF
 
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:$LD_PRELOAD
+# ENV MALLOC_CONF="background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000,tcache:true,metadata_thp:auto,narenas:2"
+# ENV MALLOC_CONF="background_thread:true,dirty_decay_ms:60000,muzzy_decay_ms:60000,tcache:true,metadata_thp:auto,lg_chunk:22,narenas:256,tcache_max:65536"
+
 WORKDIR $HOME
