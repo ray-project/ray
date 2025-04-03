@@ -25,7 +25,7 @@ inline constexpr uint64_t kUnlimitedMemory = 0;
 // Subtree controller filename within a cgroup, which contains enabled controllers for
 // children cgroups.
 inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
-// Required controllers for ray physical mode execution.
+// Required cgroupv2 controllers for ray resource isolation.
 inline constexpr std::array<std::string_view, 2> kRequiredControllers = {"memory", "cpu"};
 
 }  // namespace ray
