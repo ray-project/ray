@@ -89,28 +89,14 @@ namespace {
   __RAY_SCHECK_OK_CGROUP(expr, RAY_UNIQUE_VARIABLE(cgroup_op))
 #endif
 
-void LogPidsInsideOfCgroup(const std::string &proc_filepath) {
-  RAY_LOG(INFO) << "Log PIDs inside of cgroup " << proc_filepath;
-  std::ifstream in_file(proc_filepath);
-  pid_t pid = 0;
-  while (in_file >> pid) {
-    RAY_LOG(INFO) << pid;
-  }
-}
-
 Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   std::ifstream in_file(from.data());
   RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << from;
   std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << to;
 
-  auto pids = ReadEntireFile(from);
-  RAY_LOG(INFO) << "Total PID contains |" << *pids << "|";
-
   pid_t pid = 0;
-  RAY_LOG(INFO) << "Before moving PID from " << from << " to " << to;
   while (in_file >> pid) {
-    RAY_LOG(INFO) << "Move PID " << pid << " from " << from << " to " << to;
     out_file << pid;
   }
   RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << to;
@@ -255,19 +241,8 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
     RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_,
                                               /*to=*/cgroup_v2_system_proc_filepath_));
   }
-  RAY_LOG(INFO) << "Directory is root cgroup: " << is_root_cgroup;
 
-  auto status = EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_);
-  if (!status.ok()) {
-    LogPidsInsideOfCgroup("/sys/fs/cgroup/cgroup.procs");
-    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/cgroup.procs");
-    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/ray_application/cgroup.procs");
-    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ +
-                          "/ray_application/default/cgroup.procs");
-    LogPidsInsideOfCgroup(node_cgroup_v2_folder_ + "/system/cgroup.procs");
-  }
-  RAY_RETURN_NOT_OK(status);
-
+  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_));
   return Status::OK();
 }
 
