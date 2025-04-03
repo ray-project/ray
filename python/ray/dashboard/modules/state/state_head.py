@@ -198,8 +198,6 @@ class StateHead(SubprocessModule, RateLimitedModule):
     async def get_logs(self, req: aiohttp.web.Request):
         """
         Fetches logs from the given criteria.
-        If an exception occurs, yields `[get_logs] Fetch log error`
-        with error message and closes the stream.
         """
         record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
