@@ -136,7 +136,8 @@ cdef class CoreWorker:
         object fd_to_cgname_dict
         object _task_id_to_future_lock
         dict _task_id_to_future
-        object event_loop_executor
+        object event_loop_executors
+        int next_executor_idx
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
