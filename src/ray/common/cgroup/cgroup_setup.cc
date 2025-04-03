@@ -111,9 +111,8 @@ Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   RAY_LOG(INFO) << "Before moving PID from " << from << " to " << to;
   while (in_file >> pid) {
     RAY_LOG(INFO) << "Move PID " << pid << " from " << from << " to " << to;
-    out_file << pid << std::endl;
+    out_file << pid;
   }
-  out_file.flush();
   RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << to;
 
   return Status::OK();
@@ -132,16 +131,10 @@ Status EnableCgroupSubtreeControl(const std::string &subtree_control_path) {
   out_file << "+memory";
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to write to cgroup file " << subtree_control_path;
-  out_file.flush();
-  RAY_SCHECK_OK_CGROUP(out_file.good())
-      << "Failed to flush cgroup file " << subtree_control_path;
 
   out_file << "+cpu";
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to write to cgroup file " << subtree_control_path;
-  out_file.flush();
-  RAY_SCHECK_OK_CGROUP(out_file.good())
-      << "Failed to flush cgroup file " << subtree_control_path;
 
   return Status::OK();
 }
@@ -316,8 +309,6 @@ Status CgroupSetup::AddSystemProcess(pid_t pid) {
       << "Failed to open file " << cgroup_v2_system_proc_filepath_;
 
   out_file << pid;
-  out_file.flush();
-
   RAY_SCHECK_OK_CGROUP(out_file.good())
       << "Failed to add " << pid << " into cgroup process file "
       << cgroup_v2_system_proc_filepath_;
@@ -332,7 +323,6 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
   std::ofstream out_file(cgroup_v2_default_app_proc_filepath_,
                          std::ios::app | std::ios::out);
   out_file << ctx.pid;
-  out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
                              << ctx.max_memory << " into cgroup folder";
 
