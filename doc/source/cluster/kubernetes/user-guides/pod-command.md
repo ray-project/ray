@@ -20,7 +20,6 @@ metadata:
   ...
 spec:
   headGroupSpec:
-    rayStartParams: {}
     # Pod template
     template:
       spec:
