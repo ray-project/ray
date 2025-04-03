@@ -777,12 +777,6 @@ def find_partition_index(
         if desired_val is None:
             desired_val = NULL_SENTINEL
 
-        # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # noqa: E711
-        if null_mask.any():
-            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
-            col_vals[null_mask] = NULL_SENTINEL
-
         prevleft = left
         if descending[i] is True:
             # ``np.searchsorted`` expects the array to be sorted in ascending
@@ -812,32 +806,8 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+
     return right if descending[0] is True else left
-
-
-def find_partitions(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Union[int, float]]],
-    sort_key: "SortKey",
-):
-    partitions = []
-
-    # For each boundary value, count the number of items that are less
-    # than it. Since the block is sorted, these counts partition the items
-    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-    # partition[i]. If `descending` is true, `boundaries` would also be
-    # in descending order and we only need to count the number of items
-    # *greater than* the boundary value instead.
-    bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
-    ]
-
-    last_idx = 0
-    for idx in bounds:
-        partitions.append(table[last_idx:idx])
-        last_idx = idx
-    partitions.append(table[last_idx:])
-    return partitions
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
