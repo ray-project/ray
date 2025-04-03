@@ -592,11 +592,35 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
                       [this, urls_to_delete = std::move(urls_to_delete), num_retries]() {
                         DeleteSpilledObjects(urls_to_delete, num_retries - 1);
                       },
-                      "LocaObjectManager.RetryDeleteSpilledObjects");
+                      "LocalObjectManager.RetryDeleteSpilledObjects");
                 }
               }
             });
       });
+}
+
+void LocalObjectManager::DestroyExternalStorage() {
+  io_worker_pool_.PopDeleteWorker([this](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::DestroyExternalStorageRequest request;
+    std::promise<ray::Status> promise;
+    io_worker->rpc_client()->DestroyExternalStorage(
+        request,
+        [this, io_worker, &promise](const ray::Status &status,
+                                    const rpc::DestroyExternalStorageReply &reply) {
+          io_worker_pool_.PushDeleteWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send destroy external storage request: "
+                           << status.ToString();
+          }
+          promise.set_value(status);
+        });
+    auto future = promise.get_future();
+    // TODO: make the timeout configurable
+    using namespace std::chrono_literals;
+    if (future.wait_for(10s) != std::future_status::ready) {
+      RAY_LOG(ERROR) << "Failed to destroy external storage within ";
+    }
+  });
 }
 
 void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
