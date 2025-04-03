@@ -1,8 +1,7 @@
 import collections
 import logging
-import os
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -21,14 +20,12 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import DynamicObjectRefGenerator
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -52,6 +49,9 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+# Represents a single column of the ``Block``
+BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
-DataBatchColumn = Union[
-    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
-]
+DataBatchColumn = Union[BlockColumn, np.ndarray]
 
 
 # A class type that implements __call__.
@@ -96,11 +94,6 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
-
-# TODO(ekl/chengsu): replace this with just
-# `DynamicObjectRefGenerator` once block splitting
-# is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
@@ -130,6 +123,8 @@ class BlockExecStats:
         wall_time_s: The wall-clock time it took to compute this block.
         cpu_time_s: The CPU time it took to compute this block.
         node_id: A unique id for the node that computed this block.
+        max_uss_bytes: An estimate of the maximum amount of physical memory that the
+            process was using while computing this block.
     """
 
     def __init__(self):
@@ -139,7 +134,7 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.rss_bytes: int = 0
+        self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -165,20 +160,20 @@ class _BlockExecStatsBuilder:
     """
 
     def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
 
     def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+        # Record end times.
+        end_time = time.perf_counter()
+        end_cpu = time.process_time()
 
+        # Build the stats.
         stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
-        process = psutil.Process(os.getpid())
-        stats.rss_bytes = int(process.memory_info().rss)
+        stats.start_time_s = self._start_time
+        stats.end_time_s = end_time
+        stats.wall_time_s = end_time - self._start_time
+        stats.cpu_time_s = end_cpu - self._start_cpu
 
         return stats
 
@@ -218,7 +213,7 @@ class BlockMetadata(BlockStats):
 
     def to_stats(self):
         return BlockStats(
-            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+            **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
     def __post_init__(self):
@@ -250,7 +245,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def slice(self, start: int, end: int, copy: bool) -> Block:
+    def slice(self, start: int, end: int, copy: bool = False) -> Block:
         """Return a slice of this block.
 
         Args:
@@ -537,15 +532,101 @@ class BlockAccessor:
             entries are 0 and ``len(array)`` respectively.
         """
 
-        if keys:
-            # Convert key columns to Numpy (to perform vectorized
-            # ops on them)
-            projected_block = self.to_numpy(keys)
+        if self.num_rows() == 0:
+            return np.array([], dtype=np.int32)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
 
-            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = self.to_numpy(keys)
 
-        # If no keys are specified, whole block is considered a single group
-        return np.array([0, self.num_rows()])
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+
+
+@DeveloperAPI(stability="beta")
+class BlockColumnAccessor:
+    """Provides vendor-neutral interface to apply common operations
+    to block's (Pandas/Arrow) columns"""
+
+    def __init__(self, col: BlockColumn):
+        self._column = col
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a count of the distinct values in the column"""
+        raise NotImplementedError()
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a sum of the values in the column"""
+        return NotImplementedError()
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a min of the values in the column"""
+        raise NotImplementedError()
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a max of the values in the column"""
+        raise NotImplementedError()
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a mean of the values in the column"""
+        raise NotImplementedError()
+
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        """Returns requested quantile of the given column"""
+        raise NotImplementedError()
+
+    def unique(self) -> BlockColumn:
+        """Returns new column holding only distinct values of the current one"""
+        raise NotImplementedError()
+
+    def flatten(self) -> BlockColumn:
+        """Flattens nested lists merging them into top-level container"""
+
+        raise NotImplementedError()
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        *,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+        as_py: bool = True,
+    ) -> Optional[U]:
+        """Returns a sum of diffs (from mean) squared for the column"""
+        raise NotImplementedError()
+
+    def to_pylist(self) -> List[Any]:
+        """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        """Converts block column into a representation compatible with Arrow"""
+        raise NotImplementedError()
+
+    @staticmethod
+    def for_column(col: BlockColumn) -> "BlockColumnAccessor":
+        """Create a column accessor for the given column"""
+        _check_pyarrow_version()
+
+        import pandas as pd
+        import pyarrow as pa
+
+        if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
+            from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+
+            return ArrowBlockColumnAccessor(col)
+        elif isinstance(col, pd.Series):
+            from ray.data._internal.pandas_block import PandasBlockColumnAccessor
+
+            return PandasBlockColumnAccessor(col)
+        else:
+            raise TypeError(
+                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
+                f"(got {type(col)})"
+            )
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:

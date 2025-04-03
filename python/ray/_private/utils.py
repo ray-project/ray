@@ -1,4 +1,3 @@
-import asyncio
 import binascii
 import random
 import string
@@ -20,7 +19,6 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
 from inspect import signature
 from pathlib import Path
@@ -33,7 +31,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    Coroutine,
     List,
     Mapping,
 )
@@ -71,7 +68,6 @@ win32_job = None
 win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
-_PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
@@ -352,7 +348,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
     """
@@ -1178,40 +1174,6 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
-
-
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1721,39 +1683,6 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
-    """Get a running async event loop if one exists, otherwise create one.
-
-    This function serves as a proxy for the deprecating get_event_loop().
-    It tries to get the running loop first, and if no running loop
-    could be retrieved:
-    - For python version <3.10: it falls back to the get_event_loop
-        call.
-    - For python version >= 3.10: it uses the same python implementation
-        of _get_event_loop() at asyncio/events.py.
-
-    Ideally, one should use high level APIs like asyncio.run() with python
-    version >= 3.7, if not possible, one should create and manage the event
-    loops explicitly.
-    """
-    vers_info = sys.version_info
-    if vers_info.major >= 3 and vers_info.minor >= 10:
-        # This follows the implementation of the deprecating `get_event_loop`
-        # in python3.10's asyncio. See python3.10/asyncio/events.py
-        # _get_event_loop()
-        try:
-            loop = asyncio.get_running_loop()
-            assert loop is not None
-            return loop
-        except RuntimeError as e:
-            # No running loop, relying on the error message as for now to
-            # differentiate runtime errors.
-            assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
-
-    return asyncio.get_event_loop()
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1767,90 +1696,6 @@ def get_entrypoint_name():
         return prefix + list2cmdline(curr.cmdline())
     except Exception:
         return "unknown"
-
-
-def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
-    """Add params to the provided url as query parameters.
-
-    If url already contains query parameters, they will be merged with params, with the
-    existing query parameters overriding any in params with the same parameter name.
-
-    Args:
-        url: The URL to add query parameters to.
-        params: The query parameters to add.
-
-    Returns:
-        URL with params added as query parameters.
-    """
-    # Unquote URL first so we don't lose existing args.
-    url = unquote(url)
-    # Parse URL.
-    parsed_url = urlparse(url)
-    # Merge URL query string arguments dict with new params.
-    base_params = params
-    params = dict(parse_qsl(parsed_url.query))
-    base_params.update(params)
-    # bool and dict values should be converted to json-friendly values.
-    base_params.update(
-        {
-            k: json.dumps(v)
-            for k, v in base_params.items()
-            if isinstance(v, (bool, dict))
-        }
-    )
-
-    # Convert URL arguments to proper query string.
-    encoded_params = urlencode(base_params, doseq=True)
-    # Replace query string in parsed URL with updated query string.
-    parsed_url = parsed_url._replace(query=encoded_params)
-    # Convert back to URL.
-    return urlunparse(parsed_url)
-
-
-def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
-    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
-    parameter. For pyarrow >= 9.0.0, this is required in order to allow
-    ``S3FileSystem.create_dir()`` to create S3 buckets.
-
-    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
-    the URI unchanged.
-
-    Args:
-        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
-
-    Returns:
-        A URI with the added allow_bucket_creation=true query parameter, if the provided
-        URI is an S3 URL; uri will be returned unchanged otherwise.
-    """
-    from packaging.version import parse as parse_version
-
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
-        return uri
-    parsed_uri = urlparse(uri)
-    if parsed_uri.scheme == "s3":
-        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
-    return uri
-
-
-def _get_pyarrow_version() -> Optional[str]:
-    """Get the version of the installed pyarrow package, returned as a tuple of ints.
-    Returns None if the package is not found.
-    """
-    global _PYARROW_VERSION
-    if _PYARROW_VERSION is None:
-        try:
-            import pyarrow
-        except ModuleNotFoundError:
-            # pyarrow not installed, short-circuit.
-            pass
-        else:
-            if hasattr(pyarrow, "__version__"):
-                _PYARROW_VERSION = pyarrow.__version__
-    return _PYARROW_VERSION
 
 
 class DeferSigint(contextlib.AbstractContextManager):
@@ -1920,38 +1765,6 @@ class DeferSigint(contextlib.AbstractContextManager):
             # If exception was raised in context, returning False will cause it to be
             # reraised.
             return False
-
-
-background_tasks = set()
-
-
-def run_background_task(coroutine: Coroutine) -> asyncio.Task:
-    """Schedule a task reliably to the event loop.
-
-    This API is used when you don't want to cache the reference of `asyncio.Task`.
-    For example,
-
-    ```
-    get_event_loop().create_task(coroutine(*args))
-    ```
-
-    The above code doesn't guarantee to schedule the coroutine to the event loops
-
-    When using create_task in a  "fire and forget" way, we should keep the references
-    alive for the reliable execution. This API is used to fire and forget
-    asynchronous execution.
-
-    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
-    """
-    task = get_or_create_event_loop().create_task(coroutine)
-    # Add task to the set. This creates a strong reference.
-    background_tasks.add(task)
-
-    # To prevent keeping references to finished tasks forever,
-    # make each task remove its own reference from the set after
-    # completion:
-    task.add_done_callback(background_tasks.discard)
-    return task
 
 
 def try_import_each_module(module_names_to_import: List[str]) -> None:
@@ -2112,3 +1925,35 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+def validate_socket_filepath(filepath: str):
+    """
+    Validate the provided filename is a valid Unix socket filename.
+    """
+    # Don't check for Windows as it doesn't support Unix sockets.
+    if sys.platform == "win32":
+        return
+    is_mac = sys.platform.startswith("darwin")
+    maxlen = (104 if is_mac else 108) - 1
+    if len(filepath.encode("utf-8")) > maxlen:
+        raise OSError(
+            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
+        )
+
+
+# Whether we're currently running in a test, either local or CI.
+in_test = None
+
+
+def is_in_test():
+    global in_test
+
+    if in_test is None:
+        in_test = any(
+            env_var in os.environ
+            # These environment variables are always set by pytest and Buildkite,
+            # respectively.
+            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
+        )
+    return in_test

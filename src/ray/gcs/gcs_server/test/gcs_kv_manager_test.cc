@@ -15,6 +15,10 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
 #include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
@@ -28,7 +32,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 
   void SetUp() override {
     thread_io_service = std::make_unique<std::thread>([this] {
-      boost::asio::io_service::work work(io_service);
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service.get_executor());
       io_service.run();
     });
     ray::gcs::RedisClientOptions redis_client_options(

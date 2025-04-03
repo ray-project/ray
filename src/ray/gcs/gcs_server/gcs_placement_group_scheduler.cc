@@ -14,6 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"

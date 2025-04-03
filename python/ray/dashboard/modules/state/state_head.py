@@ -8,8 +8,7 @@ from typing import AsyncIterable, Optional
 import aiohttp.web
 from aiohttp.web import Response
 
-import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray
 from ray import ActorID
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -28,12 +27,14 @@ from ray.dashboard.state_api_utils import (
     options_from_req,
 )
 from ray.dashboard.utils import RateLimitedModule
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.utils import ResponseType
 from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -43,19 +44,16 @@ RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
+class StateHead(SubprocessModule, RateLimitedModule):
     """Module to obtain state information from the Ray cluster.
 
     It is responsible for state observability APIs such as
     ray.list_actors(), ray.get_actor(), ray.summary_actors().
     """
 
-    def __init__(
-        self,
-        config: dashboard_utils.DashboardHeadModuleConfig,
-    ):
+    def __init__(self, *args, **kwargs):
         """Initialize for handling RESTful requests from State API Client"""
-        dashboard_utils.DashboardHeadModule.__init__(self, config)
+        SubprocessModule.__init__(self, *args, **kwargs)
         # We don't allow users to configure too high a rate limit
         RateLimitedModule.__init__(
             self,
@@ -72,6 +70,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             max_workers=RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS,
             thread_name_prefix="state_head_executor",
         )
+
+        # To make sure that the internal KV is initialized by getting the lazy property
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
         return do_reply(
@@ -191,7 +193,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
         return do_reply(success=True, error_message="", result=result)
 
-    @routes.get("/api/v0/logs/{media_type}")
+    @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
         """
@@ -333,7 +335,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             partial_failure_warning=None,
         )
 
-    async def run(self, server):
+    async def run(self):
+        await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self.gcs_aio_client
@@ -343,7 +346,3 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             self._executor,
         )
         self._log_api = LogsManager(self._state_api_data_source_client)
-
-    @staticmethod
-    def is_minimal_module():
-        return False

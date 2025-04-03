@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -70,7 +73,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  explicit MockWorkerClient(instrumented_io_context &io_service)
+      : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
       const rpc::WaitForActorRefDeletedRequest &request,
@@ -126,8 +130,8 @@ class GcsActorManagerTest : public ::testing::Test {
   )");
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));

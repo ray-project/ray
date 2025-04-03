@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
 # Third-party imports
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 
 # Local imports
 from ray.llm._internal.serve.configs.constants import (

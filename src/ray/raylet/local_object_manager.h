@@ -14,9 +14,11 @@
 
 #pragma once
 
-#include <google/protobuf/repeated_field.h>
-
 #include <functional>
+#include <memory>
+#include <queue>
+#include <string>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -26,7 +28,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -34,7 +35,7 @@ namespace ray {
 namespace raylet {
 
 /// The default number of retries when spilled object deletion failed.
-const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+inline constexpr int64_t kDefaultSpilledObjectDeleteRetries = 3;
 
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.

@@ -16,6 +16,7 @@
 
 #include <map>
 #include <utility>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/types/optional.h"

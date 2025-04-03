@@ -999,9 +999,7 @@ def test_log_list(ray_start_cluster):
     with pytest.raises(requests.HTTPError) as e:
         list_logs(node_id=node_id)
 
-    assert (
-        f"Agent for node id: {node_id} doesn't exist." in e.value.response.json()["msg"]
-    )
+    assert e.value.response.status_code == 500
 
 
 @pytest.mark.skipif(

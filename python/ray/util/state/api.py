@@ -1284,16 +1284,27 @@ def get_log(
             raise RayStateApiException(r.text)
         for bytes in r.iter_content(chunk_size=None):
             bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
+            # Note that each iteration of the loop doesn't always get
+            # the entire chunk yielded from the server side.
+            # That is, the first byte isn't always 0 or 1.
+            #
+            # 1. If a server chunk starting with b"0" is split into two client chunks,
+            # an error will be raised during iteration of the first client chunk.
+            #
+            # 2. If a client chunk starts with b"1" or any other bytes, it succeeds.
+            #
+            # TODO (kevin85421): We should consider not using the first byte as an
+            # indicator of success or failure. This seems to be an uncommon pattern,
+            # and it doesn't seem important for the client side.
+            if bytes.startswith(b"0"):
+                error_msg = bytes.decode("utf-8")
+                raise RayStateApiException(error_msg)
+            else:
+                if bytes.startswith(b"1"):
+                    bytes.pop(0)
                 logs = bytes
                 if encoding is not None:
                     logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
             yield logs
 
 

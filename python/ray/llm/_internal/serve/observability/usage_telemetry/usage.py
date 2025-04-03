@@ -12,6 +12,7 @@ from ray._private.usage.usage_lib import record_extra_usage_tag
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig
@@ -20,7 +21,6 @@ LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
 LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
 
 logger = get_logger(__name__)
-DEFAULT_GPU_TYPE = "UNSPECIFIED"
 
 
 class TelemetryTags(str, Enum):
@@ -266,6 +266,6 @@ def push_telemetry_report_for_all_models(
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
             gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
-            num_gpus=engine_config.num_gpu_workers,
+            num_gpus=engine_config.num_devices,
         )
         _push_telemetry_report(telemetry_model)

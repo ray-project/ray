@@ -15,7 +15,7 @@ from ray._private.test_utils import (
     enable_external_redis,
     find_free_port,
     generate_system_config_map,
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
 )
 import ray._private.ray_constants as ray_constants
 
@@ -244,9 +244,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
         ret = await gcs_client.check_alive(node_manager_addresses)
         return ret == expect_liveness
 
-    await async_wait_for_condition_async_predicate(
-        check, expect_liveness=[True, False, True]
-    )
+    await async_wait_for_condition(check, expect_liveness=[True, False, True])
 
     n2_raylet_process = n2.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process
     n2_raylet_process.kill()
@@ -256,9 +254,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     assert ret == [True, False, True]
 
     # GCS will notice node dead soon
-    await async_wait_for_condition_async_predicate(
-        check, expect_liveness=[True, False, False]
-    )
+    await async_wait_for_condition(check, expect_liveness=[True, False, False])
 
 
 @pytest.mark.asyncio

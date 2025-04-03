@@ -1,6 +1,7 @@
 import itertools
 import sys
 from typing import List, Optional
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -25,6 +27,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 )
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     Aggregate,
     RandomShuffle,
@@ -46,12 +49,9 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import (
-    PhysicalOptimizer,
-    get_logical_rules,
-    get_physical_rules,
-    register_logical_rule,
-    register_physical_rule,
+from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
 )
 from ray.data._internal.logical.util import (
     _op_name_white_list,
@@ -1807,44 +1807,43 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     )
 
 
-def test_insert_logical_optimization_rules():
-    class FakeRule1:
-        pass
+@pytest.mark.parametrize(
+    "average_bytes_per_output, ray_remote_args, ray_remote_args_fn, data_context, expected_memory",
+    [
+        # The user hasn't set memory, so the rule should configure it.
+        (1, None, None, DataContext(), 1),
+        # The user has set memory, so the rule shouldn't change it.
+        (1, {"memory": 2}, None, DataContext(), 2),
+        (1, None, lambda: {"memory": 2}, DataContext(), 2),
+        # An estimate isn't available, so the rule shouldn't configure memory.
+        (None, None, None, DataContext(), None),
+    ],
+)
+def test_configure_map_task_memory_rule(
+    average_bytes_per_output,
+    ray_remote_args,
+    ray_remote_args_fn,
+    data_context,
+    expected_memory,
+):
+    input_op = InputDataBuffer(MagicMock(), [])
+    map_op = MapOperator.create(
+        MagicMock(),
+        input_op=input_op,
+        data_context=data_context,
+        ray_remote_args=ray_remote_args,
+        ray_remote_args_fn=ray_remote_args_fn,
+    )
+    map_op._metrics = MagicMock(
+        spec=OpRuntimeMetrics, average_bytes_per_output=average_bytes_per_output
+    )
+    plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
+    rule = ConfigureMapTaskMemoryUsingOutputSize()
 
-    class FakeRule2:
-        pass
+    new_plan = rule.apply(plan)
 
-    # By default, add the rule to the end of the list.
-    register_logical_rule(FakeRule1)
-    assert get_logical_rules()[-1] == FakeRule1
-
-    register_logical_rule(FakeRule2, 0)
-    assert get_logical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_logical_rule(FakeRule1, 0)
-    assert get_logical_rules()[-1] == FakeRule1
-    assert get_logical_rules()[0] == FakeRule2
-
-
-def test_insert_physical_optimization_rules():
-    class FakeRule1:
-        pass
-
-    class FakeRule2:
-        pass
-
-    # By default, add the rule to the end of the list.
-    register_physical_rule(FakeRule1)
-    assert get_physical_rules()[-1] == FakeRule1
-
-    register_physical_rule(FakeRule2, 0)
-    assert get_physical_rules()[0] == FakeRule2
-
-    # 'FakeRule1' is already registered, so it shouldn't be added again.
-    register_physical_rule(FakeRule1, 0)
-    assert get_physical_rules()[-1] == FakeRule1
-    assert get_physical_rules()[0] == FakeRule2
+    remote_args = new_plan.dag._get_runtime_ray_remote_args()
+    assert remote_args.get("memory") == expected_memory
 
 
 if __name__ == "__main__":

@@ -441,7 +441,7 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
@@ -1027,7 +1027,7 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
@@ -1412,10 +1412,10 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
-            This storage path must be accessible by all nodes of the cluster, otherwise
-            an error will be raised. This option can also be specified as the
-            RAY_STORAGE env var.
+        object_spilling_directory: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
+        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
+            be removed in a future version of Ray.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1481,6 +1481,9 @@ def init(
         "_enable_object_reconstruction", False
     )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _object_spilling_directory: Optional[str] = kwargs.pop(
+        "object_spilling_directory", None
+    )
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
@@ -1673,6 +1676,12 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    if storage is not None:
+        warnings.warn(
+            "Cluster-wide storage configuration is deprecated and will be removed in a "
+            "future version of Ray."
+        )
+
     global _global_node
 
     if global_worker.connected:
@@ -1718,6 +1727,7 @@ def init(
             redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
+            object_spilling_directory=_object_spilling_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
@@ -2235,7 +2245,7 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] not in [
+            if error_data["job_id"] is not None and error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
@@ -2265,6 +2275,7 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
+# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
 def connect(
     node,
     session_name: str,
@@ -2282,6 +2293,7 @@ def connect(
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
+    enable_resource_isolation: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2310,6 +2322,7 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
+        enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2491,6 +2504,7 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
         debug_source,
+        enable_resource_isolation,
     )
 
     if mode == SCRIPT_MODE:

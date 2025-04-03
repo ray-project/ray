@@ -2,7 +2,7 @@ import pytest
 
 from ray import cloudpickle
 from ray._private.pydantic_compat import ValidationError
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig, _proto_to_dict
 from ray.serve._private.constants import DEFAULT_AUTOSCALING_POLICY, DEFAULT_GRPC_PORT
 from ray.serve._private.utils import DEFAULT
@@ -769,13 +769,17 @@ class TestProtoToDict:
     def test_repeated_field(self):
         """Test _proto_to_dict() to deserialize protobuf with repeated field"""
         user_configured_option_names = ["foo", "bar"]
-        proto = DeploymentConfigProto(
+        config = DeploymentConfig.from_default(
             user_configured_option_names=user_configured_option_names,
         )
+        proto_bytes = config.to_proto_bytes()
+        proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
-
         # Repeated field is filled correctly as list.
-        assert result["user_configured_option_names"] == user_configured_option_names
+        assert set(result["user_configured_option_names"]) == set(
+            user_configured_option_names
+        )
+        assert isinstance(result["user_configured_option_names"], list)
 
     def test_enum_field(self):
         """Test _proto_to_dict() to deserialize protobuf with enum field"""

@@ -14,17 +14,21 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace ray {
 
@@ -71,8 +75,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // test targets.
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*client_io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          client_io_service_->get_executor());
       client_io_service_->run();
     });
 
@@ -80,8 +84,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*server_io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          server_io_service_->get_executor());
       server_io_service_->run();
     });
 
@@ -143,8 +147,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*server_io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          server_io_service_->get_executor());
       server_io_service_->run();
     }));
 
@@ -660,7 +664,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the job table can still work when GCS server restarts.
@@ -687,7 +691,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the actor table can still work when GCS server restarts.
@@ -744,7 +748,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the node table can still work when GCS server restarts.
@@ -774,7 +778,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Subscribe to all unexpected failure of workers from GCS.
@@ -876,7 +880,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
   // Get all actors.
   auto condition = [this, actor_count]() {
-    return (int)GetAllActors().size() == actor_count;
+    return static_cast<int>(GetAllActors().size()) == actor_count;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 

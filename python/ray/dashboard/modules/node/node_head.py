@@ -2,10 +2,10 @@ import asyncio
 import json
 import logging
 import time
-from collections import deque
+from collections import deque, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Iterable, List
+from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional
 
 import aiohttp.web
 import grpc
@@ -14,6 +14,8 @@ import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._common.utils import get_or_create_event_loop
+from ray._private.gcs_pubsub import GcsAioActorSubscriber
 from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
 from ray._private.ray_constants import (
@@ -22,7 +24,6 @@ from ray._private.ray_constants import (
     env_integer,
 )
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -34,11 +35,9 @@ from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
 )
-from ray.dashboard.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node.node_consts import (
-    RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT,
-)
+from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -52,11 +51,90 @@ RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS", 1
 )
 
+MAX_DESTROYED_ACTORS_TO_CACHE = max(
+    0, ray._config.maximum_gcs_destroyed_actor_cached_count()
+)
+
+ACTOR_CLEANUP_FREQUENCY = 1  # seconds
+
+
+ACTOR_TABLE_STATE_COLUMNS = (
+    "state",
+    "address",
+    "numRestarts",
+    "timestamp",
+    "pid",
+    "exitDetail",
+    "startTime",
+    "endTime",
+    "reprName",
+)
+
 
 def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
+
+
+def _actor_table_data_to_dict(message):
+    orig_message = dashboard_utils.message_to_dict(
+        message,
+        {
+            "actorId",
+            "parentId",
+            "jobId",
+            "workerId",
+            "rayletId",
+            "callerId",
+            "taskId",
+            "parentTaskId",
+            "sourceActorId",
+            "placementGroupId",
+        },
+        always_print_fields_with_no_presence=True,
+    )
+    # The complete schema for actor table is here:
+    #     src/ray/protobuf/gcs.proto
+    # It is super big and for dashboard, we don't need that much information.
+    # Only preserve the necessary ones here for memory usage.
+    fields = {
+        "actorId",
+        "jobId",
+        "pid",
+        "address",
+        "state",
+        "name",
+        "numRestarts",
+        "timestamp",
+        "className",
+        "startTime",
+        "endTime",
+        "reprName",
+        "placementGroupId",
+        "callSite",
+    }
+    light_message = {k: v for (k, v) in orig_message.items() if k in fields}
+    light_message["actorClass"] = orig_message["className"]
+    exit_detail = "-"
+    if "deathCause" in orig_message:
+        context = orig_message["deathCause"]
+        if "actorDiedErrorContext" in context:
+            exit_detail = context["actorDiedErrorContext"]["errorMessage"]  # noqa
+        elif "runtimeEnvFailedContext" in context:
+            exit_detail = context["runtimeEnvFailedContext"]["errorMessage"]  # noqa
+        elif "actorUnschedulableContext" in context:
+            exit_detail = context["actorUnschedulableContext"]["errorMessage"]  # noqa
+        elif "creationTaskFailureContext" in context:
+            exit_detail = context["creationTaskFailureContext"][
+                "formattedExceptionString"
+            ]  # noqa
+    light_message["exitDetail"] = exit_detail
+    light_message["startTime"] = int(light_message["startTime"])
+    light_message["endTime"] = int(light_message["endTime"])
+    light_message["requiredResources"] = dict(message.required_resources)
+
+    return light_message
 
 
 class NodeHead(dashboard_utils.DashboardHeadModule):
@@ -66,7 +144,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         self._collect_memory_info = False
 
-        DataSource.nodes.signal.append(self._update_stubs)
         # The time where the module is started.
         self._module_start_time = time.time()
         # The time it takes until the head node is registered. None means
@@ -75,27 +152,22 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
 
-        self._executor = ThreadPoolExecutor(
+        self._node_executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS,
-            thread_name_prefix="node_head_executor",
+            thread_name_prefix="node_head_node_executor",
         )
 
-    async def _update_stubs(self, change):
-        if change.old:
-            node_id, node_info = change.old
-            self._stubs.pop(node_id, None)
-        if change.new:
-            # TODO(fyrestone): Handle exceptions.
-            node_id, node_info = change.new
-            address = "{}:{}".format(
-                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
-            )
-            options = ray_constants.GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True
-            )
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._stubs[node_id] = stub
+        self._gcs_actor_channel_subscriber = None
+        # A queue of dead actors in order of when they died
+        self._destroyed_actors_queue = deque()
+
+        # -- Internal state --
+        self._loop = get_or_create_event_loop()
+        # NOTE: This executor is intentionally constrained to just 1 thread to
+        #       limit its concurrency, therefore reducing potential for GIL contention
+        self._actor_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="node_head_actor_executor"
+        )
 
     def get_internal_states(self):
         return {
@@ -124,7 +196,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return [_gcs_node_info_to_dict(m) for m in messages]
 
         all_node_infos = await get_or_create_event_loop().run_in_executor(
-            self._executor,
+            self._node_executor,
             _convert_to_dict,
             all_node_info.values(),
         )
@@ -144,7 +216,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     updated_infos_proto = []
 
                 updated_infos = await get_or_create_event_loop().run_in_executor(
-                    self._executor,
+                    self._node_executor,
                     _convert_to_dict,
                     updated_infos_proto,
                 )
@@ -189,8 +261,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
-                DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
+                node_id = self._dead_node_queue.popleft()
+                DataSource.nodes.pop(node_id, None)
+                self._stubs.pop(node_id, None)
         DataSource.nodes[node_id] = node
+        # TODO(fyrestone): Handle exceptions.
+        address = "{}:{}".format(
+            node["nodeManagerAddress"], int(node["nodeManagerPort"])
+        )
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            address, options, asynchronous=True
+        )
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        self._stubs[node_id] = stub
 
     async def _update_nodes(self):
         """
@@ -206,11 +290,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if (
                     not warning_shown
                     and (time.time() - self._module_start_time)
-                    > RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT
+                    > node_consts.RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT
                 ):
                     logger.warning(
                         "Head node is not registered even after "
-                        f"{RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT} seconds. "
+                        f"{node_consts.RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT} seconds. "
                         "The API server might not work correctly. Please "
                         "report a Github issue. Internal states :"
                         f"{self.get_internal_states()}"
@@ -292,7 +376,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
 
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Node summary fetched.",
                 summary=all_node_summary,
                 node_logical_resources=nodes_logical_resources,
@@ -303,13 +387,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if node["state"] == "ALIVE":
                     alive_hostnames.add(node["nodeManagerHostname"])
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames),
             )
         else:
             return dashboard_optional_utils.rest_response(
-                success=False, message=f"Unknown view {view}"
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message=f"Unknown view {view}",
             )
 
     @routes.get("/nodes/{node_id}")
@@ -318,7 +403,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
         return dashboard_optional_utils.rest_response(
-            success=True, message="Node details fetched.", detail=node_info
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="Node details fetched.",
+            detail=node_info,
         )
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
@@ -406,7 +493,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         assert len(node_ids) == len(responses)
 
         new_node_stats = await get_or_create_event_loop().run_in_executor(
-            self._executor, postprocess, zip(node_ids, responses)
+            self._node_executor, postprocess, zip(node_ids, responses)
         )
 
         for node_id, new_stat in new_node_stats.items():
@@ -432,7 +519,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await loop.run_in_executor(
-                    self._executor, json.loads, data
+                    self._node_executor, json.loads, data
                 )
 
                 node_id = key.split(":")[-1]
@@ -442,11 +529,215 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     "Error receiving node physical stats from _update_node_physical_stats."
                 )
 
+    async def _update_actors(self):
+        """
+        Processes actor info. First gets all actors from GCS, then subscribes to
+        actor updates. For each actor update, updates DataSource.node_actors and
+        DataSource.actors.
+        """
+
+        # To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
+        # happens after the subscription. That is, an update between get-all-actor-info
+        # and the subscription is not missed.
+        #
+        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        gcs_addr = self.gcs_address
+        actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await actor_channel_subscriber.subscribe()
+
+        # Get all actor info.
+        while True:
+            try:
+                logger.info("Getting all actor info from GCS.")
+
+                actor_dicts = await self._get_all_actors()
+                # Update actors
+                DataSource.actors = actor_dicts
+
+                # Update node actors and job actors.
+                node_actors = defaultdict(dict)
+                for actor_id_bytes, updated_actor_table in actor_dicts.items():
+                    node_id = updated_actor_table["address"]["rayletId"]
+                    # Update only when node_id is not Nil.
+                    if node_id != actor_consts.NIL_NODE_ID:
+                        node_actors[node_id][actor_id_bytes] = updated_actor_table
+
+                # Update node's actor info
+                DataSource.node_actors = node_actors
+
+                logger.info("Received %d actor info from GCS.", len(actor_dicts))
+
+                # Break, once all initial actors are successfully fetched
+                break
+            except Exception as e:
+                logger.exception("Error Getting all actor info from GCS", exc_info=e)
+                await asyncio.sleep(
+                    actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS
+                )
+
+        # Pull incremental updates from the GCS channel
+        while True:
+            try:
+                updated_actor_table_entries = await self._poll_updated_actor_table_data(
+                    actor_channel_subscriber
+                )
+
+                for (
+                    actor_id,
+                    updated_actor_table,
+                ) in updated_actor_table_entries.items():
+                    self._process_updated_actor_table(actor_id, updated_actor_table)
+
+                # TODO emit metrics
+                logger.debug(
+                    f"Total events processed: {len(updated_actor_table_entries)}, "
+                    f"queue size: {actor_channel_subscriber.queue_size}"
+                )
+
+            except Exception as e:
+                logger.exception("Error processing actor info from GCS.", exc_info=e)
+
+    async def _poll_updated_actor_table_data(
+        self, actor_channel_subscriber: GcsAioActorSubscriber
+    ) -> Dict[str, Dict[str, Any]]:
+        # TODO make batch size configurable
+        batch = await actor_channel_subscriber.poll(batch_size=200)
+
+        # NOTE: We're offloading conversion to a TPE to make sure we're not
+        #       blocking the event-loop for prolonged period of time irrespective
+        #       of the batch size
+        def _convert_to_dict():
+            return {
+                actor_id_bytes.hex(): _actor_table_data_to_dict(
+                    actor_table_data_message
+                )
+                for actor_id_bytes, actor_table_data_message in batch
+                if actor_id_bytes is not None
+            }
+
+        return await self._loop.run_in_executor(self._actor_executor, _convert_to_dict)
+
+    def _process_updated_actor_table(
+        self, actor_id: str, actor_table_data: Dict[str, Any]
+    ):
+        """NOTE: This method has to be executed on the event-loop, provided that it
+        accesses DataSource data structures (to follow its thread-safety model)"""
+
+        # If actor is not new registered but updated, we only update
+        # states related fields.
+        actor = DataSource.actors.get(actor_id)
+
+        if actor and actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+            for k in ACTOR_TABLE_STATE_COLUMNS:
+                if k in actor_table_data:
+                    actor[k] = actor_table_data[k]
+            actor_table_data = actor
+
+        actor_id = actor_table_data["actorId"]
+        node_id = actor_table_data["address"]["rayletId"]
+
+        if actor_table_data["state"] == "DEAD":
+            self._destroyed_actors_queue.append(actor_id)
+
+        # Update actors.
+        DataSource.actors[actor_id] = actor_table_data
+        # Update node actors (only when node_id is not Nil).
+        if node_id != actor_consts.NIL_NODE_ID:
+            node_actors = DataSource.node_actors.get(node_id, {})
+            node_actors[actor_id] = actor_table_data
+            DataSource.node_actors[node_id] = node_actors
+
+    async def _get_all_actors(self) -> Dict[str, dict]:
+        actors = await self.gcs_aio_client.get_all_actor_info(
+            timeout=GCS_RPC_TIMEOUT_SECONDS
+        )
+
+        # NOTE: We're offloading conversion to a TPE to make sure we're not
+        #       blocking the event-loop for prolonged period of time for large clusters
+        def _convert_to_dict():
+            return {
+                actor_id.hex(): _actor_table_data_to_dict(actor_table_data)
+                for actor_id, actor_table_data in actors.items()
+            }
+
+        return await self._loop.run_in_executor(self._actor_executor, _convert_to_dict)
+
+    async def _cleanup_actors(self):
+        while True:
+            try:
+                while len(self._destroyed_actors_queue) > MAX_DESTROYED_ACTORS_TO_CACHE:
+                    actor_id = self._destroyed_actors_queue.popleft()
+                    if actor_id in DataSource.actors:
+                        actor = DataSource.actors.pop(actor_id)
+                        node_id = actor["address"].get("rayletId")
+                        if node_id and node_id != actor_consts.NIL_NODE_ID:
+                            del DataSource.node_actors[node_id][actor_id]
+                await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
+            except Exception:
+                logger.exception("Error cleaning up actor info from GCS.")
+
+    @routes.get("/logical/actors")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_all_actors(self, req) -> aiohttp.web.Response:
+        actor_ids: Optional[List[str]] = None
+        if "ids" in req.query:
+            actor_ids = req.query["ids"].split(",")
+        actors = await DataOrganizer.get_actor_infos(actor_ids=actor_ids)
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="All actors fetched.",
+            actors=actors,
+            # False to avoid converting Ray resource name to google style.
+            # It's not necessary here because the fields are already
+            # google formatted when protobuf was converted into dict.
+            convert_google_style=False,
+        )
+
+    @routes.get("/logical/actors/{actor_id}")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_actor(self, req) -> aiohttp.web.Response:
+        actor_id = req.match_info.get("actor_id")
+        actors = await DataOrganizer.get_actor_infos(actor_ids=[actor_id])
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="Actor details fetched.",
+            detail=actors[actor_id],
+        )
+
+    @routes.get("/test/dump")
+    async def dump(self, req) -> aiohttp.web.Response:
+        """
+        Dump all data from datacenter. This is used for testing purpose only.
+        """
+        key = req.query.get("key")
+        if key is None:
+            all_data = {
+                k: dict(v)
+                for k, v in DataSource.__dict__.items()
+                if not k.startswith("_")
+            }
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message="Fetch all data from datacenter success.",
+                **all_data,
+            )
+        else:
+            data = dict(DataSource.__dict__.get(key))
+            return dashboard_optional_utils.rest_response(
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message=f"Fetch {key} from datacenter success.",
+                **{key: data},
+            )
+
     async def run(self, server):
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),
             self._update_node_physical_stats(),
+            self._update_actors(),
+            self._cleanup_actors(),
+            DataOrganizer.purge(),
+            DataOrganizer.organize(self._node_executor),
         )
 
     @staticmethod

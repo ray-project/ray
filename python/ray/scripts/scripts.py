@@ -541,6 +541,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
+)
+@click.option(
     "--autoscaling-config",
     required=False,
     type=str,
@@ -571,7 +577,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster. Experimental.",
+    help=(
+        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
+        "future version of Ray."
+    ),
 )
 @click.option(
     "--system-config",
@@ -671,6 +680,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -740,6 +750,10 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
+    if storage is not None:
+        warnings.warn(
+            "--storage is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -760,6 +774,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,

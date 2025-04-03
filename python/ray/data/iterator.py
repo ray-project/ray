@@ -18,8 +18,8 @@ import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
