@@ -5,6 +5,7 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 import heapq
 import itertools
 import logging
+from packaging import version
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
@@ -41,7 +42,7 @@ def _get_read_task(
     # FileScanTask) - note that this is not as simple as reading a single
     # parquet file, as there might be delete files, etc. associated, so we
     # must use the PyIceberg API for the projection.
-    if pyiceberg.__version__ >= "0.9.0":
+    if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
         # Use ArrowScan for pyiceberg versions 0.9.0 and above
         yield pyi_pa_io.ArrowScan(
             table_metadata=table_metadata,
