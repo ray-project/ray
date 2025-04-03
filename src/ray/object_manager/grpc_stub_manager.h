@@ -20,9 +20,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_client.h"
-#include "absl/synchronization/mutex.h"
 
 namespace ray::rpc {
 
