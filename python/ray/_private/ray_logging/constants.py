@@ -34,6 +34,8 @@ LOGGER_FLATTEN_KEYS = {
     "ray_serve_extra_fields",
 }
 
+INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
+
 
 class LogKey(str, Enum):
     # Core context
