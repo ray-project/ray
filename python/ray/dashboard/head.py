@@ -1,6 +1,8 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
+import os
+import psutil
 from pathlib import Path
 from typing import Optional, Set, List, Tuple, TYPE_CHECKING
 
@@ -12,9 +14,11 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.async_utils import enable_monitor_loop_lag
 from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.utils import (
     DashboardHeadModule,
     DashboardHeadModuleConfig,
@@ -140,6 +144,8 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
+        self.pid = os.getpid()
+        self.dashboard_proc = psutil.Process()
 
         if self.minimal:
             self.server, self.grpc_port = None, None
@@ -247,7 +253,6 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
-            metrics=self.metrics,
         )
 
         # Select modules to load.
@@ -296,6 +301,7 @@ class DashboardHead:
             gcs_address=self.gcs_address,
             session_name=self.session_name,
             temp_dir=self.temp_dir,
+            session_dir=self.session_dir,
             logging_level=self.logging_level,
             logging_format=self.logging_format,
             log_dir=self.log_dir,
@@ -353,6 +359,39 @@ class DashboardHead:
 
         return metrics
 
+    @dashboard_utils.async_loop_forever(dashboard_consts.METRICS_RECORD_INTERVAL_S)
+    async def _record_dashboard_metrics(self):
+        labels = {
+            "ip": self.ip,
+            "pid": self.pid,
+            "Version": ray.__version__,
+            "Component": "dashboard",
+            "SessionName": self.session_name,
+        }
+        assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+            float(self.dashboard_proc.cpu_percent())
+        )
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().uss) / 1.0e6
+        )
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            float(self.dashboard_proc.memory_full_info().rss) / 1.0e6
+        )
+
+        loop = ray._common.utils.get_or_create_event_loop()
+
+        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
+            len(asyncio.all_tasks(loop))
+        )
+
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self.metrics.metrics_event_loop_lag.labels(**labels).set(
+                float(self._event_loop_lag_s_max)
+            )
+            self._event_loop_lag_s_max = None
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -365,6 +404,17 @@ class DashboardHead:
 
         if not self.minimal:
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
+            self._event_loop_lag_s_max: Optional[float] = None
+
+            def on_new_lag(lag_s):
+                # Record the lag. It's exported in `record_dashboard_metrics`
+                self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+
+            enable_monitor_loop_lag(on_new_lag)
+
+            self.record_dashboard_metrics_task = asyncio.create_task(
+                self._record_dashboard_metrics()
+            )
 
         try:
             assert internal_kv._internal_kv_initialized()
@@ -381,15 +431,6 @@ class DashboardHead:
         # Start a grpc asyncio server.
         if self.server:
             await self.server.start()
-
-        async def _async_notify():
-            """Notify signals from queue."""
-            while True:
-                co = await dashboard_utils.NotifyQueue.get()
-                try:
-                    await co
-                except Exception:
-                    logger.exception(f"Error notifying coroutine {co}")
 
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
             self._modules_to_load
@@ -438,11 +479,8 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        # Freeze signal after all modules loaded.
-        dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
             self._gcs_check_alive(),
-            _async_notify(),
         ]
         for m in dashboard_head_modules:
             concurrent_tasks.append(m.run(self.server))
