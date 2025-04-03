@@ -4070,7 +4070,8 @@ class Dataset:
         *,
         schema: Optional["pyarrow.Schema"] = None,
         mode: Literal["create", "append", "overwrite"] = "create",
-        max_rows_per_file: int = 1024 * 1024,
+        min_rows_per_file: int = 1024 * 1024,
+        max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -4091,6 +4092,7 @@ class Dataset:
             path: The path to the destination Lance dataset.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
             mode: The write mode. Can be "create", "append", or "overwrite".
+            min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
                 efficient but require newer versions of lance to read.  The default is
@@ -4102,6 +4104,7 @@ class Dataset:
             path,
             schema=schema,
             mode=mode,
+            min_rows_per_file=min_rows_per_file,
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,

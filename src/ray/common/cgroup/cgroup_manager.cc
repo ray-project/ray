@@ -12,20 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Util functions for cgroup related operations.
-
-#pragma once
-
-#include <string>
-
-#include "ray/common/status.h"
+#include "ray/common/cgroup/cgroup_manager.h"
 
 namespace ray {
 
-// Kill all processes under the given [cgroup_folder] and wait for all processes
-// termination synchronously.
-//
-// \param cgroup_folder: cgroup folder which contains processes to kill.
-Status KillAllProcAndWait(const std::string &cgroup_folder);
+// Here the possible types of cgroup setup classes are small, so we use if-else branch
+// instead of registry pattern.
+BaseCgroupSetup &GetCgroupSetup(bool enable_resource_isolation) {
+  if (enable_resource_isolation) {
+    // TODO(hjiang): Enable real cgroup setup after PR:
+    // https://github.com/ray-project/ray/pull/49941
+    static NoopCgroupSetup noop_cgroup_setup{};
+    return noop_cgroup_setup;
+  }
+  static NoopCgroupSetup noop_cgroup_setup{};
+  return noop_cgroup_setup;
+}
 
 }  // namespace ray
