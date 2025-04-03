@@ -225,7 +225,7 @@ def _get_ray_resources_from_group_spec(
     TODO: Expose a better interface in the RayCluster CRD for Ray resource annotations.
     For now, we take the rayStartParams as the primary source of truth.
     """
-    ray_start_params = group_spec["rayStartParams"]
+    ray_start_params = group_spec.get("rayStartParams", {})
     # In KubeRay, Ray container is always the first application container of a Ray Pod.
     k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
