@@ -39,13 +39,13 @@ class MetricsLogger:
         from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
         from ray.rllib.utils.test_utils import check
 
-        logger = MetricsLogger()
+        logger = MetricsLogger(root=True)
 
         # 1) Logging float values (mean over window):
         # Log some loss under the "loss" key. By default, all logged values
         # under that key are averaged and reported back, once `reduce()` is called.
         logger.log_value("loss", 0.001, reduce="mean", window=10)
-        logger.log_value("loss", 0.002)  # <- no need to repeat arg/options on same key
+        logger.log_value("loss", 0.002, reduce="mean", window=10)
         # Peek at the current (reduced) value of "loss":
         check(logger.peek("loss"), 0.0015)  # <- expect average value
         # Actually reduce the underlying Stats object(s).
@@ -55,9 +55,9 @@ class MetricsLogger:
         # 2) Logging float values (minimum over window):
         # Log the minimum of loss values under the "min_loss" key.
         logger.log_value("min_loss", 0.1, reduce="min", window=2)
-        logger.log_value("min_loss", 0.01)
-        logger.log_value("min_loss", 0.1)
-        logger.log_value("min_loss", 0.02)
+        logger.log_value("min_loss", 0.01, reduce="min", window=2)
+        logger.log_value("min_loss", 0.1, reduce="min", window=2)
+        logger.log_value("min_loss", 0.02, reduce="min", window=2)
         # Peek at the current (reduced) value of "min_loss":
         check(logger.peek("min_loss"), 0.02)  # <- expect min value (over window=2)
         # Actually reduce the underlying Stats object(s).
@@ -103,12 +103,13 @@ class MetricsLogger:
 
         # 5) Keeping track of throughputs and compiling all metrics
         logger = MetricsLogger()
-        logger.log_value("samples", 1.0, with_throughput=True)
+        logger.log_value("samples", 1.0, reduce="sum", with_throughput=True, throughput_ema_coeff=1.0)
         time.sleep(1.0)
-        logger.log_value("samples", 1.0, with_throughput=True)
+        logger.log_value("samples", 2.0, reduce="sum", with_throughput=True, throughput_ema_coeff=1.0)
         results = logger.compile()
-        check(results["samples"], 2.0)
-        check(results["samples_throughput"], 1.0)
+        check(results["samples"], 3.0)
+        # Since we have an ema_coeff of 1.0, the throughput should be the same as the last value we logged (after 1 second)
+        check(results["samples_throughput"], 2.0, rtol=0.1)
 
     """
 
@@ -186,7 +187,7 @@ class MetricsLogger:
             # Log some more, check again.
             logger.log_value(key, 4.0)
             expected_reduced = (1.0 - ema) * expected_reduced + ema * 4.0
-            check(logger.peek(), expected_reduced)
+            check(logger.peek(key=key), expected_reduced)
 
         Returns:
             The (reduced) values of the (possibly nested) sub-structure found under
@@ -259,7 +260,7 @@ class MetricsLogger:
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
 
-            logger = MetricsLogger()
+            logger = MetricsLogger(root=True)
 
             # Log n simple float values under the "loss" key. By default, all logged
             # values under that key are averaged, once `reduce()` is called.
@@ -595,16 +596,16 @@ class MetricsLogger:
 
             logger_env_runner1 = MetricsLogger()
             logger_env_runner1.log_value("mean_ret", 100.0, window=3)
-            logger_env_runner1.log_value("mean_ret", 200.0)
-            logger_env_runner1.log_value("mean_ret", 300.0)
-            logger_env_runner1.log_value("mean_ret", 400.0)
+            logger_env_runner1.log_value("mean_ret", 200.0, window=3)
+            logger_env_runner1.log_value("mean_ret", 300.0, window=3)
+            logger_env_runner1.log_value("mean_ret", 400.0, window=3)
             env_runner1_results = logger_env_runner1.reduce()
 
             logger_env_runner2 = MetricsLogger()
             logger_env_runner2.log_value("mean_ret", 150.0, window=3)
-            logger_env_runner2.log_value("mean_ret", 250.0)
-            logger_env_runner2.log_value("mean_ret", 350.0)
-            logger_env_runner2.log_value("mean_ret", 450.0)
+            logger_env_runner2.log_value("mean_ret", 250.0, window=3)
+            logger_env_runner2.log_value("mean_ret", 350.0, window=3)
+            logger_env_runner2.log_value("mean_ret", 450.0, window=3)
             env_runner2_results = logger_env_runner2.reduce()
 
             # Merge the stats from both EnvRunners.
@@ -650,14 +651,14 @@ class MetricsLogger:
 
             logger1 = MetricsLogger()
             logger1.log_value("some_stat", 50, reduce="sum", window=3)
-            logger1.log_value("some_stat", 25, reduce="sum")
-            logger1.log_value("some_stat", 10, reduce="sum")
-            logger1.log_value("some_stat", 5, reduce="sum")
+            logger1.log_value("some_stat", 25, reduce="sum", window=3)
+            logger1.log_value("some_stat", 10, reduce="sum", window=3)
+            logger1.log_value("some_stat", 5, reduce="sum", window=3)
             logger1_results = logger1.reduce()
 
             logger2 = MetricsLogger()
             logger2.log_value("some_stat", 75, reduce="sum", window=3)
-            logger2.log_value("some_stat", 100, reduce="sum")
+            logger2.log_value("some_stat", 100, reduce="sum", window=3)
             logger2_results = logger2.reduce()
 
             # Merge the stats from both Learners.
@@ -927,13 +928,13 @@ class MetricsLogger:
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
             from ray.rllib.utils.test_utils import check
 
-            logger = MetricsLogger()
+            logger = MetricsLogger(root=True)
 
             # Log some values under different keys.
             logger.log_value("loss", 0.1, window=2)
-            logger.log_value("loss", 0.2)
+            logger.log_value("loss", 0.2, window=2)
             logger.log_value("min_loss", 0.3, reduce="min", window=2)
-            logger.log_value("min_loss", 0.1)
+            logger.log_value("min_loss", 0.1, reduce="min", window=2)
 
             # reduce() returns the reduced values.
             results = logger.reduce()
@@ -941,11 +942,11 @@ class MetricsLogger:
             check(results["min_loss"], 0.1)  # min of [0.3, 0.1]
 
             # We can also reduce a specific key using indexing.
-            check(logger["loss"].reduce(), 0.15)  # mean of [0.1, 0.2]
+            check(logger.reduce()["loss"], 0.15)  # mean of [0.1, 0.2]
 
             # Or reduce a nested key structure.
             logger.log_value(("nested", "key"), 1.0)
-            check(logger[("nested", "key")].reduce(), 1.0)
+            check(logger.reduce()["nested"]["key"], 1.0)
 
         Returns:
             A (nested) dict matching the structure of `self.stats` (contains all ever
@@ -979,7 +980,7 @@ class MetricsLogger:
                     # Restore the original setting
                     stats._clear_on_reduce = original_clear_on_reduce
                 else:
-                    # For root logger or non-lifetime stats, reduce normally
+                    # For non-root logger or non-lifetime stats, reduce normally
                     values = stats.reduce(compile=False)
             else:
                 values = stats.reduce(compile=True)
@@ -991,7 +992,10 @@ class MetricsLogger:
                 # such that downstream MetricsLoggers can merge on it
                 self._reduced_paths.add(path_key)
                 new_stats = Stats.similar_to(stats, init_values=values)
-                return new_stats
+                if self._is_root_logger:
+                    return values
+                else:
+                    return new_stats
 
             return values
 

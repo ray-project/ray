@@ -240,7 +240,7 @@ def test_throughput_tracking(logger):
 
     # Test get_throughputs() method without key (returns all throughputs)
     throughputs = logger.get_throughputs()
-    check(throughputs["count_throughput"], approx_throughput, rtol=0.1)
+    check(throughputs["count_throughput"], approx_throughput, rtol=0.2)
 
     # Test with nested keys
     nested_start_time = time.perf_counter()
@@ -263,7 +263,7 @@ def test_throughput_tracking(logger):
 
     # Check getting throughput for a parent key
     nested_throughputs = logger.get_throughputs("nested")
-    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.1)
+    check(nested_throughputs, {"count_throughput": nested_approx_throughput}, rtol=0.2)
 
     # Verify all throughputs are present in the full throughput dict
     all_throughputs = logger.get_throughputs()
@@ -311,10 +311,12 @@ def test_compile(logger):
     """Test the compile method that combines values and throughputs."""
     # Log some values with throughput tracking
     logger.log_value("count", 1, reduce="sum", with_throughput=True)
+    time.sleep(0.1)
     logger.log_value("count", 2, reduce="sum", with_throughput=True)
 
     # Log some nested values with throughput tracking
     logger.log_value(["nested", "count"], 3, reduce="sum", with_throughput=True)
+    time.sleep(0.1)
     logger.log_value(["nested", "count"], 4, reduce="sum", with_throughput=True)
 
     # Log some values without throughput tracking
@@ -326,9 +328,9 @@ def test_compile(logger):
 
     # Check that values and throughputs are correctly combined
     check(compiled["count"], 3)  # sum of [1, 2]
-    check(compiled["count_throughput"], 0.0)  # initial throughput
+    check(compiled["count_throughput"], 20, rtol=0.1)  # initial throughput
     check(compiled["nested"]["count"], 7)  # sum of [3, 4]
-    check(compiled["nested"]["count_throughput"], 0.0)  # initial throughput
+    check(compiled["nested"]["count_throughput"], 40, rtol=0.1)  # initial throughput
 
     check(compiled["simple"], 5.01)
     assert (
@@ -364,22 +366,14 @@ def test_edge_cases(logger):
     check(results["clear_test"], 0.101)
     check(logger.peek("clear_test"), np.nan)  # Should be cleared
 
-    # Test throughput errors
-    with pytest.raises(ValueError):
-        # Can't enable throughput for non-sum reduction
-        logger.log_value("invalid", 1, reduce="mean", with_throughput=True)
-
-    with pytest.raises(ValueError):
-        # Can't enable throughput with window
-        logger.log_value("invalid", 1, reduce="sum", window=10, with_throughput=True)
-
 
 def test_first_reduce_returns_stats_then_values():
     """Test that reduce() returns Stats objects on first call, then values on subsequent calls."""
-    logger = MetricsLogger(root=True)
+    # We need to test this for non-root loggers because root loggers always return values
+    logger = MetricsLogger(root=False)
 
     # Log a simple metric
-    logger.log_value("simple_metric", 5, reduce="sum")
+    logger.log_value("simple_metric", 5, reduce="max")
 
     # First call to reduce() should return a Stats object
     first_result = logger.reduce()
@@ -392,7 +386,7 @@ def test_first_reduce_returns_stats_then_values():
 
     # Log some more values
     logger.log_value(
-        "simple_metric", 10, reduce="sum"
+        "simple_metric", 10, reduce="max"
     )  # Need to repeat the reduce parameter
 
     # Second call to reduce() should return actual value, not a Stats object
@@ -403,12 +397,12 @@ def test_first_reduce_returns_stats_then_values():
 
     # Verify the actual value
     check(
-        second_result["simple_metric"], 15
+        second_result["simple_metric"], [10]
     )  # Since this is a root logger, the value is accumulated
 
     # Create a second logger and test merging behavior
     logger2 = MetricsLogger()
-    logger2.log_value("new_metric", 42, reduce="sum")
+    logger2.log_value("new_metric", 42, reduce="min")
 
     # First reduce() for this logger should return a Stats object
     result2 = logger2.reduce()

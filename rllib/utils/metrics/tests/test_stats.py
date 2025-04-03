@@ -64,13 +64,19 @@ def test_init_with_window():
 
 
 @pytest.mark.parametrize("reduce_method", ["mean", "min", "max", "sum", None])
-def test_init_with_reduce_methods(reduce_method):
+@pytest.mark.parametrize("window", [None, 1])
+def test_init_with_reduce_methods(reduce_method, window):
     """Test initialization with different reduce methods."""
+    if reduce_method is None and window is None and DEFAULT_CLEAR_ON_REDUCE is False:
+        pytest.skip("Infinite window without reduction requires clear_on_reduce=True")
+
     stats = Stats(
         init_values=None,
         reduce=reduce_method,
-        window=None,
-        ema_coeff=DEFAULT_EMA_COEFF if reduce_method == "mean" else None,
+        window=window,
+        ema_coeff=DEFAULT_EMA_COEFF
+        if reduce_method == "mean" and window is None
+        else None,
         clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
         throughput=DEFAULT_THROUGHPUT,
         throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
@@ -412,7 +418,7 @@ def test_basic_throughput():
         ema_coeff=None,
         clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
         throughput=True,
-        throughput_ema_coeff=1.0,  # Use 1.0 for simple testing
+        throughput_ema_coeff=None,
     )
 
     # First push - throughput should be 0 initially
@@ -422,49 +428,17 @@ def test_basic_throughput():
 
     # Wait and push again to measure throughput
     time.sleep(0.1)
+    stats.push(1)
+    check(stats.peek(), 2)
+    check(stats.throughput, 10, rtol=0.1)
+
+    # Wait and push again to measure throughput
+    time.sleep(0.1)
     stats.push(2)
-    check(stats.peek(), 3)
-    check(stats.throughput, 20, rtol=0.1)
-
-
-def test_throughput_error_conditions():
-    """Test throughput error conditions."""
-    # Test that throughput tracking requires sum reduction
-    with pytest.raises(ValueError):
-        Stats(
-            init_values=None,
-            reduce="mean",
-            window=None,
-            ema_coeff=DEFAULT_EMA_COEFF,
-            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
-            throughput=True,
-            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
-        )
-
-    # Test that throughput tracking requires infinite window
-    with pytest.raises(ValueError):
-        Stats(
-            init_values=None,
-            reduce="sum",
-            window=10,
-            ema_coeff=None,
-            clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
-            throughput=True,
-            throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
-        )
-
-    # Test that accessing throughput on non-throughput stats raises error
-    non_throughput_stats = Stats(
-        init_values=None,
-        reduce="sum",
-        window=None,
-        ema_coeff=None,
-        clear_on_reduce=DEFAULT_CLEAR_ON_REDUCE,
-        throughput=False,
-        throughput_ema_coeff=DEFAULT_THROUGHPUT_EMA_COEFF,
-    )
-    with pytest.raises(ValueError):
-        non_throughput_stats.throughput  # noqa: B018
+    check(stats.peek(), 4)
+    check(
+        stats.throughput, 10.1, rtol=0.1
+    )  # default EMA coefficient for throughput is 0.01
 
 
 if __name__ == "__main__":

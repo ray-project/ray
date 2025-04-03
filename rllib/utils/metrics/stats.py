@@ -105,23 +105,25 @@ class Stats:
             raise ValueError(
                 "`ema_coeff` arg only allowed (not None) when `reduce=mean`!"
             )
-        # If `window` is explicitly set to inf, `clear_on_reduce` must be True.
+
+        self._inf_window = window in [None, float("inf")]
+
+        # If `window` is set to inf, `clear_on_reduce` must be True.
         # Otherwise, we risk a memory leak.
-        if window == float("inf") and not clear_on_reduce:
+        if self._inf_window and not clear_on_reduce and reduce is None:
             raise ValueError(
-                "When using an infinite window (float('inf'), `clear_on_reduce` must "
+                "When using an infinite window without reduction, `clear_on_reduce` must "
                 "be set to True!"
             )
 
         # If reduce=mean AND window=ema_coeff=None, we use EMA by default with a coeff
         # of 0.01 (we do NOT support infinite window sizes for mean as that would mean
         # to keep data in the cache forever).
-        if reduce == "mean" and window is None and ema_coeff is None:
+        if reduce == "mean" and self._inf_window and ema_coeff is None:
             ema_coeff = 0.01
 
         self._reduce_method = reduce
         self._window = window
-        self._inf_window = self._window in [None, float("inf")]
         self._ema_coeff = ema_coeff
 
         # Timing functionality (keep start times per thread).
@@ -137,12 +139,6 @@ class Stats:
         self._throughput_ema_coeff = throughput_ema_coeff
         self._throughput_stats = None
         if throughput is not False:
-            if self._reduce_method != "sum" or not self._inf_window:
-                raise ValueError(
-                    "Can't track throughput for a Stats that a) doesn't have "
-                    "reduce='sum' and/or b) has a finite window! Set `Stats("
-                    "reduce='sum', window=None)`."
-                )
             self._throughput_stats = Stats(
                 # We have to check for bool here because in Python, bool is a subclass of int
                 init_values=[throughput]
@@ -181,10 +177,9 @@ class Stats:
         Args:
             value: The value to be pushed. Can be of any type.
         """
-        current_time = time.time()
-
         # If throughput tracking is enabled, calculate it based on time between pushes
         if self._throughput_stats is not None:
+            current_time = time.perf_counter()
             if self._last_push_time >= 0:
                 time_diff = current_time - self._last_push_time
                 if time_diff > 0:  # Avoid division by zero
@@ -271,14 +266,20 @@ class Stats:
         else:
             # If there is an infinite window, there must be a reduce method and hence the history has single elements
             if self._has_new_values:
-                ret = self._reduced_values()[0]
+                ret, reduced_values = self._reduced_values()
             else:
-                ret = self._reduce_history[-1]
+                ret = None
+                reduced_values = self._reduce_history[-1]
 
             if compile:
-                return ret[0]
+                if ret is None:
+                    ret = self._reduced_values()[0]
+                if self._reduce_method is None:
+                    return ret
+                else:
+                    return ret[0]
             else:
-                return ret
+                return reduced_values
 
     def get_reduce_history(self) -> List[Any]:
         """Returns the history of reduced values as a list.
@@ -355,7 +356,10 @@ class Stats:
             values_list = self._reduce_history[-1]
 
         if compile:
-            reduced = self._reduced_values(values_list)[0]
+            if self._reduce_method is None:
+                return values_list
+            elif reduced is None:
+                reduced = self._reduced_values()[0]
             return reduced[0]
         else:
             return values_list

@@ -1525,9 +1525,15 @@ class Algorithm(Checkpointable, Trainable):
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.append(met)
+                    num_episodes = met.get(NUM_EPISODES, 0)
+                    num_episodes = (
+                        num_episodes[0]
+                        if isinstance(num_episodes, list)
+                        else num_episodes
+                    )
                     num_units_done += int(
                         (
-                            met.get(NUM_EPISODES, 0)
+                            num_episodes
                             if unit == "episodes"
                             else (
                                 env_s
