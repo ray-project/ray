@@ -113,7 +113,7 @@ class RuntimeEnvContext:
             executable = ["exec"]
 
         # try update ld_library path
-        try_update_ld_library_path(language, self.native_libraries)
+        try_update_ld_library_path(language, self.native_libraries, self.working_dir)
 
         # try update ld_preload
         try_update_ld_preload(self.preload_libraries)

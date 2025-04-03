@@ -2056,7 +2056,9 @@ def try_update_ld_preload(preload_libraries: List[str]):
     os.environ[runtime_env_constants.PRELOAD_ENV_NAME] = ld_preload_env
 
 
-def try_update_ld_library_path(language: Language, native_libraries: dict):
+def try_update_ld_library_path(
+    language: Language, native_libraries: dict, working_dir: Optional[str]
+):
     all_library_paths = ""
     if language == Language.CPP:
         all_library_paths += get_ray_native_library_dir()
@@ -2069,4 +2071,8 @@ def try_update_ld_library_path(language: Language, native_libraries: dict):
     if os_ld_library_paths:
         all_library_paths += ":"
         all_library_paths += os_ld_library_paths
+    # Add working dir to library path of workers.
+    if working_dir:
+        all_library_paths += ":"
+        all_library_paths += working_dir
     os.environ[runtime_env_constants.LIBRARY_PATH_ENV_NAME] = all_library_paths
