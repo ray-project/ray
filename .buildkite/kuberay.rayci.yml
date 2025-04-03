@@ -34,7 +34,7 @@ steps:
       - raycpubase
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
-    key: kuberay_tests
+    key: kuberay_chaos_tests
     tags:
       - python
       - docker
@@ -42,7 +42,7 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}}
+      - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}} false
     docker_network: "host"
     matrix:
       setup:
@@ -52,6 +52,29 @@ steps:
           - "chaos_network_bandwidth"
         workload:
           - "test_potato_passer"
+          - "test_streaming_llm"
+          - "test_many_job_submissions"
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+
+  - label: ":kubernetes: FT chaos {{matrix.workload}} under {{matrix.fault}}"
+    key: kuberay_chaos_ft_tests
+    tags:
+      - python
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}} true
+    docker_network: "host"
+    matrix:
+      setup:
+        fault:
+          - "no_fault"
+          - "chaos_kill_head_pod"
+        workload:
           - "test_streaming_llm"
           - "test_many_job_submissions"
     depends_on:
