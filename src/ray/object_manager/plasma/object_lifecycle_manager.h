@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "gtest/gtest.h"
+#include "gtest/gtest_prod.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/object_store.h"

@@ -54,7 +54,7 @@ pytest-aiohttp==1.1.0
 pytest-httpserver==1.0.6
 pytest-rerunfailures==11.1.2
 pytest-sugar==0.9.5
-pytest-lazy-fixture==0.6.3
+pytest-lazy-fixtures==1.1.2
 pytest-timeout==2.1.0
 pytest-virtualenv==1.7.0; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
