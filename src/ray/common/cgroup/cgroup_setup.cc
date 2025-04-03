@@ -265,22 +265,22 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // Create the system cgroup.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_system_folder_));
 
-  // If the given cgroup is not root cgroup (i.e. container environment), we need to move
-  // all processes (including operating system processes) into system cgroup, because
-  // only leaf cgroups can contain processes for cgroupv2. Otherwise we only move known
-  // known ray processes into system cgroup.
-  if (IsRootCgroup(directory)) {
-    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
-                                              /*to=*/cgroup_v2_system_proc_filepath_));
-  }
-
-  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_));
-
   // Setup application cgroup.
   // TODO(hjiang): For milestone-2 per-task-based reservation and limitation, we need to
   // add subtree control to subcgroup as well, not needed for milestone-1.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_app_folder_));
   RAY_RETURN_NOT_OK(internal::MakeDirectory(cgroup_v2_default_app_folder_));
+
+  // If the given cgroup is not root cgroup (i.e. container environment), we need to move
+  // all processes (including operating system processes) into system cgroup, because
+  // only leaf cgroups can contain processes for cgroupv2. Otherwise we only move known
+  // ray processes into system cgroup.
+  if (!IsRootCgroup(directory)) {
+    RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/root_cgroup_procs_filepath_.data(),
+                                              /*to=*/cgroup_v2_system_proc_filepath_));
+  }
+
+  RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_));
 
   return Status::OK();
 }
