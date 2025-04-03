@@ -213,10 +213,7 @@
   group: core-scalability-test
   working_dir: anyscale/core
 
-  # TODO(dayshah): Create a new schedule for scalability tests
-  # so it doesn't run at the same time as other tests that
-  # require a lot of nodes and only runs as part of a release.
-  frequency: manual
+  frequency: monthly
   team: core
 
   cluster:
