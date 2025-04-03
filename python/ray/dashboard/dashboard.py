@@ -19,6 +19,7 @@ from ray._private.utils import (
     format_error_message,
     publish_error_to_driver,
 )
+from ray._private import logging_utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -218,17 +219,46 @@ if __name__ == "__main__":
         action="store_true",
         help=("If configured, frontend html is not served from the server."),
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard stderr.",
+    )
 
     args = parser.parse_args()
 
     try:
+        # Disable log rotation for windows platform.
+        logging_rotation_bytes = (
+            args.logging_rotate_bytes if sys.platform != "win32" else 0
+        )
+        logging_rotation_backup_count = (
+            args.logging_rotate_backup_count if sys.platform != "win32" else 1
+        )
         setup_component_logger(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
-            max_bytes=args.logging_rotate_bytes,
-            backup_count=args.logging_rotate_backup_count,
+            max_bytes=logging_rotation_bytes,
+            backup_count=logging_rotation_backup_count,
+        )
+
+        # Setup stdout/stderr redirect files if redirection enabled.
+        logging_utils.redirect_stdout_stderr_if_needed(
+            args.stdout_filepath,
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
         )
 
         if args.modules_to_load:

@@ -15,7 +15,7 @@ boto3==1.26.76
 cloudpickle==2.2.0
 cryptography==42.0.5
 cython==0.29.37
-fastapi==0.109.2
+fastapi>=0.115.0
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3

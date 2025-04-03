@@ -46,7 +46,7 @@ DEFAULT_JOB_ID = "ffff"
 # Environment variable stored here should be a callable that does not
 # take any arguments and should return a dictionary mapping
 # activity component type (str) to
-# ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
+# ray.dashboard.modules.api.api_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
 

@@ -439,9 +439,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   gymnasium
-fastapi==0.109.2 \
-    --hash=sha256:2c9bab24667293b501cad8dd388c05240c850b58ec5876ee3283c47d6e1e3a4d \
-    --hash=sha256:f3817eac96fe4f65a2ebb4baa000f394e55f5fccdaf7f75250804bc58f354f73
+fastapi==0.115.0 \
+    --hash=sha256:17ea427674467486e997206a5ab25760f6b09e069f099b96f5b55a32fb6f1631 \
+    --hash=sha256:f93b4ca3529a8ebc6fc3fcf710e5efa8de3df9b41570958abf1d97d843138004
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements.txt
@@ -1889,9 +1889,9 @@ sniffio==1.3.1 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   anyio
-starlette==0.36.3 \
-    --hash=sha256:13d429aa93a61dc40bf503e8c801db1f1bca3dc706b10ef2434a36123568f044 \
-    --hash=sha256:90a671733cfb35771d8cc605e0b679d23b992f8dcfad48cc60b38cb29aeb7080
+starlette==0.37.2 \
+    --hash=sha256:6fe59f29268538e5d0d182f2791a479a0c64638e6935d1c6989e63fb2699c6ee \
+    --hash=sha256:9af890290133b79fc3db55474ade20f6220a364a0402e0b556e7cd5e1e093823
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements.txt

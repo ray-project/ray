@@ -15,7 +15,6 @@ msgpack<2.0.0,>=1.0.0
 packaging
 protobuf!=3.19.5,>=3.15.3
 pyyaml
-aiosignal
 frozenlist
 requests
 watchfiles

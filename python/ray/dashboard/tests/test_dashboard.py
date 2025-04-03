@@ -632,41 +632,39 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
-    start_time = time.time()
-    value1_timestamps = []
-    while True:
-        time.sleep(1)
-        try:
-            for x in range(10):
-                response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
-                response.raise_for_status()
-                timestamp = response.json()["data"]["timestamp"]
-                value1_timestamps.append(timestamp)
-            assert len(collections.Counter(value1_timestamps)) > 1
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
+    timestamps = set()
+    for _ in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 1
 
-    sub_path_timestamps = []
+    timestamps.clear()
+    for x in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
+
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        sub_path_timestamps.append(timestamp)
-    assert len(collections.Counter(sub_path_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
+    timestamps.clear()
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
     with pytest.raises(Exception):
         response.raise_for_status()
@@ -674,23 +672,23 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert result["result"] is False
     assert "KeyError" in result["msg"]
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 4
+        timestamps.add(timestamp)
+    assert len(timestamps) == 4
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     data = collections.defaultdict(set)
     for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/t1?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         data[x].add(timestamp)
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 8
+        timestamps.add(timestamp)
+    assert len(timestamps) == 8
     assert len(data[3]) == 2
     assert len(data[0]) == 2
 

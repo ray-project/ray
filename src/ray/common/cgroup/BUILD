@@ -14,6 +14,7 @@ ray_cc_library(
     name = "cgroup_context",
     hdrs = ["cgroup_context.h"],
     deps = [
+        ":constants",
         "//src/ray/util:compat",
     ],
 )
@@ -31,6 +32,11 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+)
+
+ray_cc_library(
     name = "scoped_cgroup_handle",
     hdrs = ["scoped_cgroup_handle.h"],
 )
@@ -41,6 +47,15 @@ ray_cc_library(
     deps = [
         ":cgroup_context",
         ":scoped_cgroup_handle",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_manager",
+    srcs = ["cgroup_manager.cc"],
+    hdrs = ["cgroup_manager.h"],
+    deps = [
+        ":base_cgroup_setup",
     ],
 )
 
