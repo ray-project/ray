@@ -387,7 +387,6 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "click >= 7.0",
-        "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "packaging",
