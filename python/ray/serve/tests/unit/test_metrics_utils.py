@@ -204,7 +204,7 @@ class TestInMemoryMetricsStore:
 
         s.window_min("m1", window_start_timestamp_s=1.1, do_compact=True)
 
-        assert s.window_min("m1", window_start_timestamp_s=0, do_compact=False) == 1.1
+        assert s.window_min("m1", window_start_timestamp_s=0, do_compact=False) == 2
 
     def test_multiple_metrics(self):
         s = InMemoryMetricsStore()
@@ -214,7 +214,7 @@ class TestInMemoryMetricsStore:
         assert s.window_average("m2", window_start_timestamp_s=0) == -1.5
         assert s.window_max("m1", window_start_timestamp_s=0) == 2
         assert s.window_max("m2", window_start_timestamp_s=0) == -1
-        assert s.window_min("m1", window_start_timestamp_s=0) == -1
+        assert s.window_min("m1", window_start_timestamp_s=0) == 1
         assert s.window_min("m2", window_start_timestamp_s=0) == -2
 
     def test_prune_keys_and_compact_data(self):
