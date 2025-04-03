@@ -17,7 +17,7 @@ from ray.tune import PlacementGroupFactory
 
 
 class InfiniteAPPOConfig(APPOConfig):
-    def __init__(self, *, algo_class=None):
+    def __init__(self, algo_class=None):
         super().__init__(algo_class=algo_class or InfiniteAPPO)
 
         self.num_weights_server_actors = 1
@@ -27,6 +27,20 @@ class InfiniteAPPOConfig(APPOConfig):
 
         # Defaults overriding APPOConfig settings.
         self.env_runner_cls = InfiniteAPPOMultiAgentEnvRunner
+
+    @override(APPOConfig)
+    def get_default_learner_class(self):
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.infinite_appo.torch import (
+                infinite_appo_torch_learner
+            )
+
+            return infinite_appo_torch_learner.InfiniteAPPOTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use `framework='torch'`."
+            )
 
     @override(APPOConfig)
     def training(
@@ -51,8 +65,9 @@ class InfiniteAPPOConfig(APPOConfig):
 
 class InfiniteAPPO(APPO):
     @override(Algorithm)
+    @classmethod
     def default_resource_request(cls, config):
-        pg_factory = Algorithm.default_resource_request(cls, config)
+        pg_factory = Algorithm.default_resource_request(config)
         infinite_appo_bundles = pg_factory.bundles + [
             # 1 metrics actor + n weights servers + m batch dispatchers
             {"CPU": 1} for _ in range(
@@ -104,14 +119,14 @@ class InfiniteAPPO(APPO):
         ]
 
         # Add agg. actors, weights server actors and correct sync_freq to env runners.
-        def _setup_er(
-            env_runner,
-            agg=self.aggregator_actors,
-            ws=self.weights_server_actors,
-        ):
+        agg = self.aggregator_actors[:]
+        ws = self.weights_server_actors[:]
+        sync_freq = self.config.pipeline_sync_freq
+
+        def _setup_er(env_runner, agg=agg, ws=ws, sync_freq=sync_freq):
             env_runner.add_aggregator_actors(aggregator_actor_refs=agg)
             env_runner.weights_server_actors = ws
-            env_runner.sync_freq = self.config.pipeline_sync_freq
+            env_runner.sync_freq = sync_freq
 
         self.env_runner_group.foreach_env_runner(_setup_er)
 

@@ -2,7 +2,7 @@ import random
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.infinite_appo import InfiniteAPPOConfig
+from ray.rllib.algorithms.infinite_appo.infinite_appo import InfiniteAPPOConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
