@@ -1,4 +1,5 @@
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -170,7 +171,8 @@ class ActorPoolMapOperator(MapOperator):
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+            name=f"{self.name}.{uuid.uuid4()}",
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id},
         ).remote(
             ctx,
             src_fn_name=self.name,

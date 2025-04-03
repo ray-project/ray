@@ -3354,7 +3354,11 @@ Status CoreWorker::ExecuteTask(
     return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
+    auto actor_name = task_spec.ActorName();
+    if (actor_name.empty()) {
+      actor_name = task_spec.FunctionDescriptor()->ClassName();
+    }
+    task_counter_.BecomeActor(actor_name);
     {
       auto self_actor_handle =
           std::make_unique<ActorHandle>(task_spec.GetSerializedActorHandle());
