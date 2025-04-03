@@ -36,6 +36,8 @@ This section contains commands for managing Ray clusters.
 
 .. _ray-submit-doc:
 
+Note: We recommend submitting your jobs to the cluster via the :ref:`Ray Job API <jobs-quickstart>`.  
+
 .. click:: ray.scripts.scripts:submit
    :prog: ray submit
    :show-nested:
