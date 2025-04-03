@@ -104,6 +104,9 @@ Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << to;
 
+  auto pids = ReadEntireFile(from);
+  RAY_LOG(INFO) << "Total PID contains |" << *pids << "|";
+
   pid_t pid = 0;
   RAY_LOG(INFO) << "Before moving PID from " << from << " to " << to;
   while (in_file >> pid) {
