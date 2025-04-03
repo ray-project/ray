@@ -5,9 +5,10 @@ Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource 
 import heapq
 import itertools
 import logging
-from packaging import version
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
+
+from packaging import version
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
