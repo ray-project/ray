@@ -504,9 +504,7 @@ void GcsJobManager::RecordMetrics() {
   ray::stats::STATS_running_jobs.Record(running_job_start_times_.size());
   ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
 
-  for (const auto &pair : running_job_start_times_) {
-    const auto &job_id = pair.first;
-    const auto &start_time = pair.second;
+  for (const auto &[job_id, start_time] : running_job_start_times_) {
     ray::stats::STATS_job_duration_s.Record((current_sys_time_ms() - start_time) / 1000.0,
                                             {{"JobId", job_id.Hex()}});
   }
