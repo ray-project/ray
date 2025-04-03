@@ -4,6 +4,7 @@ import json
 from abc import ABC
 from typing import List, Dict, Optional, Any, Type
 
+from ray._common.utils import import_attr
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.constants import (
@@ -15,7 +16,6 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PLUGIN_MAX_PRIORITY,
 )
 from ray.util.annotations import DeveloperAPI
-from ray._private.utils import import_attr
 
 default_logger = logging.getLogger(__name__)
 

@@ -26,14 +26,10 @@ class BenchmarkFactory(ABC):
         raise NotImplementedError
 
     def get_train_dataloader(self):
-        return self.dataloader_factory.get_train_dataloader(
-            batch_size=self.benchmark_config.train_batch_size
-        )
+        return self.dataloader_factory.get_train_dataloader()
 
     def get_val_dataloader(self):
-        return self.dataloader_factory.get_val_dataloader(
-            batch_size=self.benchmark_config.validation_batch_size
-        )
+        return self.dataloader_factory.get_val_dataloader()
 
     def get_dataloader_metrics(self):
         return self.dataloader_factory.get_metrics()

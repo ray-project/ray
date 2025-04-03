@@ -24,7 +24,7 @@ if the Cluster was started previously.
 
 **Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all Workers. It won’t be.
 
-**Fix**: Use Runtime Environments to pass environment variables explicity.
+**Fix**: Use Runtime Environments to pass environment variables explicitly.
 If you call ``ray.init(runtime_env=...)``,
 then the Workers will have the environment variable set.
 
@@ -114,8 +114,7 @@ of Ray Tasks itself, e.g.
 
 This will error with message:
 
-.. testoutput::
-  :options: +MOCK
+.. code-block::
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
@@ -243,7 +242,9 @@ Note that stacktrace capture is disabled by default to avoid any performance ove
 
 Example:
 
+.. NOTE(edoakes): test is skipped because it reinitializes Ray.
 .. testcode::
+    :skipif: True
 
     import ray
 

@@ -7,7 +7,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    FrozenSet,
     List,
     Tuple,
     Union,
@@ -30,10 +29,16 @@ from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
+from ray.exceptions import (
+    RayCgraphCapacityExceeded,
+    RayTaskError,
+    RayChannelError,
+    RayChannelTimeoutError,
+)
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -207,6 +212,9 @@ def do_exec_tasks(
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_TORCH_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
             try:
                 import nvtx
             except ImportError:
@@ -216,6 +224,26 @@ def do_exec_tasks(
                 )
             nvtx_profile = nvtx.Profile()
             nvtx_profile.enable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_NVTX_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
+
+            import torch
+
+            torch_profile = torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                with_stack=True,
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                    "compiled_graph_torch_profiles"
+                ),
+            )
+            torch_profile.start()
+            logger.info("Torch profiling started")
 
         done = False
         while True:
@@ -230,6 +258,10 @@ def do_exec_tasks(
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
             nvtx_profile.disable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            torch_profile.stop()
+            logger.info("Torch profiling stopped")
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -291,6 +323,9 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    # CUDA events should be destroyed before other CUDA resources.
+    for task in tasks:
+        task.destroy_cuda_event()
     for task in tasks:
         task.cancel()
 
@@ -492,12 +527,7 @@ class ExecutableTask:
 
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
-                if isinstance(arg, ChannelInterface):
-                    channel = arg
-                else:
-                    adapter = arg
-                    channel = adapter.get_dag_input_channel()
-
+                channel = arg
                 if channel in input_channel_to_idx:
                     # The same channel was added before, so reuse the index.
                     channel_idx = input_channel_to_idx[channel]
@@ -536,6 +566,14 @@ class ExecutableTask:
         """
         self.input_reader.close()
         self.output_writer.close()
+
+    def destroy_cuda_event(self):
+        """
+        If this executable task has created a GPU future that is not yet waited on,
+        that future is in the channel context cache. Remove the future from the cache
+        and destroy its CUDA event.
+        """
+        GPUFuture.remove_gpu_future(self.task_idx)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """
@@ -596,7 +634,7 @@ class ExecutableTask:
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val)
+            future = GPUFuture(val, self.task_idx)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
@@ -797,6 +835,7 @@ class CompiledDAG:
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         max_inflight_executions: Optional[int] = None,
+        max_buffered_results: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
         default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
@@ -818,6 +857,14 @@ class CompiledDAG:
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
+            max_buffered_results: The maximum number of results that can be
+                buffered at the driver. If more results are buffered,
+                `RayCgraphCapacityExceeded` is raised. Note that
+                when result corresponding to an execution is retrieved
+                (by calling `ray.get()` on a `CompiledDAGRef` or
+                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                corresponding to earlier executions that have not been retrieved
+                yet are buffered.
             overlap_gpu_communication: (experimental) Whether to overlap GPU
                 communication with computation during DAG execution. If True, the
                 communication and computation can be overlapped, which can improve
@@ -851,6 +898,9 @@ class CompiledDAG:
         self._max_inflight_executions = max_inflight_executions
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
+        self._max_buffered_results = max_buffered_results
+        if self._max_buffered_results is None:
+            self._max_buffered_results = ctx.max_buffered_results
         self._dag_id = uuid.uuid4().hex
         self._submit_timeout: Optional[float] = submit_timeout
         if self._submit_timeout is None:
@@ -890,7 +940,7 @@ class CompiledDAG:
         # These communicators are created by Compiled Graph, rather than passed in.
         # Communicators are only created when self._create_default_communicator is True.
         self._actors_to_created_communicator_id: Dict[
-            FrozenSet["ray.actor.ActorHandle"], str
+            Tuple["ray.actor.ActorHandle"], str
         ] = {}
 
         # Set of actors involved in P2P communication using an unresolved communicator.
@@ -954,8 +1004,6 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        # Set of actors present in the DAG.
-        self.actor_refs = set()
         self.actor_to_tasks: Dict[
             "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
@@ -1001,11 +1049,16 @@ class CompiledDAG:
         self._proxy_actor = _create_proxy_actor()
         # Set to True when `teardown` API is called.
         self._is_teardown = False
-        # execution indices -> set of channel indices of destructed CompiledDAGRefs
-        # When a CompiledDagRef is destructed and its result has not been cached and
-        # ray.get has not been called on it, we will add it to this dict, so that
-        # we can lazily release the native buffers
-        self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
+        # Execution index to set of channel indices for CompiledDAGRefs
+        # or CompiledDAGFuture whose destructor has been called. A "None"
+        # channel index means there is only one channel, and its destructor
+        # has been called.
+        self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
+        # Execution index to set of channel indices for CompiledDAGRefs
+        # or CompiledDAGFuture whose get() has been called. A "None"
+        # channel index means there is only one channel, and its get()
+        # has been called.
+        self._got_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
 
     @property
     def is_teardown(self) -> bool:
@@ -1159,7 +1212,9 @@ class CompiledDAG:
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     # Currently driver on GPU is not supported, so we always
                     # use shared memory to transfer tensors.
-                    dag_node.type_hint = TorchTensorType()
+                    dag_node.type_hint = TorchTensorType(
+                        device=dag_node.type_hint.device
+                    )
 
             if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
@@ -1273,7 +1328,8 @@ class CompiledDAG:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
                 )
-            actors = frozenset(collective_op.actor_handles)
+            # using tuple to preserve the order of actors for collective operations
+            actors = tuple(collective_op.actor_handles)
             if actors in self._actors_to_created_communicator_id:
                 communicator_id = self._actors_to_created_communicator_id[actors]
             else:
@@ -1608,7 +1664,6 @@ class CompiledDAG:
                     task.output_node_idxs.append(self.dag_node_to_idx[downstream_node])
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
-                self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -2029,7 +2084,7 @@ class CompiledDAG:
         return False
 
     def _monitor_failures(self):
-        outer = weakref.proxy(self)
+        get_outer = weakref.ref(self)
 
         class Monitor(threading.Thread):
             def __init__(self):
@@ -2040,7 +2095,22 @@ class CompiledDAG:
                 self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
+            def _outer_ref_alive(self) -> bool:
+                if get_outer() is None:
+                    logger.error(
+                        "CompiledDAG has been destructed before teardown. "
+                        "This should not occur please report an issue at "
+                        "https://github.com/ray-project/ray/issues/new/.",
+                        stack_info=True,
+                    )
+                    return False
+                return True
+
             def wait_teardown(self, kill_actors: bool = False):
+                outer = get_outer()
+                if not self._outer_ref_alive():
+                    return
+
                 from ray.dag import DAGContext
 
                 ctx = DAGContext.get_current()
@@ -2084,50 +2154,60 @@ class CompiledDAG:
                     except Exception:
                         pass
 
+                if kill_actors:
+                    # In the previous loop, we allow the actor tasks to exit first.
+                    # Now, we force kill the actors if not yet.
+                    for actor in outer.worker_task_refs:
+                        logger.info(f"Killing actor: {actor}")
+                        ray.kill(actor)
+
             def teardown(self, kill_actors: bool = False):
                 with self._in_teardown_lock:
                     if self._teardown_done:
                         return
 
+                    outer = get_outer()
+                    if not self._outer_ref_alive():
+                        return
+
                     logger.info("Tearing down compiled DAG")
-                    try:
-                        outer._dag_submitter.close()
-                        outer._dag_output_fetcher.close()
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                        for actor in outer.actor_refs:
-                            logger.info(f"Cancelling compiled worker on actor: {actor}")
-                        # Cancel all actor loops in parallel.
-                        cancel_refs = [
-                            actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                            for actor, tasks in outer.actor_to_executable_tasks.items()
-                        ]
-                        for cancel_ref in cancel_refs:
-                            try:
-                                ray.get(cancel_ref, timeout=30)
-                            except RayChannelError:
-                                # Channel error happens when a channel is closed
-                                # or timed out. In this case, do not log.
-                                pass
-                            except Exception:
-                                logger.exception("Error cancelling worker task")
-                                pass
+                    for actor in outer.actor_to_executable_tasks.keys():
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        for (
-                            communicator_id
-                        ) in outer._actors_to_created_communicator_id.values():
-                            _destroy_communicator(communicator_id)
+                    for (
+                        communicator_id
+                    ) in outer._actors_to_created_communicator_id.values():
+                        _destroy_communicator(communicator_id)
 
-                        logger.info("Waiting for worker tasks to exit")
-                        self.wait_teardown(kill_actors=kill_actors)
-                    except ReferenceError:
-                        # Python destruction order is not guaranteed, so we may
-                        # access attributes of `outer` which are already destroyed.
-                        logger.info("Compiled DAG is already destroyed")
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown(kill_actors=kill_actors)
+
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
+                    outer = get_outer()
+                    if not self._outer_ref_alive():
+                        return
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
                     logger.info(
@@ -2145,7 +2225,7 @@ class CompiledDAG:
     def _raise_if_too_many_inflight_executions(self):
         num_inflight_executions = (
             self._execution_index - self._max_finished_execution_index
-        ) + len(self._result_buffer)
+        )
         if num_inflight_executions >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
                 "The compiled graph can't have more than "
@@ -2230,49 +2310,173 @@ class CompiledDAG:
             ]
         else:
             result = [self._result_buffer[execution_index].pop(channel_index)]
-            if len(self._result_buffer[execution_index]) == 0:
-                del self._result_buffer[execution_index]
+
+        if execution_index not in self._got_ref_idxs:
+            self._got_ref_idxs[execution_index] = set()
+        self._got_ref_idxs[execution_index].add(channel_index)
+        self._clean_up_buffers(execution_index)
         return result
 
-    def _next_execution_can_be_released(self) -> bool:
+    def _delete_execution_results(self, execution_index: int, channel_index: int):
         """
-        Check if the next buffers for the next execution which will be completed
-        can be released. The next execution can be released if the next
-        execution index is in _destructed_ref_idxs and the number of destructed
-        channel indices is equal to the number of output channels.
+        Delete the execution results for the given execution index and channel index.
+        This method should be called when a CompiledDAGRef or CompiledDAGFuture is
+        destructed.
+
+        Note that this method maintains metadata for the deleted execution results,
+        and only actually deletes the buffers lazily when the buffer is not needed
+        anymore.
+
+        Args:
+            execution_index: The execution index to destruct results from.
+            channel_index: The index of the output channel corresponding to the result.
         """
-        return (
-            self._max_finished_execution_index + 1 in self._destructed_ref_idxs
-            and len(self._destructed_ref_idxs[self._max_finished_execution_index + 1])
-            == len(self.dag_output_channels)
-        )
+        if execution_index not in self._destructed_ref_idxs:
+            self._destructed_ref_idxs[execution_index] = set()
+        self._destructed_ref_idxs[execution_index].add(channel_index)
+        self._clean_up_buffers(execution_index)
+
+    def _try_release_result_buffer(self, execution_index: int):
+        """
+        Try to release the result buffer for the given execution index.
+        """
+
+        should_release = False
+        got_channel_idxs = self._got_ref_idxs.get(execution_index, set())
+        if None in got_channel_idxs:
+            assert len(got_channel_idxs) == 1, (
+                "when None exists in got_channel_idxs, it means all channels, and "
+                "it should be the only value in the set",
+            )
+            should_release = True
+        else:
+            destructed_channel_idxs = self._destructed_ref_idxs.get(
+                execution_index, set()
+            )
+            processed_channel_idxs = got_channel_idxs.union(destructed_channel_idxs)
+            # No more processing is needed for this execution index.
+            should_release = processed_channel_idxs == set(
+                range(len(self.dag_output_channels))
+            )
+
+        if not should_release:
+            return False
+
+        self._result_buffer.pop(execution_index, None)
+        self._destructed_ref_idxs.pop(execution_index, None)
+        self._got_ref_idxs.pop(execution_index, None)
+        return True
+
+    def _try_release_native_buffer(
+        self, idx_to_release: int, timeout: Optional[float] = None
+    ) -> bool:
+        """
+        Try to release the native buffer for the given execution index.
+
+        Args:
+            idx_to_release: The execution index to release buffers from.
+            timeout: The maximum time in seconds to wait for the release.
+
+        Returns:
+            Whether the buffers have been released.
+        """
+        if idx_to_release != self._max_finished_execution_index + 1:
+            # Native buffer can only be released for the next execution index.
+            return False
+
+        destructed_channel_idxs = self._destructed_ref_idxs.get(idx_to_release, set())
+        should_release = False
+        if None in destructed_channel_idxs:
+            assert len(destructed_channel_idxs) == 1, (
+                "when None exists in destructed_channel_idxs, it means all channels, "
+                "and it should be the only value in the set",
+            )
+            should_release = True
+        elif len(destructed_channel_idxs) == len(self.dag_output_channels):
+            should_release = True
+
+        if not should_release:
+            return False
+
+        # refs corresponding to idx_to_release are all destructed,
+        # and they are never fetched or cached.
+        assert idx_to_release not in self._result_buffer
+        assert idx_to_release not in self._got_ref_idxs
+
+        try:
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
+                "Releasing native buffers corresponding to a stale CompiledDAGRef "
+                "is taking a long time. If this is expected, increase "
+                f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
+                "seconds. Otherwise, this may indicate that the execution "
+                "is hanging."
+            ) from e
+        self._destructed_ref_idxs.pop(idx_to_release)
+
+        return True
+
+    def _try_release_buffer(
+        self, idx_to_release: int, timeout: Optional[float] = None
+    ) -> bool:
+        """
+        Try to release the buffer for the given execution index.
+        First try to release the native buffer, then try to release the result buffer.
+
+        Args:
+            idx_to_release: The execution index to release buffers from.
+            timeout: The maximum time in seconds to wait for the release.
+
+        Returns:
+            Whether the native buffer or result buffer has been released.
+        """
+        if self._try_release_native_buffer(idx_to_release, timeout):
+            # Releasing native buffer means the corresponding execution result
+            # is consumed (and discarded).
+            self._max_finished_execution_index += 1
+            return True
+        return self._try_release_result_buffer(idx_to_release)
 
     def _try_release_buffers(self):
         """
-        This will try to repeatedly release channel buffers as long as
-        max_finished_execution_index + 1 is in the set of destructed indices.
-        We should be checking to release buffers any time we are incrementing
-        or checking the max_finished_execution_index or the _destructed_ref_idxs.
+        Repeatedly release buffer if possible.
+
+        This method starts from _max_finished_execution_index + 1 and tries to release
+        as many buffers as possible. If a native buffer is released,
+        _max_finished_execution_index will be incremented.
         """
         timeout = self._get_timeout
-        while self._next_execution_can_be_released():
+        while True:
             start_time = time.monotonic()
-            try:
-                self._dag_output_fetcher.release_channel_buffers(timeout)
-            except RayChannelTimeoutError as e:
-                raise RayChannelTimeoutError(
-                    "Releasing native buffers corresponding to a stale CompiledDAGRef "
-                    "is taking a long time. If this is expected, increase "
-                    f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
-                    "seconds. Otherwise, this may indicate that the execution "
-                    "is hanging."
-                ) from e
-
-            self._max_finished_execution_index += 1
+            if not self._try_release_buffer(
+                self._max_finished_execution_index + 1, timeout
+            ):
+                break
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
+
+    def _clean_up_buffers(self, idx_to_release: int):
+        """
+        Clean up native and result buffers.
+
+        This method:
+        1. Tries to release the buffer for the given execution index.
+           This index is the specific one that requires a clean up,
+           e.g., right after get() is called or a CompiledDAGRef/CompiledDAGFuture
+           is destructed.
+        2. Tries to release all buffers starting from _max_finished_execution_index + 1.
+           This step is to clean up buffers that are no longer needed.
+
+        Args:
+            idx_to_release: The execution index that requires a clean up,
+                e.g., right after get() is called or a CompiledDAGRef/CompiledDAGFuture
+                is destructed.
+        """
+        self._try_release_buffer(idx_to_release)
+        self._try_release_buffers()
 
     def _execute_until(
         self,
@@ -2304,6 +2508,16 @@ class CompiledDAG:
         if timeout is None:
             timeout = self._get_timeout
         while self._max_finished_execution_index < execution_index:
+            if len(self._result_buffer) >= self._max_buffered_results:
+                raise RayCgraphCapacityExceeded(
+                    "The compiled graph can't have more than "
+                    f"{self._max_buffered_results} buffered results, and you "
+                    f"currently have {len(self._result_buffer)} buffered results. "
+                    "Call `ray.get()` on CompiledDAGRef's (or await on "
+                    "CompiledDAGFuture's) to retrieve results, or increase "
+                    f"`_max_buffered_results` if buffering is desired, note that "
+                    "this will increase driver memory usage."
+                )
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
@@ -2311,14 +2525,18 @@ class CompiledDAG:
             # If a CompiledDagRef for a specific execution index has been destructed,
             # release the channel buffers for that execution index instead of caching
             try:
-                if self._next_execution_can_be_released():
-                    self._dag_output_fetcher.release_channel_buffers(timeout)
-                else:
+                if not self._try_release_native_buffer(
+                    self._max_finished_execution_index + 1, timeout
+                ):
                     result = self._dag_output_fetcher.read(timeout)
                     self._cache_execution_results(
                         self._max_finished_execution_index + 1,
                         result,
                     )
+                # We have either released the native buffer or fetched and
+                # cached the result buffer, therefore we always increment
+                # _max_finished_execution_index.
+                self._max_finished_execution_index += 1
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "
@@ -2326,8 +2544,6 @@ class CompiledDAG:
                     "seconds. Otherwise, this may indicate that the execution is "
                     "hanging."
                 ) from e
-
-            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2570,7 +2786,7 @@ class CompiledDAG:
             # |                             |---------------------------->|                            # noqa
             # |                             9:Output[0]                   10:Output[1]                 # noqa
             # |<----------------------------------------------------------|                            # noqa
-            # 8:MultiOutputNod
+            # 8:MultiOutputNode
             ```
         """
 
@@ -2840,29 +3056,25 @@ class CompiledDAG:
         channel_details=False,
     ) -> str:
         """
-        Visualize the compiled graph using Graphviz.
-
-        For non-ASCII formats, the visualization will be saved to a file specified
-        by the `filename` argument.
-
-        This method generates a graphical representation of the compiled graph,
-        showing tasks and their dependencies.This method should be called
-        **after** the graph has been compiled using `experimental_compile()`.
+        Visualize the compiled graph by showing tasks and their dependencies.
+        This method should be called **after** the graph has been compiled using
+        `experimental_compile()`.
 
         Args:
-            filename: The name of the output file (without extension).
+            filename: For non-ASCII formats, the output file name (without extension).
+                For ASCII format, the visualization will be printed to the console,
+                and this argument is ignored.
             format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
-            view: For non-ascii: Whether to open the file with the default viewer.
-                For ascii: Whether to print the visualization and return None
-                    or return the ascii visualization string directly.
+            view: For non-ASCII formats: Whether to open the file with the default
+                viewer. For ASCII format: Whether to print the visualization and return
+                None or return the ascii visualization string directly.
             channel_details: If True, adds channel details to edges.
 
         Returns:
-            str:
-                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
-                the Graphviz DOT string representation of the compiled graph.
-                - For ASCII format, returns the ASCII string representation of the
-                compiled graph.
+            The string representation of the compiled graph. For Graphviz-based formats
+            (e.g., 'png', 'pdf', 'jpeg'), returns the Graphviz DOT string representation
+            of the compiled graph. For ASCII format, returns the ASCII string
+            representation of the compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -2975,10 +3187,15 @@ class CompiledDAG:
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
             channel_type_str = (
-                type(dag_node.type_hint).__name__
-                if dag_node.type_hint
-                else "UnknownType"
-            ) + "\n"
+                (
+                    type(dag_node.type_hint).__name__
+                    if dag_node.type_hint
+                    else "UnknownType"
+                )
+                + "\n"
+                if channel_details
+                else None
+            )
 
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
@@ -2986,8 +3203,9 @@ class CompiledDAG:
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    edge_label = channel_type_str
+                    edge_label = None
                     if channel_details:
+                        edge_label = channel_type_str
                         edge_label += self.get_channel_details(
                             task.output_channels[0],
                             (
@@ -3003,8 +3221,9 @@ class CompiledDAG:
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    edge_label = channel_type_str
+                    edge_label = None
                     if channel_details:
+                        edge_label = channel_type_str
                         edge_label += self.get_channel_details(
                             output_channel,
                             task.dag_node._get_actor_handle()._actor_id.hex(),
@@ -3037,9 +3256,16 @@ class CompiledDAG:
             output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
-        """Teardown and cancel all actor tasks for this DAG. After this
+        """
+        Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
-        or compile a new DAG."""
+        or compile a new DAG.
+
+        Note: This method is automatically called when the CompiledDAG is destructed
+        or the script exits. However, this should be explicitly called before compiling
+        another graph on the same actors. Python may not garbage collect the
+        CompiledDAG object immediately when you may expect.
+        """
         if self._is_teardown:
             return
 
@@ -3066,6 +3292,7 @@ def build_compiled_dag_from_ray_dag(
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     max_inflight_executions: Optional[int] = None,
+    max_buffered_results: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
     default_communicator: Optional[Union[Communicator, str]] = "create",
 ) -> "CompiledDAG":
@@ -3074,6 +3301,7 @@ def build_compiled_dag_from_ray_dag(
         buffer_size_bytes,
         enable_asyncio,
         max_inflight_executions,
+        max_buffered_results,
         overlap_gpu_communication,
         default_communicator,
     )

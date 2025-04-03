@@ -17,7 +17,10 @@
 #include <gtest/gtest_prod.h>
 
 #include <chrono>
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "ray/common/grpc_util.h"

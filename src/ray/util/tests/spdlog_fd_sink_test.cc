@@ -16,15 +16,14 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
+
+#include "ray/util/compat.h"
+
 namespace ray {
 
 namespace {
-
-#if defined(__APPLE__) || defined(__linux__)
-int GetStdoutHandle() { return STDOUT_FILENO; }
-#elif defined(_WIN32)
-HANDLE GetStdoutHandle() { return GetStdHandle(STD_OUTPUT_HANDLE); }
-#endif
 
 // Logs "helloworld" for whatever given message; here we don't care the what message is
 // logged, the only thing matters is whether msg has been written to the given file
@@ -50,7 +49,7 @@ TEST(SpdlogFdSinkTest, SinkWithFd) {
   const std::string stdout_content = testing::internal::GetCapturedStdout();
 
   EXPECT_EQ(stdout_content, "helloworld");
-};
+}
 
 }  // namespace
 

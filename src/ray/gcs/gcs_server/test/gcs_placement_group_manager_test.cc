@@ -15,6 +15,8 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -855,11 +857,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::NO_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 2);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 2);
   }
 
   /// Feasible, but failed to commit resources.
@@ -873,11 +875,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 3);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 3);
   }
 
   // Check that the placement_group scheduling state is `FINISHED`.
@@ -916,8 +918,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   auto scheduling_done_ns = absl::GetCurrentTimeNanos();
 
   /// Make sure the creation time is correctly recorded.
-  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() != 0);
-  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() != 0);
+  ASSERT_NE(placement_group->GetStats().scheduling_latency_us(), 0);
+  ASSERT_NE(placement_group->GetStats().end_to_end_creation_latency_us(), 0);
   // The way to measure latency is a little brittle now. Alternatively, we can mock
   // the absl::GetCurrentNanos() to a callback method and have more accurate test.
   auto scheduling_latency_us =

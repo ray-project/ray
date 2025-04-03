@@ -140,7 +140,7 @@ def test_run_script_in_docker() -> None:
 def test_skip_ray_installation() -> None:
     install_ray_called = []
 
-    def _mock_install_ray(build_type: Optional[str]) -> None:
+    def _mock_install_ray(build_type: Optional[str], mask: Optional[str]) -> None:
         install_ray_called.append(True)
 
     with mock.patch(
@@ -168,14 +168,14 @@ def test_ray_installation() -> None:
             "build",
             "--pull",
             "--progress=plain",
+            "-t",
+            docker_image,
             "--build-arg",
             f"BASE_IMAGE={docker_image}",
             "--build-arg",
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
-            "-t",
-            docker_image,
             "-f",
             "/ray/ci/ray_ci/tests.env.Dockerfile",
             "/ray",

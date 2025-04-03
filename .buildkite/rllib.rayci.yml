@@ -96,10 +96,10 @@ steps:
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: data tests"
-    if: build.branch != "master"
     tags:
       - data
       - rllib
+      - disabled  # Tests of this tag do not exist any more.
     instance_type: large
     commands:
       # learning tests pytorch
@@ -194,6 +194,7 @@ steps:
     tags:
       - rllib_gpu
       - gpu
+      - flaky
       - skip-on-premerge
     instance_type: gpu
     commands:
@@ -209,6 +210,7 @@ steps:
     key: rllib_flaky_tests_01
     tags:
       - rllib
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:
@@ -238,6 +240,7 @@ steps:
     key: rllib_flaky_tests_02
     tags:
       - rllib
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:

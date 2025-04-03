@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
+#include <memory>
+
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -116,27 +118,26 @@ TEST_F(ClusterResourceManagerTest, HasAvailableResourcesTest) {
 
 TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
 
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
   // Subtract again and make sure the available == 0.
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
 
   // Add resources back.
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
-
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
 }
 
 TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {

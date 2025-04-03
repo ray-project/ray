@@ -5,13 +5,9 @@ import random
 from typing import Tuple, List
 
 import grpc
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
-
+from grpc import aio as aiogrpc
 import ray._private.gcs_utils as gcs_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2

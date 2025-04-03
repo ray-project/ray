@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/gcs/redis_context.h"
 
