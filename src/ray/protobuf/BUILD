@@ -234,6 +234,7 @@ cc_proto_library(
 proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
+    deps = [":gcs_service_proto"],
 )
 
 cc_proto_library(

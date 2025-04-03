@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/gcs_service.proto";
+
 message Event {
   enum SourceType {
     // The COMMON type is designed for some process that does not init there own
@@ -65,4 +67,21 @@ message Event {
   int64 timestamp = 8;
   // store custom key such as node_id, job_id, task_id
   map<string, string> custom_fields = 9;
+}
+
+message ReportEventsReply {
+  bool send_success = 1;
+}
+
+message ReportEventsRequest {
+  repeated string event_strings = 1;
+}
+
+service ReportEventService {
+  rpc ReportEvents(ReportEventsRequest) returns (ReportEventsReply);
+}
+
+// TODO: Move the service to a separate file specifically for the event aggregator
+service AggregatorService {
+  rpc ReceiveEvents(AddTaskEventDataRequest) returns (AddTaskEventDataReply);
 }

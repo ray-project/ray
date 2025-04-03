@@ -51,6 +51,9 @@
 namespace ray {
 namespace core {
 
+using ray::ConcurrencyGroup;
+using ray::RayObject;
+
 class TaskReceiver {
  public:
   using TaskHandler = std::function<Status(
