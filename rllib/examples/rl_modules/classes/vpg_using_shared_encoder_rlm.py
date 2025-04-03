@@ -144,7 +144,9 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
 
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
-            policy_batch["encoder_embeddings"] = self.encoder._forward(policy_batch)["encoder_embeddings"]
+            policy_batch["encoder_embeddings"] = self.encoder._forward(policy_batch)[
+                "encoder_embeddings"
+            ]
 
             # Pass the policy's embeddings through the policy net.
             outputs[policy_id] = rl_module._forward(policy_batch, **kwargs)
