@@ -22,15 +22,12 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
     DeploymentID,
-    DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusInternalTrigger,
-    DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
     MultiplexedReplicaInfo,
     ReplicaID,
-    ReplicaState,
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -69,6 +66,12 @@ from ray.serve.schema import (
     DeploymentDetails,
     ReplicaDetails,
     _deployment_info_to_schema,
+)
+from ray.serve.schema_types import (
+    ALL_REPLICA_STATES,
+    DeploymentStatus,
+    DeploymentStatusTrigger,
+    ReplicaState,
 )
 from ray.util.placement_group import PlacementGroup
 
@@ -184,7 +187,6 @@ SLOW_STARTUP_WARNING_PERIOD_S = int(
     os.environ.get("SERVE_SLOW_STARTUP_WARNING_PERIOD_S", 30)
 )
 
-ALL_REPLICA_STATES = list(ReplicaState)
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
 
