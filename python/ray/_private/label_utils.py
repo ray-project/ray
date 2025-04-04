@@ -2,7 +2,6 @@ import re
 import yaml
 from typing import Dict
 
-import ray._private.ray_constants as ray_constants
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
 # https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
@@ -81,12 +80,6 @@ def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
     for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
-            )
         if "/" in key:
             prefix, name = key.rsplit("/")
             if len(prefix) > 253 or not re.match(LABEL_PREFIX_REGEX, prefix):
