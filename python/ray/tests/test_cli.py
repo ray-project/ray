@@ -347,6 +347,7 @@ def test_ray_start_invalid_resource_isolation_config():
     )
     assert result.exit_code != 0
     assert isinstance(result.exception, ValueError)
+    _die_on_error(runner.invoke(scripts.stop))
 
 
 def test_ray_start_resource_isolation_config_default_values(monkeypatch):
@@ -357,7 +358,7 @@ def test_ray_start_resource_isolation_config_default_values(monkeypatch):
         ["--head", "--enable-resource-isolation"],
     )
     # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
-    assert result.exit_code == 0
+    _die_on_error(result)
 
 
 @pytest.mark.skipif(
@@ -384,8 +385,9 @@ def test_ray_start_worker_cannot_specify_temp_dir(
         scripts.start,
         [f"--address=localhost:{ray_constants.DEFAULT_PORT}", f"--temp-dir={temp_dir}"],
     )
-    assert result.exit_code == 0
     assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
+    assert result.exit_code == 0
+    # assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
 
 
 def _ray_start_hook(ray_params, head):
