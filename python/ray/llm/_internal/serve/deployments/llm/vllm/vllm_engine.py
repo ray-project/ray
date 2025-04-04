@@ -93,7 +93,6 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     )
 
 
-@ray.remote
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
@@ -341,15 +340,15 @@ class VLLMEngine:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
             if self.llm_config.accelerator_type:
-                ref = _get_vllm_engine_config.options(
+                ref = ray.remote(
                     num_cpus=0,
                     num_gpus=1,
                     accelerator_type=self.llm_config.accelerator_type,
-                ).remote(self.llm_config)
+                )(_get_vllm_engine_config).remote(self.llm_config)
             else:
-                ref = _get_vllm_engine_config.options(num_cpus=0, num_gpus=1).remote(
-                    self.llm_config
-                )
+                ref = ray.remote(num_cpus=0, num_gpus=1)(
+                    _get_vllm_engine_config
+                ).remote(self.llm_config)
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
