@@ -16,7 +16,9 @@
 
 #ifndef __linux__
 namespace ray {
-CgroupSetup::CgroupSetup() {
+CgroupSetup::CgroupSetup(const std::string &directory,
+                         const std::string &node_id,
+                         bool skip_cgroup_creation) {
   RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
   RAY_UNUSED(root_cgroup_procs_filepath_);
   RAY_UNUSED(root_cgroup_subtree_control_filepath_);
@@ -185,24 +187,26 @@ Status MakeDirectory(const std::string &directory) {
 
 }  // namespace internal
 
-CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
+CgroupSetup::CgroupSetup(const std::string &directory,
+                         const std::string &node_id,
+                         bool skip_cgroup_creation) {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
-  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
+  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id, skip_cgroup_creation));
 }
 
 CgroupSetup::CgroupSetup(const std::string &directory,
                          const std::string &node_id,
+                         bool skip_cgroup_creation,
                          TestTag) {
-  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id));
+  RAY_CHECK_OK(InitializeCgroupV2Directory(directory, node_id, skip_cgroup_creation));
 }
 
 Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
-                                                const std::string &node_id) {
-  // Check cgroup accessibility before setup.
-  RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
-
+                                                const std::string &node_id,
+                                                bool skip_cgroup_creation) {
   // Cgroup folders for the current ray node.
+  skip_cgroup_creation_ = skip_cgroup_creation;
   node_cgroup_v2_folder_ =
       ray::JoinPaths(directory, absl::StrFormat("ray_node_%s", node_id));
   root_cgroup_procs_filepath_ = ray::JoinPaths(directory, kProcFilename);
@@ -219,6 +223,13 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
       ray::JoinPaths(cgroup_v2_app_folder_, kSubtreeControlFilename);
   const std::string cgroup_v2_system_procs =
       ray::JoinPaths(cgroup_v2_system_folder_, kProcFilename);
+
+  if (skip_cgroup_creation) {
+    return Status::OK();
+  }
+
+  // Check cgroup accessibility before setup.
+  RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
   // Create subcgroup for current node.
   RAY_RETURN_NOT_OK(internal::MakeDirectory(node_cgroup_v2_folder_));
@@ -246,7 +257,12 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   return Status::OK();
 }
 
-CgroupSetup::~CgroupSetup() { RAY_CHECK_OK(CleanupCgroups()); }
+CgroupSetup::~CgroupSetup() {
+  if (skip_cgroup_creation_) {
+    return;
+  }
+  RAY_CHECK_OK(CleanupCgroups());
+}
 
 Status CgroupSetup::CleanupCgroups() {
   // Kill all dangling processes.

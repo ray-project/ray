@@ -60,6 +60,10 @@ class Cgroupv2SetupTest : public ::testing::Test {
         app_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
   void TearDown() override {
+    if (skip_cgroup_creation_) {
+      return;
+    }
+
     // Check the application subcgroup folder has been deleted.
     std::error_code err_code;
     bool exists = std::filesystem::exists(app_cgroup_folder_, err_code);
@@ -69,6 +73,7 @@ class Cgroupv2SetupTest : public ::testing::Test {
   }
 
  protected:
+  bool skip_cgroup_creation_ = false;
   const std::string node_id_;
   const std::string node_cgroup_folder_;
   const std::string system_cgroup_folder_;
@@ -77,8 +82,37 @@ class Cgroupv2SetupTest : public ::testing::Test {
   const std::string app_cgroup_proc_filepath_;
 };
 
+TEST_F(Cgroupv2SetupTest, SkipCgroupCreationTest) {
+  skip_cgroup_creation_ = true;
+
+  std::error_code err_code;
+  bool system_cgroup_exists_before =
+      std::filesystem::exists(system_cgroup_folder_, err_code);
+  ASSERT_FALSE(err_code);
+
+  bool app_cgroup_exists_before = std::filesystem::exists(app_cgroup_folder_, err_code);
+  ASSERT_FALSE(err_code);
+
+  CgroupSetup cgroup_setup{
+      "/sys/fs/cgroup", "node_id", /*skip_cgroup_creation=*/true, CgroupSetup::TestTag{}};
+
+  // Check system cgroup existence doesn't change.
+  bool system_cgroup_exists_after =
+      std::filesystem::exists(system_cgroup_folder_, err_code);
+  ASSERT_FALSE(err_code);
+  ASSERT_EQ(system_cgroup_exists_before, system_cgroup_exists_after);
+
+  // Check application cgroup existence doesn't change.
+  bool app_cgroup_exists_after = std::filesystem::exists(app_cgroup_folder_, err_code);
+  ASSERT_FALSE(err_code);
+  ASSERT_EQ(app_cgroup_exists_before, app_cgroup_exists_after);
+}
+
 TEST_F(Cgroupv2SetupTest, SetupTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup",
+                           "node_id",
+                           /*skip_cgroup_creation=*/false,
+                           CgroupSetup::TestTag{}};
 
   // Check system cgroup is created successfully.
   std::error_code err_code;
@@ -93,7 +127,10 @@ TEST_F(Cgroupv2SetupTest, SetupTest) {
 }
 
 TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup",
+                           "node_id",
+                           /*skip_cgroup_creation=*/false,
+                           CgroupSetup::TestTag{}};
 
   pid_t pid = fork();
   ASSERT_NE(pid, -1);
@@ -115,7 +152,10 @@ TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
 }
 
 TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
+  CgroupSetup cgroup_setup{"/sys/fs/cgroup",
+                           "node_id",
+                           /*skip_cgroup_creation=*/false,
+                           CgroupSetup::TestTag{}};
 
   pid_t pid = fork();
   ASSERT_NE(pid, -1);

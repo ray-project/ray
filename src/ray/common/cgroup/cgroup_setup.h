@@ -47,11 +47,15 @@ class CgroupSetup : public BaseCgroupSetup {
   // Creates a cgroup hierarchy under the specified directory.
   // See https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
   // for more details about the cgroup hierarchy. If there is an error, it will be logged
-  // and the process will exit. NOTE: This constructor is expected to be called only once
-  // per raylet instance
+  // and the process will exit.
   //
-  // TODO(hjiang): Implement support for VM/BM. Currently only docker is supported.
-  CgroupSetup(const std::string &directory, const std::string &node_id);
+  // \param skip_cgroup_creation if true, we don't do precondition checks, nor subcgroup
+  // directories creation.
+  //
+  // NOTE: This constructor is expected to be called only once per raylet instance.
+  CgroupSetup(const std::string &directory,
+              const std::string &node_id,
+              bool skip_cgroup_creation);
 
   // On destruction, all processes (including spawned child processes) in the managed
   // cgroup will be killed recursively via SIGKILL.
@@ -66,15 +70,20 @@ class CgroupSetup : public BaseCgroupSetup {
   struct TestTag {};
   // Constructor made for unit tests, which allows [CgroupSetup] to be created for
   // multiple times in a process.
-  CgroupSetup(const std::string &directory, const std::string &node_id, TestTag);
+  CgroupSetup(const std::string &directory,
+              const std::string &node_id,
+              bool skip_cgroup_creation,
+              TestTag);
 
   FRIEND_TEST(Cgroupv2SetupTest, SetupTest);
   FRIEND_TEST(Cgroupv2SetupTest, AddSystemProcessTest);
   FRIEND_TEST(Cgroupv2SetupTest, AddAppProcessTest);
+  FRIEND_TEST(Cgroupv2SetupTest, SkipCgroupCreationTest);
 
   // Setup cgroup folders for the given [node_id].
   Status InitializeCgroupV2Directory(const std::string &directory,
-                                     const std::string &node_id);
+                                     const std::string &node_id,
+                                     bool skip_cgroup_creation);
 
   // Cleans up cgroup after the raylet exits by killing all dangling processes and
   // deleting the node cgroup.
@@ -90,6 +99,8 @@ class CgroupSetup : public BaseCgroupSetup {
   // Link: https://github.com/ray-project/ray/pull/50761
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 
+  // If true, cgroups are not created at instance construction.
+  bool skip_cgroup_creation_;
   // File path of PIDs for root cgroup.
   std::string root_cgroup_procs_filepath_;
   // File path for subtree control for root cgroup.
