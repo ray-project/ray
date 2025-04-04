@@ -260,7 +260,8 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   if (queue.rpc_client) {
-    queue.max_finished_seq_no_start_at_ = queue.rpc_client->ClientProcessedUpToSeqno();
+    queue.max_finished_seq_no_start_at_ = queue.rpc_client->ClientProcessedUpToSeqno() +
+                                          queue.inflight_task_callbacks.size();
   }
   queue.rpc_client = nullptr;
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
