@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class TorchRecRunner(TrainLoopRunner):
-    def setup(self):
+    def _setup(self):
         device = ray.train.torch.get_device()
 
         self.model = self.factory.get_model()
@@ -28,18 +28,14 @@ class TorchRecRunner(TrainLoopRunner):
         self.optimizer = CombinedOptimizer(
             [self.model.fused_optimizer, dense_optimizer]
         )
-        # lr_scheduler = LRPolicyScheduler(
-        #     optimizer, args.lr_warmup_steps, args.lr_decay_start, args.lr_decay_steps
-        # )
-
         self.pipeline = TrainPipelineSparseDist(
             self.model, self.optimizer, device, execute_all_batches=True
         )
 
-    def train_step(self, train_dataloader):
+    def _train_step(self, train_dataloader):
         self.pipeline.progress(train_dataloader)
 
-    def validate_step(self, val_dataloader):
+    def _validate_step(self, val_dataloader):
         return 0
 
     def _save_training_state(self, local_dir: str):
