@@ -323,9 +323,33 @@ class VLLMEngine:
                 "Later we may switch default to use v1 once vLLM v1 is mature."
             )
             envs.set_vllm_use_v1(False)
+
         if not envs.VLLM_USE_V1:
             return await self._start_engine_v0()
         return await self._start_engine_v1()
+
+    async def _prepare_engine_config(self):
+        """
+        Prepare the engine config to start the engine.
+
+        Returns:
+            engine_args: The engine arguments.
+            engine_config: The engine configuration.
+            node_initialization: The node initialization.
+        """
+        if self.engine_config.use_gpu:
+            # Create engine config on a task with access to GPU,
+            # as GPU capability may be queried.
+            # This assumes that GPU type is homogeneous across the cluster.
+            engine_args, engine_config = ray.get(
+                _get_vllm_engine_config.remote(self.llm_config)
+            )
+        else:
+            engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+
+        # Initialize node and return all configurations
+        node_initialization = await self.initialize_node(self.llm_config)
+        return engine_args, engine_config, node_initialization
 
     async def _start_engine_v1(self) -> "EngineClient":
         """Start the vLLM v1 engine. Note that we only use _get_async_engine_args
@@ -334,23 +358,27 @@ class VLLMEngine:
         TODO: Refactor vLLM v0 integration to use the same async engine API
         to simplify the code.
         """
-        engine_args, engine_config = ray.get(
-            _get_vllm_engine_config.remote(self.llm_config)
-        )
-        args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
+        (
+            engine_args,
+            engine_config,
+            node_initialization,
+        ) = await self._prepare_engine_config()
 
         return self._start_async_llm_engine(
             engine_args,
             engine_config,
-            args.placement_group,
+            node_initialization.placement_group,
             use_v1=True,
         )
 
     async def _start_engine_v0(self) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
 
-        args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
-        engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+        (
+            engine_args,
+            engine_config,
+            node_initialization,
+        ) = await self._prepare_engine_config()
 
         if MQLLMEngineClient.is_unsupported_config(engine_config):
             # If the engine is not supported, we fall back to the legacy async engine.
@@ -361,12 +389,12 @@ class VLLMEngine:
             return self._start_async_llm_engine(
                 engine_args,
                 engine_config,
-                args.placement_group,
+                node_initialization.placement_group,
                 use_v1=False,
             )
 
         return await self._start_mq_engine(
-            engine_args, engine_config, args.placement_group
+            engine_args, engine_config, node_initialization.placement_group
         )
 
     async def _start_mq_engine(
