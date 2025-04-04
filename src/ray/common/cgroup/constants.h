@@ -40,9 +40,6 @@ inline constexpr std::string_view kCgroupTypeFilename = "cgroup.type";
 // Owner can read and write.
 #ifdef __linux__
 inline constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;
-#else
-// Not used in non-linux platform, so randomly assign a meaningless value.
-inline constexpr mode_t kReadWritePerm = static_cast<mode_t>(-1);
 #endif  // __linux__
 
 }  // namespace ray
