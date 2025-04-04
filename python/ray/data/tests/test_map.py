@@ -804,7 +804,7 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     original_schema = ds.schema().names
 
     # Apply a trivial filter to test schema stability
-    ds_filtered = ds.filter(lambda row: True)
+    ds_filtered = ds.filter(expr="str_col >='x'")
     filtered_schema = ds_filtered.schema().names
 
     # Ensure schema remains unchanged
