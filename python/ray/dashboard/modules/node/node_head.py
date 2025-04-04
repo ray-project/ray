@@ -5,7 +5,7 @@ import time
 from collections import deque, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional
+from typing import AsyncGenerator, Iterable, List, Dict, Any, Optional, Set
 
 import aiohttp.web
 import grpc
@@ -39,9 +39,10 @@ from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
@@ -137,9 +138,9 @@ def _actor_table_data_to_dict(message):
     return light_message
 
 
-class NodeHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class NodeHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._stubs = {}
         self._collect_memory_info = False
@@ -169,6 +170,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             max_workers=1, thread_name_prefix="node_head_actor_executor"
         )
 
+        self._background_tasks: Set[asyncio.Task] = set()
+
     def get_internal_states(self):
         return {
             "head_node_registration_time_s": self._head_node_registration_time_s,
@@ -195,7 +198,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
 
-        all_node_infos = await get_or_create_event_loop().run_in_executor(
+        all_node_infos = await self._loop.run_in_executor(
             self._node_executor,
             _convert_to_dict,
             all_node_info.values(),
@@ -215,7 +218,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 else:
                     updated_infos_proto = []
 
-                updated_infos = await get_or_create_event_loop().run_in_executor(
+                updated_infos = await self._loop.run_in_executor(
                     self._node_executor,
                     _convert_to_dict,
                     updated_infos_proto,
@@ -492,7 +495,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         #       could lead to subtle hard to catch issues, hence the assertion
         assert len(node_ids) == len(responses)
 
-        new_node_stats = await get_or_create_event_loop().run_in_executor(
+        new_node_stats = await self._loop.run_in_executor(
             self._node_executor, postprocess, zip(node_ids, responses)
         )
 
@@ -506,8 +509,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         subscriber = GcsAioResourceUsageSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
 
-        loop = get_or_create_event_loop()
-
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -518,7 +519,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(
+                parsed_data = await self._loop.run_in_executor(
                     self._node_executor, json.loads, data
                 )
 
@@ -729,8 +730,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 **{key: data},
             )
 
-    async def run(self, server):
-        await asyncio.gather(
+    async def run(self):
+        await super().run()
+        coros = [
             self._update_nodes(),
             self._update_node_stats(),
             self._update_node_physical_stats(),
@@ -738,8 +740,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._cleanup_actors(),
             DataOrganizer.purge(),
             DataOrganizer.organize(self._node_executor),
-        )
-
-    @staticmethod
-    def is_minimal_module():
-        return False
+        ]
+        for coro in coros:
+            task = self._loop.create_task(coro)
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)

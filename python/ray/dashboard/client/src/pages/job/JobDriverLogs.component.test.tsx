@@ -47,7 +47,7 @@ describe("JobDriverLogs", () => {
     expect(screen.getByText(/foo/)).toBeVisible();
 
     expect(mockedGet).toBeCalledWith(
-      `api/v0/logs/file?node_id=node-id-0&filename=job-driver-raysubmit_12345.log&lines=${MAX_LINES_FOR_LOGS}&format=leading_1`,
+      `api/v0/logs/file?node_id=node-id-0&filename=job-driver-raysubmit_12345.log&lines=${MAX_LINES_FOR_LOGS}`,
     );
   });
 });
