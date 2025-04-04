@@ -21,7 +21,7 @@ class TrainLoopRunner:
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
 
-        self.setup()
+        self._setup()
 
         # Training progress state.
         self._train_batch_idx: int = 0
@@ -32,12 +32,25 @@ class TrainLoopRunner:
 
         checkpoint = ray.train.get_checkpoint()
         if checkpoint:
-            self.restore_from_checkpoint(checkpoint)
+            self._restore_from_checkpoint(checkpoint)
 
-    def setup(self):
+    # Methods for subclasses to implement.
+    def _setup(self):
+        pass
+
+    def _train_step(self, train_dataloader):
         raise NotImplementedError
 
-    def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+    def _validate_step(self, val_dataloader):
+        raise NotImplementedError
+
+    def _save_training_state(self, local_dir: str):
+        pass
+
+    def _load_training_state(self, local_dir: str):
+        pass
+
+    def _restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
         logger.info(
             f"Restoring from checkpoint: {checkpoint} for worker "
             f"{ray.train.get_context().get_world_rank()}"
@@ -60,15 +73,15 @@ class TrainLoopRunner:
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
-            self.train_epoch()
+            self._train_epoch()
 
             if not self.benchmark_config.skip_validation_at_epoch_end:
-                self.validate_and_checkpoint()
+                self._validate_and_checkpoint()
 
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
-    def train_epoch(self):
+    def _train_epoch(self):
         with self._metrics["train/epoch"].timer():
             self._train_epoch()
 
@@ -117,7 +130,7 @@ class TrainLoopRunner:
         while True:
             with self._metrics["train/step"].timer():
                 try:
-                    self.train_step(train_dataloader)
+                    self._train_step(train_dataloader)
                 except StopIteration:
                     break
 
@@ -127,7 +140,7 @@ class TrainLoopRunner:
             )
 
             if self._should_validate_during_epoch():
-                self.validate_and_checkpoint()
+                self._validate_and_checkpoint()
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
@@ -166,12 +179,6 @@ class TrainLoopRunner:
 
         return {"validation/loss": total_loss.item() / num_rows}
 
-    def train_step(self, train_dataloader):
-        raise NotImplementedError
-
-    def validate_step(self, val_dataloader):
-        raise NotImplementedError
-
     def _should_validate_during_epoch(self) -> bool:
         """Handles the validate_every_n_steps logic."""
         return (
@@ -188,7 +195,7 @@ class TrainLoopRunner:
             == 0
         )
 
-    def validate_and_checkpoint(self):
+    def _validate_and_checkpoint(self):
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self._validate_epoch()
 
@@ -199,18 +206,12 @@ class TrainLoopRunner:
                 self.save_checkpoint(temp_checkpoint_dir)
 
             with self._metrics["checkpoint/report"].timer():
-                self.report_checkpoint(
+                self._report_checkpoint(
                     metrics=validation_metrics,
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
 
-    def _save_training_state(self, local_dir: str):
-        pass
-
-    def _load_training_state(self, local_dir: str):
-        pass
-
-    def load_checkpoint(self, local_dir: str):
+    def _load_checkpoint(self, local_dir: str):
         self._load_training_state(local_dir)
 
         run_state = torch.load(os.path.join(local_dir, "run_state.pt"))
@@ -230,7 +231,7 @@ class TrainLoopRunner:
                 f"{ray.train.get_checkpoint()}"
             )
 
-    def save_checkpoint(self, local_dir: str):
+    def _save_checkpoint(self, local_dir: str):
         self._save_training_state(local_dir)
 
         run_state = {
@@ -249,7 +250,7 @@ class TrainLoopRunner:
                 f"train_batch_idx={self._train_batch_idx}"
             )
 
-    def report_checkpoint(self, metrics, checkpoint):
+    def _report_checkpoint(self, metrics, checkpoint):
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
