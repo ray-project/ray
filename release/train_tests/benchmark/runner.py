@@ -36,18 +36,30 @@ class TrainLoopRunner:
 
     # Methods for subclasses to implement.
     def _setup(self):
+        """Subclasses should override this to setup the model, optimizer, etc."""
         pass
 
     def _train_step(self, train_dataloader):
+        """Subclasses should override this to implement the training step.
+        A training step represents a single forward and backward pass on a batch of data.
+        """
         raise NotImplementedError
 
     def _validate_step(self, val_dataloader):
+        """Subclasses should override this to implement the validation step.
+        A validation step represents a single forward pass on a batch of data."""
         raise NotImplementedError
 
     def _save_training_state(self, local_dir: str):
+        """Subclasses should override this to save the training state.
+        This should reference the model and optimizer state initialized
+        in the `_setup` method."""
         pass
 
     def _load_training_state(self, local_dir: str):
+        """Subclasses should override this to load the training state.
+        This should reference the model and optimizer state initialized
+        in the `_setup` method."""
         pass
 
     def _restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
@@ -63,15 +75,11 @@ class TrainLoopRunner:
             download_time = time.perf_counter() - download_start
 
             load_start = time.perf_counter()
-            self.load_checkpoint(temp_checkpoint_dir)
+            self._load_checkpoint(temp_checkpoint_dir)
             load_time = time.perf_counter() - load_start
 
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
-
-    def _train_epoch(self):
-        with self._metrics["train/epoch"].timer():
-            self._train_epoch()
 
     def _wrap_dataloader_with_timer(self, dataloader, prefix: str):
         dataloader_iter = iter(dataloader)
@@ -97,6 +105,8 @@ class TrainLoopRunner:
         return wrapped_dataloader()
 
     def _train_epoch(self):
+        """Subclasses can override the entrire `_train_epoch` method for more training
+        logic customization."""
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(f"Training starting @ epoch={self._train_epoch_idx}")
 
@@ -191,7 +201,7 @@ class TrainLoopRunner:
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
             with self._metrics["checkpoint/save"].timer():
-                self.save_checkpoint(temp_checkpoint_dir)
+                self._save_checkpoint(temp_checkpoint_dir)
 
             with self._metrics["checkpoint/report"].timer():
                 self._report_checkpoint(
@@ -253,7 +263,8 @@ class TrainLoopRunner:
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
-            self._train_epoch()
+            with self._metrics["train/epoch"].timer():
+                self._train_epoch()
 
             if not self.benchmark_config.skip_validation_at_epoch_end:
                 self._validate_and_checkpoint()
