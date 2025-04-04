@@ -1,0 +1,39 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+# Ray native pubsub module.
+ray_cc_library(
+    name = "publisher_lib",
+    srcs = ["publisher.cc"],
+    hdrs = ["publisher.h"],
+    deps = [
+        "//:pubsub_rpc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+    # visibility = ["//src/ray/pubsub:__pkg__"],  # Only visible to the pubsub package
+)
+
+# Subscriber module
+ray_cc_library(
+    name = "subscriber_lib",
+    srcs = ["subscriber.cc"],
+    hdrs = ["subscriber.h"],
+    deps = [
+        "//:pubsub_rpc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+    # visibility = ["//visibility:public"],  # Make it public, accessible by other packages
+)
+
+# Combined PubSub Library
+ray_cc_library(
+    name = "pubsub_lib",
+    deps = [
+        ":publisher_lib",
+        ":subscriber_lib",
+    ],
+    # visibility = ["//visibility:public"],  # Make it public, accessible by other packages
+)
