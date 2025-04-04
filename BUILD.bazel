@@ -1675,25 +1675,47 @@ ray_cc_library(
     ],
     hdrs = [
         "src/ray/core_worker/core_worker.h",
-        "src/ray/core_worker/core_worker_options.h",
         "src/ray/core_worker/core_worker_process.h",
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/transport/actor_submit_queue.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
     ],
     deps = [
         ":actor_handle",
+        ":actor_submit_queue",
+        ":core_worker_options",
         ":experimental_mutable_object_provider",
+        ":fiber",
         ":future_resolver",
         ":generator_waiter",
         ":normal_task_submitter",
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
+        ":scheduling_queue",
+        "//src/ray/common/cgroup:cgroup_context",
+        "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util:env",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
     ],
+)
+
+ray_cc_library(
+    name = "core_worker_options",
+    hdrs = ["src/ray/core_worker/core_worker_options.h"]
+)
+
+ray_cc_library(
+    name = "fiber",
+    hdrs = ["src/ray/core_worker/fiber.h"]
+)
+
+ray_cc_library(
+    name = "actor_submit_queue",
+    hdrs = ["src/ray/core_worker/transport/actor_submit_queue.h"]
+)
+
+ray_cc_library(
+    name = "scheduling_queue",
+    hdrs = ["src/ray/core_worker/transport/scheduling_queue.h"]
 )
 
 ray_cc_library(
@@ -1728,15 +1750,18 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "actor_manager",
-    srcs = [
-        "src/ray/core_worker/actor_manager.cc",
-    ],
+    name = "actor_creator",
     hdrs = [
         "src/ray/core_worker/actor_creator.h",
-        "src/ray/core_worker/actor_manager.h",
     ],
+)
+
+ray_cc_library(
+    name = "actor_manager",
+    srcs = ["src/ray/core_worker/actor_manager.cc"],
+    hdrs = ["src/ray/core_worker/actor_manager.h"],
     deps = [
+        ":actor_creator",
         ":actor_handle",
         ":gcs_client_lib",
         ":reference_count",
@@ -1781,11 +1806,9 @@ ray_cc_library(
 ray_cc_library(
     name = "out_of_order_actor_submit_queue",
     srcs = ["src/ray/core_worker/transport/out_of_order_actor_submit_queue.cc"],
-    hdrs = [
-        "src/ray/core_worker/transport/out_of_order_actor_submit_queue.h",
-        "src/ray/core_worker/transport/actor_submit_queue.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/out_of_order_actor_submit_queue.h"],
     deps = [
+        "actor_submit_queue",
         ":ray_common"
     ]
 )
@@ -1793,11 +1816,9 @@ ray_cc_library(
 ray_cc_library(
     name = "sequential_actor_submit_queue",
     srcs = ["src/ray/core_worker/transport/sequential_actor_submit_queue.cc"],
-    hdrs = [
-        "src/ray/core_worker/transport/sequential_actor_submit_queue.h",
-        "src/ray/core_worker/transport/actor_submit_queue.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/sequential_actor_submit_queue.h"],
     deps = [
+        "actor_submit_queue",
         ":ray_common"
     ]
 )
@@ -1805,9 +1826,7 @@ ray_cc_library(
 ray_cc_library(
     name = "memory_store",
     srcs = ["src/ray/core_worker/store_provider/memory_store/memory_store.cc"],
-    hdrs = [
-        "src/ray/core_worker/store_provider/memory_store/memory_store.h",
-    ],
+    hdrs = ["src/ray/core_worker/store_provider/memory_store/memory_store.h"],
     deps = [
         ":core_worker_context",
         ":ray_common",
@@ -1816,44 +1835,43 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "task_finisher",
+    hdrs = ["src/ray/core_worker/task_finisher.h"],
+)
+
+ray_cc_library(
     name = "task_manager",
     srcs = ["src/ray/core_worker/task_manager.cc"],
-    hdrs = [
-        "src/ray/core_worker/task_finisher.h",
-        "src/ray/core_worker/task_manager.h",
-    ],
+    hdrs = ["src/ray/core_worker/task_manager.h"],
     deps = [
         ":actor_manager",
         ":ray_common",
         ":memory_store",
         ":task_event_buffer",
+        ":task_finisher",
     ]
 )
 
 ray_cc_library(
     name = "dependency_resolver",
     srcs = ["src/ray/core_worker/transport/dependency_resolver.cc"],
-    hdrs = [
-        "src/ray/core_worker/actor_creator.h",
-        "src/ray/core_worker/task_finisher.h",
-        "src/ray/core_worker/transport/dependency_resolver.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/dependency_resolver.h"],
     deps = [
+        "actor_creator",
         ":gcs_client_lib",
         ":memory_store",
         ":ray_common",
+        ":task_finisher",
     ]
 )
 
 ray_cc_library(
     name = "actor_task_submitter",
     srcs = ["src/ray/core_worker/transport/actor_task_submitter.cc"],
-    hdrs = [
-        "src/ray/core_worker/actor_creator.h",
-        "src/ray/core_worker/transport/actor_submit_queue.h",
-        "src/ray/core_worker/transport/actor_task_submitter.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/actor_task_submitter.h"],
     deps = [
+        ":actor_creator",
+        ":actor_submit_queue",
         ":dependency_resolver",
         ":out_of_order_actor_submit_queue",
         ":sequential_actor_submit_queue",
@@ -1874,25 +1892,21 @@ ray_cc_library(
 ray_cc_library(
     name = "normal_scheduling_queue",
     srcs = ["src/ray/core_worker/transport/normal_scheduling_queue.cc"],
-    hdrs = [
-        "src/ray/core_worker/transport/normal_scheduling_queue.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/normal_scheduling_queue.h"],
     deps = [
-        ":scheduling_util"
+        "scheduling_queue",
+        ":scheduling_util",
     ]
 )
 
 ray_cc_library(
     name = "actor_scheduling_queue",
     srcs = ["src/ray/core_worker/transport/actor_scheduling_queue.cc"],
-    hdrs = [
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/transport/actor_scheduling_queue.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/actor_scheduling_queue.h"],
     deps = [
         ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
         ":scheduling_util",
         ":task_event_buffer",
         "@boost//:fiber",
@@ -1902,11 +1916,9 @@ ray_cc_library(
 ray_cc_library(
     name = "concurrency_group_manager",
     srcs = ["src/ray/core_worker/transport/concurrency_group_manager.cc"],
-    hdrs = [
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/transport/concurrency_group_manager.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/concurrency_group_manager.h"],
     deps = [
+        ":fiber",
         ":ray_common",
         ":thread_pool",
         "@boost//:fiber",
@@ -1916,13 +1928,11 @@ ray_cc_library(
 ray_cc_library(
     name = "out_of_order_actor_scheduling_queue",
     srcs = ["src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.cc"],
-    hdrs = [
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"],
     deps = [
         ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
         ":scheduling_util",
         ":task_event_buffer",
     ]
@@ -1931,18 +1941,16 @@ ray_cc_library(
 ray_cc_library(
     name = "task_receiver",
     srcs = ["src/ray/core_worker/transport/task_receiver.cc"],
-    hdrs = [
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
-        "src/ray/core_worker/transport/task_receiver.h",
-    ],
+    hdrs = ["src/ray/core_worker/transport/task_receiver.h"],
     deps = [
         ":actor_handle",
         ":actor_scheduling_queue",
         ":actor_task_submitter",
         ":concurrency_group_manager",
+        ":fiber",
         ":normal_scheduling_queue",
         ":out_of_order_actor_scheduling_queue",
+        "scheduling_queue",
     ]
 )
 

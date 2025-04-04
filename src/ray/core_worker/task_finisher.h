@@ -16,13 +16,22 @@
 
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "ray/common/id.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/status.h"
 #include "ray/common/task/task.h"
+#include "ray/common/task/task_spec.h"
+#include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
 class TaskFinisherInterface {
  public:
+  virtual ~TaskFinisherInterface() = default;
+
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr,
@@ -58,8 +67,6 @@ class TaskFinisherInterface {
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
   virtual bool IsTaskPending(const TaskID &task_id) const = 0;
-
-  virtual ~TaskFinisherInterface() = default;
 };
 
 }  // namespace core
