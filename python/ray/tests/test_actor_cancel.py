@@ -135,7 +135,7 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
 
 
 @pytest.mark.skip(
-    reason=("The guarantee in this case is too weak now. " "Need more work.")
+    reason=("The guarantee in this case is too weak now. Need more work.")
 )
 def test_in_flight_queued_requests_canceled(shutdown_only, monkeypatch):
     """

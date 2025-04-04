@@ -283,7 +283,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             await formatter_leading_1(response, logs_gen)
         else:
             raise ValueError(
-                f"Unsupported format: {output_format}, use 'text' or " "'leading_1'"
+                f"Unsupported format: {output_format}, use 'text' or 'leading_1'"
             )
         await response.write_eof()
         return response
