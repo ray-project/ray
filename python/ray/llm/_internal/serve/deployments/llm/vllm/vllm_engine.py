@@ -93,7 +93,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     )
 
 
-@ray.remote()
+@ray.remote
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
