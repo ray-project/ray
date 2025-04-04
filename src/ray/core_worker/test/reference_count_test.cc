@@ -126,15 +126,14 @@ using PublisherFactoryFn =
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
-  MockDistributedSubscriber(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      pubsub::SubscriberID subscriber_id,
-      PublisherFactoryFn client_factory)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedSubscriber(pubsub::pub_internal::SubscriptionIndex *dict,
+                            SubscriptionCallbackMap *sub_callback_map,
+                            SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                            pubsub::SubscriberID subscriber_id,
+                            PublisherFactoryFn client_factory)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
         subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
             subscriber_id,
@@ -233,14 +232,13 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
-  MockDistributedPublisher(
-      pubsub::pub_internal::SubscriptionIndex *directory,
-      SubscriptionCallbackMap *subscription_callback_map,
-      SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID publisher_id)
-      : directory_(directory),
-        subscription_callback_map_(subscription_callback_map),
-        subscription_failure_callback_map_(subscription_failure_callback_map),
+  MockDistributedPublisher(pubsub::pub_internal::SubscriptionIndex *dict,
+                           SubscriptionCallbackMap *sub_callback_map,
+                           SubscriptionFailureCallbackMap *sub_failure_callback_map,
+                           WorkerID publisher_id)
+      : directory_(dict),
+        subscription_callback_map_(sub_callback_map),
+        subscription_failure_callback_map_(sub_failure_callback_map),
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 

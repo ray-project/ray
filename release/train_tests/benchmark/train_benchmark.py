@@ -10,9 +10,15 @@ from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
-from image_classification.factory import ImageClassificationFactory
+from image_classification.image_classification_parquet.factory import (
+    ImageClassificationParquetFactory,
+)
+from image_classification.image_classification_jpeg.factory import (
+    ImageClassificationJpegFactory,
+)
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
@@ -44,8 +50,10 @@ def main():
     benchmark_config: BenchmarkConfig = cli_to_config()
     logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 
-    if benchmark_config.task == "image_classification":
-        factory = ImageClassificationFactory(benchmark_config)
+    if benchmark_config.task == "image_classification_parquet":
+        factory = ImageClassificationParquetFactory(benchmark_config)
+    elif benchmark_config.task == "image_classification_jpeg":
+        factory = ImageClassificationJpegFactory(benchmark_config)
     elif benchmark_config.task == "recsys":
         from recsys.recsys_factory import RecsysFactory
 

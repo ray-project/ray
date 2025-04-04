@@ -117,7 +117,8 @@ int main(int argc, char *argv[]) {
   instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      main_service.get_executor());
 
   ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 

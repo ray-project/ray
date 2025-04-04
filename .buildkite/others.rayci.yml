@@ -5,6 +5,7 @@ steps:
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
     key: pip_compile_dependencies
+    tags: always
     instance_type: small
     commands:
       # uncomment the following line to update the pinned versions of pip dependencies
@@ -21,6 +22,7 @@ steps:
 
   - label: ":tapioca: build: uv pip compile LLM dependencies"
     key: uv_pip_compile_llm_dependencies
+    tags: always
     instance_type: small
     command: ./ci/test_compile_llm_requirements.sh
     job_env: oss-ci-base_test-py3.11
@@ -32,6 +34,7 @@ steps:
     depends_on: oss-ci-base_build
 
   - label: doc tests
+    tags: python
     instance_type: large
     commands:
       # Disable test DB to avoid any hidden failures going forward.

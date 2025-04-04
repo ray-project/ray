@@ -7,7 +7,6 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
 from ray.util.annotations import DeveloperAPI
@@ -184,9 +183,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
         logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-        train_run_actors = await DataOrganizer.get_actor_infos(
-            actor_ids=actor_ids,
-        )
+        train_run_actors = await self._get_actor_infos(actor_ids)
 
         for train_worker in train_workers:
             actor = train_run_actors.get(train_worker.actor_id, None)
@@ -244,9 +241,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # train controller.
         # We need to detect this case and mark the train run as ABORTED.
 
-        actor_infos = await DataOrganizer.get_actor_infos(
-            actor_ids=[train_run.controller_actor_id],
-        )
+        actor_infos = await self._get_actor_infos([train_run.controller_actor_id])
         controller_actor_info = actor_infos[train_run.controller_actor_id]
 
         controller_actor_status = (
@@ -332,6 +327,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
+    async def _get_actor_infos(self, actor_ids: List[str]):
+        actor_ids_qs_str = ",".join(actor_ids)
+        url = f"http://{self.http_host}:{self.http_port}/logical/actors?ids={actor_ids_qs_str}&nocache=1"
+        async with self._http_session.get(url) as resp:
+            resp.raise_for_status()
+            resp_json = await resp.json()
+        return resp_json["data"]["actors"]
+
     async def _add_actor_status_and_update_run_status(self, train_runs):
         from ray.train._internal.state.schema import (
             ActorStatusEnum,
@@ -349,9 +352,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
             logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-            train_run_actors = await DataOrganizer.get_actor_infos(
-                actor_ids=actor_ids,
-            )
+            train_run_actors = await self._get_actor_infos(actor_ids)
 
             for worker_info in train_run.workers:
                 actor = train_run_actors.get(worker_info.actor_id, None)
