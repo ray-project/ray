@@ -14,7 +14,11 @@
 
 #pragma once
 
+#include <string>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -378,7 +382,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// the API will be no-op.
   /// - The stream has been already deleted.
   /// - The reference is already read/consumed from a stream.
-  ///   In this case, we already owned or GC'ed the refernece.
+  ///   In this case, we already owned or GC'ed the reference.
   /// - The reference is already owned via HandleReportGeneratorItemReturns.
   ///
   /// \param object_id The object ID to temporarily owns.

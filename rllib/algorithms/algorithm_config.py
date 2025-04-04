@@ -39,7 +39,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -500,6 +500,8 @@ class AlgorithmConfig(_Config):
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_sample_timeout_s = 120.0
+        self.evaluation_auto_duration_min_env_steps_per_sample = 100
+        self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -2518,9 +2520,10 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            to_check = force_list(callbacks_class)
+            if not all(callable(c) for c in to_check):
                 raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
+                    "`config.callbacks_class` must be a callable or list of callables that "
                     "returns a subclass of DefaultCallbacks, got "
                     f"{callbacks_class}!"
                 )
@@ -2558,6 +2561,8 @@ class AlgorithmConfig(_Config):
         evaluation_interval: Optional[int] = NotProvided,
         evaluation_duration: Optional[Union[int, str]] = NotProvided,
         evaluation_duration_unit: Optional[str] = NotProvided,
+        evaluation_auto_duration_min_env_steps_per_sample: Optional[int] = NotProvided,
+        evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
@@ -2596,6 +2601,14 @@ class AlgorithmConfig(_Config):
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps". Note that this
                 setting is ignored if `evaluation_duration="auto"`.
+            evaluation_auto_duration_min_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at least how many timesteps should be done per remote
+                `sample()` call.
+            evaluation_auto_duration_max_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at most how many timesteps should be done per remote
+                `sample()` call.
             evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
                 to sample a complete episode in the case your config settings are:
                 `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
@@ -2684,6 +2697,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not NotProvided:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_auto_duration_min_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_min_env_steps_per_sample = (
+                evaluation_auto_duration_min_env_steps_per_sample
+            )
+        if evaluation_auto_duration_max_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_max_env_steps_per_sample = (
+                evaluation_auto_duration_max_env_steps_per_sample
+            )
         if evaluation_sample_timeout_s is not NotProvided:
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:

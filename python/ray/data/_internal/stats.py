@@ -1,4 +1,5 @@
 import collections
+import enum
 import logging
 import threading
 import time
@@ -14,10 +15,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    NODE_UNKNOWN,
     MetricsGroup,
     NodeMetrics,
     OpRuntimeMetrics,
-    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -247,6 +248,14 @@ class _StatsActor:
             )
         )
 
+        # Actor related metrics
+        self.execution_metrics_actors = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
@@ -273,6 +282,41 @@ class _StatsActor:
             "data_iter_initialize_seconds",
             description="Seconds spent in iterator initialization code",
             tag_keys=iter_tag_keys,
+        )
+
+        # === Dataset and Operator Metadata Metrics ===
+        dataset_tags = ("dataset", "job_id", "start_time")
+        self.data_dataset_estimated_total_blocks = Gauge(
+            "data_dataset_estimated_total_blocks",
+            description="Total work units in blocks for dataset",
+            tag_keys=dataset_tags,
+        )
+        self.data_dataset_estimated_total_rows = Gauge(
+            "data_dataset_estimated_total_rows",
+            description="Total work units in rows for dataset",
+            tag_keys=dataset_tags,
+        )
+        self.data_dataset_state = Gauge(
+            "data_dataset_state",
+            description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
+            tag_keys=dataset_tags,
+        )
+
+        operator_tags = ("dataset", "operator")
+        self.data_operator_estimated_total_blocks = Gauge(
+            "data_operator_estimated_total_blocks",
+            description="Total work units in blocks for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_estimated_total_rows = Gauge(
+            "data_operator_estimated_total_rows",
+            description="Total work units in rows for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_state = Gauge(
+            "data_operator_state",
+            description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
+            tag_keys=operator_tags,
         )
 
     def _create_prometheus_metrics_for_execution_metrics(
@@ -382,6 +426,9 @@ class _StatsActor:
             ) in self.execution_metrics_obj_store_memory.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
+            for field_name, prom_metric in self.execution_metrics_actors.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
@@ -429,14 +476,15 @@ class _StatsActor:
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": "RUNNING",
+            "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
+            "total_rows": 0,
             "start_time": time.time(),
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": "RUNNING",
+                    "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
                 }
@@ -444,8 +492,46 @@ class _StatsActor:
             },
         }
 
-    def update_dataset(self, dataset_tag, state):
+    def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
+        state = self.datasets[dataset_tag]
+
+        job_id = self.datasets[dataset_tag].get("job_id", "None")
+        start_time = str(int(self.datasets[dataset_tag].get("start_time", 0)))
+
+        # Update dataset-level metrics
+        dataset_tags = {
+            "dataset": dataset_tag,
+            "job_id": job_id,
+            "start_time": start_time,
+        }
+        self.data_dataset_estimated_total_blocks.set(
+            state.get("total", 0), dataset_tags
+        )
+        self.data_dataset_estimated_total_rows.set(
+            state.get("total_rows", 0), dataset_tags
+        )
+        state_string = state.get("state", DatasetState.UNKNOWN.name)
+        state_enum = DatasetState.from_string(state_string)
+        self.data_dataset_state.set(state_enum.value, dataset_tags)
+
+        # Update operator-level metrics
+        for operator, op_state in state.get("operators", {}).items():
+            operator_tags = {
+                "dataset": dataset_tag,
+                "operator": operator,
+            }
+            self.data_operator_estimated_total_blocks.set(
+                op_state.get("total", 0), operator_tags
+            )
+            self.data_operator_estimated_total_rows.set(
+                op_state.get("total_rows", 0), operator_tags
+            )
+
+            # Get state code directly from enum
+            state_string = op_state.get("state", DatasetState.UNKNOWN.name)
+            state_enum = DatasetState.from_string(state_string)
+            self.data_operator_state.set(state_enum.value, operator_tags)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
@@ -687,6 +773,26 @@ class _StatsManager:
 
 
 StatsManager = _StatsManager()
+
+
+class DatasetState(enum.IntEnum):
+    """Enum representing the possible states of a dataset during execution."""
+
+    UNKNOWN = 0
+    RUNNING = 1
+    FINISHED = 2
+    FAILED = 3
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def from_string(cls, text):
+        """Get enum by name."""
+        try:
+            return cls[text]  # This uses the name to lookup the enum
+        except KeyError:
+            return cls.UNKNOWN
 
 
 class DatasetStats:
@@ -1206,7 +1312,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round((e.max_uss_bytes or 0) / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),

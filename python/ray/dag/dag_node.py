@@ -17,6 +17,7 @@ from typing import (
     Any,
     TypeVar,
     Callable,
+    Literal,
 )
 import uuid
 import asyncio
@@ -24,6 +25,7 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.util.types import Device
 
 T = TypeVar("T")
 
@@ -141,6 +143,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
+        device: Literal["default", "cpu", "gpu", "cuda"] = "default",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -149,9 +152,14 @@ class DAGNode(DAGNodeBase):
 
         Args:
             transport: "nccl" means that tensors will be passed via NCCL.
+                "shm" means that tensors will be passed via host shared memory and gRPC.
                 "auto" (default) means that tensor transport will be
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.
+            device: The target device to use for the tensor transport.
+                "default": The tensor will maintain its original device placement from the sender
+                "cpu": The tensor will be explicitly moved to CPU device in the receiver
+                "gpu" or "cuda": The tensor will be explicitly moved to GPU device in the receiver
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG. If this is True, the
@@ -161,24 +169,40 @@ class DAGNode(DAGNodeBase):
                 sender and receiver to eliminate performance overhead from
                 an additional data transfer.
         """
+        try:
+            device = Device(device)
+        except ValueError:
+            raise ValueError(
+                f"Invalid device '{device}'. "
+                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+            )
         if transport == "auto":
             self._type_hint = AutoTransportType(
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device=device,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "shm":
+            self._type_hint = TorchTensorType(
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'shm' or a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )

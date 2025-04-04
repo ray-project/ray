@@ -110,7 +110,9 @@ def test_callable_classes(shutdown_only):
 
     # map
     actor_reuse = ds.map(StatefulFn, concurrency=1).take()
-    assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
+    assert sorted(extract_values("id", actor_reuse)) == [
+        [v] for v in list(range(10))
+    ], actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -592,6 +594,15 @@ def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     renamed_schema_names = renamed_ds.schema().names
 
     assert sorted(renamed_schema_names) == sorted(expected_schema)
+
+
+def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(
+        DeprecationWarning,
+        match="Passing 'default' to `map_batches` is deprecated and won't be "
+        "supported after September 2025. Use `batch_size=None` instead.",
+    ):
+        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
 
 
 @pytest.mark.parametrize(
@@ -1674,6 +1685,32 @@ def test_map_batches_async_generator(shutdown_only):
         output,
         expected_output,
     )
+
+
+def test_flat_map_async_generator(shutdown_only):
+    async def fetch_data(id):
+        return {"id": id}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, row):
+            id = row["id"]
+            task1 = asyncio.create_task(fetch_data(id))
+            task2 = asyncio.create_task(fetch_data(id + 1))
+            print(f"yield task1: {id}")
+            yield await task1
+            print(f"sleep: {id}")
+            await asyncio.sleep(id % 5)
+            print(f"yield task2: {id}")
+            yield await task2
+
+    n = 10
+    ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
+    ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
+    output = ds.take_all()
+    assert sorted(extract_values("id", output)) == list(range(0, n)), output
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):

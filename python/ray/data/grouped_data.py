@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -106,15 +106,17 @@ class GroupedData:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
-            * It may be slower than using more specific methods such as min(), max().
-            * It requires that each group fits in memory on a single node.
 
-        In general, prefer to use aggregate() instead of map_groups().
+        * It may be slower than using more specific methods such as min(), max().
+        * It requires that each group fits in memory on a single node.
+
+        In general, prefer to use `aggregate()` instead of `map_groups()`.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -176,6 +178,12 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor or task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -183,6 +191,11 @@ class GroupedData:
         Returns:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
+
+        .. seealso::
+
+            :meth:`GroupedData.aggregate`
+                Use this method for common aggregation use cases.
         """
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
@@ -259,7 +272,7 @@ class GroupedData:
             num_gpus=num_gpus,
             memory=memory,
             concurrency=concurrency,
-            ray_remote_args_fn=None,
+            ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
 

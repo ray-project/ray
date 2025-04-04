@@ -9,7 +9,7 @@ import requests
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/usage_stats_enabled")
         async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched usage stats enabled",
                 usage_stats_enabled=self.usage_stats_enabled,
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
@@ -54,7 +54,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/cluster_id")
         async def get_cluster_id(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched cluster id",
                 cluster_id=self.gcs_client.cluster_id.hex(),
             )

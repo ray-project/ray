@@ -1,6 +1,11 @@
 API Comparisons
 ===============
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 Comparison between Ray Core APIs and Workflows
 ----------------------------------------------
 Ray Workflows is built on top of Ray, and offers a mostly consistent subset of its API while providing durability. This section highlights some of the differences:

@@ -1,7 +1,7 @@
 model_loading_config:
   model_id: VLLMFakeModel
 
-llm_engine: VLLM
+llm_engine: vLLM
 
 engine_kwargs:
   max_model_len: 4096

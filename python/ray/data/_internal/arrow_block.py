@@ -15,14 +15,14 @@ from typing import (
 
 import numpy as np
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.numpy_support import convert_to_numpy
+from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -33,6 +33,8 @@ from ray.data.block import (
     BlockMetadata,
     BlockType,
     U,
+    BlockColumnAccessor,
+    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -130,14 +132,12 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        pa_cols: Dict[str, pyarrow.Array] = dict()
-
-        for col_name, col_vals in columns.items():
-            np_col_vals = convert_to_numpy(col_vals)
-
-            pa_cols[col_name] = convert_to_pyarrow_array(np_col_vals, col_name)
-
-        return pyarrow_table_from_pydict(pa_cols)
+        return pyarrow_table_from_pydict(
+            {
+                column_name: convert_to_pyarrow_array(column_values, column_name)
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
@@ -191,9 +191,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         element = row[col_name][0]
         # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
         # 9.0.0+.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
+        pyarrow_version = get_pyarrow_version()
         if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
             assert isinstance(element, pyarrow.ExtensionScalar)
             if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
@@ -218,14 +216,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
-        num_rows = self.num_rows()
-        if num_rows == 0:
-            return pyarrow.table([])
-        random = np.random.RandomState(random_seed)
-        shuffled_indices = np.arange(num_rows)
-        # Shuffle all rows in-place
-        random.shuffle(shuffled_indices)
-        return self.take(pyarrow.array(shuffled_indices))
+        return shuffle(self._table, random_seed)
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
@@ -340,87 +331,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
-    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
-        """Count the number of non-null values in the provided column."""
-        import pyarrow.compute as pac
-
-        if not isinstance(on, str):
-            raise ValueError(
-                "on must be a string when aggregating on Arrow blocks, but got:"
-                f"{type(on)}."
-            )
-
-        if self.num_rows() == 0:
-            return None
-
-        mode = "only_valid" if ignore_nulls else "all"
-
-        col = self._table[on]
-        return pac.count(col, mode=mode).as_py()
-
-    def _apply_arrow_compute(
-        self, compute_fn: Callable, on: str, ignore_nulls: bool
-    ) -> Optional[U]:
-        """Helper providing null handling around applying an aggregation to a column."""
-        import pyarrow as pa
-
-        if not isinstance(on, str):
-            raise ValueError(
-                "on must be a string when aggregating on Arrow blocks, but got:"
-                f"{type(on)}."
-            )
-
-        if self.num_rows() == 0:
-            return None
-
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        else:
-            return compute_fn(col, skip_nulls=ignore_nulls).as_py()
-
-    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.sum, on, ignore_nulls)
-
-    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.min, on, ignore_nulls)
-
-    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.max, on, ignore_nulls)
-
-    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        return self._apply_arrow_compute(pac.mean, on, ignore_nulls)
-
-    def sum_of_squared_diffs_from_mean(
-        self,
-        on: str,
-        ignore_nulls: bool,
-        mean: Optional[U] = None,
-    ) -> Optional[U]:
-        import pyarrow.compute as pac
-
-        if mean is None:
-            # If precomputed mean not given, we compute it ourselves.
-            mean = self.mean(on, ignore_nulls)
-            if mean is None:
-                return None
-        return self._apply_arrow_compute(
-            lambda col, skip_nulls: pac.sum(
-                pac.power(pac.subtract(col, mean), 2),
-                skip_nulls=skip_nulls,
-            ),
-            on,
-            ignore_nulls,
-        )
-
     def sort(self, sort_key: "SortKey") -> Block:
         assert (
             sort_key.get_columns()
@@ -460,8 +370,86 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # Handle blocks of different types.
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
-            ret = concat_and_sort(blocks, sort_key)
+            ret = concat_and_sort(blocks, sort_key, promote_types=True)
         return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
+
+
+class ArrowBlockColumnAccessor(BlockColumnAccessor):
+    def __init__(self, col: Union["pyarrow.Array", "pyarrow.ChunkedArray"]):
+        super().__init__(col)
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.count(self._column, mode="only_valid" if ignore_nulls else "all")
+        return res.as_py() if as_py else res
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.sum(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.min(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.max(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        res = pac.mean(self._column, skip_nulls=ignore_nulls)
+        return res.as_py() if as_py else res
+
+    def sum_of_squared_diffs_from_mean(
+        self, ignore_nulls: bool, mean: Optional[U] = None, as_py: bool = True
+    ) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        # Calculate mean if not provided
+        if mean is None:
+            mean = self.mean(ignore_nulls=ignore_nulls)
+
+        if mean is None:
+            return None
+
+        res = pac.sum(
+            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
+        )
+        return res.as_py() if as_py else res
+
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        array = pac.quantile(self._column, q=q, skip_nulls=ignore_nulls)
+        # NOTE: That quantile method still returns an array
+        res = array[0]
+        return res.as_py() if as_py else res
+
+    def unique(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.unique(self._column)
+
+    def flatten(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.list_flatten(self._column)
+
+    def to_pylist(self) -> List[Any]:
+        return self._column.to_pylist()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self._column

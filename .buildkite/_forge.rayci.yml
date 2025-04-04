@@ -26,6 +26,7 @@ steps:
           - "12.3.2-cudnn9"
           - "12.4.1-cudnn"
           - "12.5.1-cudnn"
+          - "12.8.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"

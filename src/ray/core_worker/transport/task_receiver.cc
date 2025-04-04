@@ -14,13 +14,15 @@
 
 #include "ray/core_worker/transport/task_receiver.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/task/task.h"
-#include "ray/gcs/pb_util.h"
 
 using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
@@ -85,11 +87,6 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
 
     auto num_returns = task_spec.NumReturns();
-    if (task_spec.IsActorCreationTask()) {
-      // Decrease to account for the dummy object id returned by the actor
-      // creation task.
-      num_returns--;
-    }
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
@@ -169,18 +166,18 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        /// The default max concurrency for creating PoolManager should
-        /// be 0 if this is an asyncio actor.
-        const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            task_spec.ConcurrencyGroups(),
-            default_max_concurrency,
-            initialize_thread_callback_);
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               task_spec.ConcurrencyGroups(),
               fiber_max_concurrency_,
+              initialize_thread_callback_);
+        } else {
+          // If the actor is an asyncio actor, then this concurrency group manager
+          // for BoundedExecutor will never be used, so we don't need to initialize it.
+          const int default_max_concurrency = task_spec.MaxActorConcurrency();
+          pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+              task_spec.ConcurrencyGroups(),
+              default_max_concurrency,
               initialize_thread_callback_);
         }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =

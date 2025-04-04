@@ -37,10 +37,11 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self.single_action_spaces = self.envs[0].unwrapped.action_spaces or dict(
             self.envs[0].unwrapped.action_space
         )
+        self.single_action_space = gym.spaces.Dict(self.single_action_spaces)
         self.single_observation_spaces = self.envs[
             0
         ].unwrapped.observation_spaces or dict(self.envs[0].unwrapped.observation_space)
-
+        self.single_observation_space = gym.spaces.Dict(self.single_observation_spaces)
         # TODO (simon): Decide if we want to include a spaces check here.
 
         # Note, if `single_observation_spaces` are not defined, this will

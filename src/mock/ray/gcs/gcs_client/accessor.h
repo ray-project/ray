@@ -137,10 +137,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const rpc::GcsNodeInfo &node_info, const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncDrainNode,
-              (const NodeID &node_id, const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncCheckSelfAlive,
               (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));

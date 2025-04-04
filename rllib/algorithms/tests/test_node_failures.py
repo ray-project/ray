@@ -10,6 +10,7 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 
 
@@ -129,12 +130,16 @@ class TestNodeFailures(unittest.TestCase):
                 best_return, results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
             )
             avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-                "module_train_batch_size_mean"
+                MODULE_TRAIN_BATCH_SIZE_MEAN
             ]
-            self.assertGreaterEqual(avg_batch, config.total_train_batch_size)
+            if config.algo_class.__name__ == "PPO":
+                exp_batch_size = config.minibatch_size
+            else:
+                exp_batch_size = config.total_train_batch_size
+            self.assertGreaterEqual(avg_batch, exp_batch_size)
             self.assertLess(
                 avg_batch,
-                config.total_train_batch_size + config.get_rollout_fragment_length(),
+                exp_batch_size + config.get_rollout_fragment_length(),
             )
 
             self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)

@@ -23,7 +23,7 @@
 
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
-#include "ray/util/stream_redirection_utils.h"
+#include "ray/util/stream_redirection.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -43,7 +43,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   StreamRedirectionOption opts;
   opts.file_path = test_file_path;
   opts.tee_to_stderr = true;
-  RedirectStderr(opts);
+  RedirectStderrOncePerProcess(opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -51,7 +51,6 @@ TEST(LoggingUtilTest, RedirectStderr) {
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  FlushOnRedirectedStderr();
 
   // Make sure flush hook works fine and process terminates with no problem.
 }

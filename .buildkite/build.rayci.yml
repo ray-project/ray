@@ -61,7 +61,7 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cpu
+        --platform cu12.8.0-cudnn --platform cpu
         --image-type ray --upload
     depends_on:
       - manylinux

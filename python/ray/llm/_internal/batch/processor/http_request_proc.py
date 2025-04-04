@@ -11,6 +11,10 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
+    get_or_create_telemetry_agent,
+)
 from ray.llm._internal.batch.stages import HttpRequestStage
 
 
@@ -67,6 +71,13 @@ def build_http_request_processor(
             ),
         )
     ]
+    telemetry_agent = get_or_create_telemetry_agent()
+    telemetry_agent.push_telemetry_report(
+        BatchModelTelemetry(
+            processor_config_name=type(config).__name__,
+            concurrency=config.concurrency,
+        )
+    )
     processor = Processor(
         config,
         stages,

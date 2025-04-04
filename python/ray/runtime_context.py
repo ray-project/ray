@@ -546,6 +546,10 @@ def get_runtime_context() -> RuntimeContext:
     The obtained runtime context can be used to get the metadata
     of the current task and actor.
 
+    Note: For Ray Client, ray.get_runtime_context().get_node_id() should
+    point to the head node. Also, keep in mind that ray._private.worker.global_worker
+    will create a new worker object here if global_worker doesn't point to one.
+
     Example:
 
         .. testcode::

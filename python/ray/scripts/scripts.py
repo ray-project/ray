@@ -447,16 +447,6 @@ def debug(address: str, verbose: bool):
     "but can be set higher.",
 )
 @click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
-)
-@click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
 )
 @click.option(
@@ -551,6 +541,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
+)
+@click.option(
     "--autoscaling-config",
     required=False,
     type=str,
@@ -581,7 +577,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster. Experimental.",
+    help=(
+        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
+        "future version of Ray."
+    ),
 )
 @click.option(
     "--system-config",
@@ -668,7 +667,6 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
-    redis_max_memory,
     num_cpus,
     num_gpus,
     resources,
@@ -682,6 +680,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -751,6 +750,10 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
+    if storage is not None:
+        warnings.warn(
+            "--storage is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -771,6 +774,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -867,7 +871,6 @@ def start(
         # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_shard_ports=redis_shard_ports,
-            redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
         )
@@ -2312,9 +2315,9 @@ def global_gc(address):
 )
 @click.option(
     "--node-id",
-    required=True,
+    required=False,
     type=str,
-    help="Hex ID of the worker node to be drained.",
+    help="Hex ID of the worker node to be drained. Will default to current node if not provided.",
 )
 @click.option(
     "--reason",
@@ -2357,6 +2360,12 @@ def drain_node(
 
     Manually drain a worker node.
     """
+    # This should be before get_runtime_context() so get_runtime_context()
+    # doesn't start a new worker here.
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    if node_id is None:
+        node_id = ray.get_runtime_context().get_node_id()
     deadline_timestamp_ms = 0
     if deadline_remaining_seconds is not None:
         if deadline_remaining_seconds < 0:
@@ -2370,8 +2379,6 @@ def drain_node(
 
     if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
         raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
-
-    address = services.canonicalize_bootstrap_address_or_die(address)
 
     gcs_client = ray._raylet.GcsClient(address=address)
     _check_ray_version(gcs_client)

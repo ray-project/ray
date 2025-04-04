@@ -14,6 +14,13 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
@@ -233,7 +240,7 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
 void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
                                                         const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
-  // NOTE: The upper layer (the layer that manges the object ref stream)
+  // NOTE: The upper layer (the layer that manages the object ref stream)
   // should make sure the generator ref is not GC'ed until the
   // stream is deleted.
   auto outer_it = object_id_refs_.find(generator_id);

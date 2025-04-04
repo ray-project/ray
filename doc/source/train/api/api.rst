@@ -3,10 +3,16 @@
 Ray Train API
 =============
 
-.. _train-integration-api:
-.. _train-framework-specific-ckpts:
-
 .. currentmodule:: ray
+
+
+.. important::
+
+    These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
+    by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
+
+    See :ref:`train-deprecated-api` for the old API references.
+
 
 PyTorch Ecosystem
 -----------------
@@ -78,16 +84,6 @@ Tensorflow/Keras
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
 
-Horovod
-~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~train.horovod.HorovodTrainer
-    ~train.horovod.HorovodConfig
-
 
 XGBoost
 ~~~~~~~
@@ -125,7 +121,6 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.RunConfig
     ~train.ScalingConfig
-    ~train.SyncConfig
 
 .. _train-loop-api:
 
@@ -139,7 +134,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.context.TrainContext
+    ~train.v2.api.context.TrainContext
 
 **Functions**
 
@@ -171,25 +166,29 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.error.SessionMisuseError
-    ~train.base_trainer.TrainingFailedError
+    ~train.v2.api.exceptions.TrainingFailedError
 
-
-Ray Train Developer APIs
-------------------------
-
-.. _train-base-trainer:
-
-Trainer Base Classes
-~~~~~~~~~~~~~~~~~~~~
+Ray Tune Integration Utilities
+------------------------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~train.trainer.BaseTrainer
-    ~train.data_parallel_trainer.DataParallelTrainer
+    tune.integration.ray_train.TuneReportCallback
 
+
+Ray Train Developer APIs
+------------------------
+
+Trainer Base Class
+~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.api.data_parallel_trainer.DataParallelTrainer
 
 Train Backend Base Classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -204,3 +203,12 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+
+Trainer Callbacks
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.UserCallback

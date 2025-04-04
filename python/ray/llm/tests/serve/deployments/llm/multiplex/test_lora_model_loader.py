@@ -12,9 +12,9 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
-    LoraMirrorConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 
 
 class TestLoRAModelLoader:
@@ -30,7 +30,7 @@ class TestLoRAModelLoader:
         """Common LLM config used across tests."""
         return LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="llm_model_id"),
-            llm_engine=LLMEngine.VLLM,
+            llm_engine=LLMEngine.vLLM,
             accelerator_type="L4",
             lora_config=LoraConfig(
                 dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"

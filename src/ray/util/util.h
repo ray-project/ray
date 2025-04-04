@@ -61,7 +61,7 @@ class stream_protocol;
 
 }  // namespace boost::asio::generic
 
-// Append append_str to the begining of each line of str.
+// Append append_str to the beginning of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
                                     const std::string &append_str) {
   std::stringstream ss;

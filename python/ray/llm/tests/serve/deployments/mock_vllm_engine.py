@@ -34,7 +34,7 @@ from ray.llm._internal.serve.deployments.utils.node_initialization_utils import 
 
 class MockVLLMEngine:
     def __init__(self, llm_config: LLMConfig):
-        """Create a VLLM Engine class
+        """Create a vLLM Engine class
 
         Args:
             llm_config: The llm configuration for this engine
