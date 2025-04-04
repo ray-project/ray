@@ -237,6 +237,9 @@ int main(int argc, char *argv[]) {
   ray::GetCgroupSetup(FLAGS_enable_resource_isolation);
 
   // Setup cleanup hook to delete application cgroup.
+  //
+  // TODO(hjiang): Add integration test when python side cgroup CI setup finished,
+  // currently only C++ cgroup unit test is supported.
   if (FLAGS_enable_resource_isolation) {
     ray::SpawnSubprocessAndCleanup([]() {
       const std::string cgroup_root_procs_filepath =
