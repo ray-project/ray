@@ -259,10 +259,6 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 }
 
 void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
-  if (queue.rpc_client) {
-    queue.max_finished_seq_no_start_at_ = queue.rpc_client->ClientProcessedUpToSeqno() +
-                                          queue.inflight_task_callbacks.size();
-  }
   queue.rpc_client = nullptr;
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
@@ -336,8 +332,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     // it means the client doesn't care about the responses of tasks with seqno less than
     // x. Hence, the actor doesn't need to wait for tasks with seqno less than x to
     // execute the task with seqno x.
-    queue->second.rpc_client->SetMaxFinishedSeqno(
-        queue->second.max_finished_seq_no_start_at_);
     queue->second.actor_submit_queue->OnClientConnected();
 
     ResendOutOfOrderCompletedTasks(actor_id);

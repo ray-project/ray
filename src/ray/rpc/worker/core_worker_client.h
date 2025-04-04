@@ -372,7 +372,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// Returns the max acked sequence number, useful for checking on progress.
   int64_t ClientProcessedUpToSeqno() override {
     absl::MutexLock lock(&mutex_);
-    return max_finished_seq_no_;
+    return max_finished_seq_no_.value_or(-1);
   }
 
   /// Sets `max_finished_seq_no` to the given value. This is useful when an actor dies and
@@ -405,7 +405,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
+  absl::optional<int64_t> max_finished_seq_no_ ABSL_GUARDED_BY(mutex_);
 };
 
 using CoreWorkerClientFactoryFn =

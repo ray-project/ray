@@ -62,6 +62,9 @@ void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
 
   {
     absl::MutexLock lock(&mutex_);
+    if (max_finished_seq_no_ == absl::nullopt) {
+      max_finished_seq_no_ = request->sequence_number() - 1;
+    }
     send_queue_.emplace_back(std::move(request), std::move(callback));
   }
   SendRequests();
@@ -99,7 +102,9 @@ void CoreWorkerClient::SendRequests() {
     auto request = std::move(pair.first);
     int64_t task_size = RequestSizeInBytes(*request);
     int64_t seq_no = request->sequence_number();
-    request->set_client_processed_up_to(max_finished_seq_no_);
+    RAY_LOG(DEBUG) << "[debug] SendRequests client_processed_up_to "
+                   << max_finished_seq_no_.value_or(-1);
+    request->set_client_processed_up_to(max_finished_seq_no_.value_or(-1));
     rpc_bytes_in_flight_ += task_size;
 
     auto rpc_callback =
@@ -108,6 +113,8 @@ void CoreWorkerClient::SendRequests() {
           {
             absl::MutexLock lock(&mutex_);
             if (seq_no > max_finished_seq_no_) {
+              RAY_LOG(DEBUG) << "[debug] SendRequests update max_finished_seq_no_ old: "
+                             << max_finished_seq_no_.value_or(-1) << " new: " << seq_no;
               max_finished_seq_no_ = seq_no;
             }
             rpc_bytes_in_flight_ -= task_size;
@@ -132,6 +139,8 @@ void CoreWorkerClient::SendRequests() {
 
 void CoreWorkerClient::SetMaxFinishedSeqno(int64_t max_finished_seq_no) {
   absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "[debug] SetMaxFinishedSeqno old: "
+                 << max_finished_seq_no_.value_or(-1) << " new: " << max_finished_seq_no;
   max_finished_seq_no_ = max_finished_seq_no;
 }
 
