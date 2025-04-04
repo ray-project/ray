@@ -11,28 +11,23 @@ import ray
 
 from config import BenchmarkConfig, TorchConfig
 from dataloader_factory import BaseDataLoaderFactory
+from logger_utils import ContextLoggerAdapter
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 if torch.cuda.is_available():
     try:
         multiprocessing.set_start_method("spawn", force=True)
         logger.info(
-            "[DataLoader] Set multiprocessing start method to 'spawn' for CUDA compatibility"
+            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
         )
     except RuntimeError:
-        logger.info("[DataLoader] Multiprocessing start method already set")
+        logger.info("Multiprocessing start method already set")
 
 
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
-    """Factory for creating PyTorch DataLoaders.
-
-    This factory:
-    1. Creates DataLoaders that read data
-    2. Distributes files among Ray workers
-    3. Handles device transfer and error handling for batches
-    """
+    """Factory for creating PyTorch DataLoaders."""
 
     @staticmethod
     def worker_init_fn(worker_id: int):
@@ -48,9 +43,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             torch.cuda.manual_seed(worker_seed)
             torch.cuda.manual_seed_all(worker_seed)
 
-        logger.info(
-            f"[DataLoader] Initialized worker {worker_id} with seed {worker_seed}"
-        )
+        logger.info(f"Initialized worker {worker_id} with seed {worker_seed}")
 
     def __init__(
         self,
@@ -73,7 +66,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
 
         # Log configuration without worker rank since context may not be initialized
         logger.info(
-            f"[DataLoader] Configuration: {self.num_ray_workers * self.num_torch_workers} total workers "
+            f"Configuration: {self.num_ray_workers * self.num_torch_workers} total workers "
             f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
             f"across {num_gpus} GPUs"
         )
@@ -86,7 +79,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(f"[DataLoader] Worker {worker_rank}: Using device: {device}")
+        logger.info(f"Worker {worker_rank}: Using device: {device}")
         return device
 
     @abstractmethod
@@ -120,7 +113,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for training
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(f"[DataLoader] Worker {worker_rank}: Creating train dataloader")
+        logger.info(f"Worker {worker_rank}: Creating train dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
@@ -131,9 +124,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
-        pin_memory = (
-            dataloader_config.torch_pin_memory and torch.cuda.is_available()
-        )  # Use config setting
+        pin_memory = dataloader_config.torch_pin_memory
 
         # Only set prefetch_factor and timeout when using workers
         prefetch_factor = (
@@ -144,7 +135,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         )
 
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Creating train DataLoader with "
+            f"Worker {worker_rank}: Creating train DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
             f"timeout={timeout}"
@@ -171,9 +162,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             An iterator that yields (image, label) tensors for validation
         """
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(
-            f"[DataLoader] Worker {worker_rank}: Creating validation dataloader"
-        )
+        logger.info(f"Worker {worker_rank}: Creating validation dataloader")
 
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
@@ -197,7 +186,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         )
 
         logger.info(
-            f"[DataLoader] Worker {worker_rank}: Creating validation DataLoader with "
+            f"Worker {worker_rank}: Creating validation DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
             f"timeout={timeout}"
@@ -214,5 +203,4 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
-
         return self.create_batch_iterator(dataloader, device)

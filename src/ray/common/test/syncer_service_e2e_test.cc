@@ -128,7 +128,8 @@ int main(int argc, char *argv[]) {
     syncer.Connect(ray::NodeID::FromRandom().Binary(), channel);
   }
 
-  boost::asio::io_context::work work(io_context);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_context.get_executor());
   io_context.run();
 
   return 0;

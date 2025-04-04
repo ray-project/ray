@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "absl/random/random.h"
+#include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 using plasma::flatbuf::ObjectSource;

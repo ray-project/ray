@@ -15,7 +15,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
-from ray.dashboard.modules.snapshot.snapshot_head import RayActivityResponse
+from ray.dashboard.modules.api.api_head import RayActivityResponse
 from ray.dashboard.tests.conftest import *  # noqa
 
 
@@ -67,7 +67,7 @@ def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start
     data = response.json()
     schema_path = os.path.join(
         os.path.dirname(dashboard.__file__),
-        "modules/snapshot/component_activities_schema.json",
+        "modules/api/component_activities_schema.json",
     )
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
@@ -150,7 +150,7 @@ time.sleep({sleep_time_s})
         data = response.json()
         schema_path = os.path.join(
             os.path.dirname(dashboard.__file__),
-            "modules/snapshot/component_activities_schema.json",
+            "modules/api/component_activities_schema.json",
         )
 
         jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
