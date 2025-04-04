@@ -424,34 +424,10 @@ ray_cc_library(
     name = "plasma_client",
     srcs = [
         "src/ray/object_manager/plasma/client.cc",
-        "src/ray/object_manager/plasma/connection.cc",
-        "src/ray/object_manager/plasma/malloc.cc",
-        "src/ray/object_manager/plasma/plasma.cc",
-        "src/ray/object_manager/plasma/protocol.cc",
-        "src/ray/object_manager/plasma/shared_memory.cc",
-    ] + select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "src/ray/object_manager/plasma/fling.cc",
-        ],
-    }),
+    ],
     hdrs = [
         "src/ray/object_manager/plasma/client.h",
-        "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/connection.h",
-        "src/ray/object_manager/plasma/malloc.h",
-        "src/ray/object_manager/plasma/plasma.h",
-        "src/ray/object_manager/plasma/plasma_generated.h",
-        "src/ray/object_manager/plasma/protocol.h",
-        "src/ray/object_manager/plasma/shared_memory.h",
-    ] + select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "src/ray/object_manager/plasma/fling.h",
-        ],
-    }),
+    ],
     copts = PLASMA_COPTS,
     defines = select({
         "@platforms//os:windows": PROPAGATED_WINDOWS_DEFINES,
@@ -459,14 +435,38 @@ ray_cc_library(
     }),
     linkopts = PLASMA_LINKOPTS,
     deps = [
+        ":fling",
         ":object_manager_common",
-        ":plasma_fbs",
-        ":ray_common",
+        ":object_manager_plasma_common",
+        ":plasma_connection_protocol",
+        ":plasma_generated",
+        ":plasma_malloc",
+        ":shared_memory",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:compat",
-        "//src/ray/util:counter_map",
+        "//src/ray/util:visibility",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "shared_memory",
+    srcs = ["src/ray/object_manager/plasma/shared_memory.cc"],
+    hdrs = ["src/ray/object_manager/plasma/shared_memory.h"],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    deps = [
+        ":plasma_malloc",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:compat",
+        "//src/ray/util:logging",
+        "//src/ray/util:macros",
     ],
 )
 
@@ -1749,6 +1749,7 @@ ray_cc_library(
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
         "//src/ray/util:container_util",
+        "//src/ray/util:counter_map",
         "//src/ray/util:env",
         "//src/ray/util:mutex_protected",
         "//src/ray/util:process",
