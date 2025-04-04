@@ -44,12 +44,10 @@ void ValidateOutputPathsUnique() {
   absl::InlinedVector<std::string_view, 2> filepaths;
   for (const auto &[_, handle] : redirection_file_handles) {
     const auto &cur_filepath = handle.GetFilePath();
-    // Skip empty filepaths, which means current handle doesn't redirect and persist.
-    if (!cur_filepath.empty()) {
-      auto iter = std::find(filepaths.begin(), filepaths.end(), cur_filepath);
-      RAY_CHECK(iter == filepaths.end());
-      filepaths.emplace_back(cur_filepath);
-    }
+    RAY_CHECK(!cur_filepath.empty());
+    auto iter = std::find(filepaths.begin(), filepaths.end(), cur_filepath);
+    RAY_CHECK(iter == filepaths.end());
+    filepaths.emplace_back(cur_filepath);
   }
 }
 
