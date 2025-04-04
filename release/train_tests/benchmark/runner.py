@@ -69,18 +69,6 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
-    def run(self):
-        starting_epoch = self._train_epoch_idx
-
-        for _ in range(starting_epoch, self.benchmark_config.num_epochs):
-            self._train_epoch()
-
-            if not self.benchmark_config.skip_validation_at_epoch_end:
-                self._validate_and_checkpoint()
-
-            if ray.train.get_context().get_world_rank() == 0:
-                logger.info(pprint.pformat(self.get_metrics(), indent=2))
-
     def _train_epoch(self):
         with self._metrics["train/epoch"].timer():
             self._train_epoch()
@@ -260,6 +248,18 @@ class TrainLoopRunner:
             checkpoint=checkpoint,
             checkpoint_dir_name=checkpoint_dir_name,
         )
+
+    def run(self):
+        starting_epoch = self._train_epoch_idx
+
+        for _ in range(starting_epoch, self.benchmark_config.num_epochs):
+            self._train_epoch()
+
+            if not self.benchmark_config.skip_validation_at_epoch_end:
+                self._validate_and_checkpoint()
+
+            if ray.train.get_context().get_world_rank() == 0:
+                logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
