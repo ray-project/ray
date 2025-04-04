@@ -355,6 +355,9 @@ def main():
     ray_data_execution_options.locality_with_output = (
         benchmark_config.locality_with_output
     )
+    ray_data_execution_options.actor_locality_enabled = (
+        benchmark_config.actor_locality_enabled
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
