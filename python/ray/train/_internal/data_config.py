@@ -80,7 +80,6 @@ class DataConfig:
             equal to `world_size`. Each element of the list contains the assigned
             `DataIterator` instances by name for the worker.
         """
-        self._set_names(datasets)
         output = [{} for _ in range(world_size)]
 
         if self._datasets_to_split == "all":
@@ -120,12 +119,6 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
-
-    def _set_names(self, datasets: Dict[str, Dataset]):
-        """Set the name of each dataset if it is not already set."""
-        for name, ds in datasets.items():
-            if ds.name is None:
-                ds.set_name(name)
 
     @staticmethod
     def default_ingest_options() -> ExecutionOptions:
