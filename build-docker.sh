@@ -54,11 +54,17 @@ if [[ "$OUTPUT_SHA" != "YES" ]]; then
     echo "=== Building base-deps image ===" >/dev/stderr
 fi
 
+RAY_DEPS_BUILD_DIR="$(mktemp -d)"
+
+cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
+mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
+cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
     --build-arg BASE_IMAG="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
-    -t "rayproject/base-deps:dev$GPU" "docker/base-deps"
+    -t "rayproject/base-deps:dev$GPU" "${RAY_DEPS_BUILD_DIR}"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
@@ -78,7 +84,6 @@ RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
 wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
-cp python/requirements_compiled.txt "$RAY_BUILD_DIR"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
 WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
@@ -87,7 +92,7 @@ BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
     --build-arg FULL_BASE_IMAGE="rayproject/base-deps:dev$GPU"
     --build-arg WHEEL_PATH=".whl/${WHEEL}"
-    -t "rayproject/ray:dev$GPU" "$RAY_BUILD_DIR"
+    -t "rayproject/ray:dev$GPU" "${RAY_BUILD_DIR}"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
