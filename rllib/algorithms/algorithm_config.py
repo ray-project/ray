@@ -352,6 +352,7 @@ class AlgorithmConfig(_Config):
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
         self.sampler_perf_stats_ema_coef = None
+        self._is_online = True
 
         # `self.learners()`
         self.num_learners = 0
@@ -4975,6 +4976,15 @@ class AlgorithmConfig(_Config):
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
             )
+
+    @property
+    def is_online(self) -> bool:
+        """Defines if this config is for online RL.
+
+        Note, a config can be for on- and offline training, if the algorithm is
+        for example hybrid.
+        """
+        return self._is_online
 
     @property
     def is_offline(self) -> bool:
