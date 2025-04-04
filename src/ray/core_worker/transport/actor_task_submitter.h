@@ -369,9 +369,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
       return stream.str();
     }
 
-    /// This is used to initialize the `max_finished_seq_no` for the new core worker RPC client.
-    /// It will be set to the `max_finished_seq_no` of the previous incarnation of the actor when
-    /// the old core worker process dies.
+    /// This is used to initialize the `max_finished_seq_no` for the new core worker RPC
+    /// client. It will be set to the `max_finished_seq_no` of the previous incarnation of
+    /// the actor when the old core worker process dies.
     int64_t max_finished_seq_no_start_at_ = -1;
   };
 

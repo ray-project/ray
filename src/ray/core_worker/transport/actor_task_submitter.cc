@@ -325,13 +325,16 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-    // If this is the first time connecting to the actor, `max_finished_seq_no_start_at_` should be -1.
-    // This means the client (e.g., driver process) is still waiting for the response of the task with seqno 0.
-    // If this is not the first time connecting to the actor, `max_finished_seq_no_start_at_` should be
-    // the value of `max_finished_seq_no` from the RPC client of the previous incarnation of the actor.
-    // If the value is `x`, it means the client doesn't care about the responses of tasks with seqno less than x.
-    // Hence, the actor doesn't need to wait for tasks with seqno less than x to execute the task with seqno x.
-    queue->second.rpc_client->SetMaxFinishedSeqno(queue->second.max_finished_seq_no_start_at_);
+    // If this is the first time connecting to the actor, `max_finished_seq_no_start_at_`
+    // should be -1. This means the client (e.g., driver process) is still waiting for the
+    // response of the task with seqno 0. If this is not the first time connecting to the
+    // actor, `max_finished_seq_no_start_at_` should be the value of `max_finished_seq_no`
+    // from the RPC client of the previous incarnation of the actor. If the value is `x`,
+    // it means the client doesn't care about the responses of tasks with seqno less than
+    // x. Hence, the actor doesn't need to wait for tasks with seqno less than x to
+    // execute the task with seqno x.
+    queue->second.rpc_client->SetMaxFinishedSeqno(
+        queue->second.max_finished_seq_no_start_at_);
     queue->second.actor_submit_queue->OnClientConnected();
 
     ResendOutOfOrderCompletedTasks(actor_id);
