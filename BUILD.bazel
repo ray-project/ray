@@ -329,7 +329,10 @@ cc_grpc_library(
 # worker server and client.
 ray_cc_library(
     name = "worker_rpc",
-    srcs = ["src/ray/rpc/worker/core_worker_client_pool.cc"],
+    srcs = [
+        "src/ray/rpc/worker/core_worker_client_pool.cc",
+        "src/ray/rpc/worker/core_worker_client.cc",
+    ],
     hdrs = [
         "src/ray/rpc/worker/core_worker_client.h",
         "src/ray/rpc/worker/core_worker_client_pool.h",
