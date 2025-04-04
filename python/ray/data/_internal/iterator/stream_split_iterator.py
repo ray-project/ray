@@ -143,7 +143,6 @@ class SplitCoordinator:
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
         self._base_dataset = dataset
-        self._dataset_name_prefix = f"{dataset.name}_" if dataset.name else ""
         self._n = n
         self._equal = equal
         self._locality_hints = locality_hints
@@ -157,14 +156,10 @@ class SplitCoordinator:
 
         def gen_epochs():
             while True:
-                self._base_dataset.set_name(
-                    f"{self._dataset_name_prefix}epoch_{self._cur_epoch}"
-                )
-
                 executor = StreamingExecutor(
                     self._data_context,
                     create_dataset_tag(
-                        self._base_dataset.name, self._base_dataset._uuid
+                        self._base_dataset._name, self._base_dataset._uuid
                     ),
                 )
                 self._executor = executor
