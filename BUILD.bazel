@@ -310,6 +310,7 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
+        ":object_manager_grpc_stub_manager",
         ":object_manager_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:status",
@@ -329,7 +330,10 @@ cc_grpc_library(
 # worker server and client.
 ray_cc_library(
     name = "worker_rpc",
-    srcs = ["src/ray/rpc/worker/core_worker_client_pool.cc"],
+    srcs = [
+        "src/ray/rpc/worker/core_worker_client_pool.cc",
+        "src/ray/rpc/worker/core_worker_client.cc",
+    ],
     hdrs = [
         "src/ray/rpc/worker/core_worker_client.h",
         "src/ray/rpc/worker/core_worker_client_pool.h",
@@ -3191,6 +3195,15 @@ ray_cc_library(
         "//src/ray/common:status",
         "@boost//:asio",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_grpc_stub_manager",
+    hdrs = ["src/ray/object_manager/grpc_stub_manager.h"],
+    deps = [
+        ":grpc_client",
+        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
