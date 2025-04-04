@@ -93,6 +93,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     )
 
 
+@ray.remote(num_cpus=0, num_gpus=1)
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
@@ -333,13 +334,15 @@ class VLLMEngine:
         TODO: Refactor vLLM v0 integration to use the same async engine API
         to simplify the code.
         """
-        from vllm import AsyncLLMEngine
+        engine_args, engine_config = ray.get(
+            _get_vllm_engine_config.remote(self.llm_config)
+        )
+        args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
 
-        await self.initialize_node(self.llm_config)
-        engine_args = _get_async_engine_args(self.llm_config)
-
-        return AsyncLLMEngine.from_engine_args(
-            engine_args=engine_args,
+        return self._start_async_llm_engine(
+            engine_args,
+            engine_config,
+            args.placement_group,
         )
 
     async def _start_engine_v0(self) -> "EngineClient":
