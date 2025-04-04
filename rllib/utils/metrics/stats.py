@@ -171,12 +171,31 @@ class Stats:
         else:
             self._has_new_values = False
 
+    def check_value(self, value: Any) -> Any:
+        # If we have a reduce method, value should always be a scalar
+        # If we don't reduce, we can keep track of value as it is
+        if self._reduce_method is not None:
+            if (
+                (isinstance(value, np.ndarray) and value.shape == (1,))
+                or (type(value) in (list, tuple, deque) and len(value) == 1)
+                or (torch and isinstance(value, torch.Tensor) and value.shape == (1,))
+                or (
+                    tf
+                    and isinstance(value, tf.Tensor)
+                    and tuple(tf.shape(value).numpy()) == (1,)
+                )
+            ):
+                raise ValueError(
+                    f"Value {value} is required to be a scalar when using a reduce method"
+                )
+
     def push(self, value: Any) -> None:
         """Pushes a value into this Stats object.
 
         Args:
             value: The value to be pushed. Can be of any type.
         """
+        self.check_value(value)
         # If throughput tracking is enabled, calculate it based on time between pushes
         if self._throughput_stats is not None:
             current_time = time.perf_counter()
@@ -327,7 +346,8 @@ class Stats:
         the constructor settings, such as `window`, `reduce`, etc..
 
         Args:
-            compile: If True, the result is compiled into a single value if possible.
+            compile: If True, the result is compiled into a single value if possible. If it is not possible, the result is a list of values.
+                If False, the result is a list of one or more values.
 
         Returns:
             The reduced value (can be of any type, depending on the input values and
@@ -362,7 +382,7 @@ class Stats:
                 reduced = self._reduced_values()[0]
             return reduced[0]
         else:
-            return values_list
+            return list(values_list)
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         """Merges another Stats object's values into this one along the time axis.
@@ -743,18 +763,11 @@ class Stats:
                 else:
                     reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
                     reduced = reduce_meth(values)
-
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
-                try:
-                    np.all(np.isnan(values))
-                except Exception:
-                    import pdb
-
-                    pdb.set_trace()
 
                 if np.all(np.isnan(values)):
-                    # This avoids taking a mean of an empty array.
+                    # This avoids warnings for taking a mean of an empty array.
                     reduced = np.nan
                 else:
                     reduced = reduce_meth(values)

@@ -733,6 +733,7 @@ class DQN(Algorithm):
                         module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for module_id, s in td_errors.items()
                     }
+
                     self.metrics.merge_and_log_n_dicts(
                         learner_results, key=LEARNER_RESULTS
                     )
