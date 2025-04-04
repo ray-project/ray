@@ -1465,13 +1465,6 @@ def iterate_with_retry(
                 raise e from None
 
 
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
-
-
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
     if num_bytes >= 1e9:
         num_bytes_str = f"{round(num_bytes / 1e9)}GB"

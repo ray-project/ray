@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -30,7 +30,6 @@ from ray.data._internal.stats import (
     _get_or_create_stats_actor,
     _StatsActor,
 )
-from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -1760,6 +1759,27 @@ def test_dataset_name():
     )
 
 
+def test_dataset_name_train_ingest():
+    num_epochs = 3
+    driver_script = f"""
+import ray
+
+ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+ds.set_name("train")
+ds._set_uuid("1234")
+
+split = ds.streaming_split(1)[0]
+
+for epoch in range({num_epochs}):
+    for _ in split.iter_batches():
+        pass
+    """
+    out = run_string_as_driver(driver_script)
+    for i in range(num_epochs):
+        dataset_id = f"train_1234_epoch_{i}"
+        assert f"Starting execution of Dataset {dataset_id}" in out
+
+
 def test_op_metrics_logging():
     logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
     with patch.object(logger, "debug") as mock_logger:
@@ -1855,7 +1875,7 @@ def test_stats_manager(shutdown_only):
 
     # Clear dataset tags manually.
     for dataset in datasets:
-        dataset_tag = create_dataset_tag(dataset.name, dataset._uuid)
+        dataset_tag = dataset.get_id()
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
         StatsManager.clear_last_execution_stats(dataset_tag)

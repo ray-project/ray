@@ -14,7 +14,7 @@ from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
@@ -79,6 +79,9 @@ class ExecutionPlan:
         self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
+        # Optional suffix for the dataset ID, can be used
+        # to distinguish between different runs of the same dataset.
+        self._dataset_id_suffix = ""
 
         self._dataset_name = None
 
@@ -90,6 +93,9 @@ class ExecutionPlan:
             self._context = copy.deepcopy(DataContext.get_current())
         else:
             self._context = data_context
+
+    def get_dataset_id(self) -> str:
+        return f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}{self._dataset_id_suffix}"
 
     def __repr__(self) -> str:
         return (
@@ -419,8 +425,7 @@ class ExecutionPlan:
         )
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(ctx, metrics_tag)
+        executor = StreamingExecutor(ctx, self.get_dataset_id())
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -490,10 +495,9 @@ class ExecutionPlan:
                     StreamingExecutor,
                 )
 
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
                 executor = StreamingExecutor(
                     context,
-                    metrics_tag,
+                    self.get_dataset_id(),
                 )
                 blocks = execute_to_legacy_block_list(
                     executor,
