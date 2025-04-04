@@ -39,7 +39,7 @@ class TrainLoopRunner:
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
         logger.info(
-            f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
+            f"Restoring from checkpoint: {checkpoint} for worker "
             f"{ray.train.get_context().get_world_rank()}"
         )
         with tempfile.TemporaryDirectory(
@@ -57,10 +57,6 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
-        logger.info(
-            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
-            f"epochs for worker {ray.train.get_context().get_world_rank()}"
-        )
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
@@ -83,6 +79,7 @@ class TrainLoopRunner:
             try:
                 with self._metrics[f"{prefix}/iter_first_batch"].timer():
                     batch = next(dataloader_iter)
+                    self._train_batch_idx += 1
             except StopIteration:
                 return
 
@@ -92,6 +89,7 @@ class TrainLoopRunner:
                 try:
                     with self._metrics[f"{prefix}/iter_batch"].timer():
                         batch = next(dataloader_iter)
+                    self._train_batch_idx += 1
                 except StopIteration:
                     return
 
@@ -99,7 +97,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+            logger.info(f"Training starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
         train_dataloader = self._wrap_dataloader_with_timer(
@@ -110,7 +108,7 @@ class TrainLoopRunner:
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
         if self._train_batch_idx > 0:
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+                logger.info(f"Skipping {self._train_batch_idx} batches...")
 
             for _ in range(self._train_batch_idx + 1):
                 with self._metrics["train/iter_skip_batch"].timer():
@@ -122,8 +120,6 @@ class TrainLoopRunner:
                     self.train_step(train_dataloader)
                 except StopIteration:
                     break
-
-            self._train_batch_idx += 1
 
             # TODO: This is slightly off if the last batch is a partial batch.
             self._metrics["train/rows_processed"].add(
@@ -142,7 +138,7 @@ class TrainLoopRunner:
     def _validate_epoch(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
+                f"Validation starting @ epoch={self._train_epoch_idx}, "
                 f"batch={self._train_batch_idx}"
             )
 
@@ -209,6 +205,12 @@ class TrainLoopRunner:
                     checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
                 )
 
+    def _save_training_state(self, local_dir: str):
+        pass
+
+    def _load_training_state(self, local_dir: str):
+        pass
+
     def load_checkpoint(self, local_dir: str):
         self._load_training_state(local_dir)
 
@@ -224,7 +226,7 @@ class TrainLoopRunner:
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"Restored to epoch={self._train_epoch_idx}, "
                 f"train_batch_idx={self._train_batch_idx} from checkpoint: "
                 f"{ray.train.get_checkpoint()}"
             )
@@ -244,7 +246,7 @@ class TrainLoopRunner:
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"Saved @ epoch={self._train_epoch_idx}, "
                 f"train_batch_idx={self._train_batch_idx}"
             )
 
