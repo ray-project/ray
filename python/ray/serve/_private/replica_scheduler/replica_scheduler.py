@@ -11,6 +11,15 @@ from dataclasses import dataclass
 import contextvars
 
 
+@dataclass()
+class _RequestSchedulingContext:
+    tried_fewest_multiplexed_models: bool = False
+    tried_first_multiplexed_models: bool = False
+    tried_same_node: bool = False
+    tried_same_az: bool = False
+    should_backoff: bool = False
+
+
 class ReplicaScheduler(ABC):
     """Abstract interface for a replica scheduler (how the router calls it)."""
 
@@ -56,15 +65,6 @@ class ReplicaScheduler(ABC):
     @abstractmethod
     def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
         pass
-
-
-@dataclass(frozen=True)
-class _RequestSchedulingContext:
-    tried_fewest_multiplexed_models: bool = False
-    tried_first_multiplexed_models: bool = False
-    tried_same_node: bool = False
-    tried_same_az: bool = False
-    should_backoff: bool = False
 
 
 _request_scheduling_context = contextvars.ContextVar(

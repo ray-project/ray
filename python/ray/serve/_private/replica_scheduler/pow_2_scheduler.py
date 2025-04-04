@@ -41,6 +41,7 @@ from ray.serve._private.replica_scheduler.replica_scheduler import (
     ReplicaScheduler,
     _get_request_scheduling_context,
     _set_request_scheduling_context,
+    _RequestSchedulingContext,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.util import metrics
@@ -81,6 +82,9 @@ class LocalityScheduleMixin:
     def update_discard_colocated_replica_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
+        print(
+            f"in update_discard_colocated_replica_ids_with_replicas {self._colocated_replica_ids=} {[(r.node_id, r.availability_zone) for r in replicas]=} {self._self_node_id=} {self._self_availability_zone=}"
+        )
         new_colocated_replica_ids = defaultdict(set)
 
         for r in replicas:
@@ -97,6 +101,9 @@ class LocalityScheduleMixin:
         self._colocated_replica_ids = new_colocated_replica_ids
 
     def apply_locality_scheduling(self) -> Set[ReplicaID]:
+        print(
+            f"in apply_locality_scheduling {self._colocated_replica_ids=} {self._replica_id_set=} {_get_request_scheduling_context()=}"
+        )
         if (
             self._prefer_local_node_routing
             and not _get_request_scheduling_context().tried_same_node
@@ -105,6 +112,7 @@ class LocalityScheduleMixin:
             # Attempt to schedule requests to replicas on the
             # same node at most once
             candidate_replica_ids = self._colocated_replica_ids[LocalityScope.NODE]
+            print(f"_prefer_local_node_routing {candidate_replica_ids=}")
             _set_request_scheduling_context(tried_same_node=True)
         elif (
             self._prefer_local_az_routing
@@ -122,6 +130,7 @@ class LocalityScheduleMixin:
             # node or AZ, consider all available replicas.
             candidate_replica_ids = self._replica_id_set
             _set_request_scheduling_context(should_backoff=True)
+        # print(f"locality decision {candidate_replica_ids=}")
         return candidate_replica_ids
 
 
@@ -150,6 +159,7 @@ class MultiplexScheduleMixin:
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
+        # print(f"in update_multiplexed_model_ids_with_replicas {self._multiplexed_model_id_to_replica_ids=} {replicas=}")
 
     def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
         """Get the set of replicas that have the fewest multiplexed models loaded."""
@@ -201,7 +211,7 @@ class MultiplexScheduleMixin:
                 self._multiplexed_model_id_fallback_match.add(multiplexed_model_id)
             elif candidate_replica_ids:
                 self._multiplexed_model_id_fallback_match.discard(multiplexed_model_id)
-                _set_request_scheduling_context(tried_first_multiplexed_models=True)
+            _set_request_scheduling_context(tried_first_multiplexed_models=True)
         elif not _get_request_scheduling_context().tried_fewest_multiplexed_models:
             # After the `multiplexed_matching_timeout` is up, first try
             # routing to replicas that have the fewest models loaded.
@@ -474,6 +484,7 @@ class PowerOfTwoChoicesReplicaScheduler(
 
     async def choose_replicas(
         self,
+        request_scheduling_context: _RequestSchedulingContext,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses (at most) two random available replicas.
@@ -491,6 +502,8 @@ class PowerOfTwoChoicesReplicaScheduler(
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
+        if not request_scheduling_context:
+            request_scheduling_context = _RequestSchedulingContext()
 
         entered_backoff = False
         try:
@@ -527,11 +540,13 @@ class PowerOfTwoChoicesReplicaScheduler(
                     # Get candidates for locality preference.
                     candidate_replica_ids = self.apply_locality_scheduling()
 
+                # print(f"in choose_replicas {candidate_replica_ids=}")
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
                         list(candidate_replica_ids),
                         k=min(2, len(candidate_replica_ids)),
                     )
+                    # print(f"{chosen_ids=}")
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
                 # We have a slight unintended behavior when enabled locality routing
@@ -752,6 +767,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         matched_pending_request = self._get_pending_request_matching_metadata(
             request_metadata
         )
+        # print(f"in fulfill_next_pending_request {replica=} {matched_pending_request=} {self._pending_requests_to_fulfill=}")
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
@@ -761,6 +777,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         # queue in FIFO order, passing over futures that have been cancelled.
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
+            # print(f"{pr=} {pr.future.done()=}")
             if not pr.future.done():
                 pr.future.set_result(replica)
                 break
@@ -789,7 +806,9 @@ class PowerOfTwoChoicesReplicaScheduler(
                 start_time = time.time()
                 backoff_index = 0
                 request_metadata = self._get_next_pending_request_metadata_to_schedule()
-                async for candidates in self.choose_replicas(request_metadata):
+                async for candidates in self.choose_replicas(
+                    request_metadata, _RequestSchedulingContext()
+                ):
                     # Clear out pending requests at the front of the
                     # queue that have been cancelled, then reevaluate
                     # if we need to continue this scheduling task.
@@ -805,6 +824,7 @@ class PowerOfTwoChoicesReplicaScheduler(
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
+                    # print(f"in fulfill_pending_requests {candidates=} {backoff_index=} {replica=} {_get_request_scheduling_context()}")
                     if replica is not None:
                         self.fulfill_next_pending_request(replica, request_metadata)
                         break
@@ -831,6 +851,7 @@ class PowerOfTwoChoicesReplicaScheduler(
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
+            # print("finally called")
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
