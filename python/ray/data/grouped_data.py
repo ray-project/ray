@@ -184,16 +184,20 @@ class GroupedData:
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
                 * If ``fn`` is a function and ``concurrency`` isn't set (default), the
-                actual concurrency is implicitly determined by the available resources
-                and number of input blocks.
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
                 * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
-                launches *at most* ``n`` concurrent tasks.
+                  launches *at most* ``n`` concurrent tasks.
+
                 * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
-                uses an actor  pool with *exactly* ``n`` workers.
+                  uses an actor  pool with *exactly* ``n`` workers.
+
                 * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
-                Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
                 * If ``fn`` is a class and ``concurrency`` isn't set (default), this
-                method raises an error.
+                  method raises an error.
 
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
