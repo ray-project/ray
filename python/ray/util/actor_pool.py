@@ -247,7 +247,7 @@ class ActorPool:
         """
         return bool(self._future_to_actor)
 
-    def get_next(self, timeout=None, ignore_if_timedout=False):
+    def get_next(self, timeout=None, ignore_if_timedout=False, return_future=False):
         """Returns the next pending result in order.
 
         This returns the next result produced by submit(), blocking for up to
@@ -306,9 +306,9 @@ class ActorPool:
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
+        return future if return_future else ray.get(future)
 
-    def get_next_unordered(self, timeout=None, ignore_if_timedout=False):
+    def get_next_unordered(self, timeout=None, ignore_if_timedout=False, return_future=False):
         """Returns any of the next pending results.
 
         This returns some result produced by submit(), blocking for up to
@@ -367,7 +367,7 @@ class ActorPool:
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
+        return future if return_future else ray.get(future)
 
     def _return_actor(self, actor):
         self._idle_actors.append(actor)
