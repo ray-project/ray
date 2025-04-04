@@ -43,6 +43,7 @@ class Resources(dict):
     CUSTOM_PRIORITY = [
         r for r in os.environ.get("RAY_SERVE_CUSTOM_RESOURCES", "").split(",") if r
     ]
+
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
