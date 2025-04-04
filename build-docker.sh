@@ -22,6 +22,11 @@ while [[ $# -gt 0 ]]; do
             shift
             BASE_IMAGE="$1"
         ;;
+        --progress-plain)
+            # Use plain progress output instead of fancy output.
+            # This is useful for CI systems that don't support fancy output.
+            BUILD_ARGS+=("--progress=plain")
+        ;;
         --no-cache-build)
             BUILD_ARGS+=("--no-cache")
         ;;
@@ -40,7 +45,7 @@ while [[ $# -gt 0 ]]; do
             PYTHON_VERSION="$1"
         ;;
         *)
-            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
+            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --progress-plain] [ --python-version ]"
             exit 1
     esac
     shift
