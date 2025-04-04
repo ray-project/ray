@@ -343,6 +343,7 @@ class VLLMEngine:
             engine_args,
             engine_config,
             args.placement_group,
+            use_v1=True,
         )
 
     async def _start_engine_v0(self) -> "EngineClient":
@@ -361,6 +362,7 @@ class VLLMEngine:
                 engine_args,
                 engine_config,
                 args.placement_group,
+                use_v1=False,
             )
 
         return await self._start_mq_engine(
@@ -436,9 +438,13 @@ class VLLMEngine:
         engine_args: "AsyncEngineArgs",
         vllm_config: "VllmConfig",
         placement_group: PlacementGroup,
+        use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+        if use_v1:
+            from vllm.v1.executor.ray_distributed_executor import RayDistributedExecutor
+        else:
+            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
 
