@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class TrainLoopRunner:
+    """Generic runner that sets up the training loop scaffolding.
+
+    Collects perf metrics and handles periodic checkpointing and validation.
+    """
+
     def __init__(self, factory: BenchmarkFactory):
         self.factory = factory
         self.benchmark_config = factory.benchmark_config
@@ -36,7 +41,9 @@ class TrainLoopRunner:
 
     # Methods for subclasses to implement.
     def _setup(self):
-        """Subclasses should override this to setup the model, optimizer, etc."""
+        """Subclasses should override this to setup the model, optimizer, etc.
+        The attributes initialized in this method should only be used in the
+        other overridden methods."""
         pass
 
     def _train_step(self, train_dataloader):
@@ -332,13 +339,15 @@ class TrainLoopRunner:
 
 
 class VanillaTorchRunner(TrainLoopRunner):
-    def setup(self):
+    """A simple runner that uses a PyTorch model, optimizer, and loss function."""
+
+    def _setup(self):
         model = self.factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
         self.loss_fn = self.factory.get_loss_fn()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
-    def train_step(self, train_dataloader):
+    def _train_step(self, train_dataloader):
         input_batch, labels = next(train_dataloader)
 
         if self.benchmark_config.skip_train_step:
@@ -351,7 +360,7 @@ class VanillaTorchRunner(TrainLoopRunner):
         loss.backward()
         self.optimizer.step()
 
-    def validate_step(self, val_dataloader):
+    def _validate_step(self, val_dataloader):
         input_batch, labels = next(val_dataloader)
 
         with torch.no_grad():
