@@ -13,7 +13,7 @@ import warnings
 import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
-from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.dashboard.modules.api.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
 import requests
 

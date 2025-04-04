@@ -81,7 +81,7 @@ AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "gcs",
 }
 METRICS_INPUT_ROOT = os.path.join(
-    os.path.dirname(__file__), "modules", "metrics", "export"
+    os.path.dirname(__file__), "modules", "api", "metrics", "export"
 )
 METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(

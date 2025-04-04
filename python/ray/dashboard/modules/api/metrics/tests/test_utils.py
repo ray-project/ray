@@ -3,10 +3,8 @@ import json
 
 import pytest
 
-from ray.dashboard.modules.metrics.metrics_head import (
-    parse_prom_headers,
-    DEFAULT_PROMETHEUS_HEADERS,
-)
+from ray.dashboard.modules.api.metrics.consts import DEFAULT_PROMETHEUS_HEADERS
+from ray.dashboard.modules.api.metrics.utils import parse_prom_headers
 
 
 @pytest.mark.parametrize(

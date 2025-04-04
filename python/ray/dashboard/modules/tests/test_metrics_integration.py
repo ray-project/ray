@@ -6,8 +6,8 @@ import pytest
 from click.testing import CliRunner
 
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
+from ray.dashboard.modules.api.metrics import install_and_start_prometheus
+from ray.dashboard.modules.api.metrics.templates import PROMETHEUS_YML_TEMPLATE
 from ray.scripts.scripts import metrics_group
 
 
@@ -55,7 +55,7 @@ def test_shutdown_prometheus():
 
 def test_prometheus_config_content():
     # Test to make sure the content in the hardcoded file
-    # (python/ray/dashboard/modules/metrics/export/prometheus/prometheus.yml) will
+    # (python/ray/dashboard/modules/api/metrics/export/prometheus/prometheus.yml) will
     # always be the same as the template (templates.py) used to generate Prometheus
     # config file when Ray startup
     PROM_DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"

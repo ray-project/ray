@@ -1,6 +1,6 @@
 # ruff: noqa: E501
 
-from ray.dashboard.modules.metrics.dashboards.common import (
+from ray.dashboard.modules.api.metrics.dashboards.common import (
     DashboardConfig,
     Panel,
     Target,

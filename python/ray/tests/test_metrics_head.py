@@ -6,10 +6,10 @@ import pytest
 import sys
 import tempfile
 
-from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_PANELS,
 )
-from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start

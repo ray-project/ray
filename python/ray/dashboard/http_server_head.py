@@ -210,7 +210,7 @@ class HttpServerDashboardHead:
             resp_time = time.monotonic() - start_time
             try:
                 self.metrics.metrics_request_duration.labels(
-                    endpoint=handler.__name__,
+                    endpoint=handler.__handler__.__name__,
                     http_status=status_tag,
                     Version=ray.__version__,
                     SessionName=self._session_name,
@@ -218,7 +218,7 @@ class HttpServerDashboardHead:
                 ).observe(resp_time)
                 self.metrics.metrics_request_count.labels(
                     method=request.method,
-                    endpoint=handler.__name__,
+                    endpoint=handler.__handler__.__name__,
                     http_status=status_tag,
                     Version=ray.__version__,
                     SessionName=self._session_name,

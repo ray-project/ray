@@ -5,17 +5,17 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
-from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
-from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.common import DashboardConfig, Panel
+from ray.dashboard.modules.api.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
-from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
 )
-from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.serve_dashboard_panels import (
     serve_dashboard_config,
 )
-from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
+from ray.dashboard.modules.api.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
 

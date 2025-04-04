@@ -204,13 +204,15 @@ ray_files += [
 # Dashboard metrics files.
 ray_files += [
     os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
+    for dirpath, dirnames, filenames in os.walk(
+        "ray/dashboard/modules/api/metrics/export"
+    )
     for filename in filenames
 ]
 ray_files += [
     os.path.join(dirpath, filename)
     for dirpath, dirnames, filenames in os.walk(
-        "ray/dashboard/modules/metrics/dashboards"
+        "ray/dashboard/modules/api/metrics/dashboards"
     )
     for filename in filenames
     if filename.endswith(".json")
