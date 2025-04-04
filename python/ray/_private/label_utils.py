@@ -19,6 +19,19 @@ LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
 #   Invalid matches: "-abc", "prefix_", "sub..domain", sub.$$.example
 LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
+# Supported operators for label selector conditions. Not (!) conditions are handled separately.
+LABEL_OPERATORS = {"in"}
+# Create a pattern string dynamically based on the LABEL_OPERATORS
+OPERATOR_PATTERN = "|".join([re.escape(operator) for operator in LABEL_OPERATORS])
+
+# Regex to match valid label selector operators and values
+# Examples:
+#   Valid matches: "spot", "!GPU", "213521", "in(A123, B456, C789)", "!in(spot, on-demand)", "valid-value"
+#   Invalid matches: "-spot", "spot_", "in()", "in(spot,", "in(H100, TPU!GPU)", "!!!in(H100, TPU)"
+LABEL_SELECTOR_REGEX = re.compile(
+    rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
+)
+
 
 def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
     labels = {}
