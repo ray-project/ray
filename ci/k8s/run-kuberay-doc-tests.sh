@@ -62,7 +62,8 @@ set -e
 echo "--- Run doc tests"
 cd doc/source/cluster/kubernetes
 TESTS=(
-  "getting-started/raycluster-quick-start.ipynb"
+  "getting-started/raycluster-quick-start.ipynb",
+  "user-guilds/kuberay-gcs-ft.ipynb"
 )
 for test in "${TESTS[@]}"; do
   echo "Running test: ${test}"
