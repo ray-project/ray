@@ -131,7 +131,7 @@ int64_t GetDelayUs(const std::string &name) {
   return delay_manager.GetMethodDelay(name);
 }
 
-void init() { return delay_manager.Init(); }  // namespace testing
+void Init() { return delay_manager.Init(); }  // namespace testing
 
 }  // namespace testing
 }  // namespace asio
