@@ -28,9 +28,9 @@ enum class RpcFailure {
   Response,
 };
 
-RpcFailure get_rpc_failure(const std::string &name);
+RpcFailure GetRpcFailure(const std::string &name);
 
-void init();
+void Init();
 
 }  // namespace testing
 }  // namespace rpc

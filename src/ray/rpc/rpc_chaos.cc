@@ -16,9 +16,9 @@
 
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 
@@ -76,35 +76,35 @@ class RpcFailureManager {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Request;
-    } else if (rand == 1) {
+    }
+    if (rand == 1) {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Response;
-    } else {
-      // 50% chance
-      return RpcFailure::None;
     }
+    // 50% chance
+    return RpcFailure::None;
   }
 
  private:
   absl::Mutex mu_;
   std::mt19937 gen_;
   // call name -> # remaining failures
-  std::unordered_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
+  absl::flat_hash_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
 
-static RpcFailureManager _rpc_failure_manager;
+RpcFailureManager rpc_failure_manager;
 
 }  // namespace
 
-RpcFailure get_rpc_failure(const std::string &name) {
+RpcFailure GetRpcFailure(const std::string &name) {
   if (RayConfig::instance().testing_rpc_failure().empty()) {
     return RpcFailure::None;
   }
-  return _rpc_failure_manager.GetRpcFailure(name);
+  return rpc_failure_manager.GetRpcFailure(name);
 }
 
-void init() { _rpc_failure_manager.Init(); }
+void Init() { rpc_failure_manager.Init(); }
 
 }  // namespace testing
 }  // namespace rpc
