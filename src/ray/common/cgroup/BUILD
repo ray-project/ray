@@ -11,6 +11,7 @@ ray_cc_library(
     hdrs = ["cgroup_setup.h"],
     deps = [
         ":base_cgroup_setup",
+        ":cgroup_macros",
         ":cgroup_utils",
         ":constants",
         "//src/ray/common:macros",
@@ -73,9 +74,19 @@ ray_cc_library(
     srcs = ["cgroup_utils.cc"],
     hdrs = ["cgroup_utils.h"],
     deps = [
+        ":cgroup_macros",
         ":constants",
         "//src/ray/common:status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_macros",
+    hdrs = ["cgroup_macros.h"],
+    deps = [
+        "//src/ray/common:macros",
+        "//src/ray/common:status",
     ],
 )

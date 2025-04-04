@@ -60,6 +60,10 @@ class Cgroupv2SetupTest : public ::testing::Test {
         app_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
   void TearDown() override {
+    // Cleanup application cgroup after test completion.
+    RAY_ASSERT_OK(CleanupApplicationCgroup(
+        system_cgroup_proc_filepath_, app_cgroup_proc_filepath_, app_cgroup_folder_));
+
     // Check the application subcgroup folder has been deleted.
     std::error_code err_code;
     bool exists = std::filesystem::exists(app_cgroup_folder_, err_code);

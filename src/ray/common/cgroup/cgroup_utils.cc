@@ -17,6 +17,10 @@
 #ifndef __linux__
 namespace ray {
 Status KillAllProcAndWait(const std::string &cgroup_folder) { return Status::OK(); }
+Status CleanupApplicationCgroup(const std::string &cgroup_directory,
+                                const std::string &node_id) {
+  return Status::OK();
+}
 }  // namespace ray
 #else
 
@@ -28,6 +32,7 @@ Status KillAllProcAndWait(const std::string &cgroup_folder) { return Status::OK(
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "ray/common/cgroup/cgroup_macros.h"
 #include "ray/common/cgroup/constants.h"
 
 namespace ray {
@@ -81,6 +86,53 @@ Status KillAllProcAndWait(const std::string &cgroup_folder) {
   }
 
   BlockWaitProcExit(existing_pids);
+  return Status::OK();
+}
+
+Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
+  std::ifstream in_file(from.data());
+  RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << from;
+  std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << to;
+
+  pid_t pid = 0;
+  while (in_file >> pid) {
+    out_file << pid;
+  }
+  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << to;
+
+  return Status::OK();
+}
+
+Status CleanupApplicationCgroup(const std::string &cgroup_system_proc_filepath,
+                                const std::string &cgroup_root_procs_filepath,
+                                const std::string &cgroup_app_directory) {
+  // Kill all dangling processes.
+  RAY_RETURN_NOT_OK(KillAllProcAndWait(cgroup_app_directory));
+
+  // Move all internal processes into root cgroup and delete system cgroup.
+  RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_system_proc_filepath,
+                                            /*to=*/cgroup_root_procs_filepath));
+
+  // Cleanup all ray application cgroup folders.
+  std::error_code err_code;
+  for (const auto &dentry :
+       std::filesystem::directory_iterator(cgroup_app_directory, err_code)) {
+    RAY_SCHECK_OK_CGROUP(err_code.value() == 0)
+        << "Failed to iterate through directory " << cgroup_app_directory << " because "
+        << err_code.message();
+    if (!dentry.is_directory()) {
+      continue;
+    }
+    RAY_SCHECK_OK_CGROUP(std::filesystem::remove(dentry, err_code))
+        << "Failed to delete application cgroup folder " << dentry.path().string()
+        << " because " << err_code.message();
+  }
+
+  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_app_directory, err_code))
+      << "Failed to delete application cgroup folder " << cgroup_app_directory
+      << " because " << err_code.message();
+
   return Status::OK();
 }
 

@@ -53,9 +53,8 @@ class CgroupSetup : public BaseCgroupSetup {
   // TODO(hjiang): Implement support for VM/BM. Currently only docker is supported.
   CgroupSetup(const std::string &directory, const std::string &node_id);
 
-  // On destruction, all processes (including spawned child processes) in the managed
-  // cgroup will be killed recursively via SIGKILL.
-  ~CgroupSetup() override;
+  // All cgroup related directories will be deleted by raylet.
+  ~CgroupSetup() override = default;
 
   // Add the specified process into the system cgroup.
   Status AddSystemProcess(pid_t pid) override;
@@ -75,13 +74,6 @@ class CgroupSetup : public BaseCgroupSetup {
   // Setup cgroup folders for the given [node_id].
   Status InitializeCgroupV2Directory(const std::string &directory,
                                      const std::string &node_id);
-
-  // Cleans up cgroup after the raylet exits by killing all dangling processes and
-  // deleting the node cgroup.
-  //
-  // NOTE: This function is expected to be called once for each raylet instance at its
-  // termination.
-  Status CleanupCgroups();
 
   // Apply cgroup context which addes pid into default cgroup folder.
   //

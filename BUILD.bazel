@@ -788,6 +788,8 @@ ray_cc_binary(
     deps = [
         ":raylet_lib",
         "//src/ray/util",
+        "//src/ray/util:process_cleaner",
+        "//src/ray/common/cgroup:cgroup_utils",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/common/cgroup:cgroup_manager",
         "//src/ray/util:stream_redirection",

@@ -60,9 +60,9 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "ray/common/cgroup/cgroup_macros.h"
 #include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/cgroup/constants.h"
-#include "ray/common/macros.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
@@ -71,38 +71,6 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 namespace ray {
 
 namespace {
-
-#if defined(RAY_SCHECK_OK_CGROUP)
-#error "RAY_SCHECK_OK_CGROUP is already defined."
-#else
-#define __RAY_SCHECK_OK_CGROUP(expr, boolname) \
-  auto boolname = (expr);                      \
-  if (!boolname) return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
-
-// Invoke the given [expr] which returns a boolean convertible type; and return error
-// status if Failed. Cgroup operations on filesystem are not expected to fail after
-// precondition checked, so we use INVALID as the status code.
-//
-// Example usage:
-// RAY_SCHECK_OK_CGROUP(DoSomething()) << "DoSomething Failed";
-#define RAY_SCHECK_OK_CGROUP(expr) \
-  __RAY_SCHECK_OK_CGROUP(expr, RAY_UNIQUE_VARIABLE(cgroup_op))
-#endif
-
-Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
-  std::ifstream in_file(from.data());
-  RAY_SCHECK_OK_CGROUP(in_file.good()) << "Failed to open cgroup file " << from;
-  std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to open cgroup file " << to;
-
-  pid_t pid = 0;
-  while (in_file >> pid) {
-    out_file << pid;
-  }
-  RAY_SCHECK_OK_CGROUP(out_file.good()) << "Failed to flush cgroup file " << to;
-
-  return Status::OK();
-}
 
 // Enables controllers for a cgroup, and returns whether cgroup control writes
 // successfully.
@@ -243,38 +211,6 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   }
 
   RAY_RETURN_NOT_OK(EnableCgroupSubtreeControl(root_cgroup_subtree_control_filepath_));
-  return Status::OK();
-}
-
-CgroupSetup::~CgroupSetup() { RAY_CHECK_OK(CleanupCgroups()); }
-
-Status CgroupSetup::CleanupCgroups() {
-  // Kill all dangling processes.
-  RAY_RETURN_NOT_OK(KillAllProcAndWait(cgroup_v2_app_folder_));
-
-  // Move all internal processes into root cgroup and delete system cgroup.
-  RAY_RETURN_NOT_OK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_system_folder_,
-                                            /*to=*/root_cgroup_procs_filepath_));
-
-  // Cleanup all ray application cgroup folders.
-  std::error_code err_code;
-  for (const auto &dentry :
-       std::filesystem::directory_iterator(cgroup_v2_app_folder_, err_code)) {
-    RAY_SCHECK_OK_CGROUP(err_code.value() == 0)
-        << "Failed to iterate through directory " << cgroup_v2_app_folder_ << " because "
-        << err_code.message();
-    if (!dentry.is_directory()) {
-      continue;
-    }
-    RAY_SCHECK_OK_CGROUP(std::filesystem::remove(dentry, err_code))
-        << "Failed to delete application cgroup folder " << dentry.path().string()
-        << " because " << err_code.message();
-  }
-
-  RAY_SCHECK_OK_CGROUP(std::filesystem::remove(cgroup_v2_app_folder_, err_code))
-      << "Failed to delete application cgroup folder " << cgroup_v2_app_folder_
-      << " because " << err_code.message();
-
   return Status::OK();
 }
 
