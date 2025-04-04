@@ -250,6 +250,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             async for logs in logs_gen:
                 await response.write(logs)
         except Exception:
+            logger.exception("Error while streaming logs")
             response.force_close()
             raise
 
