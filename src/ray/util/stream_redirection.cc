@@ -40,7 +40,7 @@ absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::StreamRedirectionHandle>
     redirection_file_handles;
 
 // A validation function, which verifies redirection handles don't dump to the same file.
-void ValidateOutputPathsUnique() {
+void ValidateOutputPathsUniqueness() {
   absl::InlinedVector<std::string_view, 2> filepaths;
   for (const auto &[_, handle] : redirection_file_handles) {
     const auto &cur_filepath = handle.GetFilePath();
@@ -57,7 +57,7 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOpti
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
-  ValidateOutputPathsUnique();
+  ValidateOutputPathsUniqueness();
 }
 
 }  // namespace
