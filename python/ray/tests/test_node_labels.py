@@ -19,7 +19,7 @@ def add_default_labels(node_info, labels):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ['ray start --head --labels= "gpu_type=A100,region=us"'],
+    ['ray start --head --labels "gpu_type=A100,region=us"'],
     indirect=True,
 )
 def test_ray_start_set_node_labels(call_ray_start):
@@ -33,7 +33,7 @@ def test_ray_start_set_node_labels(call_ray_start):
 @pytest.mark.parametrize(
     "call_ray_start",
     [
-        "ray start --head --labels={}",
+        'ray start --head --labels ""',
     ],
     indirect=True,
 )

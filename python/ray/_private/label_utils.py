@@ -22,8 +22,14 @@ LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
 def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
     labels = {}
+
+    # Remove surrounding quotes if they exist
+    if len(labels_str) > 1 and labels_str.startswith('"') and labels_str.endswith('"'):
+        labels_str = labels_str[1:-1]
+
     if labels_str == "":
         return labels
+
     # Labels argument should consist of a string of key=value pairs
     # separated by commas. Labels follow Kubernetes label syntax.
     label_pairs = labels_str.split(",")
