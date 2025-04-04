@@ -130,5 +130,10 @@ void CoreWorkerClient::SendRequests() {
   }
 }
 
+void CoreWorkerClient::SetMaxFinishedSeqno(int64_t max_finished_seq_no) {
+  absl::MutexLock lock(&mutex_);
+  max_finished_seq_no_ = max_finished_seq_no;
+}
+
 }  // namespace rpc
 }  // namespace ray

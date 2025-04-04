@@ -1383,6 +1383,14 @@ void CoreWorker::InternalHeartbeat() {
     }
   }
 
+  // Note that Ray doesn't promise the execution order of actor retry tasks. Here,
+  // we just make a best-effort attempt to maintain the relative order of actor retry tasks
+  // based on the actor counter. It's the user's responsibility to make sure the retryable tasks
+  // are idempotent.
+  std::sort(tasks_to_resubmit.begin(), tasks_to_resubmit.end(), [](const TaskToRetry &a, const TaskToRetry &b) {
+    return a.task_spec.ActorCounter() < b.task_spec.ActorCounter();
+  });
+
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
