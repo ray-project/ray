@@ -161,23 +161,21 @@ class VLLMEngineConfig(BaseModelExtended):
             # By default, GPU resources are used
             return True
 
-        import ray.util.accelerators.accelerators as accelerators
-
         return self.accelerator_type in (
-            accelerators.NVIDIA_TESLA_V100,
-            accelerators.NVIDIA_TESLA_P100,
-            accelerators.NVIDIA_TESLA_T4,
-            accelerators.NVIDIA_TESLA_P4,
-            accelerators.NVIDIA_TESLA_K80,
-            accelerators.NVIDIA_TESLA_A10G,
-            accelerators.NVIDIA_L4,
-            accelerators.NVIDIA_L40S,
-            accelerators.NVIDIA_A100,
-            accelerators.NVIDIA_H100,
-            accelerators.NVIDIA_H200,
-            accelerators.NVIDIA_H20,
-            accelerators.NVIDIA_A100_40G,
-            accelerators.NVIDIA_A100_80G,
+            GPUType.NVIDIA_TESLA_V100,
+            GPUType.NVIDIA_TESLA_P100,
+            GPUType.NVIDIA_TESLA_T4,
+            GPUType.NVIDIA_TESLA_P4,
+            GPUType.NVIDIA_TESLA_K80,
+            GPUType.NVIDIA_TESLA_A10G,
+            GPUType.NVIDIA_L4,
+            GPUType.NVIDIA_L40S,
+            GPUType.NVIDIA_A100,
+            GPUType.NVIDIA_H100,
+            GPUType.NVIDIA_H200,
+            GPUType.NVIDIA_H20,
+            GPUType.NVIDIA_A100_40G,
+            GPUType.NVIDIA_A100_80G,
         )
 
     def get_or_create_pg(self) -> PlacementGroup:
