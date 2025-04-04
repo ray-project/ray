@@ -55,6 +55,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 ),
                 collate_fn=self.collate_fn,
                 prefetch_batches=dataloader_config.prefetch_batches,
+                drop_last=True,
             )
         )
 
@@ -66,6 +67,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
                 prefetch_batches=dataloader_config.prefetch_batches,
+                drop_last=True,
             )
         )
 

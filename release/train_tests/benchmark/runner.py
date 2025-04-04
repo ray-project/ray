@@ -152,18 +152,17 @@ class TrainLoopRunner:
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
-        while batch:
-            input_batch, labels = batch
-
+        while True:
             with self._metrics["validation/step"].timer():
-                if not self.benchmark_config.skip_validation_step:
-                    total_loss += self.validate_step(input_batch, labels)
+                try:
+                    total_loss += self.validate_step(val_dataloader)
+                except StopIteration:
+                    break
 
-            num_rows += len(labels)
-            self._metrics["validation/rows_processed"].add(len(labels))
-
-            with self._metrics["validation/iter_batch"].timer():
-                batch = self.get_next_batch(val_dataloader)
+            num_rows += self.benchmark_config.dataloader_config.val_batch_size
+            self._metrics["validation/rows_processed"].add(
+                self.benchmark_config.dataloader_config.val_batch_size
+            )
 
         return {"validation/loss": total_loss.item() / num_rows}
 
