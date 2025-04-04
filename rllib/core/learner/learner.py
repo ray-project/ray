@@ -11,6 +11,7 @@ from typing import (
     Dict,
     List,
     Hashable,
+    Iterable,
     Optional,
     Sequence,
     Tuple,
@@ -968,6 +969,7 @@ class Learner(Checkpointable):
             information.
         """
 
+    @OverrideToImplementCustomLogic
     def update(
         self,
         batch: Optional[MultiAgentBatch] = None,
@@ -1039,6 +1041,90 @@ class Learner(Checkpointable):
 
         self._weights_seq_no += 1
 
+        batch_iter = self._create_iterator_if_necessary(
+            training_data=training_data,
+            num_total_minibatches=num_total_minibatches,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+            **kwargs,
+        )
+
+        # Perform the actual looping through the minibatches or the given data iterator.
+        for iteration, tensor_minibatch in enumerate(batch_iter):
+            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+            # found in this batch. If not, throw an error.
+            unknown_module_ids = set(tensor_minibatch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if unknown_module_ids:
+                raise ValueError(
+                    f"Batch contains one or more ModuleIDs ({unknown_module_ids}) that "
+                    f"are not in this Learner!"
+                )
+
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                tensor_minibatch.policy_batches
+            )
+
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
+
+            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
+            #  cover the minibatch/epoch logic.
+            # Log all timesteps (env, agent, modules) based on given episodes/batch.
+            self._log_steps_trained_metrics(tensor_minibatch)
+
+            self._set_slicing_by_batch_id(tensor_minibatch, value=False)
+
+        if self.iterator:
+            # Record the number of batches pulled from the dataset.
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
+                iteration + 1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
+                iteration + 1,
+                reduce="sum",
+            )
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        # Note: We do this only once for the last of the minibatch updates, b/c the
+        # window is only 1 anyways.
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
+
+        # Call `after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        # TODO (simon): Check, if this should stay here, when running multiple
+        # gradient steps inside the iterator loop above (could be a complete epoch)
+        # the target networks might need to be updated earlier.
+        self.after_gradient_based_update(timesteps=timesteps or {})
+
+        # Reduce results across all minibatch update steps.
+        if not _no_metrics_reduce:
+            return self.metrics.reduce()
+
+    def _create_iterator_if_necessary(
+        self,
+        *,
+        training_data: TrainingData,
+        num_total_minibatches: int = 0,
+        num_epochs: int = 1,
+        minibatch_size: Optional[int] = None,
+        shuffle_batch_per_epoch: bool = False,
+        **kwargs,
+    ) -> Iterable:
         # Data iterator provided.
         if training_data.data_iterators:
             num_iters = kwargs.pop("num_iters", None)
@@ -1111,71 +1197,7 @@ class Learner(Checkpointable):
                 shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
                 num_total_minibatches=num_total_minibatches,
             )
-
-        # Perform the actual looping through the minibatches or the given data iterator.
-        for iteration, tensor_minibatch in enumerate(batch_iter):
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(tensor_minibatch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if unknown_module_ids:
-                raise ValueError(
-                    f"Batch contains one or more ModuleIDs ({unknown_module_ids}) that "
-                    f"are not in this Learner!"
-                )
-
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                tensor_minibatch.policy_batches
-            )
-
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
-
-            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
-            #  cover the minibatch/epoch logic.
-            # Log all timesteps (env, agent, modules) based on given episodes/batch.
-            self._log_steps_trained_metrics(tensor_minibatch)
-
-            self._set_slicing_by_batch_id(tensor_minibatch, value=False)
-
-        if self.iterator:
-            # Record the number of batches pulled from the dataset.
-            self.metrics.log_value(
-                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
-                iteration + 1,
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-            self.metrics.log_value(
-                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
-                iteration + 1,
-                reduce="sum",
-            )
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
-        # Note: We do this only once for the last of the minibatch updates, b/c the
-        # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
-            self.metrics.log_value(
-                key=(mid, self.TOTAL_LOSS_KEY),
-                value=loss,
-                window=1,
-            )
-
-        # Call `after_gradient_based_update` to allow for non-gradient based
-        # cleanups-, logging-, and update logic to happen.
-        # TODO (simon): Check, if this should stay here, when running multiple
-        # gradient steps inside the iterator loop above (could be a complete epoch)
-        # the target networks might need to be updated earlier.
-        self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        if not _no_metrics_reduce:
-            return self.metrics.reduce()
+        return batch_iter
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
