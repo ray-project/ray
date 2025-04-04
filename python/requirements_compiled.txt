@@ -1698,6 +1698,7 @@ pytest==7.4.4
     #   pytest-docker-tools
     #   pytest-fixture-config
     #   pytest-forked
+    #   pytest-lazy-fixtures
     #   pytest-mock
     #   pytest-remotedata
     #   pytest-repeat
