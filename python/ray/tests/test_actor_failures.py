@@ -1209,6 +1209,72 @@ def test_exit_actor_queued(shutdown_only):
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
 
+def test_actor_restart_and_actor_received_task(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit a task to the actor and kill the actor after it receives
+    # the task. Then, the actor should restart in another core worker
+    # process, and the driver should resubmit the task to the new process.
+    # The task should be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            self.counter = 0
+
+        def sleep_and_increment(self, sleep_time):
+            time.sleep(sleep_time)
+            self.counter += 1
+            return self.counter
+
+        def fail(self):
+            os._exit(1)
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    ref = actor.sleep_and_increment.remote(3)
+    # Wait for the actor to receive the task `sleep_and_increment`
+    time.sleep(1)
+    os.kill(pid, signal.SIGKILL)
+
+    assert ray.get(ref) == 1
+
+
+def test_actor_restart_and_partial_task_not_completed(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit 3 tasks to the actor and wait for them to complete.
+    # Then, submit 3 more tasks to the actor and kill the actor.
+    # The driver will resubmit the last 3 tasks to the new core worker
+    # process, and the tasks will be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            pass
+
+        def sleep_and_echo(self, sleep_time, value):
+            time.sleep(sleep_time)
+            return value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    refs = []
+    for i in range(3):
+        refs.append(actor.sleep_and_echo.remote(0, i))
+    assert ray.get(refs) == [0, 1, 2]
+
+    refs = []
+    for i in range(3, 6):
+        refs.append(actor.sleep_and_echo.remote(3, i))
+    # Wait for the actor to receive the task `sleep_and_increment`
+    time.sleep(1)
+    os.kill(pid, signal.SIGKILL)
+    assert ray.get(refs) == [3, 4, 5]
+
+
 if __name__ == "__main__":
     import pytest
 
