@@ -282,9 +282,9 @@ class ActorPoolMapOperator(MapOperator):
                 f"{self._actor_pool.min_size()}, but the operator only received "
                 f"{self._metrics.num_inputs_received} input(s). This means that the "
                 f"operator can launch at most {self._metrics.num_inputs_received} "
-                f"task(s), and won't fully utilize the available concurrency. You "
-                "might be able to increase the number of concurrent tasks by "
-                "configuring `override_num_blocks` earlier in the pipeline."
+                f"task(s), and won't fully utilize the available concurrency. "
+                "Consider setting `override_num_blocks` in your read call "
+                f"greater than {self._actor_pool.min_size()}."
             )
 
     def shutdown(self, force: bool = False):
