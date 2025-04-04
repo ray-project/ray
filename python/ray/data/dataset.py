@@ -408,7 +408,7 @@ class Dataset:
         logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
-    @Deprecated(message="Use set_name instead", warning=True)
+    @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
@@ -420,7 +420,7 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
-    @Deprecated(message="Use name instead", warning=True)
+    @Deprecated(message="Use name() instead", warning=True)
     def _name(self) -> Optional[str]:
         return self.name
 

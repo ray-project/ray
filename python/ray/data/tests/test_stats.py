@@ -1713,8 +1713,8 @@ def test_stats_actor_iter_metrics():
 def test_dataset_name():
     # Test deprecated APIs
     ds = ray.data.range(1)
-    ds.set_name("test_ds")
-    assert ds.name == "test_ds"
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
 
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name("test_ds")
