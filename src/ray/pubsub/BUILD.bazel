@@ -11,7 +11,6 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
-    # visibility = ["//src/ray/pubsub:__pkg__"],  # Only visible to the pubsub package
 )
 
 # Subscriber module
@@ -25,7 +24,6 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
-    # visibility = ["//visibility:public"],  # Make it public, accessible by other packages
 )
 
 # Combined PubSub Library
@@ -35,5 +33,4 @@ ray_cc_library(
         ":publisher_lib",
         ":subscriber_lib",
     ],
-    # visibility = ["//visibility:public"],  # Make it public, accessible by other packages
 )
