@@ -150,6 +150,36 @@ class VLLMEngineConfig(BaseModelExtended):
 
         return bundles
 
+    @property
+    def use_gpu(self) -> bool:
+        """
+        Returns True if vLLM is configured to use GPU resources.
+        """
+        if self.resources_per_bundle and self.resources_per_bundle.get("GPU", 0) > 0:
+            return True
+        if not self.accelerator_type:
+            # By default, GPU resources are used
+            return True
+
+        import ray.util.accelerators.accelerators as accelerators
+
+        return self.accelerator_type in (
+            accelerators.NVIDIA_TESLA_V100,
+            accelerators.NVIDIA_TESLA_P100,
+            accelerators.NVIDIA_TESLA_T4,
+            accelerators.NVIDIA_TESLA_P4,
+            accelerators.NVIDIA_TESLA_K80,
+            accelerators.NVIDIA_TESLA_A10G,
+            accelerators.NVIDIA_L4,
+            accelerators.NVIDIA_L40S,
+            accelerators.NVIDIA_A100,
+            accelerators.NVIDIA_H100,
+            accelerators.NVIDIA_H200,
+            accelerators.NVIDIA_H20,
+            accelerators.NVIDIA_A100_40G,
+            accelerators.NVIDIA_A100_80G,
+        )
+
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
 
