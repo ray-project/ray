@@ -190,11 +190,11 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   for (const auto &cur_controller : kRequiredControllers) {
     if (std::find(enabled_subtree_controllers.begin(),
                   enabled_subtree_controllers.end(),
-                  cur_controller) == enabled_subtree_controllers.end()) {
+                  cur_controller) != enabled_subtree_controllers.end()) {
       return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
              << "Base cgroup " << directory << " doesn't enable " << cur_controller
              << " controller for subtree."
-             << " Check to see if the parent of " << directory << "has the "
+             << " Check to see if the parent of " << directory << " has the "
              << cur_controller << " controller enabled.";
     }
   }
