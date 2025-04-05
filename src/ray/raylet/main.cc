@@ -97,6 +97,10 @@ DEFINE_bool(enable_resource_isolation,
             false,
             "Enable resource isolation through cgroupv2 by reserving resources for ray "
             "system processes.");
+DEFINE_string(cgroup_directory,
+              "/sys/fs/cgroup",
+              "Only meaningful when resource isolation enabled; it means the directory "
+              "where cgroupv2 is mounted properly on the current node.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -259,6 +263,7 @@ int main(int argc, char *argv[]) {
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   node_manager_config.enable_resource_isolation = FLAGS_enable_resource_isolation;
+  node_manager_config.cgroup_directory = FLAGS_cgroup_directory;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
 

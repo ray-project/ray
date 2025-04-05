@@ -82,6 +82,11 @@ class CgroupSetup : public BaseCgroupSetup {
   // Link: https://github.com/ray-project/ray/pull/50761
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 
+  // Cgroup folder for root cgroup.
+  std::string cgroup_v2_folder_;
+  // Current node id.
+  std::string node_id_;
+
   // File path of PIDs for root cgroup.
   std::string root_cgroup_procs_filepath_;
   // File path for subtree control for root cgroup.

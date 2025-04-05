@@ -39,8 +39,6 @@ class FakeCgroupSetup : public BaseCgroupSetup {
 
   Status AddSystemProcess(pid_t pid) override;
 
-  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
-
  protected:
   void CleanupSystemProcess(pid_t pid);
 

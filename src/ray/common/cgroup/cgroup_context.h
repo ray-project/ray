@@ -22,6 +22,26 @@
 
 namespace ray {
 
+enum class CgroupSetupType {
+  // Real cgroup implementation, which is used in production or integration tests when
+  // cgroup enabled.
+  kProd,
+  // Fake cgroup implementation, which is used in unit tests.
+  kFake,
+  // Noop cgroup implementation, which is used in production when cgroup disabled.
+  kNoop,
+};
+
+// Configuration to setup cgroup for application processes.
+struct CgroupSetupConfig {
+  // Directory where cgroupv2 is mounted.
+  std::string directory;
+  // Id for current node.
+  std::string node_id;
+  // Type for cgroup setup.
+  CgroupSetupType type = CgroupSetupType::kNoop;
+};
+
 // Context used to setup cgroupv2 for a task / actor.
 struct AppProcCgroupMetadata {
   // A unique id to uniquely identity a certain task / actor attempt.

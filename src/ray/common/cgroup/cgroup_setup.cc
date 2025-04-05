@@ -170,6 +170,9 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // Check cgroup accessibility before setup.
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
+  cgroup_v2_folder_ = directory;
+  node_id_ = node_id;
+
   // Cgroup folders for the current ray node.
   node_cgroup_v2_folder_ =
       ray::JoinPaths(directory, absl::StrFormat("ray_node_%s", node_id));
@@ -224,28 +227,6 @@ Status CgroupSetup::AddSystemProcess(pid_t pid) {
       << "Failed to add " << pid << " into cgroup process file "
       << cgroup_v2_system_proc_filepath_;
   return Status::OK();
-}
-
-ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
-    const AppProcCgroupMetadata &ctx) {
-  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(kUnlimitedCgroupMemory))
-      << "Ray doesn't support per-task resource constraint.";
-
-  std::ofstream out_file(cgroup_v2_default_app_proc_filepath_,
-                         std::ios::app | std::ios::out);
-  out_file << ctx.pid;
-  RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
-                             << ctx.max_memory << " into cgroup folder";
-
-  // Default cgroup folder's lifecycle is the same as node-level's cgroup folder, we don't
-  // need to clean it up after one process terminates.
-  return ScopedCgroupHandler{};
-}
-
-ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
-  // For milestone-1, there's no request and limit set for each task.
-  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(0));
-  return ApplyCgroupForDefaultAppCgroup(ctx);
 }
 
 }  // namespace ray

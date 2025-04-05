@@ -2275,7 +2275,6 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
-# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
 def connect(
     node,
     session_name: str,
@@ -2294,6 +2293,8 @@ def connect(
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
     enable_resource_isolation: bool = False,
+    cgroup_directory: str = "/sys/fs/cgroup",
+    node_id: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2323,6 +2324,8 @@ def connect(
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
         enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
+        cgroup_directory: Only meaningful when resource isolation enabled; it means the directory where cgroupv2 is mounted properly on the current node.
+        node_id: Id for current ray node.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2505,6 +2508,8 @@ def connect(
         worker_launched_time_ms,
         debug_source,
         enable_resource_isolation,
+        cgroup_directory,
+        node_id,
     )
 
     if mode == SCRIPT_MODE:

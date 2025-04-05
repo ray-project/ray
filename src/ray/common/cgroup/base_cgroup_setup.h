@@ -43,9 +43,6 @@ class BaseCgroupSetup {
 
   // Add system process into system cgroup.
   virtual Status AddSystemProcess(pid_t pid) = 0;
-
-  // Apply cgroup context, which adds the process id into the corresponding cgroup.
-  virtual ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
 };
 
 // A noop cgroup setup class, which does nothing. Used when physical mode is not enabled,
@@ -56,10 +53,6 @@ class NoopCgroupSetup : public BaseCgroupSetup {
   ~NoopCgroupSetup() override = default;
 
   Status AddSystemProcess(pid_t pid) override { return Status::OK(); }
-
-  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override {
-    return {};
-  }
 };
 
 }  // namespace ray

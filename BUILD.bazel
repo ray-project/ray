@@ -1748,7 +1748,7 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/common/cgroup:base_cgroup_setup",
         "//src/ray/common/cgroup:cgroup_context",
-        "//src/ray/common/cgroup:cgroup_manager",
+        "//src/ray/common/cgroup:cgroup_utils",
         "//src/ray/common/cgroup:constants",
         "//src/ray/common/cgroup:scoped_cgroup_handle",
         "//src/ray/protobuf:worker_cc_proto",

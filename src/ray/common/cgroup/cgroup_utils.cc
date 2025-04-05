@@ -21,6 +21,10 @@ Status CleanupApplicationCgroup(const std::string &cgroup_directory,
                                 const std::string &node_id) {
   return Status::OK();
 }
+ScopedCgroupHandler AddCurrentProcessToCgroup(const std::string &cgroup_folder,
+                                              const AppProcCgroupMetadata &ctx) {
+  return {};
+}
 }  // namespace ray
 #else
 
@@ -68,6 +72,28 @@ void BlockWaitProcExit(const std::vector<pid_t> &pids) {
     // Intentionally ignore return value.
     waitpid(cur_pid, /*status=*/nullptr, /*options=*/0);
   }
+}
+
+ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const CgroupSetupConfig &setup_config,
+                                                   const AppProcCgroupMetadata &ctx) {
+  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(kUnlimitedCgroupMemory))
+      << "Ray doesn't support per-task resource constraint.";
+
+  const std::string cgroup_v2_default_app_proc_filepath =
+      ray::JoinPaths(setup_config.directory,
+                     absl::StrFormat("ray_node_%s", setup_config.node_id),
+                     "ray_application",
+                     "default",
+                     kProcFilename);
+  std::ofstream out_file(cgroup_v2_default_app_proc_filepath,
+                         std::ios::app | std::ios::out);
+  out_file << ctx.pid;
+  RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
+                             << ctx.max_memory << " into cgroup folder";
+
+  // Default cgroup folder's lifecycle is the same as node-level's cgroup folder, we don't
+  // need to clean it up after one process terminates.
+  return ScopedCgroupHandler{};
 }
 
 }  // namespace
@@ -134,6 +160,18 @@ Status CleanupApplicationCgroup(const std::string &cgroup_system_proc_filepath,
       << " because " << err_code.message();
 
   return Status::OK();
+}
+
+ScopedCgroupHandler AddCurrentProcessToCgroup(CgroupSetupConfig setup_config,
+                                              const AppProcCgroupMetadata &ctx) {
+  // TODO(hjiang): Implement fake cgroup setup.
+  if (setup_config.type != CgroupSetupType::kProd) {
+    return {};
+  }
+
+  // For milestone-1, there's no request and limit set for each task.
+  RAY_CHECK_EQ(ctx.max_memory, static_cast<uint64_t>(0));
+  return ApplyCgroupForDefaultAppCgroup(setup_config, ctx);
 }
 
 }  // namespace ray

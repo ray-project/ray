@@ -257,6 +257,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param get_time A callback to get the current time in milliseconds.
   /// \param enable_resource_isolation If true, core worker enables resource isolation by
   /// adding itself into appropriate cgroup.
+  /// \param cgroup_directory Only meaningful when resource isolation enabled; it means
+  /// the directory where cgroupv2 is mounted properly on the current node.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
              std::string node_address,
@@ -272,7 +274,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
              std::function<absl::Time()> get_time,
-             bool enable_resource_isolation);
+             bool enable_resource_isolation,
+             std::string cgroup_directory);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -864,6 +867,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup after it is created.
   bool enable_resource_isolation_ = false;
+
+  // Only meaningful when resource isolation enabled; it means the directory where
+  // cgroupv2 is mounted properly on the current node.
+  std::string cgroup_directory_;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

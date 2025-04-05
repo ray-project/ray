@@ -18,6 +18,9 @@
 
 #include <string>
 
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/constants.h"
+#include "ray/common/cgroup/scoped_cgroup_handle.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -47,5 +50,9 @@ Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to);
 Status CleanupApplicationCgroup(const std::string &cgroup_system_proc_filepath,
                                 const std::string &cgroup_root_procs_filepath,
                                 const std::string &cgroup_app_directory);
+
+// Apply cgroup context which addes pid into default cgroup folder.
+ScopedCgroupHandler AddCurrentProcessToCgroup(CgroupSetupConfig setup_config,
+                                              const AppProcCgroupMetadata &ctx);
 
 }  // namespace ray

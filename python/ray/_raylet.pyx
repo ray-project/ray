@@ -2979,7 +2979,8 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source,
+                  enable_resource_isolation, cgroup_directory, node_id):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3035,6 +3036,8 @@ cdef class CoreWorker:
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
         options.enable_resource_isolation = enable_resource_isolation
+        options.cgroup_directory = cgroup_directory
+        options.node_id = node_id
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
