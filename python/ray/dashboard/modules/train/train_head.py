@@ -331,13 +331,13 @@ class TrainHead(SubprocessModule):
         )
 
     async def _get_actor_infos(self, actor_ids: List[str]):
-        if self._note_head_http_session is None:
-            self._note_head_http_session = get_http_session_to_module(
+        if self._node_head_http_session is None:
+            self._node_head_http_session = get_http_session_to_module(
                 "NodeHead", self._config.socket_dir
             )
         actor_ids_qs_str = ",".join(actor_ids)
         url = f"http://localhost/logical/actors?ids={actor_ids_qs_str}&nocache=1"
-        async with self._note_head_http_session.get(url) as resp:
+        async with self._node_head_http_session.get(url) as resp:
             resp.raise_for_status()
             resp_json = await resp.json()
         return resp_json["data"]["actors"]
