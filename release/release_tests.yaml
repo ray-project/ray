@@ -711,6 +711,101 @@
     timeout: 4700
     script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
+#############################
+# ML Examples tests
+#############################
+- name: example_object_detection_train
+  group: ML Examples
+  working_dir: object_detection
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_object_detection.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 3600
+    script: python test_myst_doc.py --path 1.object_detection_train.ipynb
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+- name: example_object_detection_batch_inference_eval
+  group: ML Examples
+  working_dir: object_detection
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_object_detection.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python test_myst_doc.py --path 2.object_detection_batch_inference_eval.ipynb
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+- name: example_video_processing_batch_inference
+  group: ML Examples
+  working_dir: object_detection
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_object_detection.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 2400
+    script: python test_myst_doc.py --path 3.video_processing_batch_inference.ipynb
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
+- name: example_object_detection_serve
+  group: ML Examples
+  working_dir: object_detection
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_object_detection.sh
+    cluster_compute: compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python test_myst_doc.py --path 4.object_detection_serve.ipynb
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gce.yaml
+
 #######################
 # ML user tests
 #######################
