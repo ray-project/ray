@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Callable, Dict, Optional
 
 import ray
@@ -9,8 +10,10 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.context import DataContext
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -75,6 +78,7 @@ class TaskPoolMapOperator(MapOperator):
         }
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+        self._ray_remote_args_factory_actor_locality = None
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
@@ -107,6 +111,66 @@ class TaskPoolMapOperator(MapOperator):
             **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)
+
+    def _get_runtime_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = copy.deepcopy(self._ray_remote_args)
+
+        # Override parameters from user provided remote args function.
+        if self._ray_remote_args_fn:
+            new_remote_args = self._ray_remote_args_fn()
+            for k, v in new_remote_args.items():
+                ray_remote_args[k] = v
+        # For tasks with small args, we will use SPREAD by default to optimize for
+        # compute load-balancing. For tasks with large args, we will use DEFAULT to
+        # allow the Ray locality scheduler a chance to optimize task placement.
+        if "scheduling_strategy" not in ray_remote_args:
+            ctx = self.data_context
+            if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
+                ray_remote_args[
+                    "scheduling_strategy"
+                ] = ctx.scheduling_strategy_large_args
+                # Takes precedence over small args case. This is to let users know
+                # when the large args case is being triggered.
+                self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+            else:
+                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+                # Only save to metrics if we haven't already done so.
+                if "scheduling_strategy" not in self._remote_args_for_metrics:
+                    self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        # This should take precedence over previously set scheduling strategy, as it
+        # implements actor-based locality overrides.
+        if self._ray_remote_args_factory_actor_locality:
+            return self._ray_remote_args_factory_actor_locality(ray_remote_args)
+        return ray_remote_args
+
+    def start(self, options: ExecutionOptions):
+        super().start(options)
+
+        if options.locality_with_output:
+            if isinstance(options.locality_with_output, list):
+                locs = options.locality_with_output
+            else:
+                locs = [ray.get_runtime_context().get_node_id()]
+
+            class RoundRobinAssign:
+                def __init__(self, locs):
+                    self.locs = locs
+                    self.i = 0
+
+                def __call__(self, args):
+                    args = copy.deepcopy(args)
+                    args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                        self.locs[self.i],
+                        soft=True,
+                        _spill_on_unavailable=True,
+                    )
+                    self.i += 1
+                    self.i %= len(self.locs)
+                    return args
+
+            self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
 
     def shutdown(self, force: bool = False):
         # Cancel all active tasks.
