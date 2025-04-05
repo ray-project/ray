@@ -514,11 +514,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 )
 def test_multiple_actor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    # This test can be made more stressful by increasing the numbers below.
-    # The total number of actors created will be
-    # num_actors_at_a_time * num_nodes.
     num_nodes = 5
-    num_actors_at_a_time = 3
+    num_actors = 15
     num_function_calls_at_a_time = 10
 
     worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
@@ -526,50 +523,41 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
         def __init__(self):
-            self.x = 0
+            pass
 
-        def inc(self, duration):
+        def echo(self, duration, value):
             time.sleep(duration)
-            self.x += 1
-            return self.x
+            return value
 
     # Create some initial actors.
-    actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
-
-    # Wait for the actors to start up.
-    time.sleep(1)
+    actors = [SlowCounter.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
 
     # This is a mapping from actor handles to object refs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 
-    # In a loop we are going to create some actors, run some methods, kill
-    # a raylet, and run some more methods.
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(num_function_calls_at_a_time):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
+
+    # Kill nodes
     for node in worker_nodes:
-        # Create some actors.
-        actors.extend([SlowCounter.remote() for _ in range(num_actors_at_a_time)])
-        # Run some methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-        # Kill a node.
         cluster.remove_node(node)
 
-        # Run some more methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(
+            num_function_calls_at_a_time, 2 * num_function_calls_at_a_time
+        ):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
 
     # Get the results and check that they have the correct values.
-    for _, result_id_list in result_ids.items():
+    for actor, result_id_list in result_ids.items():
         results = ray.get(result_id_list)
-        for i, result in enumerate(results):
-            if i == 0:
-                assert result == 1
-            else:
-                assert result == results[i - 1] + 1 or result == 1
+        expected = list(range(num_function_calls_at_a_time * 2))
+        assert results == expected
 
 
 def kill_actor(actor):
