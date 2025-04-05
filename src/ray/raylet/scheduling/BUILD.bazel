@@ -278,8 +278,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":ray_mock",
-        ":raylet_lib",
+        "//:ray_mock",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -292,8 +292,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":ray_mock",
-        ":raylet_lib",
+        "//:ray_mock",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -306,7 +306,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":raylet_lib",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -319,7 +319,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":raylet_lib",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -346,8 +346,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":ray_mock",
-        ":raylet_lib",
+        "//:ray_mock",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -360,7 +360,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":raylet_lib",
+        "//:raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
