@@ -239,6 +239,7 @@ def plan_udf_map_op(
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
+        actor_startup_timeout_s=getattr(op, "_actor_startup_timeout_s", None),
     )
 
 
