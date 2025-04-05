@@ -38,7 +38,7 @@ class TrainHead(SubprocessModule):
         self._gcs_actor_info_stub = None
 
         # Lazy initialized HTTP session to NodeHead
-        self._note_head_http_session = None
+        self._node_head_http_session = None
 
     # TODO: The next iteration of this should be "/api/train/v2/runs/v2".
     # This follows the naming convention of "/api/train/{train_version}/runs/{api_version}".
