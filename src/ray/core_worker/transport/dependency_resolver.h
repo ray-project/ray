@@ -23,7 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_manager.h"
+#include "ray/core_worker/task_finisher.h"
 
 namespace ray {
 namespace core {
