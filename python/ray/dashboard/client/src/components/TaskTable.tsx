@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
@@ -63,6 +63,10 @@ const TaskTable = ({
     maxPage,
   } = sliceToPage(taskList, pageNo, pageSize);
 
+  const hasGpuRows = useMemo(() => {
+    return list.some((task) => task.required_resources && task.required_resources["GPU"] > 0);
+  }, [list]);
+
   const columns = [
     { label: "ID" },
     { label: "Name" },
@@ -94,6 +98,34 @@ const TaskTable = ({
     { label: "Type" },
     { label: "Placement group ID" },
     { label: "Required resources" },
+    ...(hasGpuRows
+      ? [
+          {
+            label: "GPU",
+            helpInfo: (
+              <Typography>
+                Usage of each GPU device. If no GPU usage is detected, here are the
+                potential root causes:
+                <br />
+                1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
+                and try again. <br />
+                2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+                not currently supported.
+                <br />
+                3. pynvml module raises an exception.
+              </Typography>
+            ),
+          },
+          {
+            label: "GRAM",
+            helpInfo: (
+              <Typography>
+                Actor's GRAM usage (from Worker Process). <br />
+              </Typography>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -312,6 +344,16 @@ const TaskTable = ({
                       "{}"
                     )}
                   </TableCell>
+                  {hasGpuRows && (
+                    <>
+                      <TableCell>
+                        <WorkerGpuRow workerPID={task.worker_id} gpus={task.gpus} />
+                      </TableCell>
+                      <TableCell>
+                        <WorkerGRAM workerPID={task.worker_id} gpus={task.gpus} />
+                      </TableCell>
+                    </>
+                  )}
                 </TableRow>
               );
             })}
