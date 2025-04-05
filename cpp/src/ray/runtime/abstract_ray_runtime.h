@@ -96,7 +96,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   JobID GetCurrentJobID();
 
-  const ActorID &GetCurrentActorID();
+  ActorID GetCurrentActorID();
 
   virtual const WorkerContext &GetWorkerContext() = 0;
 
