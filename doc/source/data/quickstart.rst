@@ -25,9 +25,22 @@ What is a Ray Dataset?
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are specifically designed for machine learning workloads and can efficiently handle data collections that exceed a single machine's memory.
 
-Ray Datasets are similar to DataFrames and Datasets in TensorFlow, PyTorch, pandas, and Apache Spark. Ray Data provides interoperatibility with these and other libraries. See :ref:`Loading data from other libraries<load_data_libraries>`.
+Ray Datasets are similar to DataFrames and Datasets in TensorFlow, PyTorch, pandas, and Apache Spark. Ray Data provides interoperatibility with these and other libraries. See :ref:`load_data_libraries`.
 
-For details on how Ray Datasets represent data for distributed processing, see :ref:`How does Ray Data work?<data_key_concept>`
+For details on how Ray Datasets represent data for distributed processing, see :ref:`data_key_concept`
+
+Most operations in Ray Data fall into one of the following categories:
+
++----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Operator type  |                                                                         Description                                                                          |
++================+==============================================================================================================================================================+
+| Creation       | Creates a Dataset from the specified data source, such as data files, an external system, a Python data structure, or another data framework.                |
++----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Transformation | Applies specified logic on a Dataset and outputs the results as a new Dataset.                                                                               |
++----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Consumption    | Materializes results from a Dataset to write data as files, convert data to another framework, create an iterator, or return rows or results from a Dataset. |
++----------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
 
 .. _loading_key_concept:
 
@@ -36,7 +49,7 @@ Load data
 
 You can load data to create datasets from sources including local files, Python objects, and cloud storage services like S3 or GCS.
 
-Ray Data seamlessly integrates with any `filesystem supported by Arrow<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
+Ray Data seamlessly integrates with any `filesystem supported by Arrow<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
 
 The following code example loads CSV data from an S3 bucket and previews the data:
 
@@ -54,7 +67,7 @@ The following code example loads CSV data from an S3 bucket and previews the dat
 
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
-To learn more about creating datasets from different sources, read :ref:`Loading data <loading_data>`.
+To learn more about creating datasets from different sources, read :ref:`loading_data`.
 
 .. _transforming_key_concept:
 
@@ -63,8 +76,7 @@ Transform data
 
 Define data transformations 
 
-Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations
-across your cluster for better performance.
+Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations across your cluster for better performance.
 
 The following code example applies a UDF to calculate the petal area for the CSV data loaded
 
@@ -110,9 +122,7 @@ To explore more transformation capabilities, read :ref:`Transforming data <trans
 Consume data
 ------------
 
-Access dataset contents through convenient methods like :meth:`~ray.data.Dataset.take_batch` and 
-:meth:`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray Tasks or Actors
-for distributed processing.
+Access Dataset contents through convenient methods like :meth:`~ray.data.Dataset.take_batch` and  :meth:`~ray.data.Dataset.iter_batches`. You can also pass Datasets directly to Ray Tasks or Actors for distributed processing.
 
 .. testcode::
 
@@ -129,8 +139,7 @@ for distributed processing.
         'target': array([0, 0, 0]),
         'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 
-For more details on working with dataset contents, see
-:ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
+For more details on working with Dataset contents, see :ref:`iterating-over-data` and :ref:`saving-data`.
 
 .. _saving_key_concept:
 
@@ -138,7 +147,7 @@ Save data
 ---------
 
 Export processed datasets to a variety of formats and storage locations using methods
-like :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_csv`, and more.
+such as :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_csv`.
 
 .. testcode::
     :hide:
@@ -163,7 +172,7 @@ like :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_csv
     ['..._000000.parquet', '..._000001.parquet']
 
 
-For more information on saving datasets, see :ref:`Saving data <saving-data>`.
+For more information on saving datasets, see :ref:`saving-data`.
 
 
 .. _etl_example:
