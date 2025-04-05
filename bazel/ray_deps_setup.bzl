@@ -265,6 +265,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-avoid-goaway-messages.patch",
         ],
     )
 
