@@ -196,11 +196,10 @@ class DashboardHeadModule(abc.ABC):
         return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
-    async def run(self, server):
+    async def run(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
