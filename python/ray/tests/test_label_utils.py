@@ -3,6 +3,9 @@ from ray._private.label_utils import (
     parse_node_labels_string,
     parse_node_labels_from_yaml_file,
     validate_node_labels,
+    validate_label_key,
+    validate_label_value,
+    validate_label_selector_value,
 )
 import sys
 import tempfile
@@ -125,6 +128,69 @@ def test_validate_node_labels(labels_dict, expected_error, expected_message):
         assert expected_message in str(e.value)
     else:
         validate_node_labels(labels_dict)
+
+
+@pytest.mark.parametrize(
+    "key, expected_error",
+    [
+        ("ray.io/accelerator-type", None),
+        ("region", None),
+        ("-region", "Invalid label key name"),
+        ("region-", "Invalid label key name"),
+        ("ray!.io/accelerator-type", "Invalid label key prefix"),
+        ("a" * 64, "Invalid label key name"),
+    ],
+)
+def test_validate_label_key(key, expected_error):
+    error_msg = validate_label_key(key)
+    if expected_error:
+        assert expected_error in error_msg
+    else:
+        assert error_msg is None
+
+
+@pytest.mark.parametrize(
+    "value, should_raise, expected_message",
+    [
+        ("", False, None),
+        ("valid-value", False, None),
+        ("_underscore-start", True, "Invalid label key value"),
+        ("dash-end-", True, "Invalid label key value"),
+        ("@invalid", True, "Invalid label key value"),
+        ("a" * 64, True, "Invalid label key value"),
+    ],
+)
+def test_validate_label_value(value, should_raise, expected_message):
+    if should_raise:
+        with pytest.raises(ValueError) as e:
+            validate_label_value(value)
+        assert expected_message in str(e.value)
+    else:
+        validate_label_value(value)
+
+
+@pytest.mark.parametrize(
+    "selector, expected_error",
+    [
+        ("spot", None),
+        ("!GPU", None),
+        ("in(A123, B456, C789)", None),
+        ("!in(spot, on-demand)", None),
+        ("valid-value", None),
+        ("-spot", "Invalid label selector value"),
+        ("spot_", "Invalid label selector value"),
+        ("in()", "Invalid label selector value"),
+        ("in(spot,", "Invalid label selector value"),
+        ("in(H100, TPU!GPU)", "Invalid label selector value"),
+        ("!!!in(H100, TPU)", "Invalid label selector value"),
+    ],
+)
+def test_validate_label_selector_value(selector, expected_error):
+    error_msg = validate_label_selector_value(selector)
+    if expected_error:
+        assert expected_error in error_msg
+    else:
+        assert error_msg is None
 
 
 if __name__ == "__main__":
