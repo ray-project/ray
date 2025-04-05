@@ -679,7 +679,7 @@ def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids())
 
 
-def _do_get_unique_nccl_id(self) -> bool:
+def _do_get_unique_nccl_id(self) -> tuple:
     from cupy.cuda import nccl
 
     return nccl.get_unique_id()
