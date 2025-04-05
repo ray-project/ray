@@ -206,9 +206,9 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
                                        {stats::WorkerPidKey, "1000"}};
 
   // Flush interval is 30 seconds. Shutdown should not take 30 seconds in this case.
-  uint32_t kReportFlushInterval = 30000;
-  absl::Duration report_interval = absl::Milliseconds(kReportFlushInterval);
-  absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval);
+  uint32_t override_report_flush_interval = 30000;
+  absl::Duration report_interval = absl::Milliseconds(override_report_flush_interval);
+  absl::Duration harvest_interval = absl::Milliseconds(override_report_flush_interval);
   ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
   ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
   ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());

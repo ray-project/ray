@@ -39,8 +39,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       io_service_.run();
     }));
     for (int index = 0; index < 3; ++index) {

@@ -1596,16 +1596,26 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # The node is not idle for too long, skip it.
                 continue
 
+            if node.sched_requests[ResourceRequestSource.PENDING_DEMAND]:
+                # The node is needed by the pending requests.
+                # Skip it.
+                logger.debug(
+                    "Node {} (idle for {} secs) is needed by the pending requests, "
+                    "skip idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms
+                    )
+                )
+                continue
+
             if node.sched_requests[ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT]:
                 # The node is needed by the resource constraints.
                 # Skip it.
-                if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
-                    logger.debug(
-                        "Node {} (idle for {} secs) is needed by the cluster resource "
-                        "constraints, skip idle termination.".format(
-                            node.ray_node_id, node.idle_duration_ms / s_to_ms
-                        )
+                logger.debug(
+                    "Node {} (idle for {} secs) is needed by the cluster resource "
+                    "constraints, skip idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms
                     )
+                )
                 continue
 
             # Honor the min_worker_nodes setting for the node type.

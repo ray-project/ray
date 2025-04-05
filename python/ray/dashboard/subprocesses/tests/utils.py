@@ -24,6 +24,10 @@ class BaseTestModule(SubprocessModule):
     def gcs_client(self):
         return None
 
+    @property
+    def aiogrpc_gcs_channel(self):
+        return None
+
 
 class TestModule(BaseTestModule):
     def __init__(self, *args, **kwargs):

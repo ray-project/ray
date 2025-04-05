@@ -335,8 +335,8 @@ void TaskExecutor::Invoke(
     }
   } catch (std::exception &e) {
     auto result = PackError(e.what());
-    auto data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    runtime->Put(std::move(data), task_spec.ReturnId(0));
+    auto result_data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    runtime->Put(std::move(result_data), task_spec.ReturnId(0));
   }
 }
 

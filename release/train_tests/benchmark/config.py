@@ -50,7 +50,7 @@ class BenchmarkConfig(BaseModel):
     num_epochs: int = 1
     skip_train_step: bool = False
     train_step_anomaly_detection: bool = False
-    limit_training_rows: int = 500000
+    limit_training_rows: int = 1000000
 
     # Validation
     validate_every_n_steps: int = -1
@@ -72,8 +72,8 @@ def _add_field_to_parser(parser: argparse.ArgumentParser, field: str, field_info
     if field_type is bool:
         parser.add_argument(
             f"--{field}",
-            type=lambda x: x.lower() == "true",
-            default=field_info.default,
+            action="store_true",
+            help=f"Enable {field} (default: {field_info.default})",
         )
     else:
         parser.add_argument(f"--{field}", type=field_type, default=field_info.default)

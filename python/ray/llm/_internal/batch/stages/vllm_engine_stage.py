@@ -17,11 +17,12 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import (
-    download_lora_adapter,
-    download_hf_model,
-)
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
+from ray.llm._internal.common.utils.download_utils import (
+    download_lora_adapter,
+    download_model_files,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -476,7 +477,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
         # Download the model if needed.
-        model_source = download_hf_model(self.model, tokenizer_only=False)
+        model_source = download_model_files(
+            model_id=self.model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
+            download_extra_files=False,
+        )
 
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(

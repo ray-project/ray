@@ -64,7 +64,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         "Exception occurred in user code, with the abbreviated stack "
                         "trace below. By default, the Ray Data internal stack trace "
                         "is omitted from stdout, and only written to the Ray Data log "
-                        f"files at {get_log_directory()}. To "
+                        f"files at `{get_log_directory()}`. To "
                         "output the full stack trace to stdout, set "
                         "`DataContext.log_internal_stack_trace_to_stdout` to True."
                     )
