@@ -404,7 +404,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
-      actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
+      actor_id, /*num_restarts=*/1, /*dead=*/false, death_cause, /*is_restartable=*/true);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -415,13 +415,8 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(CheckSubmitTask(task4));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
-  if (execute_out_of_order) {
-    // Actor counter doesn't restart for out of order execution.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3));
-  } else {
-    // Actor counter restarts at 0 after the actor is restarted.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 0));
-  }
+  // task1, task2 failed, task3 failed, task4
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
@@ -465,7 +460,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   // Simulate the actor failing.
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
-      actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
+      actor_id, /*num_restarts=*/1, /*dead=*/false, death_cause, /*is_restartable=*/true);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -474,20 +469,15 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
   ASSERT_TRUE(CheckSubmitTask(task4));
-  // Tasks 2 and 3 get retried.
+  // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
+  // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
   ASSERT_TRUE(CheckSubmitTask(task2));
   ASSERT_TRUE(CheckSubmitTask(task3));
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
-  if (execute_out_of_order) {
-    // After restart the tasks are executed in submission order.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
-  } else {
-    // Actor counter restarts at 0 after the actor is restarted. New task cannot
-    // execute until after tasks 2 and 3 are re-executed.
-    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 2, 0, 1));
-  }
+  // task1, task2 failed, task3 failed, task4, task2 retry, task3 retry
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
