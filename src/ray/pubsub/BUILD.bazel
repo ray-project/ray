@@ -42,7 +42,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:pubsub_cc_grpc",
-        "pubsub_lib",
+        ":pubsub_lib",
         "//src/ray/protobuf:pubsub_cc_proto",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -56,7 +56,7 @@ ray_cc_test(
     srcs = ["test/publisher_test.cc"],
     tags = ["team:core"],
     deps = [
-        "pubsub_lib",
+        ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -69,7 +69,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "pubsub_lib",
+        ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
