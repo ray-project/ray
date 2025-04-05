@@ -59,14 +59,11 @@ class CgroupSetup : public BaseCgroupSetup {
   // TODO(hjiang): Implement support for VM/BM. Currently only docker is supported.
   CgroupSetup(const std::string &directory, const std::string &node_id);
 
-  // On destruction, all processes (including spawned child processes) in the managed
-  // cgroup will be killed recursively via SIGKILL.
-  ~CgroupSetup() override;
+  // All cgroup related directories will be deleted by raylet.
+  ~CgroupSetup() override = default;
 
   // Add the specified process into the system cgroup.
   Status AddSystemProcess(pid_t pid) override;
-
-  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  private:
   struct TestTag {};
@@ -82,19 +79,17 @@ class CgroupSetup : public BaseCgroupSetup {
   Status InitializeCgroupV2Directory(const std::string &directory,
                                      const std::string &node_id);
 
-  // Cleans up cgroup after the raylet exits by killing all dangling processes and
-  // deleting the node cgroup.
-  //
-  // NOTE: This function is expected to be called once for each raylet instance at its
-  // termination.
-  Status CleanupCgroups();
-
   // Apply cgroup context which addes pid into default cgroup folder.
   //
   // TODO(hjiang): As of now there's a bug for returning StatusOr<> at windows, switch
   // after the issue resolved.
   // Link: https://github.com/ray-project/ray/pull/50761
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
+
+  // Cgroup folder for root cgroup.
+  std::string cgroup_v2_folder_;
+  // Current node id.
+  std::string node_id_;
 
   // File path of PIDs for root cgroup.
   std::string root_cgroup_procs_filepath_;

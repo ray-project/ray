@@ -18,6 +18,9 @@
 
 #include <string>
 
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/constants.h"
+#include "ray/common/cgroup/scoped_cgroup_handle.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -27,5 +30,29 @@ namespace ray {
 //
 // \param cgroup_folder: cgroup folder which contains processes to kill.
 Status KillAllProcAndWait(const std::string &cgroup_folder);
+
+// Move all pids from [from] filepath to [to] filepath.
+//
+// \param from: filepath which contains pids to move from.
+// \param to: filepath which should hold pids to move to.
+Status MoveProcsBetweenCgroups(const std::string &from, const std::string &to);
+
+// Cleans up cgroup after the raylet exits by killing all dangling processes and
+// deleting the node cgroup.
+//
+// NOTE: This function is expected to be called once for each raylet instance at its
+// termination.
+//
+// \param cgroup_system_proc_filepath: filepath which stores processes for ray system
+// processes. \param cgroup_root_procs_filepath: filepath which stores processes for root
+// cgroup. \param cgroup_app_directory: directory where application processes are stored
+// under.
+Status CleanupApplicationCgroup(const std::string &cgroup_system_proc_filepath,
+                                const std::string &cgroup_root_procs_filepath,
+                                const std::string &cgroup_app_directory);
+
+// Apply cgroup context which addes pid into default cgroup folder.
+ScopedCgroupHandler AddCurrentProcessToCgroup(CgroupSetupConfig setup_config,
+                                              const AppProcCgroupMetadata &ctx);
 
 }  // namespace ray

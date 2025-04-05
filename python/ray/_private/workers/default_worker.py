@@ -199,6 +199,15 @@ parser.add_argument(
         "If true, core worker enables resource isolation by adding itself into appropriate cgroup."
     ),
 )
+parser.add_argument(
+    "--cgroup-directory",
+    type=str,
+    required=False,
+    default="/sys/fs/cgroup",
+    help=(
+        "Only meaningful when resource isolation enabled; it means the directory where cgroupv2 is mounted properly on the current node."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -279,6 +288,8 @@ if __name__ == "__main__":
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
         enable_resource_isolation=args.enable_resource_isolation,
+        cgroup_directory=args.cgroup_directory,
+        node_id=args.node_id,
     )
 
     worker = ray._private.worker.global_worker

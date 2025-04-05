@@ -442,6 +442,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int64_t worker_launched_time_ms
         c_string debug_source
         c_bool enable_resource_isolation
+        c_string cgroup_directory
+        c_string node_id
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

@@ -153,7 +153,8 @@ NodeManager::NodeManager(
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); },
-          config.enable_resource_isolation),
+          config.enable_resource_isolation,
+          config.cgroup_directory),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {

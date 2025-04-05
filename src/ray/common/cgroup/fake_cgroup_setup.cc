@@ -28,16 +28,6 @@ Status FakeCgroupSetup::AddSystemProcess(pid_t pid) {
   return Status::OK();
 }
 
-ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
-    const AppProcCgroupMetadata &ctx) {
-  absl::MutexLock lock(&mtx_);
-  CgroupFolder cgroup_folder;
-  cgroup_folder.max_memory_bytes = ctx.max_memory;
-  const auto [_, is_new] = cgroup_to_pids_[std::move(cgroup_folder)].emplace(ctx.pid);
-  RAY_CHECK(is_new);
-  return ScopedCgroupHandler{[this, ctx = ctx]() { CleanupCgroupContext(ctx); }};
-}
-
 void FakeCgroupSetup::CleanupSystemProcess(pid_t pid) {
   absl::MutexLock lock(&mtx_);
   auto iter = system_cgroup_.find(pid);

@@ -117,6 +117,9 @@ struct NodeManagerConfig {
   // If true, core worker enables resource isolation by adding itself into appropriate
   // cgroup.
   bool enable_resource_isolation = false;
+  // Only meaningful when resource isolation enabled; it means the directory where
+  // cgroupv2 is mounted properly on the current node.
+  std::string cgroup_directory;
 
   void AddDefaultLabels(const std::string &self_node_id);
 };

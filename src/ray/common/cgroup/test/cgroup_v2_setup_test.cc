@@ -60,6 +60,10 @@ class Cgroupv2SetupTest : public ::testing::Test {
         app_cgroup_proc_filepath_(
             "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs") {}
   void TearDown() override {
+    // Cleanup application cgroup after test completion.
+    RAY_ASSERT_OK(CleanupApplicationCgroup(
+        system_cgroup_proc_filepath_, app_cgroup_proc_filepath_, app_cgroup_folder_));
+
     // Check the application subcgroup folder has been deleted.
     std::error_code err_code;
     bool exists = std::filesystem::exists(app_cgroup_folder_, err_code);
@@ -112,31 +116,6 @@ TEST_F(Cgroupv2SetupTest, AddSystemProcessTest) {
 
   // Kill testing process.
   RAY_ASSERT_OK(KillAllProcAndWait(system_cgroup_folder_));
-}
-
-TEST_F(Cgroupv2SetupTest, AddAppProcessTest) {
-  CgroupSetup cgroup_setup{"/sys/fs/cgroup", "node_id", CgroupSetup::TestTag{}};
-
-  pid_t pid = fork();
-  ASSERT_NE(pid, -1);
-
-  // Child process.
-  if (pid == 0) {
-    // Spawn a process running long enough, so it could be added into system cgroup.
-    // It won't affect test runtime, because it will be killed later.
-    std::this_thread::sleep_for(std::chrono::seconds(3600));
-    // Exit without flushing the buffer.
-    std::_Exit(0);
-  }
-
-  AppProcCgroupMetadata app_metadata;
-  app_metadata.pid = pid;
-  app_metadata.max_memory = 0;  // No limit specified.
-  auto handle = cgroup_setup.ApplyCgroupContext(app_metadata);
-  AssertPidInCgroup(pid, app_cgroup_proc_filepath_);
-
-  // Kill testing process.
-  RAY_ASSERT_OK(KillAllProcAndWait(app_cgroup_folder_));
 }
 
 #endif

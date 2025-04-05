@@ -25,6 +25,7 @@
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -35,6 +36,7 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
+#include "ray/util/process_cleaner.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
@@ -95,6 +97,10 @@ DEFINE_bool(enable_resource_isolation,
             false,
             "Enable resource isolation through cgroupv2 by reserving resources for ray "
             "system processes.");
+DEFINE_string(cgroup_directory,
+              "/sys/fs/cgroup",
+              "Only meaningful when resource isolation enabled; it means the directory "
+              "where cgroupv2 is mounted properly on the current node.");
 
 #ifdef __linux__
 DEFINE_string(plasma_directory,
@@ -110,6 +116,9 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
+DEFINE_string(cgroupv2_mount_directory,
+              "/sys/fs/cgroup",
+              "Directory where cgroupv2 is mounted and properly setup permission..");
 
 #ifndef RAYLET_TEST
 
@@ -231,9 +240,30 @@ int main(int argc, char *argv[]) {
   // Get cgroup setup instance and perform necessary resource setup.
   ray::GetCgroupSetup(FLAGS_enable_resource_isolation);
 
+  // Setup cleanup hook to delete application cgroup.
+  //
+  // TODO(hjiang): Add integration test when python side cgroup CI setup finished,
+  // currently only C++ cgroup unit test is supported.
+  if (FLAGS_enable_resource_isolation) {
+    ray::SpawnSubprocessAndCleanup([]() {
+      const std::string cgroup_root_procs_filepath =
+          ray::JoinPaths(FLAGS_cgroupv2_mount_directory, ray::kProcFilename);
+      const std::string cgroup_node_directory =
+          ray::JoinPaths(FLAGS_cgroupv2_mount_directory,
+                         absl::StrFormat("ray_node_%s", FLAGS_node_name));
+      const std::string cgroup_system_proc_filepath =
+          ray::JoinPaths(cgroup_node_directory, "system", ray::kProcFilename);
+      const std::string cgroup_app_directory =
+          ray::JoinPaths(cgroup_node_directory, "ray_application");
+      RAY_CHECK_OK(ray::CleanupApplicationCgroup(
+          cgroup_system_proc_filepath, cgroup_root_procs_filepath, cgroup_app_directory));
+    });
+  }
+
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   node_manager_config.enable_resource_isolation = FLAGS_enable_resource_isolation;
+  node_manager_config.cgroup_directory = FLAGS_cgroup_directory;
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
 

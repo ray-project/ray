@@ -109,7 +109,8 @@ struct CoreWorkerOptions {
         assigned_worker_port(std::nullopt),
         assigned_raylet_id(std::nullopt),
         debug_source(""),
-        enable_resource_isolation(false) {
+        enable_resource_isolation(false),
+        cgroup_directory("") {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -232,6 +233,11 @@ struct CoreWorkerOptions {
   // If true, core worker enables resource isolation through cgroupv2 by reserving
   // resources for ray system processes.
   bool enable_resource_isolation = false;
+  // Only meaningful when resource isolation enabled; it means the directory where
+  // cgroupv2 is mounted properly on the current node.
+  std::string cgroup_directory;
+  // Id for current ray node.
+  std::string node_id;
 };
 }  // namespace core
 }  // namespace ray
