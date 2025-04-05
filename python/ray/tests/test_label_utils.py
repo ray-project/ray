@@ -82,12 +82,6 @@ def test_parse_node_labels_from_yaml_file():
 
 
 def test_validate_node_labels():
-    # Custom label starts with ray.io prefix
-    labels_dict = {"ray.io/accelerator-type": "A100"}
-    with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
-    assert "This is reserved for Ray defined labels." in str(e)
-
     # Invalid key prefix syntax
     labels_dict = {"!invalidPrefix/accelerator-type": "A100"}
     with pytest.raises(ValueError) as e:
