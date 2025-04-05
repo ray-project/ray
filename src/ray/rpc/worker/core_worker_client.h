@@ -192,10 +192,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
-  /// Sets max_finished_seq_no to the given value. This is useful when an actor dies and
-  /// restarts.
-  virtual void SetMaxFinishedSeqno(int64_t max_finished_seq_no) {}
-
   virtual ~CoreWorkerClientInterface() = default;
 };
 
@@ -374,16 +370,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     absl::MutexLock lock(&mutex_);
     return max_finished_seq_no_.value_or(-1);
   }
-
-  /// Sets `max_finished_seq_no` to the given value. This is useful when an actor dies and
-  /// restarts. A new core worker client will be created for the new core worker process.
-  /// Because the sequence number is monotonically increasing for tasks from the same
-  /// actor regardless of which core worker process they are submitted to, we need to set
-  /// `max_finished_seq_no` to the correct value for the new core worker client. This
-  /// allows the actor to determine whether it needs to wait for tasks with smaller
-  /// sequence numbers that may have already been executed in previous core worker
-  /// processes.
-  void SetMaxFinishedSeqno(int64_t max_finished_seq_no) override;
 
  private:
   /// Protects against unsafe concurrent access from the callback thread.

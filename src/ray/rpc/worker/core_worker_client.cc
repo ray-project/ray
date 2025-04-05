@@ -137,12 +137,5 @@ void CoreWorkerClient::SendRequests() {
   }
 }
 
-void CoreWorkerClient::SetMaxFinishedSeqno(int64_t max_finished_seq_no) {
-  absl::MutexLock lock(&mutex_);
-  RAY_LOG(DEBUG) << "[debug] SetMaxFinishedSeqno old: "
-                 << max_finished_seq_no_.value_or(-1) << " new: " << max_finished_seq_no;
-  max_finished_seq_no_ = max_finished_seq_no;
-}
-
 }  // namespace rpc
 }  // namespace ray
