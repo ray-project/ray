@@ -96,7 +96,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
-        const CActorID &GetRootDetachedActorID()
+        CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
