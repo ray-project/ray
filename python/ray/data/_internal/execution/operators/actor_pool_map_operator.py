@@ -59,6 +59,7 @@ class ActorPoolMapOperator(MapOperator):
         supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -83,6 +84,7 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            actor_startup_timeout_s: Timeout for actor startup.
         """
         super().__init__(
             map_transformer,
@@ -94,6 +96,7 @@ class ActorPoolMapOperator(MapOperator):
             supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         self._ray_actor_task_remote_args = {}
         actor_task_errors = self.data_context.actor_task_retry_on_errors
@@ -152,6 +155,9 @@ class ActorPoolMapOperator(MapOperator):
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
             timeout = self.data_context.wait_for_min_actors_s
+            # Use specific timeout if provided
+            if self._actor_startup_timeout_s is not None:
+                timeout = self._actor_startup_timeout_s
             ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
