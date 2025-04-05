@@ -421,7 +421,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
-        node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;

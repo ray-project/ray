@@ -110,8 +110,6 @@ struct NodeManagerConfig {
   uint64_t record_metrics_period_ms;
   // The number if max io workers.
   int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
-  int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
   // If true, core worker enables resource isolation by adding itself into appropriate
