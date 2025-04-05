@@ -1,7 +1,12 @@
 .. _data_performance_tips:
 
-Advanced: Performance tips and tuning
-=====================================
+Performance tips and tuning
+===========================
+
+This page describes considerations and recommendations related to performance and tuning Ray Data workloads.
+
+* For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
+* For technical implementation details of Ray Data, see :ref:`datasets_scheduling`.
 
 .. _block_size:
 

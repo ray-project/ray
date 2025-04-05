@@ -21,11 +21,11 @@ The follow diagram provides a high-level view of the Ray framework:
    :align: center
    :alt: Ray framework architecture
 
-Ray Data contains operators focused on the following key tasks:
+Ray Data contains operators that focus on the following key tasks:
 
 - Loading data from storage.
 - Ingesting data from connected systems.
-- Exchanging data from other framework and data structures.
+- Exchanging data from other frameworks and data structures.
 - Transforming and preprocessing data.
 - Performing offline batch inference.
 - Persisting results to storage or integrated systems.
@@ -44,7 +44,7 @@ How does Ray Data distribute data?
 
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+The following figure visualizes a Dataset with three blocks, each holding 1000 rows.
 
 .. image:: images/dataset-arch-with-blocks.svg
    :alt: Ray Dataset with three blocks
@@ -89,8 +89,8 @@ If you're troubleshooting or optimizing Ray Data workloads, consider the followi
   * Ray automatically splits blocks into smaller blocks if they exceed the max block size by 50% or more.
   * A block might only contain a single record if your data is very wide or contains a large record such as an image, vector, or tensor. Ray Data has built-in optimizations for handling large data efficiently, and you should test workloads with built-in defaults before trying to manually optimize your workload.
   * You can configure block size and splitting behaviors. See :ref:`Block size and performance<block_size>`.
-* Ray uses :ref:`Arrow tables<https://arrow.apache.org/docs/cpp/tables.html>` to internally represent blocks of data.
-  * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See :ref:`Arrow and pandas type differences<https://arrow.apache.org/docs/python/pandas.html#type-differences>`.
+* Ray uses `Arrow tables <https://arrow.apache.org/docs/cpp/tables.html>`_ to internally represent blocks of data.
+  * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See `Arrow and pandas type differences <https://arrow.apache.org/docs/python/pandas.html#type-differences>`_.
   * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
 
 
@@ -102,7 +102,7 @@ How does Ray Data plan and execute operations?
 
 Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program using the Dataset API, Ray Data first builds a *logical plan* - a high-level description of what operations to perform. When execution begins, it converts this into a *physical plan* that specifies exactly how to execute those operations.
 
-This diagram illustrates the complete planning process:
+The following diagram illustrates the complete planning process:
 
 .. https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit
 
@@ -161,7 +161,7 @@ Ray Data uses a *streaming execution model* to efficiently process large dataset
 * Each block of data is processed independently at each stage.
 * Any stage with data present in its input queue is eligible for scheduling.
 
-The streaming execution model  
+The streaming execution model 
 
 
 Because many frameworks supported by Ray Train also support this streaming execution model, Ray can optimize a physical plan for streaming execution from data loading and preprocessing steps all the way through model training. Offline batch inference also uses streaming execution, allowing for efficient model predictions on large datasets with reduced memory and compute requirements.
@@ -171,6 +171,7 @@ Because many frameworks supported by Ray Train also support this streaming execu
    Models, frameworks, or algorithms that must materialize the entire dataset to calculate results are not optimized for streaming execution.
    
    Ray Train provides integrations with many common ML and AI frameworks to efficiently distribute training and support streaming execution for model training. See :ref:`Ray Train<train-docs>`.
+
 
 
 The following is a simple code example  demonstrate the streaming execution model. , applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:

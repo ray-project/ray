@@ -12,7 +12,7 @@ This guide introduces you to the core capabilities of Ray Data and includes exam
 
 The code examples provided in this guide build upon one another sequentially. You can run these commands interactively in a Jupyter notebook or on Anyscale. 
 
-Provided code example materializes results to preview data at each step. When moving code to production, only include operations that materialize results if they are essential to your application. This allows Ray to optimize the logical and physical plans. See :ref:`How does Ray Data plan and execute operations?<plans>`
+Provided code examples materialize results to preview data at each step. When moving code to production, only include operations that materialize results if they are essential to your application. This allows Ray to optimize the logical and physical plans. See :ref:`How does Ray Data plan and execute operations?<plans>`
 
 
 
