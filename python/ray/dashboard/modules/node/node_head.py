@@ -388,7 +388,7 @@ class NodeHead(SubprocessModule):
             alive_hostnames = set()
             for node in DataSource.nodes.values():
                 if node["state"] == "ALIVE":
-                    alive_hostnames.add(node["nodeManagerHostname"])
+                    alive_hostnames.add(node["nodeName"])
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Node hostname list fetched.",
