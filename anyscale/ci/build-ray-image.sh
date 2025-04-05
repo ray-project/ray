@@ -81,7 +81,7 @@ if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
         IMG_TYPE_CODE="cu124"
     elif [[ "${IMG_TYPE}" == "cu12.5.1" ]]; then
         IMG_TYPE_CODE="cu125"
-    elif [[ "${IMG_TYPE}" == "cu12.8.0" ]]; then
+    elif [[ "${IMG_TYPE}" == "cu12.8.1" ]]; then
         IMG_TYPE_CODE="cu128"
     else
         echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
@@ -102,7 +102,7 @@ else
         IMG_TYPE_CODE="cu124"
     elif [[ "${IMG_TYPE}" == "cu12.5.1-cudnn" ]]; then
         IMG_TYPE_CODE="cu125"
-    elif [[ "${IMG_TYPE}" == "cu12.8.0-cudnn" ]]; then
+    elif [[ "${IMG_TYPE}" == "cu12.8.1-cudnn" ]]; then
         IMG_TYPE_CODE="cu128"
     else
         echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr

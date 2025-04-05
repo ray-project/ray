@@ -34,7 +34,7 @@ steps:
           - "12.3.2"
           - "12.4.1"
           - "12.5.1"
-          - "12.8.0"
+          - "12.8.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -104,7 +104,7 @@ steps:
           - "cu12.3.2-cudnn9"
           - "cu12.4.1-cudnn"
           - "cu12.5.1-cudnn"
-          - "cu12.8.0-cudnn"
+          - "cu12.8.1-cudnn"
   - label: ":tapioca: minimized rayturbo py{{matrix.py}} {{matrix.base}} image"
     key: rayturbo-min-image
     tags: docker
@@ -134,7 +134,7 @@ steps:
           - "cu12.3.2"
           - "cu12.4.1"
           - "cu12.5.1"
-          - "cu12.8.0"
+          - "cu12.8.1"
 
   - label: ":tapioca: rayturbo llm py{{matrix.py}} {{matrix.base}} image"
     key: rayturbo-llm-image
