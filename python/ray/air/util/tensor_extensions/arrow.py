@@ -773,7 +773,16 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             if column_name:
                 data_str += f"column: '{column_name}', "
             data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-            raise ArrowConversionError(data_str) from e
+            try:
+                from ray.data.extensions.object_extension import ArrowPythonObjectArray
+
+                return ArrowPythonObjectArray.from_objects(arr)
+            except Exception:
+                data_str = ""
+                if column_name:
+                    data_str += f"column: '{column_name}', "
+                data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
+                raise ArrowConversionError(data_str) from e
 
     @classmethod
     def _from_numpy(
@@ -787,6 +796,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+        if arr.dtype == object:
+            # Elements that are object dtype are converted to Arrow directly,
+            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
+            return pa.array(arr)
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
