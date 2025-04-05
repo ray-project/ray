@@ -343,18 +343,18 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
+def _get_comm_backend_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     """
-    Get the NCCL group ID from the type hint. If the type hint does not
-    require NCCL, return None.
+    Get the communication backend group ID from the type hint. If the type hint does not
+    require communication backend, return None.
 
     Args:
         type_hint: The type hint of the channel.
 
     Returns:
-        The NCCL group ID if the type hint requires NCCL, otherwise None.
+        The communication backend group ID if the type hint requires communication backend, otherwise None.
     """
-    if type_hint.requires_nccl():
+    if type_hint.requires_comm_backend():
         assert isinstance(type_hint, TorchTensorType)
         return type_hint.communicator_id
     return None
@@ -509,7 +509,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL collective operation.
+        # The communication backend operation.
         self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
         if isinstance(task.dag_node, CollectiveOutputNode):
             self.collective_op = task.dag_node.collective_op
@@ -597,25 +597,27 @@ class ExecutableTask:
 
         # Set up send_stream and recv_stream when overlap_gpu_communication
         # is configured
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
-            assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
+        if self.output_type_hint.requires_comm_backend():
+            comm_backend_group_id = _get_comm_backend_group_id(self.output_type_hint)
+            comm_backend_group = ChannelContext.get_current().communicators.get(
+                comm_backend_group_id
+            )
+            assert comm_backend_group is not None
+            self._send_stream = comm_backend_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().communicators.get(
-                        nccl_group_id
+                if type_hint.requires_comm_backend():
+                    comm_backend_group_id = _get_comm_backend_group_id(type_hint)
+                    comm_backend_group = ChannelContext.get_current().communicators.get(
+                        comm_backend_group_id
                     )
-                    assert nccl_group is not None
+                    assert comm_backend_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
+                        assert self._recv_stream == comm_backend_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
-                    self._recv_stream = nccl_group.recv_stream
+                    self._recv_stream = comm_backend_group.recv_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -719,7 +721,7 @@ class ExecutableTask:
             resolved_inputs.append(task_input.resolve(input_data))
 
         if self.collective_op is not None:
-            # Run a NCCL collective operation.
+            # Run a communication backend operation.
             method = self.collective_op.execute
         else:
             # Run an actor method.
@@ -1186,10 +1188,10 @@ class CompiledDAG:
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     auto_transport_tasks.add(task)
 
-                # Collect actors for NCCL P2P methods.
-                if dag_node.type_hint.requires_nccl():
+                # Collect actors for communication backend P2P methods.
+                if dag_node.type_hint.requires_comm_backend():
                     self._track_communicator_usage(dag_node, {actor_handle})
-                # Collect NCCL collective operations.
+                # Collect communication backend operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     self._track_communicator_usage(
                         dag_node,
@@ -1198,16 +1200,16 @@ class CompiledDAG:
                     )
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
-                        "supported for NCCL collective operations. Please set "
+                        "supported for communication backend operations. Please set "
                         "overlap_gpu_communication=False."
                     )
             elif isinstance(dag_node, InputNode) or isinstance(
                 dag_node, InputAttributeNode
             ):
-                if dag_node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_comm_backend():
                     raise ValueError(
-                        "DAG inputs cannot be transferred via NCCL because "
-                        "the driver cannot participate in the NCCL group"
+                        "DAG inputs cannot be transferred via communication backend because "
+                        "the driver cannot participate in the communication backend group"
                     )
                 if isinstance(dag_node.type_hint, AutoTransportType):
                     # Currently driver on GPU is not supported, so we always
@@ -1280,7 +1282,7 @@ class CompiledDAG:
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
-                if upstream_task.dag_node.type_hint.requires_nccl():
+                if upstream_task.dag_node.type_hint.requires_comm_backend():
                     # Here we are processing the args of the DAGNode, so track
                     # downstream actors only, upstream actor is already tracked
                     # when processing the DAGNode itself.
@@ -1388,7 +1390,9 @@ class CompiledDAG:
             collective_op: Whether the communicator is used for a collective operation.
         """
         if None in actors:
-            raise ValueError("Driver cannot participate in the NCCL group.")
+            raise ValueError(
+                "Driver cannot participate in the communication backend group."
+            )
         if collective_op:
             type_hint = dag_node._collective_op.type_hint
         else:
@@ -1450,9 +1454,9 @@ class CompiledDAG:
         Resolve the auto transport type hint for the DAG.
         """
         type_hint_resolver = TypeHintResolver(self.actor_to_gpu_ids)
-        # Resolve AutoChannelType type hints and track the actors that use NCCL.
-        # This is needed so that the NCCL group can be initialized for these
-        # actors that use NCCL.
+        # Resolve AutoChannelType type hints and track the actors that use communication backend.
+        # This is needed so that the communication backend group can be initialized for these
+        # actors that use communication backend.
         for task in auto_transport_tasks:
             writer = task.dag_node._get_actor_handle()
             readers = task.downstream_task_idxs.values()
@@ -1468,7 +1472,7 @@ class CompiledDAG:
                 writer_and_node,
                 reader_and_node_list,
             )
-            if task.dag_node.type_hint.requires_nccl():
+            if task.dag_node.type_hint.requires_comm_backend():
                 self._track_communicator_usage(
                     task.dag_node,
                     set(readers).union({writer}),
@@ -1765,8 +1769,8 @@ class CompiledDAG:
 
         if RAY_CGRAPH_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL "
-                "calls. If you believe this is a false positive, please disable "
+                "This DAG cannot be compiled because it will deadlock on communication"
+                "backend calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
                 "RAY_CGRAPH_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
                 "https://github.com/ray-project/ray/issues/new/."
@@ -1956,11 +1960,11 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
-                upstream_requires_nccl = False
+                requires_comm_backend = dag_node.type_hint.requires_comm_backend()
+                upstream_requires_comm_backend = False
                 for upstream_node in dag_node._upstream_nodes:
-                    if upstream_node.type_hint.requires_nccl():
-                        upstream_requires_nccl = True
+                    if upstream_node.type_hint.requires_comm_backend():
+                        upstream_requires_comm_backend = True
                         break
 
                 read_node = _DAGOperationGraphNode(
@@ -1969,7 +1973,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    upstream_requires_nccl,
+                    upstream_requires_comm_backend,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1985,7 +1989,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl,
+                    requires_comm_backend,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
@@ -1997,7 +2001,7 @@ class CompiledDAG:
                         (task_idx, _DAGNodeOperationType.COMPUTE)
                     )
 
-        # Set collective nodes for all the NCCL collective operation nodes.
+        # Set collective nodes for all the communication backend operation nodes.
         for collective_op, nodes in collective_op_to_nodes.items():
             idxs = collective_op_to_idxs[collective_op]
             for node in nodes:
@@ -2063,8 +2067,9 @@ class CompiledDAG:
         """
         TODO (kevin85421): Avoid false negatives.
 
-        Currently, a compiled graph may deadlock if there are NCCL channels, and the
-        readers have control dependencies on the same actor. For example:
+        Currently, a compiled graph may deadlock if there are communication backend
+        channels, and the readers have control dependencies on the same actor.
+        For example:
 
         actor1.a ---> actor2.f1
                  |
@@ -2865,7 +2870,7 @@ class CompiledDAG:
 
                     # Get the type hint for this argument
                     if arg_index < len(task.arg_type_hints):
-                        if task.arg_type_hints[arg_index].requires_nccl():
+                        if task.arg_type_hints[arg_index].requires_comm_backend():
                             type_hint = "Nccl"
                         else:
                             type_hint = type(task.arg_type_hints[arg_index]).__name__
