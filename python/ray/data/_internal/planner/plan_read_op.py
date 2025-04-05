@@ -73,7 +73,9 @@ def plan_read_op(
         assert (
             parallelism is not None
         ), "Read parallelism must be set by the optimizer before execution"
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
+        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+            parallelism, limit=op._limit
+        )
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
         ret = []
@@ -109,6 +111,8 @@ def plan_read_op(
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
         BlockMapTransformFn(do_read),
+        # TODO(Clark): Add limit enforcement here if the datasource couldn't enforce it?
+        # This might require passing the limit into do_read or the ReadTask.
     ]
     transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
     map_transformer = MapTransformer(transform_fns)

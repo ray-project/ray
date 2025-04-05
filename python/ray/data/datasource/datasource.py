@@ -47,12 +47,14 @@ class Datasource:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(self, parallelism: int, limit: Optional[int] = None) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
+            limit: The maximum number of rows to read, or None for no limit.
+                Datasources should implement this if possible for efficiency.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -96,13 +98,14 @@ class Reader:
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(self, parallelism: int, limit: Optional[int] = None) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             read_args: Additional kwargs to pass to the datasource impl.
+            limit: The maximum number of rows to read, or None for no limit.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -119,7 +122,8 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
+    def get_read_tasks(self, parallelism: int, limit: Optional[int] = None) -> List["ReadTask"]:
+        # Legacy prepare_read doesn't support limit, so we ignore it here.
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 

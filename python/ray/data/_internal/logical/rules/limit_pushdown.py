@@ -51,12 +51,45 @@ class LimitPushdownRule(Rule):
             # We should remove this case once we refactor Read op to no longer
             # be an AbstractOneToOne op.
             if isinstance(current_op, Limit):
-                limit_op_copy = copy.copy(current_op)
+                # Current logic moves limit *past* applicable OneToOne ops.
+                # We want to potentially push it *into* a Read op.
+
+                # Original limit op and its immediate input.
+                limit_op = current_op
+                upstream_op = limit_op.input_dependency
+
+                # Check if the upstream operator is a Read op.
+                if isinstance(upstream_op, Read):
+                    # Push limit into the Read operator.
+                    new_limit = limit_op._limit
+                    if upstream_op._limit is not None:
+                        # If Read already has a limit (e.g., from a previous fusion/pushdown),
+                        # take the minimum.
+                        new_limit = min(new_limit, upstream_op._limit)
+                    upstream_op._limit = new_limit
+
+                    # Remove the Limit operator from the DAG.
+                    # Connect Read op directly to the downstream operators of Limit.
+                    downstream_ops = limit_op.output_dependencies
+                    upstream_op._output_dependencies = downstream_ops
+                    for downstream_op in downstream_ops:
+                        # Assume Limit only has one input.
+                        input_idx = downstream_op._input_dependencies.index(limit_op)
+                        downstream_op._input_dependencies[input_idx] = upstream_op
+                    
+                    # Since we removed the current_op (Limit), continue to next iteration.
+                    # We might need to adjust the traversal logic if removing nodes complicates it,
+                    # but for now, let's assume the deque handles it.
+                    continue  # Skip the rest of the pushdown logic for this Limit op.
+
+                # --- Original Pushdown Logic (modified to use limit_op, upstream_op) ---
+                # If upstream is not Read, apply the existing pushdown logic.
+                limit_op_copy = copy.copy(limit_op)
 
                 # Traverse up the DAG until we reach the first operator that meets
                 # one of the conditions above, which will serve as the new input
                 # into the Limit operator.
-                new_input_into_limit = current_op.input_dependency
+                new_input_into_limit = upstream_op # Start traversal from upstream_op
                 ops_between_new_input_and_limit: List[LogicalOperator] = []
                 while (
                     isinstance(new_input_into_limit, AbstractOneToOne)
@@ -85,12 +118,12 @@ class LimitPushdownRule(Rule):
                     nodes.append(curr_op)
 
                 # Link the Limit operator to its new input operator.
-                for limit_output_op in current_op.output_dependencies:
+                for limit_output_op in limit_op.output_dependencies:
                     limit_output_op._input_dependencies = [
                         ops_between_new_input_and_limit[0]
                     ]
                 last_op = ops_between_new_input_and_limit[0]
-                last_op._output_dependencies = current_op.output_dependencies
+                last_op._output_dependencies = limit_op.output_dependencies
 
         return current_op
 

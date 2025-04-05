@@ -32,6 +32,7 @@ class Read(AbstractMap):
         self._mem_size = mem_size
         self._concurrency = concurrency
         self._detected_parallelism = None
+        self._limit: Optional[int] = None
 
     def set_detected_parallelism(self, parallelism: int):
         """
