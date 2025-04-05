@@ -16,7 +16,6 @@ steps:
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
       - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
-    soft_fail: true
     job_env: oss-ci-base_test-py3.11
     depends_on: oss-ci-base_test-multipy
 

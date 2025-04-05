@@ -191,6 +191,7 @@ ci/docker/ray.cuda.base.wanda.yaml
 ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
+build-docker.sh
 @ docker linux_wheels tools
 ;
 
@@ -217,6 +218,5 @@ setup_hooks.sh
 .isort.cfg
 .prettierrc.toml
 build.sh
-build-docker.sh
 # pass
 ;

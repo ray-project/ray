@@ -31,7 +31,7 @@ def get_node_id():
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
+    ["ray start --head --labels gpu_type=A100,region=us"],
     indirect=True,
 )
 def test_node_label_scheduling_basic(call_ray_start):

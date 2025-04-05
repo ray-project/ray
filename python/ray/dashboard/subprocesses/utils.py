@@ -1,6 +1,9 @@
 import os
+import sys
 import enum
 from typing import TypeVar
+import aiohttp
+
 from ray._private.utils import validate_socket_filepath
 
 K = TypeVar("K")
@@ -43,3 +46,18 @@ def get_socket_path(socket_dir: str, module_name: str) -> str:
 
 def get_named_pipe_path(module_name: str) -> str:
     return r"\\.\pipe\dash_" + module_name
+
+
+def get_http_session_to_module(
+    module_name: str, socket_dir: str
+) -> aiohttp.ClientSession:
+    """
+    Get the aiohttp http client session to the subprocess module.
+    """
+    if sys.platform == "win32":
+        named_pipe_path = get_named_pipe_path(module_name)
+        connector = aiohttp.NamedPipeConnector(named_pipe_path)
+    else:
+        socket_path = get_socket_path(socket_dir, module_name)
+        connector = aiohttp.UnixConnector(socket_path)
+    return aiohttp.ClientSession(connector=connector)

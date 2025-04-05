@@ -14,13 +14,16 @@
 
 #include "ray/util/stream_redirection.h"
 
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "ray/util/compat.h"
 #include "ray/util/internal/stream_redirection_handle.h"
 #include "ray/util/util.h"
@@ -36,12 +39,25 @@ namespace {
 absl::flat_hash_map<MEMFD_TYPE_NON_UNIQUE, internal::StreamRedirectionHandle>
     redirection_file_handles;
 
+// A validation function, which verifies redirection handles don't dump to the same file.
+void ValidateOutputPathsUniqueness() {
+  absl::InlinedVector<std::string_view, 2> filepaths;
+  for (const auto &[_, handle] : redirection_file_handles) {
+    const auto &cur_filepath = handle.GetFilePath();
+    RAY_CHECK(!cur_filepath.empty());
+    auto iter = std::find(filepaths.begin(), filepaths.end(), cur_filepath);
+    RAY_CHECK(iter == filepaths.end());
+    filepaths.emplace_back(cur_filepath);
+  }
+}
+
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOption &opt) {
   internal::StreamRedirectionHandle handle_wrapper(stream_fd, opt);
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle_wrapper)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
+  ValidateOutputPathsUniqueness();
 }
 
 }  // namespace

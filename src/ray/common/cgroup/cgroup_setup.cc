@@ -16,7 +16,7 @@
 
 #ifndef __linux__
 namespace ray {
-CgroupSetup::CgroupSetup() {
+CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
   RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
   RAY_UNUSED(root_cgroup_procs_filepath_);
   RAY_UNUSED(root_cgroup_subtree_control_filepath_);
@@ -26,6 +26,20 @@ CgroupSetup::CgroupSetup() {
   RAY_UNUSED(cgroup_v2_system_folder_);
   RAY_UNUSED(cgroup_v2_system_proc_filepath_);
   RAY_UNUSED(node_cgroup_v2_folder_);
+}
+CgroupSetup::CgroupSetup(const std::string &directory,
+                         const std::string &node_id,
+                         TestTag) {
+  RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
+}
+CgroupSetup::~CgroupSetup() {}
+Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
+                                                const std::string &node_id) {
+  return Status::OK();
+}
+ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
+    const AppProcCgroupMetadata &ctx) {
+  return {};
 }
 Status CgroupSetup::AddSystemProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
@@ -48,6 +62,8 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -172,6 +188,34 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
+Status CheckBaseCgroupSubtreeController(const std::string &directory) {
+  const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
+  std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
+  RAY_SCHECK_OK_CGROUP(in_file.good())
+      << "Failed to open cgroup file " << subtree_control_path;
+
+  std::string content((std::istreambuf_iterator<char>(in_file)),
+                      std::istreambuf_iterator<char>());
+  std::string_view content_sv{content};
+  absl::ConsumeSuffix(&content_sv, "\n");
+
+  const std::vector<std::string_view> enabled_subtree_controllers =
+      absl::StrSplit(content_sv, ' ');
+  for (const auto &cur_controller : kRequiredControllers) {
+    if (std::find(enabled_subtree_controllers.begin(),
+                  enabled_subtree_controllers.end(),
+                  cur_controller) != enabled_subtree_controllers.end()) {
+      return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
+             << "Base cgroup " << directory << " doesn't enable " << cur_controller
+             << " controller for subtree."
+             << " Check to see if the parent of " << directory << " has the "
+             << cur_controller << " controller enabled.";
+    }
+  }
+
+  return Status::OK();
+}
+
 // Use unix syscall `mkdir` instead of STL filesystem library because the former provides
 // (1) ability to specify permission; (2) better error code and message.
 Status MakeDirectory(const std::string &directory) {
@@ -201,6 +245,11 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
                                                 const std::string &node_id) {
   // Check cgroup accessibility before setup.
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
+
+  // Check cgroup subtree control before setup.
+  if (Status s = internal::CheckBaseCgroupSubtreeController(directory); !s.ok()) {
+    return s;
+  }
 
   // Cgroup folders for the current ray node.
   node_cgroup_v2_folder_ =

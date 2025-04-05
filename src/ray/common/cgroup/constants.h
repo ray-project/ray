@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string_view>
 
@@ -26,6 +27,9 @@
 namespace ray {
 
 // A constant made for cgroup usage, which indicates no memory constraint.
+inline constexpr uint64_t kUnlimitedMemory = 0;
+// Required cgroupv2 controllers for ray resource isolation.
+inline constexpr std::array<std::string_view, 2> kRequiredControllers = {"memory", "cpu"};
 inline constexpr uint64_t kUnlimitedCgroupMemory = 0;
 // Default cgroup directory.
 inline constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
@@ -33,16 +37,14 @@ inline constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
 inline constexpr std::string_view kProcFilename = "cgroup.procs";
 // Filename within cgroup, writing to which is used to kill all processes inside.
 inline constexpr std::string_view kProcKillFilename = "cgroup.kill";
-// Subtree filename within a cgroup.
+// Subtree controller filename within a cgroup, which contains enabled controllers for
+// children cgroups.
 inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
 // Cgroup type filename.
 inline constexpr std::string_view kCgroupTypeFilename = "cgroup.type";
 // Owner can read and write.
 #ifdef __linux__
 inline constexpr mode_t kReadWritePerm = S_IRUSR | S_IWUSR;
-#else
-// Not used in non-linux platform, so randomly assign a meaningless value.
-inline constexpr mode_t kReadWritePerm = static_cast<mode_t>(-1);
 #endif  // __linux__
 
 }  // namespace ray
