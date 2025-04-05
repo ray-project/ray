@@ -12,6 +12,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.utils import load_class
+from ray.dashboard.modules.api.utils import HealthChecker
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
@@ -73,6 +74,23 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
 class APIHead(SubprocessModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._health_checker = HealthChecker(self.gcs_aio_client)
+
+    @routes.get("/api/gcs_healthz")
+    async def health_check(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            alive = await self._health_checker.check_gcs_liveness()
+            if alive is True:
+                return aiohttp.web.Response(
+                    text="success",
+                    content_type="application/text",
+                )
+        except Exception as e:
+            return aiohttp.web.HTTPServiceUnavailable(
+                reason=f"Health check failed: {e}"
+            )
+
+        return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
 
     @routes.get("/api/actors/kill")
     async def kill_actor_gcs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

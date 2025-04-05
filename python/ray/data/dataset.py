@@ -58,6 +58,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -80,7 +81,6 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -344,9 +344,24 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
-                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -397,7 +412,11 @@ class Dataset:
         logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
+        self.set_name(name)
+
+    def set_name(self, name: Optional[str]):
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -405,7 +424,12 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
+    @Deprecated(message="Use name() instead", warning=True)
     def _name(self) -> Optional[str]:
+        return self.name
+
+    @property
+    def name(self) -> Optional[str]:
         """Returns the dataset name"""
         return self._plan._dataset_name
 
@@ -574,9 +598,24 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
-                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -735,7 +774,7 @@ class Dataset:
         *,
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
@@ -775,10 +814,7 @@ class Dataset:
                 ``pyarrow.Table``. If ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
-                an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``.
+            concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -844,7 +880,7 @@ class Dataset:
         cols: List[str],
         *,
         compute: Optional[str] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Drop one or more columns from the dataset.
@@ -875,9 +911,7 @@ class Dataset:
             cols: Names of the columns to drop. If any name does not exist,
                 an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
-                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -904,7 +938,7 @@ class Dataset:
         cols: Union[str, List[str]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Select one or more columns from the dataset.
@@ -940,9 +974,7 @@ class Dataset:
             cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The number of Ray workers to use concurrently. For a fixed-sized
-                worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
-                worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1189,10 +1221,24 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
-            concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
-                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1293,10 +1339,24 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             compute: This argument is deprecated. Use ``concurrency`` argument.
-            concurrency: The number of Ray workers to use concurrently. For a
-                fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
-                For an autoscaling worker pool from ``m`` to ``n`` workers, specify
-                ``concurrency=(m, n)``.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -4184,7 +4244,8 @@ class Dataset:
         *,
         schema: Optional["pyarrow.Schema"] = None,
         mode: Literal["create", "append", "overwrite"] = "create",
-        max_rows_per_file: int = 1024 * 1024,
+        min_rows_per_file: int = 1024 * 1024,
+        max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -4205,6 +4266,7 @@ class Dataset:
             path: The path to the destination Lance dataset.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
             mode: The write mode. Can be "create", "append", or "overwrite".
+            min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
                 efficient but require newer versions of lance to read.  The default is
@@ -4216,6 +4278,7 @@ class Dataset:
             path,
             schema=schema,
             mode=mode,
+            min_rows_per_file=min_rows_per_file,
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
@@ -5352,7 +5415,7 @@ class Dataset:
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
-        output._set_name(copy._name)
+        output.set_name(copy.name)
         output._set_uuid(copy._get_uuid())
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output

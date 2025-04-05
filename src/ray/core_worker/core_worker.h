@@ -1732,7 +1732,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1870,7 +1870,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
