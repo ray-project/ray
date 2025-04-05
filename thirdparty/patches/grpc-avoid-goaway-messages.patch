@@ -1,0 +1,25 @@
+From 4096c8796f1362e3fde58bd9806565db21102592 Mon Sep 17 00:00:00 2001
+From: mattip <matti.picus@gmail.com>
+Date: Sat, 5 Apr 2025 22:16:55 +0300
+Subject: [PATCH] avoid goaway message
+
+---
+ src/core/server/server.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/core/server/server.cc b/src/core/server/server.cc
+index 9815e01..f2e0d13 100644
+--- src/core/server/server.cc
++++ src/core/server/server.cc
+@@ -1219,7 +1219,7 @@ void Server::CancelAllCalls() {
+     broadcaster.FillChannelsLocked(GetChannelsLocked());
+   }
+   broadcaster.BroadcastShutdown(
+-      /*send_goaway=*/false, GRPC_ERROR_CREATE("Cancelling all calls"));
++      /*send_goaway=*/false, absl::OkStatus());
+ }
+ 
+ void Server::SendGoaways() {
+-- 
+2.43.0
+
