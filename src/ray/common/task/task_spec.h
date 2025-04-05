@@ -377,6 +377,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// task.
   const ResourceSet &GetRequiredResources() const;
 
+  /// Return the labels that are required for the node scheduled on to execute
+  /// this task.
+  ///
+  /// \return The labels are required for the execution of this task on a node.
+  const rpc::LabelSelector &GetLabelSelector() const;
+
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeAffinitySchedulingStrategy() const;
@@ -513,6 +519,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_resources_;
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
+  /// Field storing required label conditions for a node to execute this Task on.
+  std::shared_ptr<rpc::LabelSelector> label_selector_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
