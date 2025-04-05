@@ -124,15 +124,13 @@ export const SearchTimezone = ({
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const browserOffset = (() => {
-    const offset = new Date().getTimezoneOffset();
-    const sign = offset < 0 ? "+" : "-";
-    const hours = Math.abs(Math.floor(offset / 60))
-      .toString()
-      .padStart(2, "0");
-    const minutes = Math.abs(offset % 60)
-      .toString()
-      .padStart(2, "0");
-    return `GMT${sign}${hours}:${minutes}`;
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: browserTimezone,
+      timeZoneName: "longOffset",
+    });
+    const formatted = formatter.format(new Date());
+    const match = formatted.match(/GMT[+-]\d{2}:?\d{2}/);
+    return match ? match[0] : "";
   })();
 
   if (browserOffset) {
