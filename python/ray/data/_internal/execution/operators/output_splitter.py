@@ -85,10 +85,6 @@ class OutputSplitter(PhysicalOperator):
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
-        # Force disable locality optimization.
-        if not options.actor_locality_enabled:
-            self._locality_hints = None
-            self._min_buffer_size = 0
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.
