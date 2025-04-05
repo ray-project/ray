@@ -514,11 +514,8 @@ def test_caller_task_reconstruction(ray_start_regular):
 )
 def test_multiple_actor_restart(ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    # This test can be made more stressful by increasing the numbers below.
-    # The total number of actors created will be
-    # num_actors_at_a_time * num_nodes.
     num_nodes = 5
-    num_actors_at_a_time = 3
+    num_actors = 15
     num_function_calls_at_a_time = 10
 
     worker_nodes = [cluster.add_node(num_cpus=3) for _ in range(num_nodes)]
@@ -526,50 +523,41 @@ def test_multiple_actor_restart(ray_start_cluster_head):
     @ray.remote(max_restarts=-1, max_task_retries=-1)
     class SlowCounter:
         def __init__(self):
-            self.x = 0
+            pass
 
-        def inc(self, duration):
+        def echo(self, duration, value):
             time.sleep(duration)
-            self.x += 1
-            return self.x
+            return value
 
     # Create some initial actors.
-    actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
-
-    # Wait for the actors to start up.
-    time.sleep(1)
+    actors = [SlowCounter.remote() for _ in range(num_actors)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
 
     # This is a mapping from actor handles to object refs returned by
     # methods on that actor.
     result_ids = collections.defaultdict(lambda: [])
 
-    # In a loop we are going to create some actors, run some methods, kill
-    # a raylet, and run some more methods.
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(num_function_calls_at_a_time):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
+
+    # Kill nodes
     for node in worker_nodes:
-        # Create some actors.
-        actors.extend([SlowCounter.remote() for _ in range(num_actors_at_a_time)])
-        # Run some methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
-        # Kill a node.
         cluster.remove_node(node)
 
-        # Run some more methods.
-        for j in range(len(actors)):
-            actor = actors[j]
-            for _ in range(num_function_calls_at_a_time):
-                result_ids[actor].append(actor.inc.remote(j**2 * 0.000001))
+    for i in range(len(actors)):
+        actor = actors[i]
+        for value in range(
+            num_function_calls_at_a_time, 2 * num_function_calls_at_a_time
+        ):
+            result_ids[actor].append(actor.echo.remote(i**2 * 0.000001, value))
 
     # Get the results and check that they have the correct values.
-    for _, result_id_list in result_ids.items():
+    for actor, result_id_list in result_ids.items():
         results = ray.get(result_id_list)
-        for i, result in enumerate(results):
-            if i == 0:
-                assert result == 1
-            else:
-                assert result == results[i - 1] + 1 or result == 1
+        expected = list(range(num_function_calls_at_a_time * 2))
+        assert results == expected
 
 
 def kill_actor(actor):
@@ -1207,6 +1195,72 @@ def test_exit_actor_queued(shutdown_only):
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get([a.ping.remote() for _ in range(10000)])
     assert " Worker unexpectedly exits" not in str(exc_info.value)
+
+
+def test_actor_restart_and_actor_received_task(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit a task to the actor and kill the actor after it receives
+    # the task. Then, the actor should restart in another core worker
+    # process, and the driver should resubmit the task to the new process.
+    # The task should be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            self.counter = 0
+
+        def sleep_and_increment(self, sleep_time):
+            time.sleep(sleep_time)
+            self.counter += 1
+            return self.counter
+
+        def fail(self):
+            os._exit(1)
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    ref = actor.sleep_and_increment.remote(3)
+    # Wait for the actor to receive the task `sleep_and_increment`
+    time.sleep(1)
+    os.kill(pid, signal.SIGKILL)
+
+    assert ray.get(ref) == 1
+
+
+def test_actor_restart_and_partial_task_not_completed(shutdown_only):
+    # Create an actor with max_restarts=1 and max_task_retries=1.
+    # Submit 3 tasks to the actor and wait for them to complete.
+    # Then, submit 3 more tasks to the actor and kill the actor.
+    # The driver will resubmit the last 3 tasks to the new core worker
+    # process, and the tasks will be executed successfully.
+    @ray.remote(max_restarts=1, max_task_retries=1)
+    class RestartableActor:
+        def __init__(self):
+            pass
+
+        def sleep_and_echo(self, sleep_time, value):
+            time.sleep(sleep_time)
+            return value
+
+        def get_pid(self):
+            return os.getpid()
+
+    actor = RestartableActor.remote()
+    pid = ray.get(actor.get_pid.remote())
+    refs = []
+    for i in range(3):
+        refs.append(actor.sleep_and_echo.remote(0, i))
+    assert ray.get(refs) == [0, 1, 2]
+
+    refs = []
+    for i in range(3, 6):
+        refs.append(actor.sleep_and_echo.remote(3, i))
+    # Wait for the actor to receive the task `sleep_and_increment`
+    time.sleep(1)
+    os.kill(pid, signal.SIGKILL)
+    assert ray.get(refs) == [3, 4, 5]
 
 
 if __name__ == "__main__":
