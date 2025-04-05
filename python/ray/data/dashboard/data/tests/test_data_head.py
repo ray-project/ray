@@ -39,6 +39,10 @@ OPERATOR_SCHEMA = [
 ] + DATA_SCHEMA
 
 
+def test_fail():
+    assert False
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
