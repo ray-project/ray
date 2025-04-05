@@ -159,12 +159,17 @@ def test_tune(ray_start_8_cpus):
 
 def test_validation(ray_start_6_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
-    with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
+    with pytest.raises(ValueError, match=TRAIN_DATASET_KEY):
         LightGBMTrainer(
             scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             params=params,
             datasets={"valid": valid_dataset},
+        )
+    with pytest.raises(ValueError, match="label_column"):
+        LightGBMTrainer(
+            scaling_config=ScalingConfig(num_workers=2),
+            datasets={"train": valid_dataset},
         )
 
 
