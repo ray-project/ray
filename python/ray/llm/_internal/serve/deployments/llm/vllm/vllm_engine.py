@@ -336,25 +336,38 @@ class VLLMEngine:
             engine_config: The engine configuration.
             node_initialization: The node initialization.
         """
+        # Initialize node and return all configurations
+        node_initialization = await self.initialize_node(self.llm_config)
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
             if self.llm_config.accelerator_type:
-                ref = ray.remote(
-                    num_cpus=0,
-                    num_gpus=1,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config).remote(self.llm_config)
+                ref = (
+                    ray.remote(
+                        num_cpus=0,
+                        num_gpus=1,
+                        accelerator_type=self.llm_config.accelerator_type,
+                    )(_get_vllm_engine_config)
+                    .options(
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=node_initialization.placement_group,
+                        )
+                    )
+                    .remote(self.llm_config)
+                )
             else:
-                ref = ray.remote(num_cpus=0, num_gpus=1)(
-                    _get_vllm_engine_config
-                ).remote(self.llm_config)
+                ref = (
+                    ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
+                    .options(
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=node_initialization.placement_group,
+                        )
+                    )
+                    .remote(self.llm_config)
+                )
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
-
-        # Initialize node and return all configurations
-        node_initialization = await self.initialize_node(self.llm_config)
         return engine_args, engine_config, node_initialization
 
     async def _start_engine_v1(self) -> "EngineClient":
