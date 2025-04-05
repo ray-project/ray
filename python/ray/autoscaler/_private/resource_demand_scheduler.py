@@ -19,6 +19,7 @@ import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
     AUTOSCALER_UTILIZATION_SCORER_KEY,
 )
 from ray.autoscaler._private.loader import load_function_or_class
@@ -44,9 +45,6 @@ from ray.autoscaler.tags import (
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
-
-# The minimum number of nodes to launch concurrently.
-UPSCALING_INITIAL_NUM_NODES = 5
 
 NodeResources = ResourceDict
 ResourceDemands = List[ResourceDict]
@@ -437,7 +435,7 @@ class ResourceDemandScheduler:
             # Enforce here max allowed pending nodes to be frac of total
             # running nodes.
             max_allowed_pending_nodes = max(
-                UPSCALING_INITIAL_NUM_NODES,
+                AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
                 int(self.upscaling_speed * max(running_nodes[node_type], 1)),
             )
             total_pending_nodes = (
