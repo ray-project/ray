@@ -657,6 +657,7 @@ async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
+    runtime_env: Optional["RuntimeEnv"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
     overwrite: bool = False,
 ) -> str:
@@ -754,7 +755,9 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
+                protocol.download_remote_uri(
+                    source_uri=pkg_uri, dest_file=pkg_file, runtime_env=runtime_env
+                )
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
