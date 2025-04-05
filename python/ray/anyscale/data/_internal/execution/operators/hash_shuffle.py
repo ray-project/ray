@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 import math
+import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -971,7 +972,7 @@ class AggregatorPool:
 
         self._aggregator_ray_remote_args: Dict[
             str, Any
-        ] = self._derive_aggregator_ray_remote_args(
+        ] = self._derive_final_shuffle_aggregator_ray_remote_args(
             aggregator_ray_remote_args,
             self._aggregator_partition_map,
         )
@@ -982,7 +983,7 @@ class AggregatorPool:
 
             assert len(target_partition_ids) > 0
 
-            aggregator = ShuffleAggregator.options(
+            aggregator = HashShuffleAggregator.options(
                 **self._aggregator_ray_remote_args
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
@@ -1016,12 +1017,10 @@ class AggregatorPool:
         return partition_id % self._num_aggregators
 
     @staticmethod
-    def _derive_aggregator_ray_remote_args(
+    def _derive_final_shuffle_aggregator_ray_remote_args(
         aggregator_ray_remote_args: Dict[str, Any],
         aggregator_partition_map: Dict[int, List[int]],
     ):
-        # TODO add test for
-
         max_partitions_per_aggregator = max(
             [len(ps) for ps in aggregator_partition_map.values()]
         )
@@ -1039,7 +1038,7 @@ class AggregatorPool:
             #   - Minimum concurrency configured
             "max_concurrency": max(
                 max_partitions_per_aggregator,
-                ShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
+                HashShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
             ),
             **aggregator_ray_remote_args,
         }
@@ -1050,7 +1049,12 @@ class AggregatorPool:
 
 
 @ray.remote
-class ShuffleAggregator:
+class HashShuffleAggregator:
+    """Actor handling of the assigned partitions during hash-shuffle operation
+
+    NOTE: This actor might have ``max_concurrency`` > 1 (depending on the number of
+          assigned partitions, and has to be thread-safe!
+    """
 
     # Default minimum value of `max_concurrency` configured
     # for a `ShuffleAggregator` actor
@@ -1062,20 +1066,23 @@ class ShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
     ):
+        self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
-        self._agg.accept(input_seq_id, partition_id, partition_shard)
+        with self._lock:
+            self._agg.accept(input_seq_id, partition_id, partition_shard)
 
     def finalize(
         self, partition_id: int
     ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
-        # Finalize given partition id
-        result = self._agg.finalize(partition_id)
-        # Clear any remaining state (to release resources)
-        self._agg.clear(partition_id)
+        with self._lock:
+            # Finalize given partition id
+            result = self._agg.finalize(partition_id)
+            # Clear any remaining state (to release resources)
+            self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
         yield result

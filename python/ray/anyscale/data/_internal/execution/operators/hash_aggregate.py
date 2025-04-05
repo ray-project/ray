@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from ray.anyscale.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -13,6 +13,10 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.util import GiB
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor
+
+if TYPE_CHECKING:
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +36,14 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
         key_columns: Optional[Tuple[str]],
         aggregation_fns: Tuple[AggregateFn],
     ):
-        from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
         super().__init__(aggregator_id)
 
         assert key_columns is not None, "Shuffle aggregation requires key columns"
 
-        self._sort_key: SortKey = ReducingShuffleAggregation._get_sort_key(key_columns)
+        self._sort_key: "SortKey" = ReducingShuffleAggregation._get_sort_key(
+            key_columns
+        )
         self._aggregation_fns: Tuple[AggregateFn] = aggregation_fns
 
         self._aggregated_blocks: List[Block] = []
@@ -58,32 +63,38 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
         # Aggregation is performed incrementally, rather
         # than being deferred to the finalization stage
         if len(self._aggregated_blocks) > self._DEFAULT_BLOCKS_BUFFER_LIMIT:
+            # NOTE: This method will reset partially aggregated blocks to hold
+            #       the new combined one
+            #
             # TODO make aggregation async
-            aggregated_block = self._aggregate(should_finalize=False)
-            # Reset partially aggregated blocks
-            self._aggregated_blocks = [aggregated_block]
+            self._combine_aggregated_blocks(should_finalize=False)
 
     def finalize(self, partition_id: int) -> Block:
         if len(self._aggregated_blocks) == 0:
             return ArrowBlockAccessor._empty_table()
 
-        return self._aggregate(should_finalize=True)
+        return self._combine_aggregated_blocks(should_finalize=True)
 
     def clear(self, partition_id: int):
         self._aggregated_blocks: List[Block] = []
 
-    def _aggregate(self, *, should_finalize: bool) -> Block:
+    def _combine_aggregated_blocks(self, *, should_finalize: bool) -> Block:
         assert len(self._aggregated_blocks) > 0
 
         block_accessor = BlockAccessor.for_block(self._aggregated_blocks[0])
-        aggregated_block, _ = block_accessor._combine_aggregated_blocks(
+        combined_block, _ = block_accessor._combine_aggregated_blocks(
             self._aggregated_blocks,
             sort_key=self._sort_key,
             aggs=self._aggregation_fns,
             finalize=should_finalize,
         )
 
-        return aggregated_block
+        # For combined block that's not yet finalized reset cached aggregated
+        # blocks to only hold newly combined one
+        if not should_finalize:
+            self._aggregated_blocks = [combined_block]
+
+        return combined_block
 
     @staticmethod
     def _get_sort_key(key_columns: Tuple[str]):

@@ -6,11 +6,56 @@ from typing import Dict
 
 from ray.anyscale.data._internal.execution.operators.hash_shuffle import (
     HashShuffleOperator,
+    AggregatorPool,
 )
 from ray.core.generated import autoscaler_pb2
 from ray.data import DataContext
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.util import GiB
+
+
+def test_derive_final_shuffle_aggregator_remote_args():
+
+    # Case 1: max_concurrency derived from the partition-map
+    remote_args = AggregatorPool._derive_final_shuffle_aggregator_ray_remote_args(
+        aggregator_ray_remote_args={
+            "num_cpus": 1.0,
+            "num_gpus": 1.0,
+            "memory": 1 * GiB,
+        },
+        aggregator_partition_map={
+            1: [1, 2, 3],
+            2: [4, 5, 6, 7],
+        },
+    )
+
+    assert {
+        "num_cpus": 1.0,
+        "num_gpus": 1.0,
+        "memory": 1 * GiB,
+        "max_concurrency": 4,
+    } == remote_args
+
+    # Case 2: max_concurrency overridden by the user
+    remote_args = AggregatorPool._derive_final_shuffle_aggregator_ray_remote_args(
+        aggregator_ray_remote_args={
+            "num_cpus": 1.0,
+            "num_gpus": 1.0,
+            "memory": 1 * GiB,
+            "max_concurrency": 1,
+        },
+        aggregator_partition_map={
+            1: [1, 2, 3],
+            2: [4, 5, 6, 7],
+        },
+    )
+
+    assert {
+        "num_cpus": 1.0,
+        "num_gpus": 1.0,
+        "memory": 1 * GiB,
+        "max_concurrency": 1,
+    } == remote_args
 
 
 def test_default_shuffle_aggregator_args():

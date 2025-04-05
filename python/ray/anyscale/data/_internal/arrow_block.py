@@ -34,8 +34,13 @@ class ArrowBlockMixin(OptimizedTableBlockMixin):
 
         #   - Block is aggregated based on the target group-key, where
         #       newly added column is summed up (computing the size of the group)
-        aggregated_extended_table = extended_table.group_by(keys).aggregate(
-            [(_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, "sum")]
+        aggregated_extended_table = (
+            extended_table.group_by(keys).aggregate(
+                [(_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, "sum")]
+            )
+            # NOTE: Arrow performs hash-based aggregations and hence returned
+            #       table could be out of order
+            .sort_by([(k, "ascending") for k in keys])
         )
 
         group_size_column = aggregated_extended_table[
