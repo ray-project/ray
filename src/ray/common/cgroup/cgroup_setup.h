@@ -65,8 +65,6 @@ class CgroupSetup : public BaseCgroupSetup {
   // Add the specified process into the system cgroup.
   Status AddSystemProcess(pid_t pid) override;
 
-  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
-
  private:
   struct TestTag {};
   // Constructor made for unit tests, which allows [CgroupSetup] to be created for

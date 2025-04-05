@@ -1,6 +1,23 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_test(
+    name = "cgroup_utils_test",
+    size = "small",
+    srcs = ["cgroup_utils_test.cc"],
+    tags = [
+        "cgroup",
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":cgroup_test_utils",
+        "//src/ray/common/cgroup:cgroup_utils",
+        "//src/ray/common/test:testing",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "cgroup_v2_utils_privileged_test",
     size = "small",
     srcs = ["cgroup_v2_utils_privileged_test.cc"],
@@ -26,19 +43,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
-        "//src/ray/common/test:testing",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "fake_cgroup_setup_test",
-    srcs = ["fake_cgroup_setup_test.cc"],
-    tags = [
-        "team:core",
-    ],
-    deps = [
-        "//src/ray/common/cgroup:fake_cgroup_setup",
         "//src/ray/common/test:testing",
         "@com_google_googletest//:gtest_main",
     ],
