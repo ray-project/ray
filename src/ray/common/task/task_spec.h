@@ -440,6 +440,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int64_t MaxActorRestarts() const;
 
+  const std::string ActorName() const;
+
   std::vector<std::string> DynamicWorkerOptions() const;
 
   std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
