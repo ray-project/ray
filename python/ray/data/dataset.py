@@ -826,6 +826,16 @@ class Dataset:
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
+                import pandas as pd
+
+                # The index of the column must be set
+                # to align with the index of the batch.
+                if (
+                    isinstance(column, pd.Series)
+                    or isinstance(column, pd.DataFrame)
+                    or isinstance(column, pd.Index)
+                ):
+                    column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
