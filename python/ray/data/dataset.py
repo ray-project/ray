@@ -408,7 +408,11 @@ class Dataset:
         logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
+        self.set_name(name)
+
+    def set_name(self, name: Optional[str]):
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -416,7 +420,12 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
+    @Deprecated(message="Use name() instead", warning=True)
     def _name(self) -> Optional[str]:
+        return self.name
+
+    @property
+    def name(self) -> Optional[str]:
         """Returns the dataset name"""
         return self._plan._dataset_name
 
@@ -5292,7 +5301,7 @@ class Dataset:
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
-        output._set_name(copy._name)
+        output.set_name(copy.name)
         output._set_uuid(copy._get_uuid())
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
