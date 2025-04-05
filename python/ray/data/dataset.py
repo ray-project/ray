@@ -75,7 +75,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.one_to_one_operator import Limit, Offset
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
@@ -2758,6 +2758,27 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def offset(self, offset: int) -> "Dataset":
+        """Skip the first ``offset`` rows of the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1000)
+            >>> ds.offset(5).count()
+            995
+
+        Args:
+            offset: The size of the dataset to skip.
+
+        Returns:
+            The dataset, with ``offset`` elements skipped.
+        """
+        plan = self._plan.copy()
+        op = Offset(self._logical_plan.dag, offset=offset)
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
