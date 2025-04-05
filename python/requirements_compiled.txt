@@ -591,7 +591,7 @@ glfw==2.6.3
     #   mujoco
 glom==22.1.0
     # via semgrep
-google-api-core==1.34.0
+google-api-core==2.24.2
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
@@ -647,12 +647,11 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
-googleapis-common-protos==1.61.0
+googleapis-common-protos==1.69.2
     # via
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-    #   tensorflow-metadata
 gpy==1.13.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 gpytorch==1.10
@@ -667,7 +666,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.66.2 ; sys_platform != "darwin"
+grpcio==1.71.0 ; sys_platform != "darwin"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1508,7 +1507,7 @@ propcache==0.3.0
     #   yarl
 prophet==1.1.5
     # via -r python/requirements/ml/tune-test-requirements.txt
-proto-plus==1.22.3
+proto-plus==1.26.1
     # via
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
@@ -1540,7 +1539,7 @@ protobuf==3.20.3
     #   wandb
 proxy-py==2.4.3
     # via -r python/requirements/test-requirements.txt
-psutil==5.9.6
+psutil==5.9.8
     # via
     #   accelerate
     #   aim
