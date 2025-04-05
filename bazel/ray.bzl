@@ -219,3 +219,9 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
