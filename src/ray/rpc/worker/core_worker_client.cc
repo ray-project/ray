@@ -105,8 +105,6 @@ void CoreWorkerClient::SendRequests() {
     auto request = std::move(pair.first);
     int64_t task_size = RequestSizeInBytes(*request);
     int64_t seq_no = request->sequence_number();
-    RAY_LOG(DEBUG) << "[debug] SendRequests client_processed_up_to "
-                   << max_finished_seq_no_.value_or(-1);
     request->set_client_processed_up_to(max_finished_seq_no_.value_or(-1));
     rpc_bytes_in_flight_ += task_size;
 
@@ -116,8 +114,6 @@ void CoreWorkerClient::SendRequests() {
           {
             absl::MutexLock lock(&mutex_);
             if (seq_no > max_finished_seq_no_) {
-              RAY_LOG(DEBUG) << "[debug] SendRequests update max_finished_seq_no_ old: "
-                             << max_finished_seq_no_.value_or(-1) << " new: " << seq_no;
               max_finished_seq_no_ = seq_no;
             }
             rpc_bytes_in_flight_ -= task_size;
