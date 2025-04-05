@@ -202,7 +202,10 @@ class LLMConfig(BaseModelExtended):
 
     accelerator_type: Optional[str] = Field(
         default=None,
-        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}. "
+        "To specifiy the exact accelerator_type your cluster should show the `accelerator_type:xxx` when you run `ray status`. "
+        "If that is not the case, you need to define it as a custom resource when initializing the ray cluster. "
+        "See https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources for more details.",
     )
 
     lora_config: Optional[LoraConfig] = Field(
