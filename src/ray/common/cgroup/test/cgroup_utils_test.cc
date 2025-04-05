@@ -24,6 +24,7 @@
 #include <chrono>
 #include <thread>
 
+#include "ray/common/cgroup/cgroup_setup.h"
 #include "ray/common/cgroup/test/cgroup_test_utils.h"
 #include "ray/common/test/testing.h"
 
@@ -32,6 +33,9 @@ namespace ray {
 namespace {
 
 TEST(CgroupUtilsTest, AddCurrentProcessToCgroup) {
+  // Setup cgroup on local filesystem.
+  CgroupSetup cgroup_setup{/*directory=*/"/sys/fs/cgroup", /*node_id=*/"node_id"};
+
   CgroupSetupConfig setup_config;
   setup_config.type = CgroupSetupType::kProd;
   setup_config.directory = "/sys/fs/cgroup";
@@ -59,6 +63,14 @@ TEST(CgroupUtilsTest, AddCurrentProcessToCgroup) {
 
   // Kill testing process.
   RAY_ASSERT_OK(KillAllProcAndWait("/sys/fs/cgroup/ray_node_node_id/ray_application"));
+
+  // Cleanup application cgroup after test completion.
+  RAY_ASSERT_OK(CleanupApplicationCgroup(
+      /*cgroup_system_proc_filepath=*/
+      "/sys/fs/cgroup/ray_node_node_id/system/cgroup.procs",
+      /*cgroup_root_procs_filepath=*/
+      "/sys/fs/cgroup/ray_node_node_id/ray_application/default/cgroup.procs",
+      /*app_cgroup_folder=*/"/sys/fs/cgroup/ray_node_node_id/ray_application"));
 }
 
 }  // namespace

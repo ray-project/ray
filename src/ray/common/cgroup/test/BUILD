@@ -11,6 +11,7 @@ ray_cc_test(
     ],
     deps = [
         ":cgroup_test_utils",
+        "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/cgroup:cgroup_utils",
         "//src/ray/common/test:testing",
         "@com_google_googletest//:gtest_main",
