@@ -528,4 +528,3 @@ int main(int argc, char *argv[]) {
 
   main_service.run();
 }
-#endif
