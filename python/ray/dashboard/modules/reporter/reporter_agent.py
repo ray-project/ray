@@ -461,6 +461,10 @@ class ReporterAgent(
             output=output, success=success, warning=warning
         )
 
+    # TODO(hjiang): Implement real functionality for metrics report.
+    async def ReportOTelMetrics(self, request, context):
+        return reporter_pb2.ReportOTelMetricsReply()
+
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:

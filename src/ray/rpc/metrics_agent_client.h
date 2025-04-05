@@ -39,6 +39,12 @@ class MetricsAgentClient {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(ReporterService, ReportOCMetrics)
+
+  /// Report opentelemetry protobuf metrics to metrics agent.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(ReporterService, ReportOTelMetrics);
 };
 
 class MetricsAgentClientImpl : public MetricsAgentClient {
@@ -60,6 +66,12 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
 
   VOID_RPC_CLIENT_METHOD(ReporterService,
                          ReportOCMetrics,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(ReporterService,
+                         ReportOTelMetrics,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

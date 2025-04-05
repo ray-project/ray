@@ -46,17 +46,28 @@ class MockMetricsAgentClient : public rpc::MetricsAgentClient {
   void ReportOCMetrics(
       const rpc::ReportOCMetricsRequest &request,
       const rpc::ClientCallback<rpc::ReportOCMetricsReply> &callback) override {
-    reportOCMetricsRequests_.push_back(request);
+    report_oc_metrics_requests_.push_back(request);
+    callback(Status::OK(), {});
+  }
+  void ReportOTelMetrics(
+      const rpc::ReportOTelMetricsRequest &request,
+      const rpc::ClientCallback<rpc::ReportOTelMetricsReply> &callback) override {
+    report_otel_metrics_requests_.push_back(request);
     callback(Status::OK(), {});
   }
 
   const std::vector<rpc::ReportOCMetricsRequest> &CollectedReportOCMetricsRequests()
       const {
-    return reportOCMetricsRequests_;
+    return report_oc_metrics_requests_;
+  }
+  const std::vector<rpc::ReportOTelMetricsRequest> &CollectedReportOTelMetricsRequests()
+      const {
+    return report_otel_metrics_requests_;
   }
 
  private:
-  std::vector<rpc::ReportOCMetricsRequest> reportOCMetricsRequests_;
+  std::vector<rpc::ReportOCMetricsRequest> report_oc_metrics_requests_;
+  std::vector<rpc::ReportOTelMetricsRequest> report_otel_metrics_requests_;
 };
 
 const auto method_tag_key = TagKey::Register("grpc_client_method");
