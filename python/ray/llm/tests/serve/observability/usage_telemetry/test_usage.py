@@ -6,6 +6,7 @@ import sys
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     _get_or_create_telemetry_agent,
     push_telemetry_report_for_all_models,
+    _infer_gpu_from_hardware,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -119,6 +120,22 @@ def test_push_telemetry_report_for_all_models():
         TagKey.LLM_SERVE_GPU_TYPE: "L4,A10G,A10G,A10G",
         TagKey.LLM_SERVE_NUM_GPUS: "1,1,1,1",
     }
+
+
+def test__infer_gpu_from_hardware():
+    # Test with a valid GPU type
+    def fake_get_gpu_type(*args, **kwargs):
+        return ["Intel Xeon", "A10G"]
+
+    result = _infer_gpu_from_hardware(fake_get_gpu_type)
+    assert result == "A10G"
+
+    # Test with an unsupported GPU type
+    def fake_get_gpu_type(*args, **kwargs):
+        return ["Intel Xeon", "G"]
+
+    result = _infer_gpu_from_hardware(fake_get_gpu_type)
+    assert result == "UNSPECIFIED"
 
 
 if __name__ == "__main__":
