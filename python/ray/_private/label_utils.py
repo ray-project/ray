@@ -13,7 +13,7 @@ from typing import (
 # Examples:
 #   Valid matches: "a", "label-name", "a-._b", "123", "this_is_a_valid_label"
 #   Invalid matches: "-abc", "abc-", "my@label"
-LABEL_REGEX = re.compile(r"([a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9])?)")
+LABEL_REGEX = re.compile(r"([a-zA-Z0-9]([a-zA-Z0-9_.-]{0,61}[a-zA-Z0-9])?)")
 
 # Regex for optional prefix (DNS subdomain)
 # Examples:

@@ -183,6 +183,7 @@ def test_validate_label_value(value, should_raise, expected_message):
         ("in(spot,", "Invalid label selector value"),
         ("in(H100, TPU!GPU)", "Invalid label selector value"),
         ("!!!in(H100, TPU)", "Invalid label selector value"),
+        ("a" * 64, "Invalid label selector value"),
     ],
 )
 def test_validate_label_selector_value(selector, expected_error):
