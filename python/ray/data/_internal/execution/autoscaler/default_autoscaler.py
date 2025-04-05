@@ -159,6 +159,9 @@ class DefaultAutoscaler(Autoscaler):
                 req["CPU"] = math.ceil(resource.cpu)
             if resource.gpu:
                 req["GPU"] = math.ceil(resource.gpu)
+            if resource.resources != {}:
+                for key, value in resource.resources.items():
+                    req[key] = value
             return req
 
         for op, state in self._topology.items():
