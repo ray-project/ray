@@ -1,4 +1,6 @@
 import asyncio
+import os
+import psutil
 import sys
 import time
 from functools import reduce
@@ -649,6 +651,68 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
         )
         == head_node_id
     )
+
+
+# Test deleting a pg with pending actor.
+# details: https://github.com/ray-project/ray/pull/51125
+# Specific test steps:
+#   1. Launch a placement group with only 1 bundle.
+#   2. Create two actors using the aforementioned pg. At this point,
+#      the latter actor will definitely be pending in scheduling due to insufficient pg
+#      bundle resources.
+#   3. Remove the pg while one actor is pending in scheduling. Before the current PR,
+#      the observed phenomenon will be that the raylet crashes due to a failed check.
+@pytest.mark.parametrize("lifetime", [None, "detached"])
+def test_remove_placement_group_with_actor_waiting_on_resource(
+    ray_start_cluster, lifetime
+):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address, namespace="test")
+
+    pg = ray.util.placement_group(
+        [{"CPU": 1}],
+        lifetime=lifetime,
+        name="test",
+    )
+
+    @ray.remote
+    class Actor:
+        def get_raylet_pid(self):
+            return os.getppid()
+
+    actor = Actor.options(
+        lifetime=lifetime,
+        num_cpus=1.0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    ).remote()
+
+    raylet = psutil.Process(ray.get(actor.get_raylet_pid.remote()))
+
+    _ = Actor.options(
+        lifetime=lifetime,
+        num_cpus=1.0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    ).remote()
+
+    assert raylet.is_running()
+
+    # make sure the new actor on raylet pending queue.
+    time.sleep(5)
+    ray.util.remove_placement_group(pg)
+
+    # Ensure GCS finish remove pg.
+    with pytest.raises(psutil.TimeoutExpired):
+        raylet.wait(10)
+
+    # check raylet pass raycheck:
+    # `RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec))`
+    assert raylet.is_running()
 
 
 if __name__ == "__main__":

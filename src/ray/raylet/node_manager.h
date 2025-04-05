@@ -380,6 +380,24 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
+  /// After the worker is destroyed, `NodeManger` will not attempt to schedule tasks.
+  ///
+  /// \param[in] worker The worker to destroy.
+  /// \param[in] disconnect_type The reason why this worker process is disconnected.
+  /// \param[in] disconnect_detail The detailed reason for a given exit.
+  /// \param[in] force true to destroy immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
+  /// \param[out] has_release_resources Whether the resource has been released.
+  /// \return Void.
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+                     rpc::WorkerExitType disconnect_type,
+                     const std::string &disconnect_detail,
+                     bool force = false,
+                     bool *has_release_resources = nullptr);
+
+  /// Destroy a worker.
+  /// We will disconnect the worker connection first and then kill the worker.
+  /// After the worker is destroyed, `NodeManger` will attempt to reschedule tasks.
   ///
   /// \param worker The worker to destroy.
   /// \param disconnect_type The reason why this worker process is disconnected.
@@ -387,10 +405,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param force true to destroy immediately, false to give time for the worker to
   /// clean up and exit gracefully.
   /// \return Void.
-  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
-                     rpc::WorkerExitType disconnect_type,
-                     const std::string &disconnect_detail,
-                     bool force = false);
+  void DestroyWorkerAndTrySchedule(std::shared_ptr<WorkerInterface> worker,
+                                   rpc::WorkerExitType disconnect_type,
+                                   const std::string &disconnect_detail,
+                                   bool force = false);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -715,22 +733,41 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// fields used.
   void FillResourceUsage(rpc::ResourcesData &data);
 
-  /// Disconnect a client.
+  /// Disconnect a client, and will not attempt to schedule tasks.
+  ///
+  /// \param[in] client The client that sent the message.
+  /// \param[in] graceful Indicates if this was a graceful disconnect initiated by the
+  ///        worker or a non-graceful disconnect initiated by the raylet. On graceful
+  ///        disconnect, a DisconnectClientReply will be sent to the worker prior to
+  ///        closing the connection.
+  /// \param[in] disconnect_type The reason to disconnect the specified client.
+  /// \param[in] disconnect_detail Disconnection information in details.
+  /// \param[in] client_error_message Extra error messages about this disconnection
+  /// \param[out] has_release_resources Whether the resource has been released.
+  /// \return Void.
+  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                        bool graceful,
+                        rpc::WorkerExitType disconnect_type,
+                        const std::string &disconnect_detail,
+                        const rpc::RayException *creation_task_exception = nullptr,
+                        bool *has_release_resources = nullptr);
+
+  /// Disconnect a client, and will attempt to schedule tasks.
   ///
   /// \param client The client that sent the message.
   /// \param graceful Indicates if this was a graceful disconnect initiated by the
   ///        worker or a non-graceful disconnect initiated by the raylet. On graceful
   ///        disconnect, a DisconnectClientReply will be sent to the worker prior to
   ///        closing the connection.
-  /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
-  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                        bool graceful,
-                        rpc::WorkerExitType disconnect_type,
-                        const std::string &disconnect_detail,
-                        const rpc::RayException *creation_task_exception = nullptr);
+  void DisconnectClientAndTrySchedule(
+      const std::shared_ptr<ClientConnection> &client,
+      bool graceful,
+      rpc::WorkerExitType disconnect_type,
+      const std::string &disconnect_detail,
+      const rpc::RayException *creation_task_exception = nullptr);
 
   bool TryLocalGC();
 
