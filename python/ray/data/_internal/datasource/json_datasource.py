@@ -136,19 +136,41 @@ class JSONDatasource(FileBasedDatasource):
                     dct[k].append(v)
             yield pyarrow_table_from_pydict(dct)
 
-    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow as pa
 
-        buffer: pa.lib.Buffer = f.read_buffer()
+        def _try_read_json(buffer):
+            try:
+                yield from self._read_with_pyarrow_read_json(buffer)
+            except pa.ArrowInvalid as e:
+                logger.warning(
+                    f"Error reading with pyarrow.json.read_json(). "
+                    f"Falling back to native json.load(), which may be slower. "
+                    f"PyArrow error was:\n{e}"
+                )
+                yield from self._read_with_python_json(buffer)
 
-        try:
-            yield from self._read_with_pyarrow_read_json(buffer)
-        except pa.ArrowInvalid as e:
-            # If read with PyArrow fails, try falling back to native json.load().
-            logger.warning(
-                f"Error reading with pyarrow.json.read_json(). "
-                f"Falling back to native json.load(), which may be slower. "
-                f"PyArrow error was:\n{e}"
-            )
-            yield from self._read_with_python_json(buffer)
+        is_jsonl = path.endswith(".jsonl")
+
+        if is_jsonl:
+            buffer_size = DataContext.get_current().target_max_block_size
+            partial_line = b""
+
+            while True:
+                chunk = f.read(buffer_size)
+                if not chunk:
+                    break
+
+                data = partial_line + chunk
+                lines = data.split(b"\n")
+                partial_line = lines.pop()
+
+                for line in lines:
+                    yield from _try_read_json(pa.py_buffer(line))
+
+            if partial_line.strip():
+                yield from _try_read_json(pa.py_buffer(partial_line))
+
+        else:
+            buffer = f.read_buffer()
+            yield from _try_read_json(buffer)
