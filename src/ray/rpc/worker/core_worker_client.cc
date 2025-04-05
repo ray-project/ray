@@ -65,6 +65,9 @@ void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
     if (max_finished_seq_no_ == absl::nullopt) {
       max_finished_seq_no_ = request->sequence_number() - 1;
     }
+    // The RPC client assumes that the first request put into the send queue will be
+    // the first task handled by the server.
+    RAY_CHECK_LE(max_finished_seq_no_.value(), request->sequence_number());
     send_queue_.emplace_back(std::move(request), std::move(callback));
   }
   SendRequests();
