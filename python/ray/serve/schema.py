@@ -1149,17 +1149,18 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         """Generates json serializable dictionary with user facing data."""
         values = super().dict(*args, **kwargs)
 
-        # `serialized_policy_def` is only used internally and should not be exposed to
-        # the REST api. This method iteratively removes it from each autoscaling config
-        # if exists.
+        # `serialized_policy_def` and `serialize_replica_scheduler` are only used
+        # internally and should not be exposed to the REST api. This method iteratively
+        # removes them from each deployment and autoscaling config if exists.
         for app_name, application in values["applications"].items():
             for deployment_name, deployment in application["deployments"].items():
-                if (
-                    "deployment_config" in deployment
-                    and "autoscaling_config" in deployment["deployment_config"]
-                ):
-                    deployment["deployment_config"]["autoscaling_config"].pop(
-                        "_serialized_policy_def", None
+                if "deployment_config" in deployment:
+                    deployment["deployment_config"].pop(
+                        "serialize_replica_scheduler", None
                     )
+                    if "autoscaling_config" in deployment["deployment_config"]:
+                        deployment["deployment_config"]["autoscaling_config"].pop(
+                            "_serialized_policy_def", None
+                        )
 
         return values
