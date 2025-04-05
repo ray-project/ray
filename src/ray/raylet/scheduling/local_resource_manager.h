@@ -16,14 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
