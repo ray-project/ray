@@ -220,6 +220,7 @@ filter_files_with_suffix = rule(
     },
 )
 
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
 FLATC_ARGS = [
     "--gen-object-api",
     "--gen-mutable",
