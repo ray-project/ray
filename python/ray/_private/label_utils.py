@@ -87,9 +87,7 @@ def validate_node_labels(labels: Dict[str, str]):
         if possible_error_message:
             raise ValueError(possible_error_message)
         if value is not None:
-            possible_error_message = validate_label_value(value)
-            if possible_error_message:
-                raise ValueError(possible_error_message)
+            validate_label_value(value)
 
 
 def validate_label_key(key: str) -> Optional[str]:
@@ -111,16 +109,15 @@ def validate_label_key(key: str) -> Optional[str]:
     return None
 
 
-def validate_label_value(value: str) -> Optional[str]:
+def validate_label_value(value: str):
     if value == "":
-        return None
+        return
     if len(value) > 63 or not re.match(LABEL_REGEX, value):
-        return str(
+        raise ValueError(
             f"Invalid label key value `{value}`. Value must be 63 chars or less beginning and ending "
             f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
             f"dots (.), and alphanumerics between."
         )
-    return None
 
 
 def validate_label_selector_value(selector: str) -> Optional[str]:
