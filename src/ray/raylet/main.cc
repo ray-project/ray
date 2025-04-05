@@ -111,8 +111,6 @@ DEFINE_string(labels,
               "",
               "Define the key-value format of node labels, which is a serialized JSON.");
 
-#ifndef RAYLET_TEST
-
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
   absl::flat_hash_map<std::string, std::string> labels;
