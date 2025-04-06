@@ -205,6 +205,9 @@ ray_cc_library(
 ray_cc_library(
     name = "sample",
     hdrs = ["sample.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
 )
 
 ray_cc_library(
