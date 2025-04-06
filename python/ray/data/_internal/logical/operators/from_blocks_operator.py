@@ -1,17 +1,18 @@
 import functools
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 
-if TYPE_CHECKING:
-    pass
-
 
 class FromBlocks(LogicalOperator):
-    """Logical operator for in-heap-memory (not object store) input data."""
+    """Logical operator for in-heap-memory (not object store) input data.
+
+    If you want to create a Dataset from in-object-store data, use the `InputData`
+    logical operator instead.
+    """
 
     def __init__(
         self,
