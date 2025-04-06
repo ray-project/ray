@@ -16,7 +16,6 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
 #include <deque>
 #include <memory>
 #include <string>

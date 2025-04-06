@@ -181,7 +181,10 @@ class ResourceDemandScheduler:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
-            (1) calculates the resources present in the cluster.
+            (1) calculates the resources present in the cluster by:
+                - computing available resources for each existing node
+                - counting the number of nodes per node type
+                - including both running and launching nodes
             (2) calculates the remaining nodes to add to respect min_workers
                 constraint per node type.
             (3) for each strict spread placement group, reserve space on
@@ -213,6 +216,7 @@ class ResourceDemandScheduler:
         )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
+        # Step 1: Calculate current cluster resources and node type counts
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = self.calculate_node_resources(

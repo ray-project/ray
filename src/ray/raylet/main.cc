@@ -120,8 +120,6 @@ DEFINE_string(cgroupv2_mount_directory,
               "/sys/fs/cgroup",
               "Directory where cgroupv2 is mounted and properly setup permission..");
 
-#ifndef RAYLET_TEST
-
 absl::flat_hash_map<std::string, std::string> parse_node_labels(
     const std::string &labels_json_str) {
   absl::flat_hash_map<std::string, std::string> labels;
@@ -560,4 +558,3 @@ int main(int argc, char *argv[]) {
 
   main_service.run();
 }
-#endif
