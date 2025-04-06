@@ -28,8 +28,16 @@ enum class RpcFailure {
   Response,
 };
 
+/*
+ * Get the random rpc failure to be injected
+ * for the given rpc method.
+ */
 RpcFailure GetRpcFailure(const std::string &name);
 
+/*
+ * Initialize the rpc chaos framework (i.e. RpcFailureManager).
+ * Should be called once before any rpc calls.
+ */
 void Init();
 
 }  // namespace testing

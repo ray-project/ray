@@ -61,23 +61,24 @@ class RpcFailureManager {
   RpcFailure GetRpcFailure(const std::string &name) {
     absl::MutexLock lock(&mu_);
 
-    if (failable_methods_.find(name) == failable_methods_.end()) {
+    auto iter = failable_methods_.find(name);
+    if (iter == failable_methods_.end()) {
       return RpcFailure::None;
     }
 
-    uint64_t &num_remaining_failures = failable_methods_.at(name);
+    uint64_t &num_remaining_failures = iter->second;
     if (num_remaining_failures == 0) {
       return RpcFailure::None;
     }
 
     std::uniform_int_distribution<int> dist(0, 3);
-    int rand = dist(gen_);
-    if (rand == 0) {
+    const int random_number = dist(gen_);
+    if (random_number == 0) {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Request;
     }
-    if (rand == 1) {
+    if (random_number == 1) {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Response;
