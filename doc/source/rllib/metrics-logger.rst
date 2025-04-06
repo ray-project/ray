@@ -344,7 +344,7 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
 
         # Expect the first call to return NaN because we don't have a proper start time for the time delta.
         # From the second call on, expect a value of roughly 5/sec.
-        print(logger.get_throughputs"lifetime_count"))
+        print(logger.get_throughputs("lifetime_count"))
 
         logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
         # Expect the throughput to be roughly 10/sec now.
