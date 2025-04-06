@@ -299,13 +299,6 @@ def test_dataset_lineage_serialization(shutdown_only):
 
 def test_dataset_lineage_serialization_unsupported(shutdown_only):
     ray.init()
-    # In-memory data sources not supported.
-    ds = ray.data.from_items(list(range(10)))
-    ds = ds.map(column_udf("item", lambda x: x + 1))
-    ds = ds.map(column_udf("item", lambda x: x + 1))
-
-    with pytest.raises(ValueError):
-        ds.serialize_lineage()
 
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))

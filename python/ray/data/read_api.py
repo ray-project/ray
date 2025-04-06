@@ -2772,7 +2772,7 @@ def from_pandas_refs(
         metadata = ray.get(metadata)
 
     bundles = [
-        RefBundle((block_ref, metadata), owns_blocks=False)
+        RefBundle([(block_ref, metadata)], owns_blocks=False)
         for block_ref, metadata in zip(block_refs, metadata)
     ]
     execution_plan = ExecutionPlan(
@@ -2860,7 +2860,7 @@ def from_numpy_refs(
     block_refs, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     bundles = [
-        RefBundle((block_ref, metadata), owns_blocks=False)
+        RefBundle([(block_ref, metadata)], owns_blocks=False)
         for block_ref, metadata in zip(block_refs, metadata)
     ]
 
@@ -2947,7 +2947,7 @@ def from_arrow_refs(
         DatasetStats(metadata={"InputData": metadata}, parent=None)
     )
     bundles = [
-        RefBundle((block_ref, metadata), owns_blocks=False)
+        RefBundle([(block_ref, metadata)], owns_blocks=False)
         for block_ref, metadata in zip(tables, metadata)
     ]
     logical_plan = LogicalPlan(InputData(bundles), execution_plan._context)
