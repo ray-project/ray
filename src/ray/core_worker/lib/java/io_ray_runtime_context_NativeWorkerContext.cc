@@ -62,7 +62,7 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentWorkerId(JNIEnv 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *env,
                                                                         jclass) {
-  const auto &actor_id =
+  const auto actor_id =
       CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
   return IdToJavaByteBuffer<ActorID>(env, actor_id);
 }
