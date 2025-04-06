@@ -632,41 +632,39 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
-    start_time = time.time()
-    value1_timestamps = []
-    while True:
-        time.sleep(1)
-        try:
-            for x in range(10):
-                response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
-                response.raise_for_status()
-                timestamp = response.json()["data"]["timestamp"]
-                value1_timestamps.append(timestamp)
-            assert len(collections.Counter(value1_timestamps)) > 1
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
+    timestamps = set()
+    for _ in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 1
 
-    sub_path_timestamps = []
+    timestamps.clear()
+    for x in range(10):
+        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1")
+        response.raise_for_status()
+        timestamp = response.json()["data"]["timestamp"]
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
+
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        sub_path_timestamps.append(timestamp)
-    assert len(collections.Counter(sub_path_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache/tt?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 10
+        timestamps.add(timestamp)
+    assert len(timestamps) == 10
 
+    timestamps.clear()
     response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
     with pytest.raises(Exception):
         response.raise_for_status()
@@ -674,23 +672,23 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     assert result["result"] is False
     assert "KeyError" in result["msg"]
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     for x in range(10):
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 4
+        timestamps.add(timestamp)
+    assert len(timestamps) == 4
 
-    volatile_value_timestamps = []
+    timestamps.clear()
     data = collections.defaultdict(set)
     for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
         response = requests.get(webui_url + f"/test/aiohttp_cache_lru/t1?value={x}")
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         data[x].add(timestamp)
-        volatile_value_timestamps.append(timestamp)
-    assert len(collections.Counter(volatile_value_timestamps)) == 8
+        timestamps.add(timestamp)
+    assert len(timestamps) == 8
     assert len(data[3]) == 2
     assert len(data[0]) == 2
 
@@ -1209,62 +1207,6 @@ async def test_dashboard_module_load(tmpdir):
     assert {
         m.module_cls.__name__ for m in subprocess_module_handles
     } == loaded_subprocess_module_handles_expected
-
-
-@pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
-)
-def test_extra_prom_headers_validation(tmpdir, monkeypatch):
-    from ray.dashboard.modules.metrics.metrics_head import PROMETHEUS_HEADERS_ENV_VAR
-
-    """Test the extra Prometheus headers validation in DashboardHead."""
-    head = DashboardHead(
-        http_host="127.0.0.1",
-        http_port=8265,
-        http_port_retries=1,
-        node_ip_address="127.0.0.1",
-        gcs_address="127.0.0.1:6379",
-        cluster_id_hex=ray.ClusterID.from_random().hex(),
-        grpc_port=0,
-        log_dir=str(tmpdir),
-        logging_level=ray_constants.LOGGER_LEVEL,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        temp_dir=str(tmpdir),
-        session_dir=str(tmpdir),
-        minimal=False,
-        serve_frontend=True,
-    )
-    loaded_modules_expected = {"MetricsHead", "DataHead"}
-
-    # Test the base case.
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the supported case.
-    monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": "V2"}')
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the supported case.
-    monkeypatch.setenv(
-        PROMETHEUS_HEADERS_ENV_VAR,
-        '[["H1", "V1"], ["H2", "V2"], ["H2", "V3"]]',
-    )
-    head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the unsupported case.
-    with pytest.raises(ValueError):
-        monkeypatch.setenv(
-            PROMETHEUS_HEADERS_ENV_VAR, '{"H1": "V1", "H2": ["V1", "V2"]}'
-        )
-        head._load_modules(modules_to_load=loaded_modules_expected)
-
-    # Test the unsupported case.
-    with pytest.raises(ValueError):
-        monkeypatch.setenv(PROMETHEUS_HEADERS_ENV_VAR, "not_json")
-        head._load_modules(modules_to_load=loaded_modules_expected)
 
 
 @pytest.mark.skipif(

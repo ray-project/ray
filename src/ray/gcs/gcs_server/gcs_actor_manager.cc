@@ -272,6 +272,8 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
   export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+  export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
+                                                  task_spec_.get()->labels().end());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }
@@ -1294,7 +1296,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(node_id) << "Node failed, reconstructing actors.";
+  RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {

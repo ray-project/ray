@@ -403,3 +403,33 @@ readthedocs-flyout {
 .anyscale-cta {
   margin-bottom: 16px;
 }
+
+/* Styles for the community card in the secondary side panel */
+#community-card {
+  border: 1px solid #02A0CF;
+  background-color: #02A0CF4D;
+  padding: 8px 12px;
+}
+
+#community-card ul {
+  padding: 0;
+  margin: 0;
+}
+
+#community-card ul li {
+  list-style-type: none;
+  white-space: nowrap;
+}
+
+#community-card ul li svg {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+#community-card ul li a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}

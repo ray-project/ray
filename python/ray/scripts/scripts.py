@@ -25,11 +25,14 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_string,
+)
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
     load_class,
     parse_resources_json,
-    parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
@@ -541,6 +544,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
+)
+@click.option(
     "--autoscaling-config",
     required=False,
     type=str,
@@ -629,9 +638,19 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
-    default="{}",
+    default="",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
+    help="a string list of key-value pairs mapping label name to label value."
+    "These values take precedence over conflicting keys passed in from --labels-file."
+    'Ex: --labels "key1=val1,key2=val2"',
+)
+@click.option(
+    "--labels-file",
+    required=False,
+    hidden=True,
+    default="",
+    type=str,
+    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
 )
 @click.option(
     "--include-log-monitor",
@@ -674,6 +693,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -688,6 +708,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    labels_file,
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
@@ -708,7 +729,34 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
+
+    # Compose labels passed in with `--labels` and `--labels-file`.
+    # The label value from `--labels` will overrwite the value of any duplicate keys.
+    try:
+        labels_from_file_dict = parse_node_labels_from_yaml_file(labels_file)
+    except Exception as e:
+        cli_logger.abort(
+            "The file at `{}` is not a valid YAML file, detailed error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels-file={labels_file}"),
+            str(e),
+            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
+        )
+    try:
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception as e:
+        cli_logger.abort(
+            "`{}` is not a valid string of key-value pairs, detail error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels={labels}"),
+            str(e),
+            cf.bold('--labels="key1=val1,key2=val2"'),
+        )
+    labels_dict = (
+        {**labels_from_file_dict, **labels_from_string}
+        if labels_from_file_dict
+        else labels_from_string
+    )
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -767,6 +815,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
