@@ -17,7 +17,6 @@
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
