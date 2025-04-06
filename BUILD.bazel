@@ -1285,10 +1285,10 @@ ray_cc_library(
     srcs = ["src/ray/core_worker/experimental_mutable_object_manager.cc"],
     hdrs = ["src/ray/core_worker/experimental_mutable_object_manager.h"],
     deps = [
-        ":plasma_client",
         ":ray_common",
+        "//src/ray/object_manager/plasma:plasma_client",
         "@com_google_absl//absl/container:node_hash_map",
-    ]
+    ],
 )
 
 ray_cc_library(
@@ -1346,10 +1346,10 @@ ray_cc_library(
     hdrs = ["src/ray/core_worker/store_provider/plasma_store_provider.h"],
     deps = [
         ":core_worker_context",
-        ":plasma_client",
-        ":reference_count",
         ":ray_common",
-    ]
+        ":reference_count",
+        "//src/ray/object_manager/plasma:plasma_client",
+    ],
 )
 
 ray_cc_library(
