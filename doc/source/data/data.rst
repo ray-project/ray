@@ -9,6 +9,7 @@ Ray Data: Scalable Datasets for ML
 
     quickstart
     Concepts <key-concepts>
+    get-started
     user-guide
     examples
     api/api

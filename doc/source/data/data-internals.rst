@@ -11,8 +11,8 @@ This page provides an overview of technical implementation details of Ray Data r
 
 The intended audience is advanced users, Ray contributors, and Ray Data developers.
 
-* To get started working with Ray Data, see :ref:`Ray Data basics<data_quickstart>`.
-* For a conceptual overview of Ray Data, see :ref:`How does Ray Data work?<data_key_concepts>`.
+* For an overview of Ray Data, see :ref:`data_quickstart`.
+* For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
 * For recommendations on optimizing Ray Data workloads, see :ref:`Performance tips and tuning<data_performance_tips>`.
 
 .. _dataset_concept:

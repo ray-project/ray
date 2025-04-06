@@ -1,44 +1,67 @@
 .. _data_key_concepts:
 
-=======================
-How does Ray Data work?
-=======================
+============================
+Ray Data conceptual overview
+============================
 
 This page provides a conceptual overview of the architecture and execution model for Ray Data. Understanding these technical details can be useful when designing, debugging, and optimizing Ray applications.
 
-To get started working with Ray Data, see :ref:`Ray Data basics<data_quickstart>`.
+This page assumes familiarity with the use cases and core functionality of Ray Data. If you are new to Ray Data, see :ref:`data_quickstart`.
 
-For recommendations on optimizing Ray Data workloads, see :ref:`Performance tips and tuning<data_performance_tips>`.
+For specific recommendations on optimizing Ray Data workloads, see :ref:`data_performance_tips`.
+
+What is Ray Data?
+=================
 
 
 
 
-How does Ray Data relate to the rest of Ray?
-============================================
 
-Ray Data is one of the Ray AI Libraries. Ray AI libraries build on top of Ray Core primitives to provide developer-friendly APIs for completing common data, ML, and AI tasks. To learn about Ray Core primitives, see :ref:`Ray Core key concepts<core-key-concepts>`.
 
-The follow diagram provides a high-level view of the Ray framework:
 
-.. image:: ../ray-overview/images/map-of-ray.svg
-   :align: center
-   :alt: Ray framework architecture
+Ray Data key concepts
+=====================
 
-Ray Data contains operators that focus on the following key tasks:
+The following table provides descriptions for the key concepts of Ray Data:
 
-* Loading data from storage.
-* Ingesting data from connected systems.
-* Exchanging data from other frameworks and data structures.
-* Transforming and preprocessing data.
-* Performing offline batch inference.
-* Persisting results to storage or integrated systems.
-* Pipelining data for Ray Train.
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|          Concept          |                                                                                          Description                                                                                           |
++===========================+================================================================================================================================================================================================+
+| Dataset                   | The primary programming interface and data structure in Ray Data.                                                                                                                              |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Streaming execution model | An optimized data processing model that plans and runs transformations as concurrent stages, providing efficient processing for large datasets.                                                |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Block                     | A collection of rows in a dataset that is distributed during planning and processing.                                                                                                          |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Operator                  | An abstraction of Ray Core tasks, actors, and objects. Ray Data translates the operators you use to write your program into *logical operators* and then *physical operators* during planning. |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Logical plan              | The representation of the logic your Ray Data program contains. The logical plan maps user-facing APIs to logical operators.                                                                   |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Physical plan             | The final stage of planning in Ray Data, representing how the program runs. Physical operators manipulate references to data and map logic to tasks and actors.                                |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+
+
+How does Ray Data work?
+=======================
+
+Ray Data provides a framework of operators that abstract Ray Core primitives to simplify programming Ray workloads and optimize planning and execution for common ML data processing tasks. 
+
+
+
+
+
+
+
+
+
+
 
 Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core primitives. 
 
 
 
-Ray Train is optimized to work on Ray Datasets. See :ref:`Process large datasets as streams<streaming-execution>`. 
+Ray Train is optimized to work on Ray Datasets. See :ref:`streaming-execution`. 
 
 
 What is a Ray Dataset?
@@ -50,14 +73,16 @@ Ray :class:`~ray.data.Dataset` is the primary
 
 When you write a program using the Dataset API 
 
-Ray Data operations are abrtractions of Ray Core task, actors, and objects. Ray Data is able to optimize how your program resolves over two stages of planning.
+Ray Data operations are abstractions of Ray Core task, actors, and objects. Ray Data is able to optimize how your program resolves over two stages of planning.
 
 Logical planning
 ---
 
 During the logical planning stage, 
 
-Because Ray Data uses Arrow Tables as the primary unit for storing data in memory, 
+Phyiscal planning
+---
+
 
 
 How does Ray Data distribute data?
@@ -223,8 +248,28 @@ Because many frameworks supported by Ray Train also support this streaming execu
    Ray Train provides integrations with many common ML and AI frameworks to efficiently distribute training and support streaming execution for model training. See :ref:`Ray Train<train-docs>`.
 
 
+In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
 
-The following is a simple code example  demonstrate the streaming execution model. , applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
+The streaming execution model provides significant advantages for data processing.
+
+In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
+
+To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
+
+.. note::
+   Operations that need to evaluate, compare, or aggregate the entire dataset create processing bottlenecks for streaming execution. Examples include :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>`.
+   
+   Ray must materialize the entire dataset to complete these operations, which interupts stream pipeline processing and might lead to significant spill or out-of-memory errors.
+
+   Consider refactoring workloads to remove unnecessary operations that require full dataset materialization. For example, the distributed model used by Ray does not persist ordered results between stages or guarantee that sorting is preserved on write. For many workloads, removing a :meth:`ds.sort() <ray.data.Dataset.sort>` operation can eliminate significant overhead without impacting results in any way.
+   
+You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.
+
+
+Streaming execution example
+---------------------------
+
+The following is a simple code example that demonstrates the streaming execution model. This example loads CSV data, applies a series of map and filter transformations, and then calls the ``show`` action to trigger the pipeline:
 
 .. testcode::
 
@@ -260,20 +305,3 @@ This logical plan maps to the following streaming topology:
 .. image:: images/streaming-topology.svg
    :width: 1000
    :align: center
-
-In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
-
-The streaming execution model provides significant advantages for data processing.
-
-In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
-
-To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
-
-.. note::
-   Operations that need to evaluate, compare, or aggregate the entire dataset create processing bottlenecks for streaming execution. Examples include :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>`.
-   
-   Ray must materialize the entire dataset to complete these operations, which interupts stream pipeline processing and might lead to significant spill or out-of-memory errors.
-
-   Consider refactoring workloads to remove unnecessary operations that require full dataset materialization. For example, the distributed model used by Ray does not persist ordered results between stages or guarantee that sorting is preserved on write. For many workloads, removing a :meth:`ds.sort() <ray.data.Dataset.sort>` operation can eliminate significant overhead without impacting results in any way.
-   
-You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.
