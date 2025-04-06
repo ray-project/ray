@@ -258,7 +258,7 @@ def create_serve_rest_api(
 
                 return self._controller
 
-        async def run(self, server):
+        async def run(self, *args, **kwargs):
             pass
 
         @staticmethod
