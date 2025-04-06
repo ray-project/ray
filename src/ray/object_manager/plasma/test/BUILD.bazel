@@ -32,8 +32,7 @@ ray_cc_test(
     ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        # TODO(Ziy1-Tan): Replace it after splitting core_worker_lib into multiple target
-        "//:core_worker_lib",
+        "//:experimental_mutable_object_manager",
         "//:object_manager_common",
         "@com_google_googletest//:gtest_main",
     ],
