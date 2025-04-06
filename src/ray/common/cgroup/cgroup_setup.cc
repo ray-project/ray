@@ -168,9 +168,14 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
                       std::istreambuf_iterator<char>());
   std::string_view content_sv{content};
   absl::ConsumeSuffix(&content_sv, "\n");
+  RAY_LOG(ERROR) << "In subtree control file " << subtree_control_path
+                 << ", file content = |" << content_sv << "|";
 
   const std::vector<std::string_view> enabled_subtree_controllers =
       absl::StrSplit(content_sv, ' ');
+  for (auto cur : enabled_subtree_controllers) {
+    RAY_LOG(ERROR) << "Enable subtree control: |" << cur << "|";
+  }
   for (const auto &cur_controller : kRequiredControllers) {
     if (std::find(enabled_subtree_controllers.begin(),
                   enabled_subtree_controllers.end(),
