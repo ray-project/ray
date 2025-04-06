@@ -737,7 +737,7 @@ class MetricsLogger:
                 if self._key_in_stats(key, stats=s)
             ]
 
-            # Find a base Stats object first - this will be our basis for merging
+            # Find a base Stats object first - we will use this to merge with incoming Stats objects
             base_stats = None
             own_stats = self._get_key(key, stats=self.stats, key_error=False)
             all_stats = incoming_stats + [own_stats] if own_stats else incoming_stats
@@ -777,38 +777,24 @@ class MetricsLogger:
                 elif stats_or_values is not base_stats:
                     more_stats.append(stats_or_values)
 
-            # For cases where we can reduce, create a new Stats object with the peeded, reduced value
-            # Don't reduce if we use a window (merge in parallel instead)
-            if base_stats._reduce_method is not None and base_stats._inf_window:
+            if not self._key_in_stats(key):
+                # In this case base_stats == own_stats
+
                 # Note that we may take a mean of means here, which is not the same as a mean of all values
                 # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
+                if len(more_stats) > 0:
+                    base_stats.merge_in_parallel(*more_stats)
+                self._set_key(key, base_stats)
+            else:
+                if len(more_stats) > 0:
+                    if len(more_stats) > 1:
+                        # There are more than one incoming parallel others -> Merge all of them
+                        # in parallel (equal importance)
+                        more_stats[0].merge_in_parallel(*more_stats[1:])
+                    # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
+                    base_stats.merge_on_time_axis(more_stats[0])
 
-                # Collect all values from all available Stats objects
-                all_values = []
-                for stat in all_stats:
-                    all_values.extend(stat.peek(compile=False))
-
-                # Create a temporary Stats object with all values to get the properly reduced value
-                temp_stats = Stats(
-                    init_values=all_values,
-                    reduce=base_stats._reduce_method,
-                    window=len(all_values),
-                    ema_coeff=None,
-                    clear_on_reduce=False,
-                    throughput=False,
-                    throughput_ema_coeff=None,
-                )
-
-                # Create new base Stats object using similar_to with the reduced value
-                base_stats = Stats.similar_to(
-                    base_stats, init_values=temp_stats.peek(compile=False)
-                )
-            elif len(more_stats) > 0:
-                # There are more than one incoming parallel others -> Merge all of them
-                # in parallel.
-                base_stats.merge_in_parallel(*more_stats)
-
-            self._set_key(key, base_stats)
+                self._set_key(key, base_stats)
 
     def log_time(
         self,

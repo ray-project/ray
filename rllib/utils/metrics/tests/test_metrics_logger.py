@@ -216,8 +216,9 @@ def test_merge_and_log_n_dicts(logger):
 
     # Check merged results
     # This may seem counterintuitive, because mean(0.1, 0.2, 0.3, 0.4, 0.5, 0.6) = 0.35.
-    # We expect mean(0.2, 0.4, 0.6) = 0.4 here because when using windows, we merge in parallel.
-    check(logger.peek("loss"), 0.4, rtol=0.01)
+    # However, we are aggregating in logger, so values from logger1 and logger2 are merged in parallel and are given priority over already existing values in logger.
+    # Therefore, mean(0.2, 0.4) = 0.3
+    check(logger.peek("loss"), 0.3, rtol=0.01)
 
 
 def test_throughput_tracking(logger):
@@ -582,9 +583,7 @@ def test_hierarchical_metrics_system():
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1 aggregation
-    check(
-        node_a.peek("mean_metric"), 1.01
-    )  # Mean of [1.0, 2.0] calculated with ema coefficient
+    check(node_a.peek("mean_metric"), 1.5)  # Mean of [1.0, 2.0]
     check(
         node_a.peek("window_mean"), 30.0
     )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * num_values] = [mean([20.0, 40.0]) * 2] = [30.0, 30.0]
@@ -592,16 +591,12 @@ def test_hierarchical_metrics_system():
     check(node_a.peek("max_value"), 200)  # Max of [100, 200]
     check(node_a.peek("lifetime_sum"), 15)  # Sum of [5, 10]
     check(node_a.peek("regular_sum"), 3)  # Sum of [1, 2]
-    check(
-        node_a.peek(["nested", "mean"]), 1.01
-    )  # Mean of [1.0, 2.0] calculated with ema coefficient
+    check(node_a.peek(["nested", "mean"]), 1.5)  # Mean of [1.0, 2.0]
     check(node_a.peek(["nested", "sum"]), 30)  # Sum of [10, 20]
     check(node_a.peek(["nested", "lifetime"]), 300)  # Sum of [100, 200]
     check(node_a.peek(["deeply", "nested", "metric"]), 3)  # Sum of [1, 2]
 
-    check(
-        node_b.peek("mean_metric"), 3.01
-    )  # Mean of [3.0, 4.0] calculated with ema coefficient
+    check(node_b.peek("mean_metric"), 3.5)  # Mean of [3.0, 4.0]
     check(
         node_b.peek("window_mean"), 70.0
     )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([60.0, 80.0]) * 2] = [70.0, 70.0]
@@ -623,9 +618,7 @@ def test_hierarchical_metrics_system():
     root.merge_and_log_n_dicts([results_a, results_b])
 
     # Verify root aggregation from first round
-    check(
-        root.peek("mean_metric"), 1.03
-    )  # Mean of [1.01, 3.01] calculated with ema coefficient
+    check(root.peek("mean_metric"), 2.5)  # Mean of [1.5, 3.5]
     check(
         root.peek("window_mean"), 50.0
     )  # Mean of windowed stats merged in parallel. In this case: [mean(values) * len(values)] = [mean([30.0, 70.0]) * 2] = [50.0, 50.0]
@@ -633,9 +626,7 @@ def test_hierarchical_metrics_system():
     check(root.peek("max_value"), 400)  # Max of [200, 400]
     check(root.peek("lifetime_sum"), 50)  # Sum of [15, 35]
     check(root.peek("regular_sum"), 10)  # Sum of [3, 7]
-    check(
-        root.peek(["nested", "mean"]), 1.03
-    )  # Mean of [1.01, 3.01] calculated with ema coefficient
+    check(root.peek(["nested", "mean"]), 2.5)  # Mean of [1.5, 3.5]
     check(root.peek(["nested", "sum"]), 100)  # Sum of [30, 70]
     check(root.peek(["nested", "lifetime"]), 1000)  # Sum of [300, 700]
     check(root.peek(["deeply", "nested", "metric"]), 10)  # Sum of [3, 7]
@@ -721,9 +712,7 @@ def test_hierarchical_metrics_system():
     node_b.merge_and_log_n_dicts([results_b1, results_b2])
 
     # Verify level 1
-    check(
-        node_a.peek("ema_metric"), 1.3
-    )  # Mean of [1.1, 3.1] calculated with ema coefficient
+    check(node_a.peek("ema_metric"), 2.1)  # Mean of [1.1, 3.1]
     # Mean of windowed stats merged in parallel.
     # In this case: [mean(values_1) * len(values_1)] + [mean(values_2) * len(values_2)] = [mean([80, 40]) * 2] + [mean([70, 30]) * 2] = [60, 60, 50, 50]
     # Since window is 3, we take the first 3 values from the list, which are [60, 60, 50].
@@ -742,7 +731,7 @@ def test_hierarchical_metrics_system():
     check("window3_metric" in root.stats, True)
 
     # Root should have correct values
-    check(root.peek("ema_metric"), 1.3)  # Only from node_a
+    check(root.peek("ema_metric"), 2.1)  # Only from node_a
     check(root.peek("window3_metric"), (60 + 60 + 50) / 3)  # Only from node_b
 
     # Lifetime metrics should still be accumulating only at root
