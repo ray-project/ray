@@ -10,10 +10,8 @@ This page introduces the core capabilities of Ray Data and includes examples of 
 * :ref:`Consuming data <consuming_key_concept>`
 * :ref:`Saving data <saving_key_concept>`
 
-
-
 What is Ray Data?
-=================
+-----------------
 
 Ray Data is the Ray AI Library for loading, transforming, consuming, and saving data.
 
@@ -27,7 +25,7 @@ The follow diagram provides a high-level view of the Ray framework:
 
 
 Common Ray Data tasks
-=====================
+---------------------
 
 Ray Data contains operators that focus on the following key tasks:
 
@@ -102,16 +100,15 @@ For an overview of creating Dataset from other sources, including Python data st
 Transform data
 --------------
 
-You define transformations using user-defined functions (UDFs) and 
-
- to individual rows or batches of data. 
+You define transformations using user-defined functions (UDFs) and apply them to Datasets using operators including :meth:`ray.data.Dataset.map_batches`, :meth:`ray.data.Dataset.map`, and :meth:`ray.data.Dataset.flat_map`.
 
 You write UDFs using Python. The following are examples of UDFs you might use as transformations:
-- Arbitrary Python logic.
-- ML model predictions.
-- NumPy calculations.
-- pandas operations.
-- PyArrow operations.
+
+* Arbitrary Python logic.
+* ML model predictions.
+* NumPy calculations.
+* pandas operations.
+* PyArrow operations.
 
 Ray automatically optimizes these transformations for parallel and concurrent execution, allowing you to easily scale to large datasets.
 
@@ -159,9 +156,9 @@ To explore more transformation capabilities, read :ref:`Transforming data <trans
 Consume data
 ------------
 
-You consume 
+Data consumption operators materialize results in preparation to write data to disk, convert it to a different framework, or interact with Dataset contents using other Python or Ray logic.
 
-Access Dataset contents through convenient methods like :meth:`~ray.data.Dataset.take_batch` and  :meth:`~ray.data.Dataset.iter_batches`. You can also pass Datasets directly to Ray Tasks or Actors for distributed processing.
+The following code example uses :meth:`~ray.data.Dataset.take_batch` to consume a batch of data and prints the contents:
 
 .. testcode::
 
@@ -185,8 +182,9 @@ For more details on working with Dataset contents, see :ref:`iterating-over-data
 Save data
 ---------
 
-Export processed datasets to a variety of formats and storage locations using methods
-such as :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_csv`.
+When you save data, Ray Data materializes results to write data files in the specified format.
+
+The following code example uses :meth:`~ray.data.Dataset.write_parquet` to save results using Parquet:
 
 .. testcode::
     :hide:
@@ -212,45 +210,3 @@ such as :meth:`~ray.data.Dataset.write_parquet`, :meth:`~ray.data.Dataset.write_
 
 
 For more information on saving datasets, see :ref:`saving-data`.
-
-
-.. _etl_example:
-
-ETL with Ray Data
------------------
-
-The following code example loads CSV data from S3, applies a data transformation to calculate a new field, and saves results using Parquet. 
-
-
-
-.. testcode::
-    :hide:
-
-    # The number of blocks can be non-determinstic. Repartition the dataset beforehand
-    # so that the number of written files is consistent.
-    transformed_ds = transformed_ds.repartition(2)
-
-.. testcode::
-
-    import os
-
-    # Save the transformed dataset as Parquet files
-    transformed_ds.write_parquet("/tmp/iris")
-
-    # Verify the files were created
-    print(os.listdir("/tmp/iris"))
-
-.. testoutput::
-    :options: +MOCK
-
-    ['..._000000.parquet', '..._000001.parquet']
-
-.. _preprocessing_example:
-
-Data preprocessing with Ray Data
---------------------------------
-
-The following code example loads CSV data from S3, applies a data transformation to calculate a new field, and returns the result as the Python variable `train_dataset`.
-
-
-

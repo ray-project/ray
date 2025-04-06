@@ -1,6 +1,5 @@
 .. _data_key_concepts:
 
-============================
 Ray Data conceptual overview
 ============================
 
@@ -10,17 +9,8 @@ This page assumes familiarity with the use cases and core functionality of Ray D
 
 For specific recommendations on optimizing Ray Data workloads, see :ref:`data_performance_tips`.
 
-What is Ray Data?
-=================
-
-
-
-
-
-
-
 Ray Data key concepts
-=====================
+---------------------
 
 The following table provides descriptions for the key concepts of Ray Data:
 
@@ -40,40 +30,17 @@ The following table provides descriptions for the key concepts of Ray Data:
 | Physical plan             | The final stage of planning in Ray Data, representing how the program runs. Physical operators manipulate references to data and map logic to tasks and actors.                                |
 +---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
-
-
 How does Ray Data work?
-=======================
+-----------------------
 
 Ray Data provides a framework of operators that abstract Ray Core primitives to simplify programming Ray workloads and optimize planning and execution for common ML data processing tasks. 
 
-
-
-
-
-
-
-
-
-
-
-Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core primitives. 
+Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core task, actors, and objects. 
 
 
 
 Ray Train is optimized to work on Ray Datasets. See :ref:`streaming-execution`. 
 
-
-What is a Ray Dataset?
-======================
-
-Ray :class:`~ray.data.Dataset` is the primary 
-
-
-
-When you write a program using the Dataset API 
-
-Ray Data operations are abstractions of Ray Core task, actors, and objects. Ray Data is able to optimize how your program resolves over two stages of planning.
 
 Logical planning
 ---
@@ -86,7 +53,7 @@ Phyiscal planning
 
 
 How does Ray Data distribute data?
-==================================
+----------------------------------
 
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 
@@ -106,7 +73,7 @@ This model is optimized to See :ref:`streaming-execution`.
 .. _dataset_conceptual:
 
 What is a Ray Dataset?
-======================
+----------------------
 
 Use Datasets to interact with data. The following are examples
 
@@ -123,7 +90,7 @@ like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execut
 and execute operations in a pipelined streaming fashion.
 
 What does a block represent in Ray?
-===================================
+-----------------------------------
 
 Ray Data uses _blocks_ to represent subsets of data in a Dataset. Most users of Ray Data 
 
@@ -137,11 +104,17 @@ Blocks have the following characteristics:
 If you're troubleshooting or optimizing Ray Data workloads, consider the following details and special cases:
 
 * The number of row or records in a block varies base on the size of each record. Most blocks are between 1 MiB and 128 MiB.
+  
   * Ray automatically splits blocks into smaller blocks if they exceed the max block size by 50% or more.
+  
   * A block might only contain a single record if your data is very wide or contains a large record such as an image, vector, or tensor. Ray Data has built-in optimizations for handling large data efficiently, and you should test workloads with built-in defaults before trying to manually optimize your workload.
+  
   * You can configure block size and splitting behaviors. See :ref:`block_size`.
+
 * Ray uses `Arrow tables <https://arrow.apache.org/docs/cpp/tables.html>`_ to internally represent blocks of data.
+  
   * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See `Arrow and pandas type differences <https://arrow.apache.org/docs/python/pandas.html#type-differences>`_.
+  
   * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
 
 
@@ -149,7 +122,7 @@ If you're troubleshooting or optimizing Ray Data workloads, consider the followi
 .. _plans:
 
 How does Ray Data plan and run operations?
-==============================================
+----------------------------------------------
 
 Ray Data uses a two-phase planning process to execute operations efficiently. 
 
@@ -225,7 +198,7 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 .. _streaming-execution:
 
 Process large datasets as streams
-=================================
+---------------------------------
 
 Ray Data uses a *streaming execution model* to efficiently process large datasets. With streaming execution, Ray processes data in a streaming fashion through a pipeline of operations rather than materializing the entire dataset in memory at once. 
 
@@ -267,7 +240,7 @@ You can read more about the streaming execution model in this `blog post <https:
 
 
 Streaming execution example
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a simple code example that demonstrates the streaming execution model. This example loads CSV data, applies a series of map and filter transformations, and then calls the ``show`` action to trigger the pipeline:
 

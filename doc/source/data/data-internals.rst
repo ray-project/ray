@@ -1,6 +1,5 @@
 .. _datasets_scheduling:
 
-==================
 Ray Data internals
 ==================
 
@@ -18,13 +17,13 @@ The intended audience is advanced users, Ray contributors, and Ray Data develope
 .. _dataset_concept:
 
 How does Ray 
-==============================
+------------------------------
 
 
 
 
 Operators
----------
+~~~~~~~~~
 
 There are two types of operators: *logical operators* and *physical operators*. Logical
 operators are stateless objects that describe “what” to do. Physical operators are
@@ -32,7 +31,7 @@ stateful objects that describe “how” to do it. An example of a logical opera
 ``ReadOp``, and an example of a physical operator is ``TaskPoolMapOperator``.
 
 Plans
------
+~~~~~
 
 A *logical plan* is a series of logical operators, and a *physical plan* is a series of
 physical operators. When you call APIs like :func:`ray.data.read_images` and
@@ -40,7 +39,7 @@ physical operators. When you call APIs like :func:`ray.data.read_images` and
 starts, the planner generates a corresponding physical plan.
 
 The planner
------------
+~~~~~~~~~~~
 
 The Ray Data planner translates logical operators to one or more physical operators. For
 example, the planner translates the ``ReadOp`` logical operator into two physical
@@ -49,7 +48,7 @@ logical operator only describes the input data, the ``TaskPoolMapOperator`` phys
 operator actually launches tasks to read the data.
 
 Plan optimization
------------------
+~~~~~~~~~~~~~~~~~
 
 Ray Data applies optimizations to both logical and physical plans. For example, the
 ``OperatorFusionRule`` combines a chain of physical map operators into a single map
@@ -70,7 +69,7 @@ To add custom optimization rules, implement a class that extends ``Rule`` and co
     ray.data._internal.logical.optimizers.DEFAULT_LOGICAL_RULES.append(CustomRule)
 
 Types of physical operators
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Physical operators take in a stream of block references and output another stream of
 block references. Some physical operators launch Ray Tasks and Actors to transform
@@ -84,10 +83,10 @@ Non-map operators include ``OutputSplitter`` and ``LimitOperator``. These two op
 manipulate references to data, but don’t launch tasks or modify the underlying data.
 
 Execution
-=========
+---------
 
 The executor
-------------
+~~~~~~~~~~~~
 
 The *executor* schedules tasks and moves data between physical operators.
 
@@ -101,7 +100,7 @@ stored in Ray’s distributed object store. The executor manipulates references 
 objects, and doesn’t fetch the underlying data itself to the executor.
 
 Out queues
-----------
+~~~~~~~~~~
 
 Each physical operator has an associated *out queue*. When a physical operator produces
 outputs, the executor moves the outputs to the operator’s out queue.
@@ -109,7 +108,7 @@ outputs, the executor moves the outputs to the operator’s out queue.
 .. _streaming_execution:
 
 Streaming execution
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 In contrast to bulk synchronous execution, Ray Data’s streaming execution doesn’t wait
 for one operator to complete to start the next. Each operator takes in and outputs a
@@ -117,7 +116,7 @@ stream of blocks. This approach allows you to process datasets that are too larg
 in your cluster’s memory.
 
 The scheduling loop
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 The executor runs a loop. Each step works like this:
 
@@ -139,7 +138,7 @@ If there are multiple viable operators, the executor chooses the operator with t
 smallest out queue.
 
 Scheduling
-==========
+----------
 
 Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
@@ -152,7 +151,7 @@ Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling
 .. _datasets_pg:
 
 Ray Data and placement groups
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
 :class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
@@ -163,12 +162,12 @@ Consider this override only for advanced use cases to improve performance predic
 
 
 Memory Management
-=================
+-----------------
 
 This section describes how Ray Data manages execution and object store memory.
 
 Execution Memory
-----------------
+~~~~~~~~~~~~~~~~
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory errors.
@@ -176,7 +175,7 @@ Ray caps object store memory usage by spilling to disk, but excessive worker hea
 For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_memory>`.
 
 Object Store Memory
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 Ray Data uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
 

@@ -8,7 +8,7 @@ The following tutorials provide runnable code examples for common Ray Data appli
 
 * For an introduction to Ray Data, see :ref:`data_quickstart`.
 * For syntax examples for common use cases, see :ref:`data_user_guide`.
-* For end-to-end examples of applications using Ray Data, see :ref:`Ray Data examples</data/examples>`.
+* For end-to-end examples of applications using Ray Data, see :doc:`Ray Data examples</data/examples>`.
 
 .. toctree::
     :maxdepth: 1
