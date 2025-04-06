@@ -1,8 +1,9 @@
 """The HTTP request processor."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 from pydantic import Field
+from aiohttp import ClientSession
 
 from ray.data.block import UserDefinedFunction
 
@@ -39,6 +40,18 @@ class HttpRequestProcessorConfig(ProcessorConfig):
         description="The maximum number of requests per second to avoid rate limit. "
         "If None, the request will be sent sequentially.",
     )
+    max_retries: int = Field(
+        default=0,
+        description="The maximum number of retries per request in the event of failures.",
+    )
+    base_retry_wait_time_in_s: float = Field(
+        default=1,
+        description="The base wait time for a retry during exponential backoff.",
+    )
+    session_factory: Optional[Callable[[], ClientSession]] = Field(
+        default=None,
+        description="Optional session factory to be used for initializing a client session. ",
+    )
 
 
 def build_http_request_processor(
@@ -65,6 +78,8 @@ def build_http_request_processor(
                 url=config.url,
                 additional_header=config.headers,
                 qps=config.qps,
+                max_retries=config.max_retries,
+                base_retry_wait_time_in_s=config.base_retry_wait_time_in_s,
             ),
             map_batches_kwargs=dict(
                 concurrency=config.concurrency,

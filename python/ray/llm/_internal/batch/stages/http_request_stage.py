@@ -3,13 +3,17 @@
 import aiohttp
 import asyncio
 import time
+import aiohttp.web_exceptions
 import numpy as np
-from typing import Any, Dict, AsyncIterator, Optional, List, Type
+from typing import Any, Dict, AsyncIterator, Optional, List, Type, Callable
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
 
 class HttpRequestUDF(StatefulStageUDF):
+
+    RETRYABLE_STATUS_CODES = [429, 408, 504, 502, 503]
+
     def __init__(
         self,
         data_column: str,
@@ -17,6 +21,9 @@ class HttpRequestUDF(StatefulStageUDF):
         url: str,
         additional_header: Optional[Dict[str, Any]] = None,
         qps: Optional[int] = None,
+        max_retries: int = 0,
+        base_retry_wait_time_in_s: float = 1.0,
+        session_factory: Optional[Callable[[], aiohttp.ClientSession]] = None,
     ):
         """
         Initialize the HttpRequestUDF.
@@ -27,11 +34,17 @@ class HttpRequestUDF(StatefulStageUDF):
             url: The URL to send the HTTP request to.
             additional_header: The additional headers to send with the HTTP request.
             qps: The maximum number of requests per second.
+            max_retries: The maximum number of retries per request in the event of failures. We retry with exponential backoff upto this specific maximum retries.
+            base_retry_wait_time_in_s: The base retry wait time during exponential backoff.
+            session_factory: Optional session factory to be used for initializing a client session.
         """
         super().__init__(data_column, expected_input_keys)
         self.url = url
         self.additional_header = additional_header or {}
         self.qps = qps
+        self.max_retries = max_retries
+        self.base_retry_wait_time_in_s = base_retry_wait_time_in_s
+        self.session_factory = session_factory or aiohttp.ClientSession
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -43,7 +56,18 @@ class HttpRequestUDF(StatefulStageUDF):
         Yields:
             A generator of rows of the response of the HTTP request.
         """
-        async with aiohttp.ClientSession() as session:
+        # preprocess to get request body for the given batch
+        request_bodies = []
+        for row in batch:
+            # Normalize the row to a JSON body.
+            json_body = {}
+            for key, value in row["payload"].items():
+                if isinstance(value, np.ndarray):
+                    json_body[key] = value.tolist()
+                else:
+                    json_body[key] = value
+            request_bodies.append(json_body)
+        async with self.session_factory() as session:
             start_time = time.time()
             request_count = 0
             pending_requests = []
@@ -53,44 +77,74 @@ class HttpRequestUDF(StatefulStageUDF):
             }
 
             # First send all requests based on QPS
-            for row in batch:
+            for row_idx_in_list, row in enumerate(batch):
+                print(f"HEREERERE: {self.qps}")
                 # Rate limit based on qps if specified
                 if self.qps is not None:
+                    print("INSIDE")
                     request_count += 1
                     expected_time = request_count / self.qps
                     elapsed = time.time() - start_time
                     if elapsed < expected_time:
                         await asyncio.sleep(expected_time - elapsed)
-
-                # Normalize the row to a JSON body.
-                json_body = {}
-                for key, value in row["payload"].items():
-                    if isinstance(value, np.ndarray):
-                        json_body[key] = value.tolist()
-                    else:
-                        json_body[key] = value
-
+                json_body = request_bodies[row_idx_in_list]
                 # Create request but don't await it yet
                 request = session.post(
                     self.url,
                     headers=headers,
                     json=json_body,
                 )
-                pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
+                pending_requests.append(
+                    (row[self.IDX_IN_BATCH_COLUMN], row_idx_in_list, request)
+                )
 
             # Now receive all responses
-            for idx_in_batch, request in pending_requests:
-                async with await request as response:
-                    resp_json = await response.json()
-                    if self.IDX_IN_BATCH_COLUMN in resp_json:
-                        raise ValueError(
-                            "The response of the HTTP request must not contain "
-                            f"the column {self.IDX_IN_BATCH_COLUMN}."
+            for idx_in_batch_column, row_idx_in_list, request in pending_requests:
+                resp_json = None
+                last_exception = None
+                for retry_count in range(self.max_retries + 1):
+                    if retry_count > 0:
+                        json_body = request_bodies[row_idx_in_list]
+                        request = session.post(
+                            self.url,
+                            headers=headers,
+                            json=json_body,
                         )
-                    yield {
-                        self.IDX_IN_BATCH_COLUMN: idx_in_batch,
-                        "http_response": resp_json,
-                    }
+                    try:
+                        async with await request as response:
+                            status_code = response.status
+                            # check status and see if it's retry worthy
+                            if status_code in self.RETRYABLE_STATUS_CODES:
+                                last_exception = aiohttp.web_exceptions.HTTPException(
+                                    reason=response.reason
+                                )
+                                last_exception.status_code = status_code
+                                wait_time = self.base_retry_wait_time_in_s * (
+                                    2**retry_count
+                                )
+                                await asyncio.sleep(wait_time)
+                                continue
+                            resp_json = await response.json()
+                            print(f"json : {resp_json}")
+                            if self.IDX_IN_BATCH_COLUMN in resp_json:
+                                raise ValueError(
+                                    "The response of the HTTP request must not contain "
+                                    f"the column {self.IDX_IN_BATCH_COLUMN}."
+                                )
+                        break
+                    except (asyncio.TimeoutError, aiohttp.ClientConnectionError) as e:
+                        last_exception = e
+                        wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
+                        await asyncio.sleep(wait_time)
+                        continue
+                if not resp_json:
+                    raise RuntimeError(
+                        f"Reached maximum retries of {self.max_retries} for input row {batch[row_idx_in_list]}. Previous Exception: {last_exception}"
+                    )
+                yield {
+                    self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,
+                    "http_response": resp_json,
+                }
 
 
 class HttpRequestStage(StatefulStage):
