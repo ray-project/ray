@@ -310,7 +310,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "test_basic.py",
         "test_basic_2.py",
