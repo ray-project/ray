@@ -81,6 +81,7 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "ray/common/cgroup/cgroup_macros.h"
 #include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/cgroup/constants.h"
+#include "ray/common/status_or.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
@@ -160,22 +161,12 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
 
 Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
-  std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
-  RAY_SCHECK_OK_CGROUP(in_file.good())
-      << "Failed to open cgroup file " << subtree_control_path;
-
-  std::string content((std::istreambuf_iterator<char>(in_file)),
-                      std::istreambuf_iterator<char>());
+  RAY_ASSIGN_OR_RETURN(const auto content, ReadEntireFile(subtree_control_path));
   std::string_view content_sv{content};
   absl::ConsumeSuffix(&content_sv, "\n");
-  RAY_LOG(ERROR) << "In subtree control file " << subtree_control_path
-                 << ", file content = |" << content_sv << "|";
 
   const std::vector<std::string_view> enabled_subtree_controllers =
       absl::StrSplit(content_sv, ' ');
-  for (auto cur : enabled_subtree_controllers) {
-    RAY_LOG(ERROR) << "Enable subtree control: |" << cur << "|";
-  }
   for (const auto &cur_controller : kRequiredControllers) {
     if (std::find(enabled_subtree_controllers.begin(),
                   enabled_subtree_controllers.end(),

@@ -15,6 +15,8 @@ ray_cc_library(
         ":cgroup_utils",
         ":constants",
         "//src/ray/common:macros",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
         "//src/ray/util",
         "//src/ray/util:invoke_once_token",
         "@com_google_absl//absl/strings:str_format",
