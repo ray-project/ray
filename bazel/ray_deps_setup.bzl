@@ -378,3 +378,9 @@ def ray_deps_setup():
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
     )
+
+    git_repository(
+        name = "benchmark",
+        remote = "https://github.com/google/benchmark",
+        tag = "v1.9.1", # Release date: 2024/Nov/28
+    )

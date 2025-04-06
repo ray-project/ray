@@ -81,6 +81,7 @@ Status KillAllProcAndWait(const std::string &cgroup_folder) {
   }
 
   BlockWaitProcExit(existing_pids);
+  RAY_CHECK(GetAllPidsForCgroup(cgroup_folder).empty());
   return Status::OK();
 }
 
