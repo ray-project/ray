@@ -49,15 +49,11 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.logical.operators.from_operators import (
-    FromArrow,
-    FromBlocks,
-    FromItems,
-    FromNumpy,
-    FromPandas,
-)
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.from_blocks_operator import FromBlocks
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -129,14 +125,13 @@ def from_blocks(blocks: List[Block]):
     Returns:
         A :class:`~ray.data.Dataset` holding the blocks.
     """
-    block_refs = [ray.put(block) for block in blocks]
     metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
-    from_blocks_op = FromBlocks(block_refs, metadata)
+    from_blocks_op = FromBlocks(blocks, metadata)
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
     )
     logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
-    return MaterializedDataset(
+    return Dataset(
         execution_plan,
         logical_plan,
     )
@@ -158,7 +153,7 @@ def from_items(
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5])
         >>> ds
-        MaterializedDataset(num_blocks=..., num_rows=5, schema={item: int64})
+        Dataset(num_blocks=..., num_rows=5, schema={item: int64})
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -209,17 +204,17 @@ def from_items(
                 item = {"item": item}
             builder.add(item)
         block = builder.build()
-        blocks.append(ray.put(block))
+        blocks.append(block)
         metadata.append(
             BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         )
 
-    from_items_op = FromItems(blocks, metadata)
+    from_items_op = FromBlocks(blocks, metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)
-    return MaterializedDataset(
+    return Dataset(
         execution_plan,
         logical_plan,
     )
@@ -2767,26 +2762,23 @@ def from_pandas_refs(
 
     context = DataContext.get_current()
     if context.enable_pandas_block:
+        block_refs = dfs
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
-        )
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+    else:
+        df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
+        res = [df_to_block.remote(df) for df in dfs]
+        block_refs, metadata = map(list, zip(*res))
+        metadata = ray.get(metadata)
 
-    df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
-
-    res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata = map(list, zip(*res))
-    metadata = ray.get(metadata)
+    bundles = [
+        RefBundle((block_ref, metadata), owns_blocks=False)
+        for block_ref, metadata in zip(block_refs, metadata)
+    ]
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        DatasetStats(metadata={"InputData": metadata}, parent=None)
     )
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(InputData(bundles), execution_plan._context)
     return MaterializedDataset(
         execution_plan,
         logical_plan,
@@ -2865,13 +2857,17 @@ def from_numpy_refs(
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
-    blocks, metadata = map(list, zip(*res))
+    block_refs, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+    bundles = [
+        RefBundle((block_ref, metadata), owns_blocks=False)
+        for block_ref, metadata in zip(block_refs, metadata)
+    ]
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+        DatasetStats(metadata={"InputData": metadata}, parent=None)
     )
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
+    logical_plan = LogicalPlan(InputData(bundles), execution_plan._context)
 
     return MaterializedDataset(
         execution_plan,
@@ -2948,9 +2944,13 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+        DatasetStats(metadata={"InputData": metadata}, parent=None)
     )
-    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
+    bundles = [
+        RefBundle((block_ref, metadata), owns_blocks=False)
+        for block_ref, metadata in zip(tables, metadata)
+    ]
+    logical_plan = LogicalPlan(InputData(bundles), execution_plan._context)
 
     return MaterializedDataset(
         execution_plan,

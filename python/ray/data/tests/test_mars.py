@@ -74,12 +74,6 @@ def test_from_mars_e2e(ray_start_regular):
     assert len(ds.take_all()) == len(df)
     pd.testing.assert_frame_equal(ds.to_pandas(), df.to_pandas())
 
-    # Check that metadata fetch is included in stats.
-    assert "FromPandas" in ds.stats()
-    # Underlying Mars implementation uses `FromPandas` operator
-    assert ds._plan._logical_plan.dag.name == "FromPandas"
-    _check_usage_record(["FromPandas"])
-
     ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
     assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
     assert "Filter" in ds2.stats()
@@ -91,8 +85,6 @@ def test_from_mars_e2e(ray_start_regular):
         df2.head(5).to_pandas(),
         pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
     )
-    _check_usage_record(["Filter", "FromPandas"])
-
     # Test Arrow Dataset
     pdf2 = pd.DataFrame({c: range(5) for c in "abc"})
     ds3 = ray.data.from_arrow([pa.Table.from_pandas(pdf2) for _ in range(3)])
@@ -102,9 +94,6 @@ def test_from_mars_e2e(ray_start_regular):
         df3.head(5).to_pandas(),
         pdf2,
     )
-    assert "FromArrow" in ds3.stats()
-    assert ds3._plan._logical_plan.dag.name == "FromArrow"
-    _check_usage_record(["FromArrow"])
 
     cluster.stop()
 

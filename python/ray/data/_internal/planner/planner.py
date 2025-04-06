@@ -40,7 +40,7 @@ def _register_default_plan_logical_op_fns():
         AbstractAllToAll,
     )
     from ray.data._internal.logical.operators.count_operator import Count
-    from ray.data._internal.logical.operators.from_operators import AbstractFrom
+    from ray.data._internal.logical.operators.from_blocks_operator import FromBlocks
     from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import (
         AbstractUDFMap,
@@ -53,6 +53,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.read_operator import Read
     from ray.data._internal.logical.operators.write_operator import Write
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+    from ray.data._internal.planner.plan_from_op import plan_from_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
     from ray.data._internal.planner.plan_udf_map_op import (
         plan_filter_op,
@@ -80,16 +81,7 @@ def _register_default_plan_logical_op_fns():
 
     register_plan_logical_op_fn(InputData, plan_input_data_op)
     register_plan_logical_op_fn(Write, plan_write_op)
-
-    def plan_from_op(
-        op: AbstractFrom,
-        physical_children: List[PhysicalOperator],
-        data_context: DataContext,
-    ) -> PhysicalOperator:
-        assert len(physical_children) == 0
-        return InputDataBuffer(data_context, op.input_data)
-
-    register_plan_logical_op_fn(AbstractFrom, plan_from_op)
+    register_plan_logical_op_fn(FromBlocks, plan_from_op)
     # Filter is also a AbstractUDFMap, so it needs to resolve
     # before the AbstractUDFMap plan
     # TODO(rliaw): Break up plan_udf_map_op
