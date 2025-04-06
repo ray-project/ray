@@ -42,7 +42,6 @@ class DashboardAgent:
         temp_dir: str,
         session_dir: str,
         logging_params: dict,
-        agent_id: int,
         session_name: str,
     ):
         """Initialize the DashboardAgent object."""
@@ -66,7 +65,6 @@ class DashboardAgent:
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
-        self.agent_id = agent_id
         self.session_name = session_name
 
         # grpc server is None in mininal.
@@ -253,7 +251,7 @@ def get_capture_filepaths(log_dir):
     log_dir:
         Logging directory to place output and error logs.
     """
-    filename = f"agent-{args.agent_id}"
+    filename = "dashboard_agent"
     return (
         f"{log_dir}/{filename}.out",
         f"{log_dir}/{filename}.err",
@@ -390,13 +388,6 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
-        "--agent-id",
-        required=True,
-        type=int,
-        help="ID to report when registering with raylet",
-        default=os.getpid(),
-    )
-    parser.add_argument(
         "--session-name",
         required=False,
         type=str,
@@ -454,7 +445,6 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
-            agent_id=args.agent_id,
             session_name=args.session_name,
         )
 
