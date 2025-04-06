@@ -348,7 +348,7 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
 
         logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
         # Expect the throughput to be roughly 10/sec now.
-        print(logger.get_throughputs"lifetime_count"))
+        print(logger.get_throughputs("lifetime_count"))
 
         # You can also get a dict of all throughputs at once:
         print(logger.get_throughputs))
