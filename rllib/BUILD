@@ -2819,16 +2819,22 @@ py_test(
 # Test metrics (metrics logger, stats)
 py_test(
     name = "test_metrics_logger",
-    tags = ["team:rllib", "utils"],
     size = "small",
-    srcs = ["utils/metrics/tests/test_metrics_logger.py"]
+    srcs = ["utils/metrics/tests/test_metrics_logger.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
 )
 
 py_test(
     name = "test_stats",
-    tags = ["team:rllib", "utils"],
     size = "small",
-    srcs = ["utils/metrics/tests/test_stats.py"]
+    srcs = ["utils/metrics/tests/test_stats.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
 )
 
 # @OldAPIStack
