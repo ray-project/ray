@@ -15,6 +15,8 @@ The intended audience is advanced users, Ray contributors, and Ray Data develope
 * For a conceptual overview of Ray Data, see :ref:`How does Ray Data work?<data_key_concepts>`.
 * For recommendations on optimizing Ray Data workloads, see :ref:`Performance tips and tuning<data_performance_tips>`.
 
+.. _dataset_concept:
+
 How does Ray 
 ==============================
 
