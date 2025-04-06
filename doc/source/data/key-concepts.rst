@@ -35,20 +35,36 @@ How does Ray Data work?
 
 Ray Data provides a framework of operators that abstract Ray Core primitives to simplify programming Ray workloads and optimize planning and execution for common ML data processing tasks. 
 
-Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core task, actors, and objects. 
+You write programs using Dataset operators
 
+Ray Data optimizes data processing for ML by planning and executing operations as concurrent stages using parallel processing, referred to as the *streaming execution model*.
 
+With streaming execution, Ray processes data in a streaming fashion through a pipeline of operations rather than materializing the entire dataset in memory at once. 
+
+Ray Data 
+
+The following is 
+
+#. The user defines the workload using Datasets.
+#. Ray Data translates the workload to a logical plan.
+#. During execution, the planner translates the logical plan to a physical plan, optimizing at each step.
+#. The physical plan represents each operator as a stage in a pipeline.
+#. Each stage has an input queue of blocks of data to process.
+#. Each stage writes results as blocks of data in an output queue.
+#. Output queues become input queues for the next stage in the pipeline.
+#. Each block of data is processed independently at each stage.
+#. Any stage with data present in its input queue is eligible for scheduling.
 
 Ray Train is optimized to work on Ray Datasets. See :ref:`streaming-execution`. 
 
 
-Logical planning
----
 
-During the logical planning stage, 
 
-Phyiscal planning
----
+Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core task, actors, and objects. 
+
+
+
+
 
 
 
@@ -101,6 +117,8 @@ Blocks have the following characteristics:
 * Blocks are processed in parallel and sequentially, depending on the operations present in an application.
 
 
+
+
 If you're troubleshooting or optimizing Ray Data workloads, consider the following details and special cases:
 
 * The number of row or records in a block varies base on the size of each record. Most blocks are between 1 MiB and 128 MiB.
@@ -132,19 +150,6 @@ Ray data builds a *logical plan* that represents all the
 
 The operators from your program map to *logical operators*. Logical operators
 
-+-------------------+--------------------------------------------------------------------------+
-|      Concept      |                                Definition                                |
-+===================+==========================================================================+
-| Dataset operator  | Methods in the Dataset API you use to write your program.                |
-+-------------------+--------------------------------------------------------------------------+
-| Logical operator  |                                                                          |
-+-------------------+--------------------------------------------------------------------------+
-| Logical plan      | The collection of logical operators that represents your entire program. |
-+-------------------+--------------------------------------------------------------------------+
-| Physical operator | The                                                                      |
-+-------------------+--------------------------------------------------------------------------+
-| Physical plan     | The                                                                      |
-+-------------------+--------------------------------------------------------------------------+
 
 
 
@@ -200,14 +205,7 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 Process large datasets as streams
 ---------------------------------
 
-Ray Data uses a *streaming execution model* to efficiently process large datasets. With streaming execution, Ray processes data in a streaming fashion through a pipeline of operations rather than materializing the entire dataset in memory at once. 
-
-* The physical plan represents each operator as a stage in a pipeline.
-* Each stage has an input queue of blocks of data to process.
-* Each stage writes results as blocks of data in an output queue.
-* Output queues become input queues for the next stage in the pipeline.
-* Each block of data is processed independently at each stage.
-* Any stage with data present in its input queue is eligible for scheduling.
+Ray Data uses a *streaming execution model* to efficiently process large datasets. 
 
 The streaming execution model 
 

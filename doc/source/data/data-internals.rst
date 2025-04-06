@@ -3,12 +3,7 @@
 Ray Data internals
 ==================
 
-This page provides an overview of technical implementation details of Ray Data related to the following:
-
-* 
-
-
-The intended audience is advanced users, Ray contributors, and Ray Data developers.
+This page provides an overview of technical implementation details of Ray Data. The intended audience is advanced users, Ray contributors, and Ray Data developers.
 
 * For an overview of Ray Data, see :ref:`data_quickstart`.
 * For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
