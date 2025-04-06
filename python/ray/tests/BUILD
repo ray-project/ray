@@ -310,9 +310,8 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "large",
+    size = "medium",
     files = [
-        "test_basic.py",
         "test_basic_2.py",
         "test_basic_4.py",
         "test_basic_5.py",
@@ -332,6 +331,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_basic.py",
         "test_basic_3.py",
     ],
     tags = [
