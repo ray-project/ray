@@ -107,8 +107,8 @@ class SinkMode(IntEnum):
         OVERWRITE: Drop an existing table (if any) and create a fresh table before writing.
     """
 
+    # Create a new table and fail if that table already exists.
     CREATE = 1
-    """Create a new table and fail if that table already exists."""
 
     APPEND = 2
     """Append data to an existing table, or create one if it does not exist."""
