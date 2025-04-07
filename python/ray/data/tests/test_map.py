@@ -782,6 +782,38 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
         fake_column_ds.to_pandas()
 
 
+def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
+    """Test filtering with dictionary column."""
+
+    file_path = tmp_path / "dictionary_test.parquet"
+
+    # Create the Parquet file with a dictionary column
+    dict_type = pa.dictionary(index_type=pa.int32(), value_type=pa.string())
+    dict_array = pa.array(["apple", "banana", "apple"], type=dict_type)
+    string_array = pa.array(["x", "y", "z"], type=pa.string())
+
+    table = pa.Table.from_arrays(
+        [dict_array, string_array], names=["dict_col", "str_col"]
+    )
+    pq.write_table(table, file_path)
+
+    # Read the dataset with Ray
+    ds = ray.data.read_parquet(str(file_path))
+
+    # Get schema and validate column types
+    original_schema = ds.schema().names
+
+    # Apply a trivial filter to test schema stability
+    ds_filtered = ds.filter(lambda row: True)
+    filtered_schema = ds_filtered.schema().names
+
+    # Ensure schema remains unchanged
+    assert (
+        original_schema == filtered_schema
+    ), f"Schema changed after filtering, original_schema: \
+        {original_schema}, filtered_schema:{filtered_schema} "
+
+
 def test_drop_columns(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
