@@ -355,10 +355,12 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 #pragma clang diagnostic ignored "-Wunknown-warning-option"
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wthread-safety-reference-return"
+#endif
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
 }
+#ifdef __clang__
 #pragma clang diagnostic pop
 #pragma clang diagnostic pop
 #endif
