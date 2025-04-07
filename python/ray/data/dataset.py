@@ -429,7 +429,7 @@ class Dataset:
         """Returns the user-defined dataset name"""
         return self._plan._dataset_name
 
-    def get_id(self) -> str:
+    def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
         """

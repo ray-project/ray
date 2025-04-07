@@ -1880,7 +1880,7 @@ def test_stats_manager(shutdown_only):
 
     # Clear dataset tags manually.
     for dataset in datasets:
-        dataset_tag = dataset.get_id()
+        dataset_tag = dataset.get_dataset_id()
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
         StatsManager.clear_last_execution_stats(dataset_tag)

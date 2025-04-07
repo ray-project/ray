@@ -35,4 +35,4 @@ class DataIteratorImpl(DataIterator):
         return self._base_dataset.schema()
 
     def _get_dataset_tag(self):
-        return self._base_dataset.get_id()
+        return self._base_dataset.get_dataset_id()
