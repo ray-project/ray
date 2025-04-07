@@ -14,9 +14,11 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
+#include <string>
+
 #ifndef __linux__
 namespace ray {
-CgroupSetup::CgroupSetup() {
+CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {
   RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
   RAY_UNUSED(root_cgroup_procs_filepath_);
   RAY_UNUSED(root_cgroup_subtree_control_filepath_);
@@ -26,6 +28,20 @@ CgroupSetup::CgroupSetup() {
   RAY_UNUSED(cgroup_v2_system_folder_);
   RAY_UNUSED(cgroup_v2_system_proc_filepath_);
   RAY_UNUSED(node_cgroup_v2_folder_);
+}
+CgroupSetup::CgroupSetup(const std::string &directory,
+                         const std::string &node_id,
+                         TestTag) {
+  RAY_CHECK(false) << "cgroupv2 doesn't work on non linux platform.";
+}
+CgroupSetup::~CgroupSetup() {}
+Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
+                                                const std::string &node_id) {
+  return Status::OK();
+}
+ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
+    const AppProcCgroupMetadata &ctx) {
+  return {};
 }
 Status CgroupSetup::AddSystemProcess(pid_t pid) { return Status::OK(); }
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
