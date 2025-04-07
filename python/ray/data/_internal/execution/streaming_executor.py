@@ -85,7 +85,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._last_debug_log_time = 0
 
         Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}-{self._dataset_id}"
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
