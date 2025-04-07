@@ -7,7 +7,6 @@ from typing import (
     Optional,
     Dict,
     Any,
-    Union,
 )
 import pyarrow
 import pyarrow.types as pat
