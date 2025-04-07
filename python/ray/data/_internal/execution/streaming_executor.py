@@ -220,7 +220,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
-                op.shutdown()
+                op.shutdown(force=True)
                 state.close_progress_bars()
             if exception is None:
                 for callback in get_execution_callbacks(self._data_context):

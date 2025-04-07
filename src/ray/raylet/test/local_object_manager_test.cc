@@ -14,6 +14,15 @@
 
 #include "ray/raylet/local_object_manager.h"
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -366,7 +375,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   void AssertNoLeaks() {
     // TODO(swang): Assert this for all tests.
-    ASSERT_TRUE(manager.pinned_objects_size_ == 0);
+    ASSERT_EQ(manager.pinned_objects_size_, 0);
     ASSERT_TRUE(manager.pinned_objects_.empty());
     ASSERT_TRUE(manager.spilled_objects_url_.empty());
     ASSERT_TRUE(manager.objects_pending_spill_.empty());

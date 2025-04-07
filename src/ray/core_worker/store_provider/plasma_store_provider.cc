@@ -14,9 +14,14 @@
 
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -311,7 +316,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
     for (const auto &id : remaining) {
-      if (int64_t(batch_ids.size()) == batch_size) {
+      if (static_cast<int64_t>(batch_ids.size()) == batch_size) {
         break;
       }
       batch_ids.push_back(id);
@@ -319,7 +324,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     int64_t batch_timeout =
         std::max(RayConfig::instance().get_check_signal_interval_milliseconds(),
-                 int64_t(10 * batch_ids.size()));
+                 static_cast<int64_t>(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;

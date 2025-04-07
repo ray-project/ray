@@ -300,7 +300,11 @@ class RowMapTransformFn(MapTransformFn):
         return f"RowMapTransformFn({self._row_fn})"
 
     def __eq__(self, other):
-        return isinstance(other, RowMapTransformFn) and self._row_fn == other._row_fn
+        return (
+            isinstance(other, RowMapTransformFn)
+            and self._row_fn == other._row_fn
+            and self._is_udf == other._is_udf
+        )
 
 
 class BatchMapTransformFn(MapTransformFn):
@@ -327,7 +331,9 @@ class BatchMapTransformFn(MapTransformFn):
 
     def __eq__(self, other):
         return (
-            isinstance(other, BatchMapTransformFn) and self._batch_fn == other._batch_fn
+            isinstance(other, BatchMapTransformFn)
+            and self._batch_fn == other._batch_fn
+            and self._is_udf == other._is_udf
         )
 
 
@@ -352,6 +358,7 @@ class RowToBlockMapTransformFn(MapTransformFn):
         return (
             isinstance(other, RowToBlockMapTransformFn)
             and self._transform_fn == other._transform_fn
+            and self._is_udf == other._is_udf
         )
 
 

@@ -45,7 +45,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/usage_stats_enabled")
         async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched usage stats enabled",
                 usage_stats_enabled=self.usage_stats_enabled,
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
@@ -54,7 +54,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         @routes.get("/cluster_id")
         async def get_cluster_id(self, req) -> aiohttp.web.Response:
             return ray.dashboard.optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetched cluster id",
                 cluster_id=self.gcs_client.cluster_id.hex(),
             )
@@ -189,7 +189,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     async def periodically_report_usage(self):
         await self._report_usage_async()
 
-    async def run(self, server):
+    async def run(self):
         self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
             os.path.expanduser("~/ray_bootstrap_config.yaml")
         )

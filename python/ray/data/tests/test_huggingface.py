@@ -72,6 +72,22 @@ def test_from_huggingface_streaming(batch_format, ray_start_regular_shared):
     assert ds.count() == 355
 
 
+@pytest.mark.skipif(
+    datasets.Version(datasets.__version__) < datasets.Version("2.8.0"),
+    reason="IterableDataset.iter() added in 2.8.0",
+)
+def test_from_huggingface_dynamic_generated(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/49529
+    hfds = datasets.load_dataset(
+        "dataset-org/dream",
+        split="test",
+        streaming=True,
+        trust_remote_code=True,
+    )
+    ds = ray.data.from_huggingface(hfds)
+    ds.take(1)
+
+
 if __name__ == "__main__":
     import sys
 

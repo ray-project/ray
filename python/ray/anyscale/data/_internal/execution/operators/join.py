@@ -170,8 +170,23 @@ class JoinOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
         )
 
-    def _get_default_aggregator_num_cpus(self):
-        return self.data_context.default_join_operator_actor_num_cpus_per_partition
+    def _get_default_num_cpus_per_partition(self) -> int:
+        """
+        CPU allocation for aggregating actors of Join operator is calculated as:
+        num_cpus (per partition) = CPU budget / # partitions
+
+        Assuming:
+        - Default number of partitions: 64
+        - Total operator's CPU budget with default settings: 8 cores
+        - Number of CPUs per partition: 8 / 64 = 0.125
+
+        These CPU budgets are derived such that Ray Data pipeline could run on a
+        single node (using the default settings).
+        """
+        return 0.125
+
+    def _get_operator_num_cpus_per_partition_override(self) -> int:
+        return self.data_context.join_operator_actor_num_cpus_per_partition_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(

@@ -17,6 +17,7 @@
 #include <Python.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/util/logging.h"

@@ -23,6 +23,7 @@ try:
         TraceContextTextMapPropagator,
     )
     from opentelemetry.trace.status import Status, StatusCode
+    from opentelemetry.semconv.trace import SpanAttributes
 
 except ImportError:
     SpanProcessor = None
@@ -38,6 +39,8 @@ except ImportError:
     TraceContextTextMapPropagator = None
     get_current = None
     attach = None
+    SpanAttributes = None
+
 
 TRACE_STACK: ContextVar[List[Any]] = ContextVar("trace_stack")
 
@@ -81,24 +84,17 @@ class TraceContextManager:
             new_ctx = set_span_in_context(self.span)
             set_trace_context(new_ctx)
             _append_trace_stack(self.span)
+            set_span_name(self.trace_name)
 
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.is_tracing_enabled and self.span is not None:
-            if exc_type:
-                self.span.set_status(
-                    Status(
-                        status_code=StatusCode.ERROR,
-                        description=(
-                            f"An exception of type {exc_type} "
-                            f"occurred with message: {exc_value}"
-                        ),
-                    )
-                )
-            else:
-                self.span.set_status(Status(status_code=StatusCode.OK))
-
+            # if exc_type is not None, we have made a explicit decision
+            # to not set the span status to error. This is because
+            # errors are spans internal to Ray Serve and should not
+            # be reported as errors in the trace. They cause noise
+            # in the trace and are not meaningful to the user.
             self.span.end()
             _pop_trace_stack()
 
@@ -273,11 +269,67 @@ def get_trace_context() -> Optional[Dict[str, str]]:
     return context if context else None
 
 
-def set_span_attributes(attributes):
+def set_span_name(name: str):
+    """Set the name for the current span in context."""
+    if TRACE_STACK:
+        trace_stack = TRACE_STACK.get([])
+        if trace_stack:
+            trace_stack[-1].update_name(name)
+    # this is added specifically for Datadog tracing.
+    # See https://docs.datadoghq.com/tracing/guide/configuring-primary-operation/#opentracing
+    set_span_attributes({"resource.name": name})
+
+
+def set_rpc_span_attributes(
+    system: str = "grpc",
+    method: Optional[str] = None,
+    status_code: Optional[str] = None,
+    service: Optional[str] = None,
+):
+    """
+    Use this function to set attributes for RPC spans.
+    Only include attributes that are in the OpenTelemetry
+    RPC span attributes spec https://opentelemetry.io/docs/specs/semconv/attributes-registry/rpc/.
+    """
+    if not is_tracing_enabled():
+        return
+    attributes = {
+        SpanAttributes.RPC_SYSTEM: system,
+        SpanAttributes.RPC_METHOD: method,
+        SpanAttributes.RPC_GRPC_STATUS_CODE: status_code,
+        SpanAttributes.RPC_SERVICE: service,
+    }
+    set_span_attributes(attributes)
+
+
+def set_http_span_attributes(
+    method: Optional[str] = None,
+    status_code: Optional[str] = None,
+    route: Optional[str] = None,
+):
+    """
+    Use this function to set attributes for HTTP spans.
+    Only include attributes that are in the OpenTelemetry
+    HTTP span attributes spec https://opentelemetry.io/docs/specs/semconv/attributes-registry/http/.
+    """
+    if not is_tracing_enabled():
+        return
+    attributes = {
+        SpanAttributes.HTTP_METHOD: method,
+        SpanAttributes.HTTP_STATUS_CODE: status_code,
+        SpanAttributes.HTTP_ROUTE: route,
+    }
+    set_span_attributes(attributes)
+
+
+def set_span_attributes(attributes: Dict[str, Any]):
     """Set attributes for the current span in context."""
     if TRACE_STACK:
         trace_stack = TRACE_STACK.get([])
         if trace_stack:
+            # filter attribute values that are None, otherwise they
+            # will show up as warning logs on the console.
+            attributes = {k: v for k, v in attributes.items() if v is not None}
             trace_stack[-1].set_attributes(attributes)
 
 
@@ -290,10 +342,16 @@ def set_trace_status(is_error: bool, description: str = ""):
         else:
             status_code = StatusCode.OK
             description = None
-
         trace_stack[-1].set_status(
             Status(status_code=status_code, description=description)
         )
+
+
+def set_span_exception(exc: Exception, escaped: bool = False):
+    """Set the exception for the current span in context."""
+    trace_stack = TRACE_STACK.get([])
+    if trace_stack:
+        trace_stack[-1].record_exception(exc, escaped=escaped)
 
 
 def is_tracing_enabled() -> bool:

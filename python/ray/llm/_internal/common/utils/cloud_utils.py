@@ -19,13 +19,25 @@ import asyncio
 # Use pyarrow for cloud storage access
 import pyarrow.fs as pa_fs
 
-from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
 T = TypeVar("T")
 
 logger = get_logger(__name__)
+
+
+def is_remote_path(path: str) -> bool:
+    """Check if the path is a remote path.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path is a remote path, False otherwise.
+    """
+    return path.startswith("s3://") or path.startswith("gs://")
 
 
 class ExtraFiles(BaseModelExtended):
@@ -50,7 +62,7 @@ class CloudMirrorConfig(BaseModelExtended):
         if value is None:
             return value
 
-        if not value.startswith("s3://") and not value.startswith("gs://"):
+        if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
                 'Expected a URI that starts with "s3://" or "gs://".'
@@ -81,7 +93,7 @@ class LoraMirrorConfig(BaseModelExtended):
         if value is None:
             return value
 
-        if not value.startswith("s3://") and not value.startswith("gs://"):
+        if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
                 'Expected a URI that starts with "s3://" or "gs://".'
@@ -294,7 +306,7 @@ class CloudFileSystem:
                 )
             else:
                 f_hash = "0000000000000000000000000000000000000000"
-                logger.warning(
+                logger.info(
                     f"Hash file does not exist in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
                 )

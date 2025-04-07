@@ -34,7 +34,7 @@ steps:
           - "12.3.2"
           - "12.4.1"
           - "12.5.1"
-          - "12.8.0"
+          - "12.8.1"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -104,7 +104,7 @@ steps:
           - "cu12.3.2-cudnn9"
           - "cu12.4.1-cudnn"
           - "cu12.5.1-cudnn"
-          - "cu12.8.0-cudnn"
+          - "cu12.8.1-cudnn"
   - label: ":tapioca: minimized rayturbo py{{matrix.py}} {{matrix.base}} image"
     key: rayturbo-min-image
     tags: docker
@@ -134,7 +134,7 @@ steps:
           - "cu12.3.2"
           - "cu12.4.1"
           - "cu12.5.1"
-          - "cu12.8.0"
+          - "cu12.8.1"
 
   - label: ":tapioca: rayturbo llm py{{matrix.py}} {{matrix.base}} image"
     key: rayturbo-llm-image
@@ -195,25 +195,25 @@ steps:
 
   # We skip production and predeploy; will copy them on final image
   # building. We need to copy to staging for release tests to run.
-  - label: ":tapioca: upload rayturbo site package tarball {{matrix}}"
-    key: upload-runtime-site-pkg-staging
+  - label: ":tapioca: upload rayturbo artifacts to {{matrix}}"
+    key: upload-rayturbo-staging
     depends_on: check-rayturbo-site-pkg
     tags: docker
     commands:
-      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+      - bash anyscale/ci/upload-rayturbo-artifacts.sh {{matrix}}
     instance_type: small
     job_env: forge
     matrix:
       - development
       - staging
 
-  - label: ":tapioca: upload rayturbo site package tarball {{matrix}}"
+  - label: ":tapioca: upload rayturbo artifacts to {{matrix}}"
     if: build.env("RUNTIME_BUILD_ALL") == "true"
-    key: upload-runtime-site-pkg-prod
+    key: upload-rayturbo-prod
     depends_on: check-rayturbo-site-pkg
     tags: docker
     commands:
-      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+      - bash anyscale/ci/upload-rayturbo-artifacts.sh {{matrix}}
     instance_type: small
     job_env: forge
     matrix:

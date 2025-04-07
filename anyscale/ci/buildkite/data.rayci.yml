@@ -13,7 +13,7 @@ steps:
       - data
       - data-turbo
 
-  - label: ":database: data: runtime arrow 17 (latest) tests"
+  - label: ":database: data: runtime arrow 19 (latest) tests"
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data

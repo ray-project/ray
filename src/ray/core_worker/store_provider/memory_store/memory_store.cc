@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+
+#include <algorithm>
 #include <condition_variable>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace core {
@@ -75,11 +79,11 @@ class GetRequest {
 GetRequest::GetRequest(absl::flat_hash_set<ObjectID> object_ids,
                        size_t num_objects,
                        bool remove_after_get,
-                       bool abort_if_any_object_is_exception_)
+                       bool abort_if_any_object_is_exception)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
       remove_after_get_(remove_after_get),
-      abort_if_any_object_is_exception_(abort_if_any_object_is_exception_) {
+      abort_if_any_object_is_exception_(abort_if_any_object_is_exception) {
   RAY_CHECK(num_objects_ <= object_ids_.size());
 }
 

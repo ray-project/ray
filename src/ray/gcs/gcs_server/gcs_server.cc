@@ -708,7 +708,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       *gcs_placement_group_manager_,
       *raylet_client_pool_,
       kv_manager_->GetInstance(),
-      io_context_provider_.GetDefaultIOContext());
+      io_context_provider_.GetDefaultIOContext(),
+      gcs_publisher_.get());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(

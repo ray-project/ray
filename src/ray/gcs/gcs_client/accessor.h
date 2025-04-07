@@ -13,6 +13,11 @@
 // limitations under the License.
 
 #pragma once
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "ray/common/id.h"

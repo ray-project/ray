@@ -18,8 +18,6 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
 )
@@ -167,9 +165,7 @@ def create_router(
         else None,
         availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=(
-            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
-        ),
+        use_replica_queue_len_cache=not is_inside_ray_client_context,
         create_replica_wrapper_func=lambda r: RunningReplica(r),
     )
 
@@ -181,10 +177,7 @@ def create_router(
         handle_source=handle_options._source,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        enable_strict_max_ongoing_requests=(
-            not is_inside_ray_client_context
-            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
-        ),
+        enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,
     )
 
@@ -365,9 +358,7 @@ def create_router(  # noqa: F811
         else None,
         availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=(
-            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
-        ),
+        use_replica_queue_len_cache=not is_inside_ray_client_context,
         create_replica_wrapper_func=lambda r: AnyscaleRunningReplica(r),
     )
 
@@ -396,10 +387,7 @@ def create_router(  # noqa: F811
         handle_source=handle_options._source,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        enable_strict_max_ongoing_requests=(
-            not is_inside_ray_client_context
-            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
-        ),
+        enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_resp_and_ray_objects,
     )
 

@@ -1,24 +1,17 @@
-import asyncio
 import json
 import logging
 import os
 import shutil
-from typing import Optional
 from urllib.parse import quote
 
 import aiohttp
 
-import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._common.utils import get_or_create_event_loop
-from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import (
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
     SESSION_LATEST,
-    env_integer,
 )
-from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
     generate_default_grafana_dashboard,
@@ -32,18 +25,13 @@ from ray.dashboard.modules.metrics.templates import (
     GRAFANA_INI_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
 )
-
-import psutil
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.DashboardHeadRouteTable
-
-routes = dashboard_optional_utils.DashboardHeadRouteTable
-
 METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
-METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
@@ -90,9 +78,9 @@ class PrometheusQueryError(Exception):
         super().__init__(self.message)
 
 
-class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class MetricsHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -129,13 +117,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
 
-        self._pid = os.getpid()
-        self._component = "dashboard"
-        assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
-        self._dashboard_proc = psutil.Process()
-
-        self._event_loop_lag_s_max: Optional[float] = None
-
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
         """
@@ -144,7 +125,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # If disabled, we don't want to show the metrics tab at all.
         if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Grafana disabled",
                 grafana_host=GRAFANA_HOST_DISABLED_VALUE,
             )
@@ -157,7 +138,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             async with self.http_session.get(path) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
-                        success=False,
+                        status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="Grafana healtcheck failed",
                         status=resp.status,
                     )
@@ -165,14 +146,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 # Check if the required Grafana services are running.
                 if json["database"] != "ok":
                     return dashboard_optional_utils.rest_response(
-                        success=False,
+                        status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="Grafana healtcheck failed. Database not ok.",
                         status=resp.status,
                         json=json,
                     )
 
                 return dashboard_optional_utils.rest_response(
-                    success=True,
+                    status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
                     session_name=self.session_name,
@@ -186,7 +167,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             )
 
             return dashboard_optional_utils.rest_response(
-                success=False, message="Grafana healtcheck failed", exception=str(e)
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="Grafana healtcheck failed",
+                exception=str(e),
             )
 
     @routes.get("/api/prometheus_health")
@@ -199,13 +182,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
-                        success=False,
+                        status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
                     )
 
                 return dashboard_optional_utils.rest_response(
-                    success=True,
+                    status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="prometheus running",
                 )
         except Exception as e:
@@ -213,12 +196,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 "Error fetching prometheus endpoint. Is prometheus running?", exc_info=e
             )
             return dashboard_optional_utils.rest_response(
-                success=False, message="prometheus healthcheck failed.", reason=str(e)
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message="prometheus healthcheck failed.",
+                reason=str(e),
             )
-
-    @staticmethod
-    def is_minimal_module():
-        return False
 
     def _create_default_grafana_configs(self):
         """
@@ -403,53 +384,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
             )
 
-    @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
-    async def record_dashboard_metrics(self):
-        labels = {
-            "ip": self.ip,
-            "pid": self._pid,
-            "Version": ray.__version__,
-            "Component": self._component,
-            "SessionName": self.session_name,
-        }
-        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
-            float(self._dashboard_proc.cpu_percent())
-        )
-        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
-            float(self._dashboard_proc.memory_full_info().uss) / 1.0e6
-        )
-        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
-            float(self._dashboard_proc.memory_full_info().rss) / 1.0e6
-        )
-
-        loop = get_or_create_event_loop()
-
-        self.metrics.metrics_event_loop_tasks.labels(**labels).set(
-            len(asyncio.all_tasks(loop))
-        )
-
-        # Report the max lag since the last export, if any.
-        if self._event_loop_lag_s_max is not None:
-            self.metrics.metrics_event_loop_lag.labels(**labels).set(
-                float(self._event_loop_lag_s_max)
-            )
-            self._event_loop_lag_s_max = None
-
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-
-        def on_new_lag(lag_s):
-            # Record the lag. It's exported in `record_dashboard_metrics`
-            self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
-
-        enable_monitor_loop_lag(on_new_lag)
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
-
-        await asyncio.gather(self.record_dashboard_metrics())
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(

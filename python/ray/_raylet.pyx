@@ -166,8 +166,8 @@ from ray.includes.libcoreworker cimport (
 )
 from ray.includes.stream_redirection cimport (
     CStreamRedirectionOptions,
-    RedirectStdout,
-    RedirectStderr,
+    RedirectStdoutOncePerProcess,
+    RedirectStderrOncePerProcess,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -2699,7 +2699,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStdout(opt)
+        RedirectStdoutOncePerProcess(opt)
 
     @staticmethod
     def redirect_stderr(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
@@ -2709,7 +2709,7 @@ cdef class StreamRedirector:
         opt.rotation_max_file_count = rotation_max_file_count
         opt.tee_to_stdout = tee_to_stdout
         opt.tee_to_stderr = tee_to_stderr
-        RedirectStderr(opt)
+        RedirectStderrOncePerProcess(opt)
 
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
@@ -2979,7 +2979,7 @@ cdef class CoreWorker:
                   local_mode, driver_name,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, cluster_id, entrypoint,
-                  worker_launch_time_ms, worker_launched_time_ms, debug_source):
+                  worker_launch_time_ms, worker_launched_time_ms, debug_source, enable_resource_isolation):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -3034,6 +3034,7 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
+        options.enable_resource_isolation = enable_resource_isolation
         CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None

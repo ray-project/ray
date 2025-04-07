@@ -1,21 +1,20 @@
-from collections import deque
-from typing import Iterable, List, Dict, Optional
+import logging
+from dataclasses import dataclass
+from typing import List, Dict, Optional, Union
 
-from ray.anyscale.data._internal.logical.graph_utils import make_copy_of_dag, remove_op
+from ray.anyscale.data._internal.logical.graph_utils import make_copy_of_dag
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Project
-import copy
 
 
-class _ProjectOptions:
-    def __init__(
-        self,
-        cols: Optional[List[str]] = None,
-        cols_rename: Optional[Dict[str, str]] = None,
-    ):
-        self.cols = cols
-        self.cols_rename = cols_rename
+logger = logging.getLogger(__file__)
+
+
+@dataclass(frozen=True)
+class _ProjectSpec:
+    cols: Optional[List[str]]
+    cols_remap: Optional[Dict[str, str]]
 
 
 class ProjectionPushdown(Rule):
@@ -29,231 +28,202 @@ class ProjectionPushdown(Rule):
     the graph.
     """
 
-    def _handle_select_columns(self, prev_op: _ProjectOptions, cur_op: _ProjectOptions):
-        # Step 1: Get prev columns as a set (to ensure no duplicates)
-        prev_cols = set(prev_op.cols or [])
-
-        # Step 2: Get current columns
-        cur_cols = set(cur_op.cols or [])
-
-        # If there are no columns to select, do nothing
-        if not cur_cols:
-            return
-
-        # Step 3: Adjust prev_cols based on prev_op.cols_rename
-        if prev_op.cols_rename:
-            # Apply renames to previous columns
-            prev_cols = {prev_op.cols_rename.get(col, col) for col in prev_cols}
-
-        # Step 4: Ensure cur_cols is a subset of prev_cols
-        if prev_cols and cur_cols and not cur_cols.issubset(prev_cols):
-            raise ValueError(
-                f"Selected columns '{cur_cols}' needs to be a subset of "
-                f"'{prev_cols}'"
-            )
-
-        # Step 5: Adjust cur_cols based on prev_op.cols_rename to match previous
-        # column names
-        if prev_op.cols_rename:
-            # Reverse the renaming process: if a column in cur_op.cols is renamed, map
-            # it back.
-            cur_cols = {
-                next((k for k, v in prev_op.cols_rename.items() if v == col), col)
-                for col in cur_cols
-            }
-
-        # Step 6: Prune prev_op.cols_rename to only include columns in cur_cols
-        if prev_op.cols_rename:
-            # Keep only those renames where the original column is in the selected
-            # columns (cur_cols)
-            prev_op.cols_rename = {
-                k: v for k, v in prev_op.cols_rename.items() if k in cur_cols
-            }
-
-        # Step 7: Set final columns
-        prev_op.cols = list(cur_cols if cur_cols else prev_cols)
-
-    def _validate_rename_columns(
-        self, prev_op: _ProjectOptions, cur_op: _ProjectOptions
-    ):
-        prev_rename = prev_op.cols_rename
-        cur_rename = cur_op.cols_rename
-
-        # Validation Case 1: Both prev_op.cols and prev_op.cols_rename are valid
-        if prev_op.cols and prev_op.cols_rename:
-            # Get the final valid renamed column names
-            renamed_cols = set(prev_rename.values())
-            # The original columns from prev_op.cols
-            untouched_cols = set(prev_op.cols)
-
-            # Valid rename keys are a union of renamed columns and untouched columns
-            valid_rename_keys = renamed_cols.union(untouched_cols)
-
-            # Ensure that cur_rename keys are a subset of the valid rename keys
-            invalid_keys = [key for key in cur_rename if key not in valid_rename_keys]
-            if invalid_keys:
-                raise ValueError(
-                    f"Identified projections with invalid rename "
-                    f"columns: {', '.join(invalid_keys)}"
-                )
-
-        # Validation Case 2: Only prev_op.cols is valid (no renames in prev_op)
-        elif prev_op.cols:
-            # Ensure cur_rename keys are a subset of prev_op.cols
-            invalid_keys = [key for key in cur_rename if key not in prev_op.cols]
-            if invalid_keys:
-                raise ValueError(
-                    f"Identified projections with invalid rename "
-                    f"columns: {', '.join(invalid_keys)}"
-                )
-
-    def _handle_rename_columns(self, prev_op: _ProjectOptions, cur_op: _ProjectOptions):
-        if not cur_op.cols_rename:
-            return
-
-        prev_rename = prev_op.cols_rename or {}
-        cur_rename = cur_op.cols_rename or {}
-
-        self._validate_rename_columns(prev_op, cur_op)
-
-        resolved_rename = {}
-
-        # Step 1: Process prev renames and chain with cur renames
-        prev_rename_copy = prev_rename.copy()
-        for prev_old_col, prev_new_col in prev_rename_copy.items():
-            # If the prev_new_col is in cur_rename, chain it
-            if prev_new_col in cur_rename:
-                final_col = cur_rename[prev_new_col]
-                resolved_rename[prev_old_col] = final_col
-                # Remove the resolved pairs from prev_rename and cur_rename
-                del prev_rename[prev_old_col]
-                del cur_rename[prev_new_col]
-            else:
-                # If no chaining is necessary, just copy the previous rename
-                resolved_rename[prev_old_col] = prev_new_col
-                del prev_rename[prev_old_col]  # Remove it from prev_rename
-
-        # Step 2: Merge remaining cur renames into resolved_rename
-        for cur_old_col, cur_new_col in cur_rename.items():
-            if cur_old_col != cur_new_col:  # Only add if there's a real rename
-                resolved_rename[cur_old_col] = cur_new_col
-
-        # Step 3: Check for uniqueness
-        inverse_mapping = {}
-        for old_col, final_col in resolved_rename.items():
-            if final_col in inverse_mapping:
-                raise ValueError(
-                    f"Identified projections with conflict in renaming: '{final_col}' "
-                    f"is mapped from multiple sources: '{inverse_mapping[final_col]}' "
-                    f"and '{old_col}'."
-                )
-            inverse_mapping[final_col] = old_col
-
-        # Step 4: Apply the resolved renaming to the prev_op object
-        prev_op.cols_rename = resolved_rename
-
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag_copy = make_copy_of_dag(plan.dag)
         plan = LogicalPlan(dag_copy, plan.context)
-        plan = self._walk_output_dependencies(plan)
-        plan = self._walk_input_dependencies(plan)
+        plan = self._transform_plan(plan)
         return plan
 
-    def _walk_output_dependencies(self, plan: LogicalPlan):
-        """Walk plans output dependencies and merge all continguous projects."""
-        projecting_op = None
-        # Post-order traversal.
-        nodes: Iterable[LogicalOperator] = deque()
-        for node in plan.dag.post_order_iter():
-            nodes.appendleft(node)
+    def _transform_plan(self, plan: LogicalPlan) -> LogicalPlan:
+        dag = plan.dag
+        new_dag = dag._apply_transform(self._pushdown_project)
 
-        while len(nodes) > 0:
-            op = nodes.pop()
-            if isinstance(op, Project):
-                if not projecting_op:
-                    projecting_op = op
-                else:
-                    # Handle column selections
-                    if op.cols:
-                        # TODO: In general we need utilities for canonical way of modifying
-                        # the DAG to make sure no operators are modified in-place
-                        # See: https://anyscale1.atlassian.net/browse/DATA-809
-                        prev_options = _ProjectOptions(
-                            cols=copy.deepcopy(projecting_op.cols),
-                            cols_rename=copy.deepcopy(projecting_op.cols_rename),
-                        )
-                        cur_options = _ProjectOptions(
-                            cols=copy.deepcopy(op.cols),
-                            cols_rename=copy.deepcopy(op.cols_rename),
-                        )
-                        self._handle_select_columns(
-                            prev_op=prev_options, cur_op=cur_options
-                        )
-                        projecting_op._cols = prev_options.cols
-                        projecting_op._cols_rename = prev_options.cols_rename
-                    # Handle column renames
-                    if op.cols_rename:
-                        prev_options = _ProjectOptions(
-                            cols=copy.deepcopy(projecting_op.cols),
-                            cols_rename=copy.deepcopy(projecting_op.cols_rename),
-                        )
-                        cur_options = _ProjectOptions(
-                            cols=copy.deepcopy(op.cols),
-                            cols_rename=copy.deepcopy(op.cols_rename),
-                        )
-                        self._handle_rename_columns(
-                            prev_op=prev_options, cur_op=cur_options
-                        )
-                        projecting_op._cols = prev_options.cols
-                        projecting_op._cols_rename = prev_options.cols_rename
+        return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
-                    plan = remove_op(op, plan)
-            else:
-                projecting_op = None
+    @classmethod
+    def _pushdown_project(cls, op: LogicalOperator) -> LogicalOperator:
+        if isinstance(op, Project):
+            # Push-down projections into read op
+            if isinstance(op.input_dependency, ReadFiles):
+                project_op: Project = op
+                read_op: ReadFiles = op.input_dependency
 
-        return plan
+                return cls._combine(read_op, project_op)
 
-    def _walk_input_dependencies(self, plan: LogicalPlan):
-        """Walk plans input dependencies and pushdown down projects into ReadFiles."""
-        projecting_op = None
-        queue = deque([plan.dag])
-        while queue:
-            op = queue.popleft()
-            if isinstance(op, Project):
-                assert not projecting_op
-                projecting_op = op
-            elif isinstance(op, ReadFiles) and projecting_op:
+            # Otherwise, fuse projections into a single op
+            elif isinstance(op.input_dependency, Project):
+                outer_op: Project = op
+                inner_op: Project = op.input_dependency
 
-                # Push down column selection/renames to ReadFiles
-                readfiles = op
+                return cls._fuse(inner_op, outer_op)
 
-                if readfiles.columns or readfiles.columns_rename:
-                    # If readfiles has columns or columns_rename,
-                    # then we need to merge these with projecting_op
-                    prev_options = _ProjectOptions(
-                        cols=copy.deepcopy(readfiles.columns),
-                        cols_rename=copy.deepcopy(readfiles.columns_rename),
-                    )
-                    cur_options = _ProjectOptions(
-                        cols=copy.deepcopy(projecting_op.cols),
-                        cols_rename=copy.deepcopy(projecting_op.cols_rename),
-                    )
-                    self._handle_select_columns(
-                        prev_op=prev_options, cur_op=cur_options
-                    )
-                    self._handle_rename_columns(
-                        prev_op=prev_options, cur_op=cur_options
-                    )
-                    readfiles.columns = prev_options.cols
-                    readfiles.columns_rename = prev_options.cols_rename
-                else:
-                    readfiles.columns = projecting_op.cols
-                    readfiles.columns_rename = projecting_op.cols_rename
+        return op
 
-                plan = remove_op(projecting_op, plan)
-                projecting_op = None
-            else:
-                projecting_op = None
-            queue.extend(op.input_dependencies)
+    @staticmethod
+    def _fuse(inner_op: Project, outer_op: Project) -> Project:
+        inner_op_spec = _get_projection_spec(inner_op)
+        outer_op_spec = _get_projection_spec(outer_op)
 
-        return plan
+        new_spec = _combine_projection_specs(
+            prev_spec=inner_op_spec, new_spec=outer_op_spec
+        )
+
+        return Project(
+            inner_op.input_dependency,
+            cols=new_spec.cols,
+            cols_rename=new_spec.cols_remap,
+            ray_remote_args={
+                **inner_op._ray_remote_args,
+                **outer_op._ray_remote_args,
+            },
+        )
+
+    @staticmethod
+    def _combine(read_op: ReadFiles, project_op: Project) -> ReadFiles:
+        read_op_spec = _get_projection_spec(read_op)
+        project_op_spec = _get_projection_spec(project_op)
+
+        new_spec = _combine_projection_specs(
+            prev_spec=read_op_spec, new_spec=project_op_spec
+        )
+
+        logger.debug(
+            f"Pushing projection down into read operation "
+            f"(projection columns = {new_spec.cols}, remap = {new_spec.cols_remap})"
+        )
+
+        # TODO(DATA-843) avoid modifying in-place
+        read_op.columns = new_spec.cols
+        read_op.columns_rename = new_spec.cols_remap
+
+        return read_op
+
+
+def _get_projection_spec(op: Union[Project, ReadFiles]) -> _ProjectSpec:
+    assert op is not None
+
+    if isinstance(op, Project):
+        return _ProjectSpec(
+            cols=op.cols,
+            cols_remap=op.cols_rename,
+        )
+    elif isinstance(op, ReadFiles):
+        return _ProjectSpec(
+            cols=op.columns,
+            cols_remap=op.columns_rename,
+        )
+    else:
+        raise ValueError(
+            f"Operation doesn't have projection spec (supported Project, "
+            f"ReadFiles, got: {op.__class__})"
+        )
+
+
+def _combine_projection_specs(
+    prev_spec: _ProjectSpec, new_spec: _ProjectSpec
+) -> _ProjectSpec:
+    combined_cols_remap = _combine_columns_remap(
+        prev_spec.cols_remap,
+        new_spec.cols_remap,
+    )
+
+    # Validate resulting remapping against existing projection (if any)
+    _validate(combined_cols_remap, prev_spec.cols)
+
+    new_projection_cols: Optional[List[str]]
+
+    if prev_spec.cols is None and new_spec.cols is None:
+        # If both projections are unset, resulting is unset
+        new_projection_cols = None
+    elif prev_spec.cols is not None and new_spec.cols is None:
+        # If previous projection is set, but the new unset -- fallback to
+        # existing projection
+        new_projection_cols = prev_spec.cols
+    else:
+        # If new is set (and previous is either set or not)
+        #   - Reconcile new projection
+        #   - Project combined column remapping
+        assert new_spec.cols is not None
+
+        new_projection_cols = new_spec.cols
+
+        # Remap new projected columns into the schema before remapping (from the
+        # previous spec)
+        if prev_spec.cols_remap and new_projection_cols:
+            # Inverse remapping
+            inv_cols_remap = {v: k for k, v in prev_spec.cols_remap.items()}
+            new_projection_cols = [
+                inv_cols_remap.get(col, col) for col in new_projection_cols
+            ]
+
+        prev_cols_set = set(prev_spec.cols or [])
+        new_cols_set = set(new_projection_cols or [])
+
+        # Validate new projection is a proper subset of the previous one
+        if prev_cols_set and new_cols_set and not new_cols_set.issubset(prev_cols_set):
+            raise ValueError(
+                f"Selected columns '{new_cols_set}' needs to be a subset of "
+                f"'{prev_cols_set}'"
+            )
+
+    # Project remaps to only map relevant columns
+    if new_projection_cols is not None and combined_cols_remap is not None:
+        projected_cols_remap = {
+            k: v for k, v in combined_cols_remap.items() if k in new_projection_cols
+        }
+    else:
+        projected_cols_remap = combined_cols_remap
+
+    return _ProjectSpec(cols=new_projection_cols, cols_remap=projected_cols_remap)
+
+
+def _combine_columns_remap(
+    prev_remap: Optional[Dict[str, str]], new_remap: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+
+    if not new_remap and not prev_remap:
+        return None
+
+    new_remap = new_remap or {}
+    base_remap = prev_remap or {}
+
+    filtered_new_remap = dict(new_remap)
+    # Apply new remapping to the base remap
+    updated_base_remap = {
+        # NOTE: We're removing corresponding chained mapping from the remap
+        k: filtered_new_remap.pop(v, v)
+        for k, v in base_remap.items()
+    }
+
+    resolved_remap = dict(updated_base_remap)
+    resolved_remap.update(filtered_new_remap)
+
+    return resolved_remap
+
+
+def _validate(remap: Optional[Dict[str, str]], projection_cols: Optional[List[str]]):
+    if not remap:
+        return
+
+    # Verify that the remapping is a proper bijection (ie no
+    # columns are renamed into the same new name)
+    prev_names_map = {}
+    for prev_name, new_name in remap.items():
+        if new_name in prev_names_map:
+            raise ValueError(
+                f"Identified projections with conflict in renaming: '{new_name}' "
+                f"is mapped from multiple sources: '{prev_names_map[new_name]}' "
+                f"and '{prev_name}'."
+            )
+
+        prev_names_map[new_name] = prev_name
+
+    # Verify that remapping only references columns available in the projection
+    if projection_cols is not None:
+        invalid_cols = [key for key in remap.keys() if key not in projection_cols]
+
+        if invalid_cols:
+            raise ValueError(
+                f"Identified projections with invalid rename "
+                f"columns: {', '.join(invalid_cols)}"
+            )

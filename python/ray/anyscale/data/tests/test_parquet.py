@@ -107,6 +107,31 @@ def test_transient_error_handling(restore_data_context, ray_start_regular_shared
     ray.data.read_parquet("example://iris.parquet", filesystem=fs).materialize()
 
 
+def test_proper_projection_for_partitioned_datasets(temp_dir):
+    ds = ray.data.read_parquet("example://iris.parquet").materialize()
+
+    partitioned_ds_path = f"{temp_dir}/partitioned_iris"
+    # Write out partitioned dataset
+    ds.write_parquet(partitioned_ds_path, partition_cols=["variety"])
+
+    partitioned_ds = ray.data.read_parquet(
+        partitioned_ds_path, columns=["variety"]
+    ).materialize()
+
+    print(partitioned_ds.schema())
+
+    assert [
+        "sepal.length",
+        "sepal.width",
+        "petal.length",
+        "petal.width",
+        "variety",
+    ] == ds.take_batch(batch_format="pyarrow").column_names
+    assert ["variety"] == partitioned_ds.take_batch(batch_format="pyarrow").column_names
+
+    assert ds.count() == partitioned_ds.count()
+
+
 @pytest.mark.parametrize(
     "columns,expected_exception,expected_message",
     [

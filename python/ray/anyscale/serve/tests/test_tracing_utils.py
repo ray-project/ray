@@ -438,6 +438,196 @@ def test_tracing_e2e(
     shutil.rmtree(spans_dir)
 
 
+@pytest.mark.parametrize(
+    "protocol,expected_status_code,expected_span_status",
+    [
+        ("http", 500, StatusCode.ERROR),
+        ("streaming", 500, StatusCode.ERROR),
+        ("grpc", grpc.StatusCode.INTERNAL.name, StatusCode.ERROR),
+    ],
+)
+def test_tracing_e2e_with_errors(
+    serve_and_ray_shutdown, protocol, expected_status_code, expected_span_status
+):
+    """Test tracing with error responses across HTTP, streaming, and gRPC protocols."""
+
+    @serve.deployment
+    class HttpErrorModel:
+        def __call__(self, request: starlette.requests.Request):
+            replica_context = serve.get_replica_context()
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
+                span.set_attribute("replica_id", replica_context.replica_id.unique_id)
+
+                raise RuntimeError("Internal server error")
+
+    @serve.deployment
+    class StreamingErrorModel:
+        def __call__(self, request: Request) -> StreamingResponse:
+            replica_context = serve.get_replica_context()
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
+                span.set_attribute("replica_id", replica_context.replica_id.unique_id)
+
+                def error_generator():
+                    raise RuntimeError("Streaming error occurred")
+
+                return StreamingResponse(error_generator(), media_type="text/plain")
+
+    @serve.deployment
+    class GrpcErrorModel:
+        def __call__(self, user_message):
+            replica_context = serve.get_replica_context()
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
+                span.set_attribute("replica_id", replica_context.replica_id.unique_id)
+
+                # Raise error
+                raise RuntimeError("gRPC error occurred")
+
+    # Setup based on protocol
+    if protocol == "http":
+        serve.run(HttpErrorModel.bind())
+
+        setup_tracing(component_name="upstream_app", component_id="345")
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+
+            # Make HTTP request
+            response = requests.post("http://127.0.0.1:8000/", headers=headers)
+            assert response.status_code == expected_status_code
+
+    elif protocol == "streaming":
+        serve.run(StreamingErrorModel.bind())
+
+        setup_tracing(component_name="upstream_app", component_id="345")
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+
+            response = requests.get(
+                "http://localhost:8000", stream=True, headers=headers
+            )
+            assert response.status_code == expected_status_code
+
+    elif protocol == "grpc":
+        grpc_port = 9000
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        ]
+
+        serve.start(
+            grpc_options=gRPCOptions(
+                port=grpc_port,
+                grpc_servicer_functions=grpc_servicer_functions,
+            ),
+        )
+        serve.run(GrpcErrorModel.options(name="grpc-error-model").bind())
+
+        setup_tracing(component_name="upstream_app", component_id="345")
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+            channel = grpc.insecure_channel("localhost:9000")
+            stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+            request = serve_pb2.UserDefinedMessage(name="test", num=10, foo="bar")
+
+            with pytest.raises(grpc.RpcError) as exception_info:
+                _ = stub.__call__(request=request)
+            rpc_error = exception_info.value
+            print(rpc_error)
+            assert rpc_error.code().name == expected_status_code
+    else:
+        assert False, "Invalid protocol"
+
+    serve.shutdown()
+
+    # Verify the trace data
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+
+    files = os.listdir(spans_dir)
+    assert len(files) == 3  # proxy, replica, and upstream spans
+
+    replica_filename = None
+    proxy_filename = None
+    upstream_filename = None
+    for file in files:
+        if "replica" in file:
+            replica_filename = file
+        elif "proxy" in file:
+            proxy_filename = file
+        elif "upstream" in file:
+            upstream_filename = file
+        else:
+            assert False, f"Did not expect tracing file with name {file}"
+
+    assert replica_filename and proxy_filename and upstream_filename
+
+    # Load and check spans
+    proxy_spans = load_spans(os.path.join(spans_dir, proxy_filename))
+    replica_spans = load_spans(os.path.join(spans_dir, replica_filename))
+
+    # Verify error status in spans
+    for span in replica_spans:
+        if "application_span" in span["name"]:
+            assert span["status"]["status_code"] == expected_span_status.name
+
+            # Check for error attributes based on protocol and error type
+            if protocol == "http":
+                assert "Internal server error" in str(span.get("events", []))
+            elif protocol == "streaming":
+                assert "Streaming error occurred" in str(span.get("events", []))
+            elif protocol == "grpc":
+                assert "gRPC error occurred" in str(span.get("events", []))
+            else:
+                assert False, "Invalid protocol"
+
+    # Verify status code in proxy spans
+    for span in proxy_spans:
+        if protocol == "http" or protocol == "streaming":
+            if "proxy_http_request" in span["name"]:
+                assert (
+                    span["attributes"].get("http.status_code") == expected_status_code
+                )
+                assert span["status"]["status_code"] == "ERROR"
+            elif "route_to_replica" in span["name"]:
+                pass
+            else:
+                raise Exception("Invalid proxy span")
+        elif protocol == "grpc":
+            if "proxy_grpc_request" in span["name"]:
+                assert (
+                    span["attributes"].get("rpc.grpc.status_code")
+                    == expected_status_code
+                )
+                assert span["status"]["status_code"] == "ERROR"
+            elif "route_to_replica" in span["name"]:
+                pass
+            else:
+                assert False, "Invalid proxy span"
+        else:
+            assert False, "Invalid protocol"
+    # Clean up
+    shutil.rmtree(spans_dir)
+
+
 def custom_tracing_exporter():
     """Custom tracing exporter used for testing."""
     return [

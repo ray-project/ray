@@ -1,3 +1,4 @@
+import abc
 import logging
 import math
 import time
@@ -5,7 +6,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import cached_property
 from logging import getLogger
-from typing import TYPE_CHECKING, Deque, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Deque, Dict, Optional, OrderedDict, Tuple, Union
 
 import ray
 from ray._private.ray_constants import env_bool
@@ -85,6 +86,120 @@ class _TimeWindowAverageCalculator:
             self._sum -= value
 
 
+class ActorPoolResizingPolicy(abc.ABC):
+    """Interface for determining how to resize an actor pool.
+
+    When the actor pool needs to scaling up, `num_to_scale_up` will be called
+    to determine how many new actors to add.
+    When the actor pool needs to scaling down, `num_to_scale_down` will be called
+    to determine how many actors to remove.
+    """
+
+    @abc.abstractmethod
+    def num_to_scale_up(self, actor_pool: AutoscalingActorPool) -> int:
+        """Determine how many new actors to add when the actor pool needs to
+        scale up.
+        """
+        ...
+
+    @abc.abstractmethod
+    def num_to_scale_down(self, actor_pool: AutoscalingActorPool) -> int:
+        """Determine how many actors to remove when the actor pool needs to
+        scale down.
+        """
+        ...
+
+
+def _normalize_scaling_up_factor(
+    scaling_up_factor: Union[float, Dict[float, float]]
+) -> OrderedDict[float, float]:
+    """Normalize the input scaling up factor configuration.
+
+    Converts the scaling factor from either a single value or a dictionary mapping
+    to an OrderedDict sorted by key in ascending order.
+    """
+    if isinstance(scaling_up_factor, (float, int)):
+        assert scaling_up_factor > 1
+        return OrderedDict([(1, scaling_up_factor)])
+    else:
+        assert isinstance(scaling_up_factor, dict), scaling_up_factor
+        for k, v in scaling_up_factor.items():
+            assert (
+                0 <= k <= 1
+            ), f"The key of scaling_up_factor should be in [0, 1], but got {k}"
+            assert (
+                v > 1
+            ), f"The value of scaling_up_factor should be greater than 1, but got {v}"
+        # Sort by the key in ascending order
+        scaling_up_factor = OrderedDict(sorted(scaling_up_factor.items()))
+        return scaling_up_factor
+
+
+def _get_scaling_up_factor(
+    capacity_ratio: float, scaling_up_factor: OrderedDict[float, float]
+) -> float:
+    """Get the scaling up factor based on the current capacity ratiof.
+
+    NOTE: the input `scaling_up_factor` must be sorted by key in ascending order.
+    """
+    for k, v in scaling_up_factor.items():
+        # Find the first key that is larger than the current utilization.
+        if k >= capacity_ratio:
+            return v
+    return 1.0
+
+
+class DefaultActorPoolResizingPolicy(ActorPoolResizingPolicy):
+    """
+    This policy scales up the actor with a factor based on the current capacity
+    ratio (current pool / max pool size).
+    And always scales down the actor pool by 1 each time.
+    """
+
+    # Default scaling up factor for actor pool autoscaling.
+    # See docstring of `actor_pool_scaling_up_factor` for the format.
+    DEFAULT_SCALING_UP_FACTOR: Dict[float, float] = {0.02: 10, 0.10: 5, 1: 2}
+
+    def __init__(
+        self,
+        scaling_up_factor: Union[float, Dict[float, float]] = DEFAULT_SCALING_UP_FACTOR,
+    ):
+        """Initialize the actor pool scaling policy.
+
+        Args:
+            scaling_up_factor: Factor by which to scale up actor pools.
+                Can be a float value or a dictionary.
+                When it's a float value, it means using a constant scaling up factor.
+                When it's a dictionary, it means using a scaling up factor based on
+                the current capacity ratio (current pool size / max pool size). Each
+                key/value pair in the dict means when the capacity ratio is below the
+                key, scale up the actor pool size by the value.
+                E.g., {0.15: 5, 1: 2} means: when the pool size is below 15% of the
+                max size, scale up by 5x; when it's between 15% and 100%, scale
+                up by 2x.
+        """
+        self._actor_pool_scaling_up_factor: OrderedDict[
+            float, float
+        ] = _normalize_scaling_up_factor(scaling_up_factor)
+
+    def num_to_scale_up(self, actor_pool: AutoscalingActorPool) -> int:
+        current_size = actor_pool.current_size()
+        factor = _get_scaling_up_factor(
+            current_size / actor_pool.max_size(),
+            self._actor_pool_scaling_up_factor,
+        )
+        return (
+            min(
+                math.ceil(current_size * factor),
+                actor_pool.max_size(),
+            )
+            - current_size
+        )
+
+    def num_to_scale_down(self, actor_pool: AutoscalingActorPool) -> int:
+        return 1
+
+
 class AnyscaleAutoscaler(Autoscaler):
     """Anyscale's proprietary Ray Data autoscaler implementation.
 
@@ -127,8 +242,6 @@ class AnyscaleAutoscaler(Autoscaler):
     # Default time window in seconds to calculate the average of
     # actor pool utilization.
     DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S: int = 10
-    # Default scaling up factor for actor pool autoscaling.
-    DEFAULT_ACTOR_POOL_SCALING_UP_FACTOR: float = 2.0
 
     # Default cluster utilization threshold to trigger scaling up.
     DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.75
@@ -153,9 +266,9 @@ class AnyscaleAutoscaler(Autoscaler):
         execution_id: str,
         actor_pool_scaling_up_threshold: float = DEFAULT_ACTOR_POOL_SCALING_UP_THRESHOLD,  # noqa: E501
         actor_pool_scaling_down_threshold: float = DEFAULT_ACTOR_POOL_SCALING_DOWN_THRESHOLD,  # noqa: E501
-        actor_pool_scaling_up_factor: float = DEFAULT_ACTOR_POOL_SCALING_UP_FACTOR,
         actor_pool_util_avg_window_s: float = DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S,
         actor_pool_util_check_interval_s: float = DEFAULT_ACTOR_POOL_UTIL_CHECK_INTERVAL_S,  # noqa: E501
+        actor_pool_resizing_policy: Optional[ActorPoolResizingPolicy] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_factor: float = DEFAULT_CLUSTER_SCALING_UP_FACTOR,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
@@ -164,8 +277,6 @@ class AnyscaleAutoscaler(Autoscaler):
         assert actor_pool_scaling_down_threshold < actor_pool_scaling_up_threshold
         self._actor_pool_scaling_up_threshold = actor_pool_scaling_up_threshold
         self._actor_pool_scaling_down_threshold = actor_pool_scaling_down_threshold
-        assert actor_pool_scaling_up_factor > 1
-        self._actor_pool_scaling_up_factor = actor_pool_scaling_up_factor
         assert actor_pool_util_avg_window_s > 0
         self._actor_pool_util_calculators = defaultdict(
             lambda: _TimeWindowAverageCalculator(window_s=actor_pool_util_avg_window_s)
@@ -174,6 +285,10 @@ class AnyscaleAutoscaler(Autoscaler):
         self._actor_pool_util_check_interval_s = actor_pool_util_check_interval_s
         # Last time when the actor pool utilization was checked.
         self._last_actor_pool_util_check_time = 0
+
+        self._actor_pool_resizing_policy = (
+            actor_pool_resizing_policy or DefaultActorPoolResizingPolicy()
+        )
 
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -304,7 +419,10 @@ class AnyscaleAutoscaler(Autoscaler):
                 # is completed, we should scale down the actor pool regardless the
                 # utilization.
                 if should_scale_down:
-                    if actor_pool.scale_down(1):
+                    num_to_scale_down = (
+                        self._actor_pool_resizing_policy.num_to_scale_down(actor_pool)
+                    )
+                    if actor_pool.scale_down(num_to_scale_down):
                         logger.debug(
                             "Scaled down actor pool %s: %d -> %d, current util: %.2f",
                             op.name,
@@ -313,14 +431,8 @@ class AnyscaleAutoscaler(Autoscaler):
                             util,
                         )
                 elif should_scale_up:
-                    num_to_scale_up = (
-                        min(
-                            math.ceil(
-                                current_size * self._actor_pool_scaling_up_factor
-                            ),
-                            actor_pool.max_size(),
-                        )
-                        - current_size
+                    num_to_scale_up = self._actor_pool_resizing_policy.num_to_scale_up(
+                        actor_pool
                     )
 
                     # When we launch an actor for one operator, it decreases the number

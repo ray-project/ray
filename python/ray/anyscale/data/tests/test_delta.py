@@ -2,7 +2,7 @@ import os
 
 import pyarrow as pa
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Schema

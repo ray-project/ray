@@ -16,6 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
@@ -91,8 +96,6 @@ struct NodeManagerConfig {
   uint64_t report_resources_period_ms;
   /// The store socket name.
   std::string store_socket_name;
-  /// The path to the ray temp dir.
-  std::string temp_dir;
   /// The path of this ray log dir.
   std::string log_dir;
   /// The path of this ray session dir.
@@ -111,6 +114,9 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup.
+  bool enable_resource_isolation = false;
 
   void AddDefaultLabels(const std::string &self_node_id);
 };
@@ -806,8 +812,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
-  /// The path to the ray temp dir.
-  std::string temp_dir_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
 

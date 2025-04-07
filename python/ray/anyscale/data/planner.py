@@ -1,6 +1,5 @@
 from typing import List
 
-from ray.anyscale.data._internal.execution.operators.join import JoinOperator
 from ray.anyscale.data._internal.execution.operators.streaming_hash_aggregate import (
     StreamingHashAggregate,
 )
@@ -41,6 +40,11 @@ def _register_anyscale_plan_logical_op_fns():
         physical_children: List[PhysicalOperator],
         data_context: DataContext,
     ) -> PhysicalOperator:
+        # NOTE: This has to be localized to break circular imports induced by us
+        #       invoking `_register_anyscale_plan_logical_op_fns` at module loading time
+        # TODO avoid registering at module loading
+        from ray.anyscale.data._internal.execution.operators.join import JoinOperator
+
         assert len(physical_children) == 2
         assert logical_op._num_outputs is not None
 

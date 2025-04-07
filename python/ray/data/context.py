@@ -97,7 +97,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    True,
+)
 
 # NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
 #       total cumulative size (due to it internally utilizing int32 offsets)
@@ -328,6 +331,8 @@ class DataContext:
             transient errors when reading from remote storage systems.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
+            map tasks won't record memory stats.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -368,29 +373,9 @@ class DataContext:
     # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
     max_hash_shuffle_finalization_batch_size: Optional[int] = None
 
-    # Following CPU allocations for aggregating actors of
-    # Join/Shuffle/Aggregate operators are calculated as:
-    #
-    #   num_cpus (per partition) = CPU budget / # partitions
-    #
-    # Assuming:
-    #
-    #   - Default number of partitions:
-    #       - Join: 64 (no default)
-    #       - Shuffle: 64 (no default)
-    #       - Aggregate: 200 (defaults to `DataContext.min_default_parallelism`)
-    #
-    #   - Total operator's CPU budget with default settings (ie operator executed with
-    #     default settings should require no more than that).
-    #       - Join: 8 cores
-    #       - Shuffle: 8 cores
-    #       - Aggregate: 4 cores
-    #
-    # These CPU budgets are derived such that Ray Data pipeline could run on a
-    # single node (using the default settings).
-    default_join_operator_actor_num_cpus_per_partition: float = 0.125
-    default_hash_shuffle_operator_actor_num_cpus_per_partition: float = 0.05
-    default_hash_aggregate_operator_actor_num_cpus_per_partition: float = 0.025
+    join_operator_actor_num_cpus_per_partition_override: float = None
+    hash_shuffle_operator_actor_num_cpus_per_partition_override: float = None
+    hash_aggregate_operator_actor_num_cpus_per_partition_override: float = None
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
@@ -443,6 +428,7 @@ class DataContext:
     )
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
+    memory_usage_poll_interval_s: Optional[float] = 1
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

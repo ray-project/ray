@@ -127,8 +127,8 @@ def validate_protobuf_enum(grpc_enum, custom_enum):
     if len(enum_vals) > 0:
         assert enum_vals == set(
             custom_enum
-        ), """Literals and protos out of sync,\
-consider building //:install_py_proto with bazel?"""
+        ), """Literals in `custom_types.py` and `.proto` files are out of sync. \
+Consider building //:install_py_proto with Bazel or updating `custom_types.py`."""
 
 
 # Do the enum validation here.

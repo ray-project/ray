@@ -647,7 +647,7 @@ class Stats:
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
-            throughput=state["_throughput"],
+            throughput=state.get("_throughput", False),
         )
         stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
         return stats

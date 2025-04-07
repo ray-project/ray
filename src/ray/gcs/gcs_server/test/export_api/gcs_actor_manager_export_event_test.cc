@@ -23,7 +23,6 @@
 // clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -132,8 +131,8 @@ class GcsActorManagerTest : public ::testing::Test {
   )");
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
@@ -269,6 +268,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   rpc::CreateActorRequest create_actor_request;
   create_actor_request.mutable_task_spec()->CopyFrom(
       registered_actor->GetCreationTaskSpecification().GetMessage());
+  create_actor_request.mutable_task_spec()->mutable_labels()->insert({"w00t", "hi"});
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
 
@@ -318,6 +318,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
               event_data["death_cause"]["actor_died_error_context"]["error_message"],
               "The actor is dead because all references to the actor were removed "
               "including lineage ref count.");
+        }
+        if (expected_states[event_idx] == "ALIVE") {
+          ASSERT_EQ(event_data["labels"]["w00t"], "hi");
         }
       }
       return;

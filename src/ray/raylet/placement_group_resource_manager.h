@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <memory>
+#include <unordered_set>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
@@ -47,7 +51,7 @@ class PlacementGroupResourceManager {
  public:
   /// Prepare a list of bundles. It is guaranteed that all bundles are atomically
   /// prepared.
-  ///(e.g., if one of bundle cannot be prepared, all bundles are failed to be prepared)
+  /// (e.g., if one of bundle cannot be prepared, all bundles are failed to be prepared)
   ///
   /// \param bundle_specs A set of bundles that waiting to be prepared.
   /// \return bool True if all bundles successfully reserved resources, otherwise false.

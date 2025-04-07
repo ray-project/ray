@@ -303,11 +303,7 @@ def partition_files(
 
         block = builder.build()
 
-        print(f">>> [DBG] partition_files: before: {block}")
-
         shuffled_block = transform_pyarrow.shuffle(block, shuffle_config.seed)
-
-        print(f">>> [DBG] partition_files: after: {shuffled_block}")
 
         rows_iter = ArrowBlockAccessor(shuffled_block).iter_rows(
             public_row_format=False

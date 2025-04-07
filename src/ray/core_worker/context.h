@@ -16,6 +16,7 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"

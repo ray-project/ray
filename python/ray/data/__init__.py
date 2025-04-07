@@ -4,6 +4,7 @@ import pandas  # noqa
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
@@ -28,6 +29,7 @@ from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
+    from_daft,
     from_dask,
     from_huggingface,
     from_items,
@@ -123,6 +125,7 @@ __all__ = [
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
+    "from_daft",
     "from_dask",
     "from_items",
     "from_arrow",

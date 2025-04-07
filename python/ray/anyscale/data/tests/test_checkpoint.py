@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import pyarrow
 from pyarrow.fs import FileSelector
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._private.test_utils import wait_for_condition

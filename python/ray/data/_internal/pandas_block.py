@@ -17,10 +17,11 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
+from ray.anyscale.data._internal.block import OptimizedTableBlockMixin
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions, is_null
+from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -29,6 +30,7 @@ from ray.data.block import (
     BlockType,
     U,
     BlockColumnAccessor,
+    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -150,6 +152,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
             sum_ / self.count(ignore_nulls=ignore_nulls) if not is_null(sum_) else sum_
         )
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        return self._column.quantile(q=q)
+
+    def unique(self) -> BlockColumn:
+        pd = lazy_import_pandas()
+        return pd.Series(self._column.unique())
+
+    def flatten(self) -> BlockColumn:
+        return self._column.list.flatten()
+
     def sum_of_squared_diffs_from_mean(
         self,
         ignore_nulls: bool,
@@ -164,8 +178,18 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return ((self._column - mean) ** 2).sum(skipna=ignore_nulls)
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         return self._column.to_list()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """NOTE: Unlike Arrow, specifying `zero_copy_only=True` isn't a guarantee
+        that no copy will be made
+        """
+
+        return self._column.to_numpy(copy=not zero_copy_only)
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self.to_pylist()
 
     def _is_all_null(self):
         return not self._column.notna().any()
@@ -229,7 +253,7 @@ class PandasBlockBuilder(TableBlockBuilder):
 PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
 
 
-class PandasBlockAccessor(TableBlockAccessor):
+class PandasBlockAccessor(OptimizedTableBlockMixin, TableBlockAccessor):
     ROW_TYPE = PandasRow
 
     def __init__(self, table: "pandas.DataFrame"):
@@ -525,7 +549,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(

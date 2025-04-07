@@ -140,6 +140,7 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
@@ -285,6 +286,8 @@ class FileBasedDatasource(Datasource):
                         iter(read_paths),
                         read_files,
                         num_workers=num_threads,
+                        preserve_ordering=True,
+                        buffer_size=max(len(read_paths) // num_threads, 1),
                     )
                 else:
                     logger.debug(f"Reading {len(read_paths)} files.")

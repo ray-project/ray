@@ -16,8 +16,13 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"

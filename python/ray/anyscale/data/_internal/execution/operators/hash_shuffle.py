@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 import math
+import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -795,12 +796,6 @@ class HashShufflingOperatorBase(PhysicalOperator):
         assert num_partitions >= num_aggregators
         assert partition_size_hint is None or partition_size_hint > 0
 
-        # Since aggregators can handle multiple individual partitions,
-        # CPU allocation is proportionately scaled with the number of partitions
-        partition_aggregator_ratio: int = math.ceil(num_partitions / num_aggregators)
-
-        assert partition_aggregator_ratio >= 1
-
         aggregator_total_memory_required = self._estimate_aggregator_memory_allocation(
             num_aggregators=num_aggregators,
             num_partitions=num_partitions,
@@ -811,15 +806,16 @@ class HashShufflingOperatorBase(PhysicalOperator):
             ),
         )
 
-        aggregator_num_cpus = self._get_default_aggregator_num_cpus()
-
-        assert aggregator_num_cpus > 0, (
-            f"{self.__class__.__name__} aggregating actor CPU allocation "
-            f"has to be positive"
-        )
+        # Since aggregators can handle multiple individual partitions,
+        # CPU allocation is proportionately scaled with the number of partitions
+        partition_aggregator_ratio: int = math.ceil(num_partitions / num_aggregators)
+        assert partition_aggregator_ratio >= 1
 
         remote_args = {
-            "num_cpus": aggregator_num_cpus * partition_aggregator_ratio,
+            "num_cpus": self._get_aggregator_num_cpus_per_partition(
+                num_partitions=num_partitions
+            )
+            * partition_aggregator_ratio,
             "memory": aggregator_total_memory_required,
             # NOTE: By default aggregating actors should be spread across available
             #       nodes to prevent any single node being overloaded with a "thundering
@@ -830,8 +826,27 @@ class HashShufflingOperatorBase(PhysicalOperator):
         return remote_args
 
     @abc.abstractmethod
-    def _get_default_aggregator_num_cpus(self):
+    def _get_default_num_cpus_per_partition(self) -> int:
         pass
+
+    @abc.abstractmethod
+    def _get_operator_num_cpus_per_partition_override(self) -> int:
+        pass
+
+    def _get_aggregator_num_cpus_per_partition(self, num_partitions: int):
+        # 1. Check whether there is an override
+        if self._get_operator_num_cpus_per_partition_override() is not None:
+            return self._get_operator_num_cpus_per_partition_override()
+
+        # 2. Check cluster resources
+        max_resources = ray._private.state.state.get_max_resources_from_cluster_config()
+        if max_resources and (max_resources.get("CPU") or 0) > 0:
+            # NOTE: For shuffling operations we aim to allocate no more than
+            #       50% of CPUs, but no more than 1 CPU per partition
+            return min(1, (max_resources["CPU"] / 2) / num_partitions)
+
+        # 3. Fallback to defaults if the first two options are not available
+        return self._get_default_num_cpus_per_partition()
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -872,9 +887,24 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             ),
         )
 
-    def _get_default_aggregator_num_cpus(self):
+    def _get_default_num_cpus_per_partition(self) -> int:
+        """
+        CPU allocation for aggregating actors of Shuffle operator is calculated as:
+        num_cpus (per partition) = CPU budget / # partitions
+
+        Assuming:
+        - Default number of partitions: 64
+        - Total operator's CPU budget with default settings: 4 cores
+        - Number of CPUs per partition: 4 / 64 = 0.0625
+
+        These CPU budgets are derived such that Ray Data pipeline could run on a
+        single node (using the default settings).
+        """
+        return 0.0625
+
+    def _get_operator_num_cpus_per_partition_override(self) -> int:
         return (
-            self.data_context.default_hash_shuffle_operator_actor_num_cpus_per_partition
+            self.data_context.hash_shuffle_operator_actor_num_cpus_per_partition_override
         )
 
     @classmethod
@@ -942,7 +972,7 @@ class AggregatorPool:
 
         self._aggregator_ray_remote_args: Dict[
             str, Any
-        ] = self._derive_aggregator_ray_remote_args(
+        ] = self._derive_final_shuffle_aggregator_ray_remote_args(
             aggregator_ray_remote_args,
             self._aggregator_partition_map,
         )
@@ -953,7 +983,7 @@ class AggregatorPool:
 
             assert len(target_partition_ids) > 0
 
-            aggregator = ShuffleAggregator.options(
+            aggregator = HashShuffleAggregator.options(
                 **self._aggregator_ray_remote_args
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
@@ -987,12 +1017,10 @@ class AggregatorPool:
         return partition_id % self._num_aggregators
 
     @staticmethod
-    def _derive_aggregator_ray_remote_args(
+    def _derive_final_shuffle_aggregator_ray_remote_args(
         aggregator_ray_remote_args: Dict[str, Any],
         aggregator_partition_map: Dict[int, List[int]],
     ):
-        # TODO add test for
-
         max_partitions_per_aggregator = max(
             [len(ps) for ps in aggregator_partition_map.values()]
         )
@@ -1010,7 +1038,7 @@ class AggregatorPool:
             #   - Minimum concurrency configured
             "max_concurrency": max(
                 max_partitions_per_aggregator,
-                ShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
+                HashShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
             ),
             **aggregator_ray_remote_args,
         }
@@ -1021,7 +1049,12 @@ class AggregatorPool:
 
 
 @ray.remote
-class ShuffleAggregator:
+class HashShuffleAggregator:
+    """Actor handling of the assigned partitions during hash-shuffle operation
+
+    NOTE: This actor might have ``max_concurrency`` > 1 (depending on the number of
+          assigned partitions, and has to be thread-safe!
+    """
 
     # Default minimum value of `max_concurrency` configured
     # for a `ShuffleAggregator` actor
@@ -1033,20 +1066,23 @@ class ShuffleAggregator:
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
     ):
+        self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
-        self._agg.accept(input_seq_id, partition_id, partition_shard)
+        with self._lock:
+            self._agg.accept(input_seq_id, partition_id, partition_shard)
 
     def finalize(
         self, partition_id: int
     ) -> AsyncGenerator[Union[Block, BlockMetadata], None]:
-        # Finalize given partition id
-        result = self._agg.finalize(partition_id)
-        # Clear any remaining state (to release resources)
-        self._agg.clear(partition_id)
+        with self._lock:
+            # Finalize given partition id
+            result = self._agg.finalize(partition_id)
+            # Clear any remaining state (to release resources)
+            self._agg.clear(partition_id)
 
         # TODO break down blocks to target size
         yield result

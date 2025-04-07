@@ -1,8 +1,7 @@
 import collections
 import logging
-import os
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -27,7 +26,6 @@ from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
-import psutil
 
 if TYPE_CHECKING:
     import pandas
@@ -125,6 +123,8 @@ class BlockExecStats:
         wall_time_s: The wall-clock time it took to compute this block.
         cpu_time_s: The CPU time it took to compute this block.
         node_id: A unique id for the node that computed this block.
+        max_uss_bytes: An estimate of the maximum amount of physical memory that the
+            process was using while computing this block.
     """
 
     def __init__(self):
@@ -134,7 +134,7 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.rss_bytes: int = 0
+        self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -160,20 +160,20 @@ class _BlockExecStatsBuilder:
     """
 
     def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
 
     def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+        # Record end times.
+        end_time = time.perf_counter()
+        end_cpu = time.process_time()
 
+        # Build the stats.
         stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
-        process = psutil.Process(os.getpid())
-        stats.rss_bytes = int(process.memory_info().rss)
+        stats.start_time_s = self._start_time
+        stats.end_time_s = end_time
+        stats.wall_time_s = end_time - self._start_time
+        stats.cpu_time_s = end_cpu - self._start_cpu
 
         return stats
 
@@ -213,7 +213,7 @@ class BlockMetadata(BlockStats):
 
     def to_stats(self):
         return BlockStats(
-            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+            **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
     def __post_init__(self):
@@ -507,6 +507,21 @@ class BlockAccessor:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ) -> List[Block]:
+        """NOTE: PLEASE READ CAREFULLY
+
+        Returns dataset partitioned using list of boundaries
+
+        This method requires that
+            - Block being sorted (according to `sort_key`)
+            - Boundaries is a sorted list of tuples
+        """
+        raise NotImplementedError
+
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
@@ -534,17 +549,18 @@ class BlockAccessor:
 
         if self.num_rows() == 0:
             return np.array([], dtype=np.int32)
-        elif keys:
-            # Convert key columns to Numpy (to perform vectorized
-            # ops on them)
-            projected_block = self.to_numpy(keys)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
 
-            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = self.to_numpy(keys)
 
-        # If no keys are specified, whole block is considered a single group
-        return np.array([0, self.num_rows()])
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
 
+@DeveloperAPI(stability="beta")
 class BlockColumnAccessor:
     """Provides vendor-neutral interface to apply common operations
     to block's (Pandas/Arrow) columns"""
@@ -572,6 +588,21 @@ class BlockColumnAccessor:
         """Returns a mean of the values in the column"""
         raise NotImplementedError()
 
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        """Returns requested quantile of the given column"""
+        raise NotImplementedError()
+
+    def unique(self) -> BlockColumn:
+        """Returns new column holding only distinct values of the current one"""
+        raise NotImplementedError()
+
+    def flatten(self) -> BlockColumn:
+        """Flattens nested lists merging them into top-level container"""
+
+        raise NotImplementedError()
+
     def sum_of_squared_diffs_from_mean(
         self,
         *,
@@ -582,8 +613,16 @@ class BlockColumnAccessor:
         """Returns a sum of diffs (from mean) squared for the column"""
         raise NotImplementedError()
 
-    def to_pylist(self):
+    def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """Converts underlying column to Numpy"""
+        raise NotImplementedError()
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
     @staticmethod
