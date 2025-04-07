@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-Unit/Integration Testing for python/ray/_private/utils.py
+Unit/Integration Testing for python/_private/utils.py
 
 This currently expects to work for minimal installs.
 """
