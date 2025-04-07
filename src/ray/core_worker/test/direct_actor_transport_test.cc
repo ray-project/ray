@@ -85,8 +85,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
-  int64_t ClientProcessedUpToSeqno() override { return acked_seqno; }
-
   bool ReplyPushTask(Status status = Status::OK(), size_t index = 0) {
     if (callbacks.size() == 0) {
       return false;
