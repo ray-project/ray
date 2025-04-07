@@ -164,6 +164,7 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   RAY_ASSIGN_OR_RETURN(const auto content, ReadEntireFile(subtree_control_path));
   std::string_view content_sv{content};
   absl::ConsumeSuffix(&content_sv, "\n");
+  RAY_LOG(ERROR) << "content = |" << content_sv << "| for file " << subtree_control_path;
 
   const std::vector<std::string_view> enabled_subtree_controllers =
       absl::StrSplit(content_sv, ' ');
