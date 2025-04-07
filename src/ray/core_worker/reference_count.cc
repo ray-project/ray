@@ -24,8 +24,6 @@
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
-namespace {}  // namespace
-
 namespace ray {
 namespace core {
 

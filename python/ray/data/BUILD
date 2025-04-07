@@ -549,6 +549,20 @@ py_test(
 )
 
 py_test(
+    name = "test_path_util",
+    size = "small",
+    srcs = ["tests/test_path_util.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_tensor",
     size = "small",
     srcs = ["tests/test_tensor.py"],

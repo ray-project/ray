@@ -162,20 +162,20 @@ class VLLMEngineConfig(BaseModelExtended):
             return True
 
         return self.accelerator_type in (
-            GPUType.NVIDIA_TESLA_V100,
-            GPUType.NVIDIA_TESLA_P100,
-            GPUType.NVIDIA_TESLA_T4,
-            GPUType.NVIDIA_TESLA_P4,
-            GPUType.NVIDIA_TESLA_K80,
-            GPUType.NVIDIA_TESLA_A10G,
-            GPUType.NVIDIA_L4,
-            GPUType.NVIDIA_L40S,
-            GPUType.NVIDIA_A100,
-            GPUType.NVIDIA_H100,
-            GPUType.NVIDIA_H200,
-            GPUType.NVIDIA_H20,
-            GPUType.NVIDIA_A100_40G,
-            GPUType.NVIDIA_A100_80G,
+            GPUType.NVIDIA_TESLA_V100.value,
+            GPUType.NVIDIA_TESLA_P100.value,
+            GPUType.NVIDIA_TESLA_T4.value,
+            GPUType.NVIDIA_TESLA_P4.value,
+            GPUType.NVIDIA_TESLA_K80.value,
+            GPUType.NVIDIA_TESLA_A10G.value,
+            GPUType.NVIDIA_L4.value,
+            GPUType.NVIDIA_L40S.value,
+            GPUType.NVIDIA_A100.value,
+            GPUType.NVIDIA_H100.value,
+            GPUType.NVIDIA_H200.value,
+            GPUType.NVIDIA_H20.value,
+            GPUType.NVIDIA_A100_40G.value,
+            GPUType.NVIDIA_A100_80G.value,
         )
 
     def get_or_create_pg(self) -> PlacementGroup:
