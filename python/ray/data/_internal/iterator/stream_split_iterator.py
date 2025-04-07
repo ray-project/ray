@@ -150,7 +150,7 @@ class SplitCoordinator:
 
         def gen_epochs():
             while True:
-                executor = self._base_dataset._plan.create_executor()
+                self._executor = self._base_dataset._plan.create_executor()
 
                 def add_split_op(dag):
                     return OutputSplitter(
