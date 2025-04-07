@@ -207,7 +207,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     assert ray.get(ref) == (i, (5,), dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("enable_profiling", [False, True])
 @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
@@ -266,7 +266,7 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
     sender = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
@@ -312,7 +312,7 @@ def test_torch_tensor_shm(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
 def test_torch_tensor_auto(ray_start_regular, num_gpus):
@@ -369,7 +369,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         assert ray.get(ref) == (i, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
     [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
@@ -415,7 +415,7 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     compiled_dag.teardown()
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
@@ -459,7 +459,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         dag.experimental_compile()
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm(ray_start_regular):
     assert (
@@ -592,7 +592,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         assert result == (i, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm_inited(ray_start_regular):
     assert (
@@ -733,7 +733,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         assert result == (i, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize(
     "transports",
@@ -899,7 +899,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
         assert len(compiled_dag._communicator_to_type_hints) == 1
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_invalid_custom_comm(ray_start_regular):
     assert (
@@ -1044,7 +1044,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
         dag.experimental_compile(_default_communicator=comm2)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_static_shape(ray_start_regular):
     if not USE_GPU:
@@ -1083,7 +1083,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
         ref = compiled_dag.execute(i, shape=(21,), dtype=dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_direct_return(ray_start_regular):
     assert (
@@ -1118,7 +1118,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
         ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
     """
@@ -1150,7 +1150,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         assert result == args
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
@@ -1236,7 +1236,7 @@ def test_torch_tensor_exceptions(
         assert result == (i, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_exceptions2(
     ray_start_regular,
@@ -1279,7 +1279,7 @@ def test_torch_tensor_exceptions2(
         ref = compiled_dag.execute(2)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_explicit_communicator(ray_start_regular):
     assert (
@@ -1321,7 +1321,7 @@ def test_torch_tensor_explicit_communicator(ray_start_regular):
         dag.experimental_compile(_default_communicator=None)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize(
     "operation, reduce_op",
@@ -1435,7 +1435,7 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
             assert torch.equal(result_tensor.to("cpu"), expected_tensor)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     """
@@ -1478,7 +1478,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         assert torch.equal(tensor, expected_tensor_val)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     """
@@ -1528,7 +1528,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         ray.get(ref)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
     """
@@ -1671,7 +1671,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     """
@@ -1724,7 +1724,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert result[2] == (value, shape, dtype)
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     """
@@ -1759,7 +1759,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
         assert result == [t1 + t4, t1 + t4, t2, t3]
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
     """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
@@ -1796,7 +1796,7 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     assert (
@@ -1831,7 +1831,7 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype)]
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     assert (
@@ -1866,7 +1866,7 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype), (i, (5,), dtype)]
 
 
-@pytest.mark.skipif(not USE_GPU, "Skipping GPU Test")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
     assert (
