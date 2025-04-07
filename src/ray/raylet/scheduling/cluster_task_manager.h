@@ -19,7 +19,6 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"

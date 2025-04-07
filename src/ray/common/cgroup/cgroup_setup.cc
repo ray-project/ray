@@ -14,6 +14,8 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
+#include <string>
+
 #ifndef __linux__
 namespace ray {
 CgroupSetup::CgroupSetup(const std::string &directory, const std::string &node_id) {

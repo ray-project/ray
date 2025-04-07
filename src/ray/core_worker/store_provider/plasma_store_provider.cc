@@ -22,7 +22,6 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

@@ -523,7 +523,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -688,8 +688,8 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
@@ -795,6 +795,11 @@ def start(
         warnings.warn(
             "--storage is deprecated and will be removed in a future version of Ray.",
         )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -826,7 +831,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
