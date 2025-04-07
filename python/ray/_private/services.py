@@ -1182,7 +1182,6 @@ def start_api_server(
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
-    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1211,8 +1210,6 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
-        dashboard_grpc_port: The port which the dashboard listens for
-            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1318,9 +1315,6 @@ def start_api_server(
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
-
-        if dashboard_grpc_port is not None:
-            command.append(f"--grpc-port={dashboard_grpc_port}")
 
         stdout_file = None
         if stdout_filepath:
