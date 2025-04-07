@@ -8,6 +8,27 @@ This page describes considerations and recommendations related to performance an
 * For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
 * For technical implementation details of Ray Data, see :ref:`datasets_scheduling`.
 
+.. _remove_materialize:
+
+Remove unnecessary materialization
+----------------------------------
+
+Operations that consume data force your logic to materialize. For example, while operations to inspect your data might be informative while developing a new workload, these same operations can introduce bottlenecks when deploying your code to production.
+
+Some operations, such as :meth:`~ray.data.Dataset.take_all`, can also lead to out-of-memory errors when you scale the size of your data.
+
+.. _remove_bottlenecks:
+
+Remove logical bottlenecks
+--------------------------
+
+Operations that need to evaluate, compare, or aggregate the entire dataset create processing bottlenecks for streaming execution. Examples include :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>`.
+
+Ray must materialize the entire dataset to complete these operations, which interupts stream pipeline processing and might lead to significant spill or out-of-memory errors.
+
+Consider refactoring workloads to remove unnecessary operations that require full dataset materialization. For example, the distributed model used by Ray does not persist ordered results between stages or guarantee that sorting is preserved on write. For many workloads, removing a :meth:`ds.sort() <ray.data.Dataset.sort>` operation can eliminate significant overhead without impacting results in any way.
+
+
 .. _block_size:
 
 Block size and performance

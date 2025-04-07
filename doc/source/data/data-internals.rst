@@ -11,10 +11,32 @@ This page provides an overview of technical implementation details of Ray Data. 
 
 .. _dataset_concept:
 
-How does Ray 
-------------------------------
+What does a block represent in Ray?
+-----------------------------------
 
+Ray Data uses _blocks_ to represent subsets of data in a Dataset. Most users of Ray Data 
 
+Blocks have the following characteristics:
+
+* Each record or row in a Dataset is only present in one block.
+* Blocks are distributed across the cluster for independent processing.
+* Blocks are processed in parallel and sequentially, depending on the operations present in an application.
+
+If you're troubleshooting or optimizing Ray Data workloads, consider the following details and special cases:
+
+* The number of row or records in a block varies base on the size of each record. Most blocks are between 1 MiB and 128 MiB.
+  
+  * Ray automatically splits blocks into smaller blocks if they exceed the max block size by 50% or more.
+  
+  * A block might only contain a single record if your data is very wide or contains a large record such as an image, vector, or tensor. Ray Data has built-in optimizations for handling large data efficiently, and you should test workloads with built-in defaults before trying to manually optimize your workload.
+  
+  * You can configure block size and splitting behaviors. See :ref:`block_size`.
+
+* Ray uses `Arrow tables <https://arrow.apache.org/docs/cpp/tables.html>`_ to internally represent blocks of data.
+  
+  * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See `Arrow and pandas type differences <https://arrow.apache.org/docs/python/pandas.html#type-differences>`_.
+  
+  * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
 
 
 Operators
@@ -153,8 +175,6 @@ By default, Ray Data configures its tasks and actors to use the cluster-default 
 placement group. To use current placement group resources specifically for Ray Data, set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
 
 Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
-
-
 
 Memory Management
 -----------------

@@ -45,7 +45,7 @@ Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which repr
 
 Ray Datasets are similar to DataFrames and Datasets in TensorFlow, PyTorch, pandas, and Apache Spark. Ray Data provides interoperatibility with these and other libraries. See :ref:`load_data_libraries`.
 
-For details on how Ray Datasets represent data for distributed processing, see :ref:`data_key_concepts`
+For details on how Ray Datasets represent and optimize data for distributed processing, see :ref:`data_key_concepts`
 
 Most operations in Ray Data fall into one of the following categories:
 
@@ -64,9 +64,8 @@ Run Ray Data code examples
 
 The following code examples build upon one another sequentially. You can run these commands interactively in a Jupyter notebook if you have :ref:`configured Ray<installation>`, or you can `run Ray on Anyscale <https://www.anyscale.com/ray-on-anyscale>`_.
 
-These code examples materialize data at each step to show results. When preparing code for production, only include operations that materialize results if they are essential to your application. This allows Ray to optimize the logical and physical plans and efficently pipeline operations for concurrent execution. See :ref:`plans`.
-
-Combine these steps to complete data preprocessing or ETL (extract, transform, and load) workloads. For an example of 
+.. note::
+    These code examples materialize data at each step to show results. When preparing code for production, only include operations that materialize results if they are essential to your application. This allows Ray to optimize the logical and physical plans and efficently pipeline operations for concurrent execution. See :ref:`remove_materialize`.
 
 .. _loading_key_concept:
 
