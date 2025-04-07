@@ -227,7 +227,7 @@ class Preprocessor(abc.ABC):
                 "Instead, you should apply the transform to the Ray Dataset before sharding "
                 "it across workers."
             )
-        
+
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()
