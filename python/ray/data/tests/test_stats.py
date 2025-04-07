@@ -1680,7 +1680,7 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
 
     args = update_fn.call_args_list[-1].args
-    assert args[0] == f"dataset_{ds._uuid}"
+    assert args[0] == f"dataset_{ds._uuid}_0"
     assert args[2][0] == "Input_0"
     assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
 

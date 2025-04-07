@@ -425,9 +425,6 @@ class ExecutionPlan:
         """
         self._has_started_execution = True
 
-        # Always used the saved context for execution.
-        ctx = self._context
-
         if self.has_computed_output():
             bundle = self.execute()
             return iter([bundle]), self._snapshot_stats, None

@@ -162,7 +162,7 @@ class SplitCoordinator:
                     )
 
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    executor,
+                    self._executor,
                     dataset._plan,
                     dag_rewrite=add_split_op,
                 )
