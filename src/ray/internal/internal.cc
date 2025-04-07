@@ -82,7 +82,7 @@ const ray::stats::TagKeyType TagRegister(const std::string tag_name) {
 
 const std::string TagKeyName(stats::TagKeyType &tagkey) { return tagkey.name(); }
 
-ActorID GetCurrentActorID() {
+const ActorID &GetCurrentActorID() {
   return CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
 }
 

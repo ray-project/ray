@@ -52,7 +52,7 @@ const stats::TagKeyType TagRegister(const std::string tag_name);
 const std::string TagKeyName(stats::TagKeyType &tagkey);
 
 /// Get current actor id via internal.
-ActorID GetCurrentActorID();
+const ActorID &GetCurrentActorID();
 
 /// Get core worker initialization flag via internal.
 bool IsInitialized();

@@ -227,7 +227,7 @@ const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
   return GetThreadContext().GetCurrentInternalTaskId();
 }
 
-PlacementGroupID WorkerContext::GetCurrentPlacementGroupId() const {
+const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
@@ -348,12 +348,12 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
-ActorID WorkerContext::GetCurrentActorID() const {
+const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
 }
 
-ActorID WorkerContext::GetRootDetachedActorID() const {
+const ActorID &WorkerContext::GetRootDetachedActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return root_detached_actor_id_;
 }

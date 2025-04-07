@@ -305,7 +305,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  PlacementGroupID GetCurrentPlacementGroupId() const {
+  const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -1009,7 +1009,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  ActorID GetActorId() const {
+  const ActorID &GetActorId() const {
     // TODO(dayshah): Figure out why Java tests fail if we lock here.
     // absl::MutexLock lock(&mutex_);
     return actor_id_;

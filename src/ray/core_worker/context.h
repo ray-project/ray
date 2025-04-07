@@ -63,7 +63,7 @@ class WorkerContext {
 
   TaskID GetMainThreadOrActorCreationTaskID() const;
 
-  PlacementGroupID GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
+  const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -96,9 +96,9 @@ class WorkerContext {
   /// NOTE: This method can't be used in fiber/async actor context.
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
-  ActorID GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;

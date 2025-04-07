@@ -234,7 +234,7 @@ JobID AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-ActorID AbstractRayRuntime::GetCurrentActorID() {
+const ActorID &AbstractRayRuntime::GetCurrentActorID() {
   return GetWorkerContext().GetCurrentActorID();
 }
 
