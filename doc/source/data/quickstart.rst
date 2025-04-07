@@ -92,7 +92,7 @@ The following code example loads CSV data from an S3 bucket and previews the dat
 
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
-For an overview of creating Dataset from other sources, including Python data structures and other data processing frameworks, see :ref:`loading_data`.
+For an overview of creating Datasets from other sources, including Python data structures and other data processing frameworks, see :ref:`loading_data`.
 
 .. _transforming_key_concept:
 
