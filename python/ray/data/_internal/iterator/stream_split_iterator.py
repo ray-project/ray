@@ -110,7 +110,7 @@ class StreamSplitDataIterator(DataIterator):
         return self._world_size
 
     def _get_dataset_tag(self):
-        return f"{self._base_dataset.get_dataset_idtaset_id()}_split_{self._output_split_idx}"
+        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
