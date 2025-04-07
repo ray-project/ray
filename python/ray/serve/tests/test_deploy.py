@@ -204,7 +204,7 @@ def test_redeploy_multiple_replicas(serve_instance):
     # Redeploy new version.
     serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=2)
+        client._wait_for_application_running("app", timeout_s=10)
 
     # Two new replicas should be started.
     vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
