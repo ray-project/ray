@@ -47,6 +47,8 @@ class ResourceIsolationConfig:
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
+        # cgroupv2 cpu.weight calculated from system_reserved_cpu
+        # assumes ray uses all available cores
         self.system_reserved_cpu_weight: float = None
         self._constructed = False
 
@@ -135,7 +137,7 @@ class ResourceIsolationConfig:
     def _validate_system_reserved_cpu(system_reserved_cpu: Optional[float]) -> int:
         """If system_reserved_cpu is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range, and converts it into cpu.weights
-        for cgroupv2.
+        for cgroupv2. See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights for more information.
 
         Raises:
             ValueError if system_reserved_cpu is specified, but invalid.
@@ -182,9 +184,6 @@ class ResourceIsolationConfig:
             )
 
         # Converting the number of cores the user defined into cpu.weights
-        # see the cpu.weights section in
-        # https://docs.kernel.org/admin-guide/cgroup-v2.html
-        # for more information.
         # This assumes that ray is allowed to use all available CPU
         # cores and distribute them between system processes and
         # application processes

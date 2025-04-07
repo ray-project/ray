@@ -339,7 +339,7 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     )
 
 
-def test_ray_start_invalid_resource_isolation_config():
+def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
     runner = CliRunner()
     result = runner.invoke(
         scripts.start,
@@ -347,10 +347,9 @@ def test_ray_start_invalid_resource_isolation_config():
     )
     assert result.exit_code != 0
     assert isinstance(result.exception, ValueError)
-    _die_on_error(runner.invoke(scripts.stop))
 
 
-def test_ray_start_resource_isolation_config_default_values(monkeypatch):
+def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
     runner = CliRunner()
     result = runner.invoke(
@@ -359,7 +358,6 @@ def test_ray_start_resource_isolation_config_default_values(monkeypatch):
     )
     # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
     _die_on_error(result)
-    _die_on_error(runner.invoke(scripts.stop))
 
 
 @pytest.mark.skipif(
