@@ -1,7 +1,9 @@
 import random
 
 import ray
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.utils.metrics import WEIGHTS_SEQ_NO
 
 
 class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
@@ -26,9 +28,12 @@ class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
         while True:
             # Pull new weights, every n times.
             if iteration % self.config.broadcast_interval == 0 and self.weights_server_actors:
-                weights = ray.get(random.choice(self.weights_server_actors).get.remote())
-                if weights is not None:
-                    self.module.set_state(weights)
+                learner_state = ray.get(random.choice(self.weights_server_actors).get.remote())
+
+                if learner_state is not None:
+                    assert isinstance(learner_state[COMPONENT_RL_MODULE], ray.ObjectRef)
+                    self.module.set_state(ray.get(learner_state[COMPONENT_RL_MODULE]))
+                    self._weights_seq_no = learner_state[WEIGHTS_SEQ_NO]
 
             episodes = self.sample()
 
@@ -44,12 +49,10 @@ class InfiniteAPPOMultiAgentEnvRunner(MultiAgentEnvRunner):
                 episodes,
                 env_runner_metrics=self.get_metrics(),
             )
-            #print(f"ER: Sent sample of size {len(episodes)} episodes to agg. actor {self._curr_agg_idx}")
+
             # Sync with one aggregator actor.
             if iteration % self.sync_freq == 0:
-                #print("ER: Trying to sync with agg. actor ...")
                 ray.get(agg_actor.sync.remote())
-                #print("ER: .. synched")
 
             self._curr_agg_idx += 1
             iteration += 1

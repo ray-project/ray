@@ -9,7 +9,7 @@ class BatchDispatcher:
     def __init__(self, sync_freq):
         self._learners = []
         self._batch_refs = None
-        self._total_timesteps = 0
+        self._timesteps = None
         self._learner_idx = 0
         self._updates = 0
         self.sync_freq = sync_freq
@@ -22,6 +22,9 @@ class BatchDispatcher:
         self._learners = learners
         self._batch_refs = {i: [] for i in range(len(self._learners))}
 
+    def set_timesteps(self, timesteps):
+        self._timesteps = timesteps
+
     def add_batch(self, batch_ref, learner_idx: int):
         assert isinstance(batch_ref["batch"], ray.ObjectRef)
 
@@ -31,28 +34,23 @@ class BatchDispatcher:
 
         self._batch_refs[learner_idx].append(batch_ref["batch"])
 
-        #print(f"DISPATCH: Received batch for learner {learner_idx}")
-
         # Call `update`, while we have at least one batch ref per Learner.
         while all(br for br in self._batch_refs.values()):
-            #print("DISPATCH: Calling all learners ...")
             call_refs = [
                 learner.update.remote(
                     self._batch_refs[idx].pop(0),
-                    self._total_timesteps,
+                    timesteps=self._timesteps,
                     send_weights=(idx == self._learner_idx),
                 ) for idx, learner in enumerate(self._learners)
             ]
             if self._updates % self.sync_freq == 0:
-                #print(f"DISPATCH: Trying to sync with learner {self._learner_idx} ...")
                 ray.get(call_refs[self._learner_idx])
-                #print(f"DISPATCH: Done synching")
 
             self._learner_idx += 1
             self._learner_idx %= len(self._learners)
             self._updates += 1
-
-        #print("DISPATCH: Done dispatching")
+            # Reset timesteps.
+            self._timesteps = None
 
 
 @ray.remote

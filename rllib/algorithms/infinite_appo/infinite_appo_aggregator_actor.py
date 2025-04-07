@@ -58,8 +58,6 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
         env_steps = sum(len(e) for e in episodes)
         self._ts += env_steps
 
-        #print(f"AGG: Received {env_steps} env steps from EnvRunner")
-
         ma_batch = None
 
         if self._ts >= self.config.train_batch_size_per_learner:
@@ -109,8 +107,6 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
                     env_runner_metrics=self._env_runner_metrics.reduce(),
                     aggregator_metrics=self.metrics.reduce(),
                 )
-
-            #print(f"AGG: Sent {batch_env_steps} as batch to dispatcher")
 
             # Sync with one of the dispatcher actors.
             if self._num_batches_produced % self.sync_freq == 0:

@@ -9,6 +9,7 @@ from ray.rllib.algorithms.infinite_appo.infinite_appo_aggregator_actor import (
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED_LIFETIME
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -16,6 +17,7 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
     def __init__(self, *, config, module_spec):
         super().__init__(config=config, module_spec=module_spec)
         self._num_batches = 0
+        self._timesteps = {NUM_ENV_STEPS_TRAINED_LIFETIME: 0}
 
         # Create child aggregator actors.
         node_id = ray.get_runtime_context().get_node_id()
@@ -57,10 +59,8 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
             ))
 
     def update(self, batch, timesteps, send_weights=False):
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps
-
-        #print("HERE")
+        if timesteps is not None:
+            self._timesteps = timesteps
 
         # --------------------
         # With Learner thread.
@@ -68,14 +68,12 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
         #self._num_batches += 1
         #if self.config.num_gpus_per_learner > 0:
         #    self._gpu_loader_in_queue.put(batch)
-        #    print(self._gpu_loader_in_queue.qsize())
         #    # self.metrics.log_value(
         #    #    (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
         #    #    self._gpu_loader_in_queue.qsize(),
         #    # )
         #else:
         #    self._learner_thread_in_queue.add(batch)
-        #    print(len(self._learner_thread_in_queue))
 
         # --------------------
         # W/o Learner thread.
@@ -97,23 +95,22 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
                 # the circular buffer.
                 if i > 0:
                     batch_on_gpu = self._learner_thread_in_queue.sample()
-                #print("LEARN: Calling `update` with batch ...")
                 TorchLearner.update(
                     self,
                     training_data=TrainingData(batch=batch_on_gpu),
-                    timesteps=_CURRENT_GLOBAL_TIMESTEPS,
+                    timesteps=self._timesteps,
                     _no_metrics_reduce=True,
                 )
-                #print("LEARN: called `update`.")
                 self._num_batches += 1
+                self._timesteps[NUM_ENV_STEPS_TRAINED_LIFETIME] += (
+                    batch.env_steps() * self.config.num_learners
+                )
 
         if self.config.circular_buffer_iterations_per_batch > 1:
-            #print("LEARN: Adding batch to circu. buffer")
             self._learner_thread_in_queue.add(batch_on_gpu)
 
         # Figure out, whether we need to send our weights to a weights server.
         if send_weights and self._weights_server_actors:
-            #print("LEARN: Gathering weights")
             learner_state = self.get_state(
                 # Only return the state of those RLModules that are trainable.
                 components=[
@@ -129,16 +126,10 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
             random.choice(self._weights_server_actors).put.remote(
                 learner_state, broadcast=True
             )
-            #print("LEARN: Sent weights to weights server")
 
         # Send metrics to metrics actor.
         if self._num_batches >= 10:
-            #print("LEARN: Sending metrics")
             self._metrics_actor.add.remote(
                 learner_metrics=self.metrics.reduce(),
             )
             self._num_batches = 0
-            #print("LEARN: Sent metrics to metrics actor")
-
-        #print("LEARN: Returning from `update")
-

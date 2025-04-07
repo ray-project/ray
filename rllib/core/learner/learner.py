@@ -567,33 +567,33 @@ class Learner(Checkpointable):
                     grad_clip=config.grad_clip,
                     grad_clip_by=config.grad_clip_by,
                 )
-                #if config.grad_clip_by == "global_norm" or config.log_gradients:
+                if config.grad_clip_by == "global_norm" or config.log_gradients:
                     # If we want to log gradients, but do not use the global norm
                     # for clipping compute it here.
-                    #if config.log_gradients and config.grad_clip_by != "global_norm":
-                    #    # Compute the global norm of gradients.
-                    #    global_norm = self._get_global_norm_function()(
-                    #        # Note, `tf.linalg.global_norm` needs a list of tensors.
-                    #        list(grad_dict_to_clip.values()),
-                    #    )
-                    #self.metrics.log_value(
-                    #    key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                    #    value=global_norm,
-                    #    window=1,
-                    #)
+                    if config.log_gradients and config.grad_clip_by != "global_norm":
+                        # Compute the global norm of gradients.
+                        global_norm = self._get_global_norm_function()(
+                            # Note, `tf.linalg.global_norm` needs a list of tensors.
+                            list(grad_dict_to_clip.values()),
+                        )
+                    self.metrics.log_value(
+                        key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                        value=global_norm,
+                        window=1,
+                    )
                 postprocessed_grads.update(grad_dict_to_clip)
             # In the other case check, if we want to log gradients only.
-            #elif config.log_gradients:
+            elif config.log_gradients:
                 # Compute the global norm of gradients and log it.
-                #global_norm = self._get_global_norm_function()(
-                #    # Note, `tf.linalg.global_norm` needs a list of tensors.
-                #    list(grad_dict_to_clip.values()),
-                #)
-                #self.metrics.log_value(
-                #    key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                #    value=global_norm,
-                #    window=1,
-                #)
+                global_norm = self._get_global_norm_function()(
+                    # Note, `tf.linalg.global_norm` needs a list of tensors.
+                    list(grad_dict_to_clip.values()),
+                )
+                self.metrics.log_value(
+                    key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                    value=global_norm,
+                    window=1,
+                )
 
         return postprocessed_grads
 
@@ -1124,7 +1124,7 @@ class Learner(Checkpointable):
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
             # to actual (numpy) values.
-            #self.metrics.tensors_to_numpy(tensor_metrics)
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -1137,12 +1137,12 @@ class Learner(Checkpointable):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        #for mid, loss in convert_to_numpy(loss_per_module).items():
-        #    self.metrics.log_value(
-        #        key=(mid, self.TOTAL_LOSS_KEY),
-        #        value=loss,
-        #        window=1,
-        #    )
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
 
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
@@ -1376,13 +1376,13 @@ class Learner(Checkpointable):
                         timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
                     )
                     self._set_optimizer_lr(optimizer, lr=new_lr)
-                #self.metrics.log_value(
-                #    # Cut out the module ID from the beginning since it's already part
-                #    # of the key sequence: (ModuleID, "[optim name]_lr").
-                #    key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
-                #    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
-                #    window=1,
-                #)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already part
+                    # of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
+                )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool

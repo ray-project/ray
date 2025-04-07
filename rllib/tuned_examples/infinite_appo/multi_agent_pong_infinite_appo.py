@@ -76,6 +76,7 @@ main_spec = RLModuleSpec(
 
 config = (
     InfiniteAPPOConfig()
+    .framework(torch_skip_nan_gradients=True)
     .environment(
         MultiAgentPong,
         env_config={
@@ -89,9 +90,6 @@ config = (
     )
     .env_runners(
         env_to_module_connector=_make_env_to_module_connector,
-    )
-    .learners(
-        num_aggregator_actors_per_learner=2,
     )
     .training(
         num_weights_server_actors=args.num_weights_server_actors,

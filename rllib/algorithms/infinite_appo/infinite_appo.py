@@ -12,6 +12,13 @@ from ray.rllib.algorithms.infinite_appo.utils import (
 from ray.rllib.algorithms.infinite_appo.infinite_appo_multi_agent_env_runner import (
     InfiniteAPPOMultiAgentEnvRunner
 )
+from ray.rllib.core import ALL_MODULES
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    LEARNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+)
 from ray.rllib.utils.annotations import override
 from ray.tune import PlacementGroupFactory
 
@@ -26,6 +33,7 @@ class InfiniteAPPOConfig(APPOConfig):
         self.pipeline_sync_freq = 10
 
         # Defaults overriding APPOConfig settings.
+        self.num_aggregator_actors_per_learner = 1
         self.env_runner_cls = InfiniteAPPOMultiAgentEnvRunner
 
     @override(APPOConfig)
@@ -145,9 +153,8 @@ class InfiniteAPPO(APPO):
 
         # Kick of sampling, aggregating, and training, if not done yet.
         if not self._env_runners_started:
-            self.env_runner_group.foreach_env_runner(
-                lambda er: er.start_infinite_sample()
-            )
+            self.env_runner_group.foreach_env_runner_async("start_infinite_sample")
+            self._env_runners_started = True
 
         # While iteration is not done, push fake batches to BatchDispatcher.
         #while self.config.min_time_s_per_iteration - (time.time() - t0) > 0:
@@ -168,6 +175,20 @@ class InfiniteAPPO(APPO):
         # Ping metrics actor once per iteration.
         metrics = ray.get(self.metrics_actor.get.remote())
         self.metrics.merge_and_log_n_dicts([metrics])
+
+        # Update all global timestep counters on all batch dispatchers.
+        timesteps = {
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                default=0,
+            ),
+            NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                default=0,
+            ),
+        }
+        for batch_dispatcher in self.batch_dispatcher_actors:
+            batch_dispatcher.set_timesteps.remote(timesteps)
 
         # Wait until iteration is done.
         time.sleep(max(0, self.config.min_time_s_per_iteration - (time.time() - t0)))
