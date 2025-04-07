@@ -21,13 +21,6 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
         self._metrics_actor = None
         self._learner_idx = None
 
-        #self._FAKE_BATCH = _make_fake(
-        #    self.config.train_batch_size_per_learner,
-        #    return_ray_ref=False,
-        #    observation_space=rl_module_spec.rl_module_specs["p0"].observation_space,
-        #    action_space=rl_module_spec.rl_module_specs["p0"].action_space,
-        #)
-
         self._num_batches_produced = 0
         self._ts = 0
         self._episodes = []
@@ -45,12 +38,6 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
     def push_episodes(self, episodes, env_runner_metrics):
         self._env_runner_metrics.merge_and_log_n_dicts([env_runner_metrics])
 
-        # `__fake` signal to create a fake batch and send that to our Learner
-        # instead.
-        #if episodes == "__fake":
-        #    ma_batch = copy.deepcopy(self._FAKE_BATCH)
-        #    batch_env_steps = ma_batch.env_steps()
-        #else:
         # Make sure we count how many timesteps we already have and only produce a
         # batch, once we have enough episode data.
         self._episodes.extend(episodes)
@@ -70,8 +57,6 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
             )
             batch_env_steps = sum(len(e) for e in self._episodes)
             self._ts = 0
-            for e in self._episodes:
-                del e
             self._episodes = []
 
             # Convert to a dict into a `MultiAgentBatch`.
@@ -111,4 +96,3 @@ class InfiniteAPPOAggregatorActor(AggregatorActor):
             # Sync with one of the dispatcher actors.
             if self._num_batches_produced % self.sync_freq == 0:
                 ray.get(batch_dispatch_actor.sync.remote())
-

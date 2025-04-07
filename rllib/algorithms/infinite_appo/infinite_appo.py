@@ -156,22 +156,6 @@ class InfiniteAPPO(APPO):
             self.env_runner_group.foreach_env_runner_async("start_infinite_sample")
             self._env_runners_started = True
 
-        # While iteration is not done, push fake batches to BatchDispatcher.
-        #while self.config.min_time_s_per_iteration - (time.time() - t0) > 0:
-            # Control by sending batch requests (w/o data!) to aggregator actors.
-            #for agg_actor in tree.flatten(self.aggregator_actors):
-            #    ret = agg_actor.push_episodes.remote(episodes="__fake", env_runner_metrics={})
-            #ray.get(ret)
-
-            # Control by sending fake batches to BatchDispatch actors.
-            #dispatch_act = random.choice(self.batch_dispatcher_actors)
-            #for learner_idx in range(len(self.learners)):
-            #    ret = dispatch_act.add_batch.remote(
-            #        {"batch": self._fake_batch_ref},
-            #        learner_idx=learner_idx,
-            #    )
-            #ray.get(ret)
-
         # Ping metrics actor once per iteration.
         metrics = ray.get(self.metrics_actor.get.remote())
         self.metrics.merge_and_log_n_dicts([metrics])

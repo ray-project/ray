@@ -62,26 +62,8 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
         if timesteps is not None:
             self._timesteps = timesteps
 
-        # --------------------
-        # With Learner thread.
-        # --------------------
-        #self._num_batches += 1
-        #if self.config.num_gpus_per_learner > 0:
-        #    self._gpu_loader_in_queue.put(batch)
-        #    # self.metrics.log_value(
-        #    #    (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
-        #    #    self._gpu_loader_in_queue.qsize(),
-        #    # )
-        #else:
-        #    self._learner_thread_in_queue.add(batch)
-
-        # --------------------
-        # W/o Learner thread.
-        # --------------------
         # Load the batch to the GPU.
         batch_on_gpu = batch.to_device(self._device, pin_memory=True)
-        # Put batch on GPU-loader queue.
-        #self._gpu_loader_in_queue.put(batch)
 
         # If buffer is full, pull K batches from it and perform an update on each.
         if (

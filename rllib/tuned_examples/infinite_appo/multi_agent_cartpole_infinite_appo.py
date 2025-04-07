@@ -10,6 +10,25 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
+parser.add_argument(
+    "--num-batch-dispatchers",
+    type=int,
+    default=1,
+    help="Number of batch dispatch actors (layer in between "
+    "AggregatorActor and Learner).",
+)
+parser.add_argument(
+    "--num-weights-server-actors",
+    type=int,
+    default=1,
+    help="Number of weights server actors.",
+)
+parser.add_argument(
+    "--sync-freq",
+    type=int,
+    default=10,
+    help="Synchronization frequency between the different actor types of the pipeline.",
+)
 parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
@@ -29,6 +48,10 @@ config = (
         num_aggregator_actors_per_learner=2,
     )
     .training(
+        num_weights_server_actors=args.num_weights_server_actors,
+        num_batch_dispatchers=args.num_batch_dispatchers,
+        pipeline_sync_freq=args.sync_freq,
+
         vf_loss_coeff=0.005,
         entropy_coeff=0.0,
         broadcast_interval=1,
