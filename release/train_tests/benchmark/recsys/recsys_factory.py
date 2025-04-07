@@ -13,6 +13,7 @@ from factory import BenchmarkFactory
 from dataloader_factory import (
     BaseDataLoaderFactory,
 )
+from logger_utils import ContextLoggerAdapter
 from ray_dataloader_factory import RayDataLoaderFactory
 from recsys.criteo import (
     CRITEO_NUM_EMBEDDINGS_PER_FEATURE,
@@ -22,7 +23,7 @@ from recsys.criteo import (
 )
 
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
@@ -187,9 +188,10 @@ class RecsysFactory(BenchmarkFactory):
 
         if ray.train.get_context().get_world_rank() == 0:
             for collectionkey, plans in model._plan.plan.items():
-                print(collectionkey)
+                logger.info(collectionkey)
                 for table_name, plan in plans.items():
-                    print(table_name, "\n", plan, "\n")
+                    logger.info(table_name)
+                    logger.info(plan)
 
         return model
 

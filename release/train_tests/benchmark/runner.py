@@ -165,15 +165,13 @@ class TrainLoopRunner:
             val_dataloader, prefix="validation"
         )
 
-        self.model.eval()
-
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
         while True:
             with self._metrics["validation/step"].timer():
                 try:
-                    total_loss += self.validate_step(val_dataloader)
+                    total_loss += self._validate_step(val_dataloader)
                 except StopIteration:
                     break
 
@@ -348,6 +346,8 @@ class VanillaTorchRunner(TrainLoopRunner):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
     def _train_step(self, train_dataloader):
+        self.model.train()
+
         input_batch, labels = next(train_dataloader)
 
         if self.benchmark_config.skip_train_step:
@@ -361,6 +361,8 @@ class VanillaTorchRunner(TrainLoopRunner):
         self.optimizer.step()
 
     def _validate_step(self, val_dataloader):
+        self.model.eval()
+
         input_batch, labels = next(val_dataloader)
 
         with torch.no_grad():
