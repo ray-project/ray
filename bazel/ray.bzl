@@ -11,6 +11,10 @@ COPTS_WITHOUT_LOG = select({
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
+    "@platforms//os:osx": [
+        # TODO(dayshah): The fixes required to keep this on break Java tests. Fix ASAP!
+        "-Wno-thread-safety-reference-return",
+    ],
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
