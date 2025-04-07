@@ -14,7 +14,7 @@ This page provides an overview of technical implementation details of Ray Data. 
 What does a block represent in Ray?
 -----------------------------------
 
-Ray Data uses _blocks_ to represent subsets of data in a Dataset. Most users of Ray Data 
+Ray Data uses *blocks* to represent subsets of data in a Dataset. Most users of Ray Data 
 
 Blocks have the following characteristics:
 
