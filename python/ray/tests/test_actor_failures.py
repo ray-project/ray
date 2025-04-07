@@ -1208,7 +1208,8 @@ def test_actor_restart_and_actor_received_task(shutdown_only):
         def __init__(self):
             self.counter = 0
 
-        def sleep_and_increment(self, sleep_time):
+        def sleep_and_increment(self, sleep_time, signal_actor):
+            ray.get(signal_actor.send.remote())
             time.sleep(sleep_time)
             self.counter += 1
             return self.counter
@@ -1221,9 +1222,11 @@ def test_actor_restart_and_actor_received_task(shutdown_only):
 
     actor = RestartableActor.remote()
     pid = ray.get(actor.get_pid.remote())
-    ref = actor.sleep_and_increment.remote(3)
-    # Wait for the actor to receive the task `sleep_and_increment`
-    time.sleep(1)
+
+    signal_actor = SignalActor.remote()
+    ref = actor.sleep_and_increment.remote(3, signal_actor)
+    # Wait for the actor to execute the task `sleep_and_increment`
+    ray.get(signal_actor.wait.remote())
     os.kill(pid, signal.SIGKILL)
 
     assert ray.get(ref) == 1
@@ -1240,7 +1243,11 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
         def __init__(self):
             pass
 
-        def sleep_and_echo(self, sleep_time, value):
+        def echo(self, value):
+            return value
+
+        def sleep_and_echo(self, sleep_time, value, signal_actor):
+            ray.get(signal_actor.send.remote())
             time.sleep(sleep_time)
             return value
 
@@ -1251,14 +1258,17 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
     pid = ray.get(actor.get_pid.remote())
     refs = []
     for i in range(3):
-        refs.append(actor.sleep_and_echo.remote(0, i))
+        refs.append(actor.echo.remote(i))
     assert ray.get(refs) == [0, 1, 2]
 
     refs = []
-    for i in range(3, 6):
-        refs.append(actor.sleep_and_echo.remote(3, i))
+    signal_actor = SignalActor.remote()
+    refs.append(actor.sleep_and_echo.remote(3, 3, signal_actor))
+    refs.append(actor.echo.remote(4))
+    refs.append(actor.echo.remote(5))
+
     # Wait for the actor to receive the task `sleep_and_increment`
-    time.sleep(1)
+    ray.get(signal_actor.wait.remote())
     os.kill(pid, signal.SIGKILL)
     assert ray.get(refs) == [3, 4, 5]
 
