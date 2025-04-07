@@ -81,11 +81,11 @@ Status CheckCgroupV2MountedRW(const std::string &directory) {
 #include "ray/common/cgroup/cgroup_macros.h"
 #include "ray/common/cgroup/cgroup_utils.h"
 #include "ray/common/cgroup/constants.h"
-#include "ray/common/status_or.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+#include "ray/common/status_or.h"
 
 namespace ray {
 
@@ -164,9 +164,14 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   RAY_ASSIGN_OR_RETURN(const auto content, ReadEntireFile(subtree_control_path));
   std::string_view content_sv{content};
   absl::ConsumeSuffix(&content_sv, "\n");
+  RAY_LOG(ERROR) << "In subtree control file " << subtree_control_path
+                 << ", file content = |" << content_sv << "|";
 
   const std::vector<std::string_view> enabled_subtree_controllers =
       absl::StrSplit(content_sv, ' ');
+  for (auto cur : enabled_subtree_controllers) {
+    RAY_LOG(ERROR) << "Enable subtree control: |" << cur << "|";
+  }
   for (const auto &cur_controller : kRequiredControllers) {
     if (std::find(enabled_subtree_controllers.begin(),
                   enabled_subtree_controllers.end(),
