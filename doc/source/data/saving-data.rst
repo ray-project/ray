@@ -208,11 +208,24 @@ on the head node.
 Converting Datasets to distributed DataFrames
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
 .. tab-set::
+
+    .. tab-item:: Daft
+
+        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_, call
+        :meth:`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+
+            df = ds.to_daft()
 
     .. tab-item:: Dask
 
@@ -227,6 +240,35 @@ Ray Data interoperates with distributed data processing frameworks like
             ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_dask()
+
+            df
+
+        .. testoutput::
+
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ Float64           ┆ Float64          ┆ Float64           ┆ Float64          ┆ Int64  │
+            ╞═══════════════════╪══════════════════╪═══════════════════╪══════════════════╪════════╡
+            │ 5.1               ┆ 3.5              ┆ 1.4               ┆ 0.2              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 4.9               ┆ 3                ┆ 1.4               ┆ 0.2              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 4.7               ┆ 3.2              ┆ 1.3               ┆ 0.2              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 4.6               ┆ 3.1              ┆ 1.5               ┆ 0.2              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 5                 ┆ 3.6              ┆ 1.4               ┆ 0.2              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 5.4               ┆ 3.9              ┆ 1.7               ┆ 0.4              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 4.6               ┆ 3.4              ┆ 1.4               ┆ 0.3              ┆ 0      │
+            ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┼╌╌╌╌╌╌╌╌┤
+            │ 5                 ┆ 3.4              ┆ 1.5               ┆ 0.2              ┆ 0      │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+
+            (Showing first 8 of 150 rows)
+
 
     .. tab-item:: Spark
 

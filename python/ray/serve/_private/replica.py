@@ -483,6 +483,24 @@ class ReplicaBase(ABC):
             self._metrics_manager.dec_num_ongoing_requests()
 
         latency_ms = (time.time() - start_time) * 1000
+        self._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata, request_args
+        )
+
+        if user_exception is not None:
+            raise user_exception from None
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+    ):
+        http_method = self._maybe_get_http_method(request_metadata, request_args)
+        http_route = request_metadata.route
+        call_method = request_metadata.call_method
         if user_exception is None:
             status_str = "OK"
         elif isinstance(user_exception, asyncio.CancelledError):
@@ -490,13 +508,11 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        http_method = self._maybe_get_http_method(request_metadata, request_args)
-        http_route = request_metadata.route
         # Set in _wrap_user_method_call.
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route or request_metadata.call_method,
+                route=http_route or call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
@@ -508,9 +524,6 @@ class ReplicaBase(ABC):
             latency_ms=latency_ms,
             was_error=user_exception is not None,
         )
-
-        if user_exception is not None:
-            raise user_exception from None
 
     async def _call_user_generator(
         self,
@@ -624,7 +637,7 @@ class ReplicaBase(ABC):
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
-            logger.debug(
+            logger.warning(
                 f"Replica at capacity of max_ongoing_requests={limit}, "
                 f"rejecting request {request_metadata.request_id}.",
                 extra={"log_to_stderr": False},

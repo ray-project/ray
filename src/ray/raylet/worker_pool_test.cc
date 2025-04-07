@@ -46,8 +46,8 @@ int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
-std::string BAD_RUNTIME_ENV = "bad runtime env";
-const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
+constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
+constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -104,8 +104,8 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
-    if (serialized_runtime_env == BAD_RUNTIME_ENV) {
-      callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);
+    if (serialized_runtime_env == kBadRuntimeEnv) {
+      callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -149,7 +149,8 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return absl::FromUnixMillis(current_time_ms_); }),
+            [this]() { return absl::FromUnixMillis(current_time_ms_); },
+            /*enable_resource_isolation=*/false),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         client_call_manager_(instrumented_io_service_),
@@ -418,8 +419,8 @@ class WorkerPoolTest : public ::testing::Test {
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     }));
@@ -517,7 +518,7 @@ static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
 }
 
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfoFromString(
-    std::string serialized_runtime_env) {
+    std::string_view serialized_runtime_env) {
   rpc::RuntimeEnvInfo runtime_env_info;
   runtime_env_info.set_serialized_runtime_env(serialized_runtime_env);
   return runtime_env_info;
@@ -691,15 +692,15 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   // Pop two workers and make sure they're one of the workers we created.
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) > 0);
+  ASSERT_GT(workers.count(popped_worker), 0);
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) > 0);
+  ASSERT_GT(workers.count(popped_worker), 0);
   // Pop a worker from the empty pool and make sure it isn't one of the workers we
   // created.
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) == 0);
+  ASSERT_EQ(workers.count(popped_worker), 0);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
@@ -920,7 +921,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
         ASSERT_TRUE(worker_ids.insert(worker->WorkerId()).second);
       } else {
         // For the second round, all workers are existing ones.
-        ASSERT_TRUE(worker_ids.count(worker->WorkerId()) > 0);
+        ASSERT_GT(worker_ids.count(worker->WorkerId()), 0);
       }
     }
   }
@@ -1211,7 +1212,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
       started_restore_processes.push_back(last_restore_process);
     }
     // Register workers with 10% probability at each time.
-    if (rand() % 100 < 10) {
+    if (rand() % 100 < 10) {  // NOLINT(runtime/threadsafe_fn)
       // Push spill worker if there's a process.
       if (started_spill_processes.size() > 0) {
         auto spill_worker = CreateSpillWorker(
@@ -1991,14 +1992,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
                       ActorID::Nil(),
                       {"XXX=YYY"},
                       TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString(BAD_RUNTIME_ENV));
+                      ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv)));
   std::string error_msg;
   popped_worker = worker_pool_->PopWorkerSync(
       task_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
-  ASSERT_EQ(error_msg, BAD_RUNTIME_ENV_ERROR_MSG);
+  ASSERT_EQ(error_msg, kBadRuntimeEnvErrorMsg);
 
   // Create a task with available runtime env.
   const auto task_spec_with_runtime_env =

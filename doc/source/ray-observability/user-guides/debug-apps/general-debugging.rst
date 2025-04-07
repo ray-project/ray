@@ -101,8 +101,7 @@ Placement Groups aren't composable
 
 This code errors with the message:
 
-.. testoutput::
-  :options: +MOCK
+.. code-block::
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
@@ -174,7 +173,9 @@ Note that Ray turns off stack trace capture by default due to potential performa
 
 Example:
 
+.. NOTE(edoakes): test is skipped because it reinitializes Ray.
 .. testcode::
+    :skipif: True
 
     import ray
 

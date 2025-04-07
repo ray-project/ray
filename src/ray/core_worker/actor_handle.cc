@@ -15,6 +15,8 @@
 #include "ray/core_worker/actor_handle.h"
 
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 namespace ray {
 namespace core {

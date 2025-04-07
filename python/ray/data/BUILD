@@ -1,6 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
+# Export pytest plugin so it can be used in the documentation tests.
+exports_files(
+    ["tests/doctest_pytest_plugin.py"],
+)
+
+# Run automatic tests against docstrings on all source files.
 doctest(
     size = "large",
     files = glob(
@@ -10,6 +16,8 @@ doctest(
             "tests/**/*",
         ]),
     ),
+    # Installs data-specific fixtures to run between the doctests.
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
 
@@ -250,20 +258,6 @@ py_test(
     name = "test_audio",
     size = "small",
     srcs = ["tests/test_audio.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_aggregate",
-    size = "small",
-    srcs = ["tests/test_aggregate.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -880,6 +874,20 @@ py_test(
 )
 
 py_test(
+    name = "test_ruleset",
+    size = "small",
+    srcs = ["tests/test_ruleset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_size_estimation",
     size = "medium",
     srcs = ["tests/test_size_estimation.py"],
@@ -1248,6 +1256,20 @@ py_test(
     name = "test_import",
     size = "small",
     srcs = ["tests/test_import.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_daft",
+    size = "small",
+    srcs = ["tests/test_daft.py"],
     tags = [
         "exclusive",
         "team:data",

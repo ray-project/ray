@@ -1,3 +1,4 @@
+import gc
 import logging
 import re
 import threading
@@ -7,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-
+import platform
 import numpy as np
 import pytest
 
@@ -31,9 +32,37 @@ from ray.data._internal.stats import (
 )
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
+from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_with_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    poll_interval_s = 0.01
+    with MemoryProfiler(poll_interval_s=poll_interval_s) as profiler:
+        array = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+        time.sleep(poll_interval_s * 2)
+
+        del array
+        gc.collect()
+
+        assert profiler.estimate_max_uss() > array_nbytes
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
+)
+def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    with MemoryProfiler(poll_interval_s=None) as profiler:
+        _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+
+        assert profiler.estimate_max_uss() > array_nbytes
 
 
 def gen_expected_metrics(
@@ -51,7 +80,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
-            "'average_memory_usage_per_task': N",
+            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -74,6 +103,9 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': N",
@@ -94,6 +126,9 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_used': A",
@@ -209,6 +244,20 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     canonicalized_stats = re.sub(r"[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
+
+    # Ray might not be able to estimate the peak heap memory usage on some platforms.
+    # In those cases, the memory estimate could be 0 or None.
+    canonicalized_stats = re.sub(
+        r"Peak heap memory usage \(MiB\): (N|Z) min, (N|Z) max, (N|Z) mean",
+        "Peak heap memory usage (MiB): H min, H max, H mean",
+        canonicalized_stats,
+    )
+    canonicalized_stats = re.sub(
+        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
+        r"\g<1> H",
+        canonicalized_stats,
+    )
+
     if filter_global_stats:
         canonicalized_stats = canonicalized_stats.replace(CLUSTER_MEMORY_STATS, "")
         canonicalized_stats = canonicalized_stats.replace(DATASET_MEMORY_STATS, "")
@@ -269,7 +318,7 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -332,7 +381,7 @@ def test_large_args_scheduling_strategy(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -345,7 +394,7 @@ def test_large_args_scheduling_strategy(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -387,7 +436,7 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -412,7 +461,7 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -442,7 +491,7 @@ def test_dataset_stats_basic(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -455,7 +504,7 @@ def test_dataset_stats_basic(
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -496,7 +545,7 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -546,7 +595,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
-        "      average_memory_usage_per_task: N,\n"
+        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -566,6 +615,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -661,7 +713,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
-        "      average_memory_usage_per_task: N,\n"
+        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -681,6 +733,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -731,7 +786,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
-        "            average_memory_usage_per_task: N,\n"
+        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
@@ -751,6 +806,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
+        "            num_alive_actors: Z,\n"
+        "            num_restarting_actors: Z,\n"
+        "            num_pending_actors: Z,\n"
         "            obj_store_mem_internal_inqueue_blocks: Z,\n"
         "            obj_store_mem_internal_outqueue_blocks: Z,\n"
         "            obj_store_mem_freed: N,\n"
@@ -841,7 +899,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -854,7 +912,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -869,7 +927,7 @@ Operator N Repartition: executed in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -882,7 +940,7 @@ Operator N Repartition: executed in T
     * Remote wall time: T min, T max, T mean, T total
     * Remote cpu time: T min, T max, T mean, T total
     * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): N min, N max, N mean
+    * Peak heap memory usage (MiB): H min, H max, H mean
     * Output num rows per block: N min, N max, N mean, N total
     * Output size bytes per block: N min, N max, N mean, N total
     * Output rows per task: N min, N max, N mean, N tasks used
@@ -941,7 +999,7 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
         f"* Output num rows per block: N min, N max, N mean, N total\n"
         f"* Output size bytes per block: N min, N max, N mean, N total\n"
         f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -970,7 +1028,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -983,7 +1041,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -996,7 +1054,7 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
             f"* Remote wall time: T min, T max, T mean, T total\n"
             f"* Remote cpu time: T min, T max, T mean, T total\n"
             f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
+            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
             f"* Output num rows per block: N min, N max, N mean, N total\n"
             f"* Output size bytes per block: N min, N max, N mean, N total\n"
             f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -1101,9 +1159,9 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     )
     assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["rss_bytes"]) / (1024 * 1024),
-            max(block_params["rss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["rss_bytes"]) / (1024 * 1024)),
+            min(block_params["uss_bytes"]) / (1024 * 1024),
+            max(block_params["uss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["uss_bytes"]) / (1024 * 1024)),
         )
         == summarized_lines[4]
     )
@@ -1196,7 +1254,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1233,7 +1291,7 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1264,7 +1322,7 @@ Dataset throughput:
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1277,7 +1335,7 @@ Operator N Write: {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): N min, N max, N mean
+* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -1368,345 +1426,6 @@ def test_runtime_metrics(ray_start_regular_shared):
         # Check percentage, this is done with some expected loss of precision
         # due to rounding in the intital output.
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
-
-
-# NOTE: All tests above share a Ray cluster, while the tests below do not. These
-# tests should only be carefully reordered to retain this invariant!
-
-
-def test_dataset_throughput():
-    ray.shutdown()
-    ray.init(num_cpus=2)
-
-    f = dummy_map_batches_sleep(0.01)
-    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
-
-    # Pattern to match operator throughput
-    operator_pattern = re.compile(
-        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
-        re.DOTALL,
-    )
-
-    # Ray data throughput should always be better than single node throughput for
-    # multi-cpu case.
-    for match in operator_pattern.findall(ds.stats()):
-        assert float(match[1]) >= float(match[2])
-
-    # Pattern to match dataset throughput
-    dataset_pattern = re.compile(
-        r"Dataset throughput:.*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
-        re.DOTALL,
-    )
-
-    dataset_match = dataset_pattern.search(ds.stats())
-    assert float(dataset_match[1]) >= float(dataset_match[2])
-
-
-def test_stats_actor_cap_num_stats(ray_start_cluster):
-    actor = _StatsActor.remote(3)
-    metadatas = []
-    task_idx = 0
-    for uuid in range(3):
-        metadatas.append(
-            BlockMetadata(
-                num_rows=uuid,
-                size_bytes=None,
-                schema=None,
-                input_files=None,
-                exec_stats=None,
-            )
-        )
-        num_stats = uuid + 1
-        actor.record_start.remote(uuid)
-        assert ray.get(actor._get_stats_dict_size.remote()) == (
-            num_stats,
-            num_stats - 1,
-            num_stats - 1,
-        )
-        actor.record_task.remote(uuid, task_idx, [metadatas[-1]])
-        assert ray.get(actor._get_stats_dict_size.remote()) == (
-            num_stats,
-            num_stats,
-            num_stats,
-        )
-    for uuid in range(3):
-        assert ray.get(actor.get.remote(uuid))[0][task_idx] == [metadatas[uuid]]
-    # Add the fourth stats to exceed the limit.
-    actor.record_start.remote(3)
-    # The first stats (with uuid=0) should have been purged.
-    assert ray.get(actor.get.remote(0))[0] == {}
-    # The start_time has 3 entries because we just added it above with record_start().
-    assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
-
-
-@pytest.mark.parametrize("verbose_stats_logs", [True, False])
-def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
-    context = DataContext.get_current()
-    context.verbose_stats_logs = verbose_stats_logs
-    context.enable_get_object_locations_for_metrics = True
-    # The object store is about 100MB.
-    ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*80*80*4*8B, about 200MB.
-    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-
-    extra_metrics = gen_extra_metrics_str(
-        MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,
-        verbose_stats_logs,
-    )
-    expected_stats = (
-        f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): N min, N max, N mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single node throughput: N rows/s\n"
-        f"{extra_metrics}\n"
-        f"Cluster memory:\n"
-        f"* Spilled to disk: M\n"
-        f"* Restored from disk: M\n"
-        f"\n"
-        f"Dataset memory:\n"
-        f"* Spilled to disk: M\n"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(<lambda>)'], verbose_stats_logs)}"  # noqa: E501
-    )
-
-    assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
-
-    # Around 100MB should be spilled (200MB - 100MB)
-    assert ds._plan.stats().dataset_bytes_spilled > 100e6
-
-    ds = (
-        ray.data.range(1000 * 80 * 80 * 4)
-        .map_batches(lambda x: x)
-        .materialize()
-        .map_batches(lambda x: x)
-        .materialize()
-    )
-    # two map_batches operators, twice the spillage
-    assert ds._plan.stats().dataset_bytes_spilled > 200e6
-
-    # The size of dataset is around 50MB, there should be no spillage
-    ds = (
-        ray.data.range(250 * 80 * 80 * 4, override_num_blocks=1)
-        .map_batches(lambda x: x)
-        .materialize()
-    )
-
-    assert ds._plan.stats().dataset_bytes_spilled == 0
-
-
-def test_stats_actor_metrics():
-    ray.init(object_store_memory=100e6)
-    with patch_update_stats_actor() as update_fn:
-        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-
-    # last emitted metrics from map operator
-    final_metric = update_fn.call_args_list[-1].args[1][-1]
-
-    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
-    assert (
-        final_metric.obj_store_mem_freed
-        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
-    )
-    assert (
-        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
-    )  # 8B per int
-    assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
-    # There should be nothing in object store at the end of execution.
-
-    args = update_fn.call_args_list[-1].args
-    assert args[0] == f"dataset_{ds._uuid}"
-    assert args[2][0] == "Input_0"
-    assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
-
-    def sleep_three(x):
-        import time
-
-        time.sleep(3)
-        return x
-
-    with patch_update_stats_actor() as update_fn:
-        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
-
-    final_metric = update_fn.call_args_list[-1].args[1][-1]
-    assert final_metric.block_generation_time >= 9
-
-
-def test_stats_actor_iter_metrics():
-    ds = ray.data.range(1e6).map_batches(lambda x: x)
-    with patch_update_stats_actor_iter() as update_fn:
-        ds.take_all()
-
-    ds_stats = ds._plan.stats()
-    final_stats = update_fn.call_args_list[-1].args[0]
-
-    assert final_stats == ds_stats
-    assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
-
-
-def test_dataset_name():
-    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("test_ds")
-    assert ds._name == "test_ds"
-    assert str(ds) == (
-        "MapBatches(<lambda>)\n"
-        "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
-    )
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
-
-    # Names persist after an execution
-    ds = ds.random_shuffle()
-    assert ds._name == "test_ds"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
-
-    ds._set_name("test_ds_two")
-    ds = ds.map_batches(lambda x: x)
-    assert ds._name == "test_ds_two"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
-
-    ds._set_name(None)
-    ds = ds.map_batches(lambda x: x)
-    assert ds._name is None
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
-
-    ds = ray.data.range(100, override_num_blocks=20)
-    ds._set_name("very_loooooooong_name")
-    assert (
-        str(ds)
-        == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
-    )
-
-
-def test_op_metrics_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-        input_str = (
-            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
-            + gen_expected_metrics(is_map=False)
-        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
-        map_str = (
-            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
-            "Operator Metrics:\n"
-        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
-
-        # Check that these strings are logged exactly once.
-        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
-        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
-
-
-def test_op_state_logging():
-    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
-    with patch.object(logger, "debug") as mock_logger:
-        ray.data.range(100).map_batches(lambda x: x).materialize()
-        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
-
-        times_asserted = 0
-        for i, log in enumerate(logs):
-            if log == "Execution Progress:":
-                times_asserted += 1
-                assert "Input" in logs[i + 1]
-                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
-        assert times_asserted > 0
-
-
-def test_stats_actor_datasets(ray_start_cluster):
-    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("test_stats_actor_datasets")
-    ds.materialize()
-    stats_actor = _get_or_create_stats_actor()
-
-    datasets = ray.get(stats_actor.get_datasets.remote())
-    dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
-    assert len(dataset_name) == 1
-    dataset = datasets[dataset_name[0]]
-
-    assert dataset["state"] == "FINISHED"
-    assert dataset["progress"] == 20
-    assert dataset["total"] == 20
-    assert dataset["end_time"] is not None
-
-    operators = dataset["operators"]
-    assert len(operators) == 2
-    assert "Input_0" in operators
-    assert "ReadRange->MapBatches(<lambda>)_1" in operators
-    for value in operators.values():
-        assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
-        assert value["progress"] == 20
-        assert value["total"] == 20
-        assert value["state"] == "FINISHED"
-
-
-@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
-@patch.object(StatsManager, "_stats_actor_handle")
-@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
-def test_stats_manager(shutdown_only):
-    ray.init()
-    num_threads = 10
-
-    datasets = [None] * num_threads
-    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
-    # are not cleared. We will assert on them afterwards.
-    with (
-        patch.object(StatsManager, "clear_last_execution_stats"),
-        patch.object(StatsManager, "clear_iteration_metrics"),
-    ):
-
-        def update_stats_manager(i):
-            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
-            for _ in datasets[i].iter_batches(batch_size=1):
-                pass
-
-        threads = [
-            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
-            for i in range(num_threads)
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-    assert len(StatsManager._last_execution_stats) == num_threads
-    assert len(StatsManager._last_iteration_stats) == num_threads
-
-    # Clear dataset tags manually.
-    for dataset in datasets:
-        dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
-        assert dataset_tag in StatsManager._last_execution_stats
-        assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_last_execution_stats(dataset_tag)
-        StatsManager.clear_iteration_metrics(dataset_tag)
-
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
-    prev_thread = StatsManager._update_thread
-
-    ray.data.range(100).map_batches(lambda x: x).materialize()
-    # Check that a new different thread is spawned.
-    assert StatsManager._update_thread != prev_thread
-    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
 def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
@@ -1805,6 +1524,350 @@ def test_task_duration_stats():
     assert pytest.approx(stats.stddev()) == np.std(
         durations, ddof=1
     )  # ddof=1 for sample standard deviation
+
+
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
+def test_dataset_throughput():
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    f = dummy_map_batches_sleep(0.01)
+    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
+
+    # Pattern to match operator throughput
+    operator_pattern = re.compile(
+        r"Operator (\d+).*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        re.DOTALL,
+    )
+
+    # Ray data throughput should always be better than single node throughput for
+    # multi-cpu case.
+    for match in operator_pattern.findall(ds.stats()):
+        assert float(match[1]) >= float(match[2])
+
+    # Pattern to match dataset throughput
+    dataset_pattern = re.compile(
+        r"Dataset throughput:.*?Ray Data throughput: (\d+\.\d+) rows/s.*?Estimated single node throughput: (\d+\.\d+) rows/s",  # noqa: E501
+        re.DOTALL,
+    )
+
+    dataset_match = dataset_pattern.search(ds.stats())
+    assert float(dataset_match[1]) >= float(dataset_match[2])
+
+
+def test_stats_actor_cap_num_stats(ray_start_cluster):
+    actor = _StatsActor.remote(3)
+    metadatas = []
+    task_idx = 0
+    for uuid in range(3):
+        metadatas.append(
+            BlockMetadata(
+                num_rows=uuid,
+                size_bytes=None,
+                schema=None,
+                input_files=None,
+                exec_stats=None,
+            )
+        )
+        num_stats = uuid + 1
+        actor.record_start.remote(uuid)
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats - 1,
+            num_stats - 1,
+        )
+        actor.record_task.remote(uuid, task_idx, [metadatas[-1]])
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats,
+            num_stats,
+        )
+    for uuid in range(3):
+        assert ray.get(actor.get.remote(uuid))[0][task_idx] == [metadatas[uuid]]
+    # Add the fourth stats to exceed the limit.
+    actor.record_start.remote(3)
+    # The first stats (with uuid=0) should have been purged.
+    assert ray.get(actor.get.remote(0))[0] == {}
+    # The start_time has 3 entries because we just added it above with record_start().
+    assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
+
+
+@pytest.mark.parametrize("verbose_stats_logs", [True, False])
+def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
+    context = DataContext.get_current()
+    context.verbose_stats_logs = verbose_stats_logs
+    context.enable_get_object_locations_for_metrics = True
+    # The object store is about 100MB.
+    ray.init(object_store_memory=100e6)
+    # The size of dataset is 1000*80*80*4*8B, about 200MB.
+    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    extra_metrics = gen_extra_metrics_str(
+        MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
+    expected_stats = (
+        f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
+        f"* Remote wall time: T min, T max, T mean, T total\n"
+        f"* Remote cpu time: T min, T max, T mean, T total\n"
+        f"* UDF time: T min, T max, T mean, T total\n"
+        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
+        f"* Output num rows per block: N min, N max, N mean, N total\n"
+        f"* Output size bytes per block: N min, N max, N mean, N total\n"
+        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
+        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
+        f"* Operator throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
+        f"{extra_metrics}\n"
+        f"Cluster memory:\n"
+        f"* Spilled to disk: M\n"
+        f"* Restored from disk: M\n"
+        f"\n"
+        f"Dataset memory:\n"
+        f"* Spilled to disk: M\n"
+        f"\n"
+        f"Dataset throughput:\n"
+        f"    * Ray Data throughput: N rows/s\n"
+        f"    * Estimated single node throughput: N rows/s\n"
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(<lambda>)'], verbose_stats_logs)}"  # noqa: E501
+    )
+
+    assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
+
+    # Around 100MB should be spilled (200MB - 100MB)
+    assert ds._plan.stats().dataset_bytes_spilled > 100e6
+
+    ds = (
+        ray.data.range(1000 * 80 * 80 * 4)
+        .map_batches(lambda x: x)
+        .materialize()
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+    # two map_batches operators, twice the spillage
+    assert ds._plan.stats().dataset_bytes_spilled > 200e6
+
+    # The size of dataset is around 50MB, there should be no spillage
+    ds = (
+        ray.data.range(250 * 80 * 80 * 4, override_num_blocks=1)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
+
+    assert ds._plan.stats().dataset_bytes_spilled == 0
+
+
+def test_stats_actor_metrics():
+    ray.init(object_store_memory=100e6)
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+
+    # last emitted metrics from map operator
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+
+    assert final_metric.obj_store_mem_spilled == ds._plan.stats().dataset_bytes_spilled
+    assert (
+        final_metric.obj_store_mem_freed
+        == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
+    )
+    assert (
+        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
+    )  # 8B per int
+    assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
+    # There should be nothing in object store at the end of execution.
+
+    args = update_fn.call_args_list[-1].args
+    assert args[0] == f"dataset_{ds._uuid}"
+    assert args[2][0] == "Input_0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
+
+    def sleep_three(x):
+        import time
+
+        time.sleep(3)
+        return x
+
+    with patch_update_stats_actor() as update_fn:
+        ds = ray.data.range(3).map_batches(sleep_three, batch_size=1).materialize()
+
+    final_metric = update_fn.call_args_list[-1].args[1][-1]
+    assert final_metric.block_generation_time >= 9
+
+
+def test_stats_actor_iter_metrics():
+    ds = ray.data.range(1e6).map_batches(lambda x: x)
+    with patch_update_stats_actor_iter() as update_fn:
+        ds.take_all()
+
+    ds_stats = ds._plan.stats()
+    final_stats = update_fn.call_args_list[-1].args[0]
+
+    assert final_stats == ds_stats
+    assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
+
+
+def test_dataset_name():
+    # Test deprecated APIs
+    ds = ray.data.range(1)
+    ds._set_name("test_ds")
+    assert ds._name == "test_ds"
+
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    ds.set_name("test_ds")
+    assert ds.name == "test_ds"
+    assert str(ds) == (
+        "MapBatches(<lambda>)\n"
+        "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
+    )
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+
+    # Names persist after an execution
+    ds = ds.random_shuffle()
+    assert ds.name == "test_ds"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+
+    ds.set_name("test_ds_two")
+    ds = ds.map_batches(lambda x: x)
+    assert ds.name == "test_ds_two"
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
+
+    ds.set_name(None)
+    ds = ds.map_batches(lambda x: x)
+    assert ds.name is None
+    with patch_update_stats_actor() as update_fn:
+        mds = ds.materialize()
+
+    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
+
+    ds = ray.data.range(100, override_num_blocks=20)
+    ds.set_name("very_loooooooong_name")
+    assert (
+        str(ds)
+        == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
+    )
+
+
+def test_op_metrics_logging():
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
+    with patch.object(logger, "debug") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+        input_str = (
+            "Operator InputDataBuffer[Input] completed. Operator Metrics:\n"
+            + gen_expected_metrics(is_map=False)
+        )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
+        map_str = (
+            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator Metrics:\n"
+        ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+
+        # Check that these strings are logged exactly once.
+        assert sum([log == input_str for log in logs]) == 1, (logs, input_str)
+        assert sum([log == map_str for log in logs]) == 1, (logs, map_str)
+
+
+def test_op_state_logging():
+    logger = logging.getLogger("ray.data._internal.execution.streaming_executor")
+    with patch.object(logger, "debug") as mock_logger:
+        ray.data.range(100).map_batches(lambda x: x).materialize()
+        logs = [canonicalize(call.args[0]) for call in mock_logger.call_args_list]
+
+        times_asserted = 0
+        for i, log in enumerate(logs):
+            if log == "Execution Progress:":
+                times_asserted += 1
+                assert "Input" in logs[i + 1]
+                assert "ReadRange->MapBatches(<lambda>)" in logs[i + 2]
+        assert times_asserted > 0
+
+
+def test_stats_actor_datasets(ray_start_cluster):
+    ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+    ds.set_name("test_stats_actor_datasets")
+    ds.materialize()
+    stats_actor = _get_or_create_stats_actor()
+
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    dataset_name = list(filter(lambda x: x.startswith(ds.name), datasets))
+    assert len(dataset_name) == 1
+    dataset = datasets[dataset_name[0]]
+
+    assert dataset["state"] == "FINISHED"
+    assert dataset["progress"] == 20
+    assert dataset["total"] == 20
+    assert dataset["end_time"] is not None
+
+    operators = dataset["operators"]
+    assert len(operators) == 2
+    assert "Input_0" in operators
+    assert "ReadRange->MapBatches(<lambda>)_1" in operators
+    for value in operators.values():
+        assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
+        assert value["progress"] == 20
+        assert value["total"] == 20
+        assert value["state"] == "FINISHED"
+
+
+@patch.object(StatsManager, "STATS_ACTOR_UPDATE_INTERVAL_SECONDS", new=0.5)
+@patch.object(StatsManager, "_stats_actor_handle")
+@patch.object(StatsManager, "UPDATE_THREAD_INACTIVITY_LIMIT", new=1)
+def test_stats_manager(shutdown_only):
+    ray.init()
+    num_threads = 10
+
+    datasets = [None] * num_threads
+    # Mock clear methods so that _last_execution_stats and _last_iteration_stats
+    # are not cleared. We will assert on them afterwards.
+    with (
+        patch.object(StatsManager, "clear_last_execution_stats"),
+        patch.object(StatsManager, "clear_iteration_metrics"),
+    ):
+
+        def update_stats_manager(i):
+            datasets[i] = ray.data.range(10).map_batches(lambda x: x)
+            for _ in datasets[i].iter_batches(batch_size=1):
+                pass
+
+        threads = [
+            threading.Thread(target=update_stats_manager, args=(i,), daemon=True)
+            for i in range(num_threads)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    assert len(StatsManager._last_execution_stats) == num_threads
+    assert len(StatsManager._last_iteration_stats) == num_threads
+
+    # Clear dataset tags manually.
+    for dataset in datasets:
+        dataset_tag = create_dataset_tag(dataset.name, dataset._uuid)
+        assert dataset_tag in StatsManager._last_execution_stats
+        assert dataset_tag in StatsManager._last_iteration_stats
+        StatsManager.clear_last_execution_stats(dataset_tag)
+        StatsManager.clear_iteration_metrics(dataset_tag)
+
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+    prev_thread = StatsManager._update_thread
+
+    ray.data.range(100).map_batches(lambda x: x).materialize()
+    # Check that a new different thread is spawned.
+    assert StatsManager._update_thread != prev_thread
+    wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
 if __name__ == "__main__":

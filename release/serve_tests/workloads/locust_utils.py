@@ -57,7 +57,7 @@ class FailedRequest:
     request_id: str
     status_code: int
     exception: str
-    response_time_s: float
+    response_time_ms: float
     start_time_s: float
 
 
@@ -107,7 +107,7 @@ class LocustClient:
                         request_id=request_id,
                         status_code=response.status_code,
                         exception=response.text,
-                        response_time_s=response_time,
+                        response_time_ms=response_time,
                         start_time_s=start_time,
                     )
                     self.errors.append(err)

@@ -29,6 +29,7 @@ def mock_session():
 async def test_http_request_udf_basic():
     udf = HttpRequestUDF(
         data_column="__data",
+        expected_input_keys=["payload"],
         url="http://test.com/api",
         additional_header={"Authorization": "Bearer 1234567890"},
         qps=None,
@@ -60,6 +61,7 @@ async def test_http_request_udf_basic():
 async def test_http_request_udf_with_qps():
     udf = HttpRequestUDF(
         data_column="__data",
+        expected_input_keys=["payload"],
         url="http://test.com/api",
         qps=2,
     )

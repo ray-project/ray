@@ -50,7 +50,22 @@ class AbstractNcclGroup(Communicator):
     ) -> "torch.Tensor":
         raise NotImplementedError
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        raise NotImplementedError
+
     def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
+
+    def reducescatter(
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",

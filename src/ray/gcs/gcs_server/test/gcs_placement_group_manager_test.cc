@@ -857,11 +857,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::NO_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 2);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 2);
   }
 
   /// Feasible, but failed to commit resources.
@@ -875,11 +875,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
           return mock_placement_group_scheduler_->GetPlacementGroupCount() == 1;
         },
         10 * 1000));
-    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    auto last_placement_group = mock_placement_group_scheduler_->placement_groups_.back();
     mock_placement_group_scheduler_->placement_groups_.clear();
-    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_state(),
               rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 3);
+    ASSERT_EQ(last_placement_group->GetStats().scheduling_attempt(), 3);
   }
 
   // Check that the placement_group scheduling state is `FINISHED`.
