@@ -100,14 +100,11 @@ class SpecificServer:
 def _match_running_client_server(command: List[str]) -> bool:
     """
     Detects if the main process in the given command is the RayClient Server.
-    This works by ensuring that the the first three arguments are similar to:
-        <python> -m ray.util.client.server
+    This works by ensuring that the command is of the form:
+        <py_executable> -m ray.util.client.server <args>
     """
     flattened = " ".join(command)
-    rejoined = flattened.split()
-    if len(rejoined) < 3:
-        return False
-    return rejoined[1:3] == ["-m", "ray.util.client.server"]
+    return "-m ray.util.client.server" in flattened
 
 
 class ProxyManager:

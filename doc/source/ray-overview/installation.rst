@@ -107,7 +107,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
         `Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
         `Linux Python 3.11 (x86_64)`_                    `Linux Python 3.11 (aarch64)`_
         `Linux Python 3.12 (x86_64)`_                    `Linux Python 3.12 (aarch64)`_
-	`Linux Python 3.13 (x86_64)`_ (alpha)            `Linux Python 3.13 (aarch64)`_ (alpha)
+        `Linux Python 3.13 (x86_64)`_ (beta)            `Linux Python 3.13 (aarch64)`_ (beta)
         =============================================== ================================================
 
     .. tab-item:: MacOS
@@ -119,7 +119,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
         `MacOS Python 3.10 (x86_64)`_                  `MacOS Python 3.10 (arm64)`_
         `MacOS Python 3.11 (x86_64)`_                  `MacOS Python 3.11 (arm64)`_
         `MacOS Python 3.12 (x86_64)`_                  `MacOS Python 3.12 (arm64)`_
-        `MacOS Python 3.13 (x86_64)`_ (alpha)          `MacOS Python 3.13 (arm64)`_ (alpha)
+        `MacOS Python 3.13 (x86_64)`_ (beta)          `MacOS Python 3.13 (arm64)`_ (beta)
         ============================================  ==============================================
 
     .. tab-item:: Windows (beta)

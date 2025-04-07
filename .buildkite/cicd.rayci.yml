@@ -13,6 +13,7 @@ steps:
     depends_on:
       - oss-ci-base_test
       - forge
+    tags: tools
   - label: ":coral: reef: privileged container tests"
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
@@ -25,3 +26,4 @@ steps:
     depends_on:
       - oss-ci-base_test
       - forge
+    tags: tools

@@ -23,7 +23,7 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 ### Ray mode in Data-Juicer
 
-- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_data.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
+- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/data/ray_dataset.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/executor/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
 - The exception is the deduplication operators, which are challenging to scale in standalone mode. The names of these operators follow the pattern of [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
 
 ### Subset splitting

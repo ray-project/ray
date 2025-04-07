@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple, Type
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId
 from ray.serve._private.constants import (
@@ -283,6 +283,8 @@ class ActorProxyWrapper(ProxyWrapper):
         except RayActorError:
             # The actor is dead, so it's ready for shutdown.
             return True
+        except GetTimeoutError:
+            pass
 
         # The actor is still alive, so it's not ready for shutdown.
         return False

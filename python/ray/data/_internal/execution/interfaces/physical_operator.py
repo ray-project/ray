@@ -457,7 +457,7 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def shutdown(self) -> None:
+    def shutdown(self, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active

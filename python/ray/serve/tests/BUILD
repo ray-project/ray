@@ -301,30 +301,6 @@ py_test(
     ],
 )
 
-# Test old stop-fully-then-start behavior.
-# TODO(zcin): remove this after the old behavior is completely removed
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
-    files = [
-        "test_controller_recovery.py",
-        "test_deploy.py",
-        "test_max_replicas_per_node.py",
-    ],
-    name_suffix = "_with_stop_fully_then_start_behavior",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
