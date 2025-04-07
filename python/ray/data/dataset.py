@@ -5405,11 +5405,20 @@ class Dataset:
 
         Examples:
 
+            Data in external storage and in-memory data are lineage-serializable.
+
             >>> import ray
-            >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
-            False
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
+            >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
+            True
+
+            Object references aren't lineage-serializable.
+
+            >>> import numpy as np
+            >>> numpy_ref = ray.put(np.array([1, 2, 3]))
+            >>> ray.data.from_numpy_refs([numpy_ref]).has_serializable_lineage()
+            False
         """  # noqa: E501
         return all(
             op.is_lineage_serializable()

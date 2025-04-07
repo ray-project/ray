@@ -297,37 +297,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
 
 
-def test_dataset_lineage_serialization_unsupported(shutdown_only):
-    ray.init()
-
-    # In-memory data source unions not supported.
-    ds = ray.data.from_items(list(range(10)))
-    ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.union(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-    # Lazy read unions supported.
-    ds = ray.data.range(10)
-    ds1 = ray.data.range(20)
-    ds2 = ds.union(ds1)
-
-    serialized_ds = ds2.serialize_lineage()
-    ds3 = Dataset.deserialize_lineage(serialized_ds)
-    assert set(extract_values("id", ds3.take(30))) == set(
-        list(range(10)) + list(range(20))
-    )
-
-    # Zips not supported.
-    ds = ray.data.from_items(list(range(10)))
-    ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.zip(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-
 def test_basic(ray_start_regular_shared):
     ds = ray.data.range(5)
     assert sorted(
