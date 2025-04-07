@@ -1709,8 +1709,8 @@ def test_stats_actor_iter_metrics():
     assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
 
 
-def test_dataset_name():
-    # Test deprecated APIs
+def test_dataset_name_and_id():
+    # Test deprecated APIs: _set_name and _name
     ds = ray.data.range(1)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
@@ -1722,34 +1722,36 @@ def test_dataset_name():
         "MapBatches(<lambda>)\n"
         "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
     )
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+    def _run_dataset(ds, expected_name, expected_run_index):
+        with patch_update_stats_actor() as update_fn:
+            for _ in ds.iter_batches():
+                pass
+
+        assert (
+            update_fn.call_args_list[-1].args[0]
+            == f"{expected_name}_{ds._uuid}_{expected_run_index}"
+        )
+
+    _run_dataset(ds, "test_ds", 0)
+
+    # Run the dataset again, the execution index should be incremented
+    _run_dataset(ds, "test_ds", 1)
 
     # Names persist after an execution
     ds = ds.random_shuffle()
     assert ds.name == "test_ds"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+    _run_dataset(ds, "test_ds", 0)
 
     ds.set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
     assert ds.name == "test_ds_two"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
+    _run_dataset(ds, "test_ds_two", 0)
 
     ds.set_name(None)
     ds = ds.map_batches(lambda x: x)
     assert ds.name is None
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
+    _run_dataset(ds, "dataset", 0)
 
     ds = ray.data.range(100, override_num_blocks=20)
     ds.set_name("very_loooooooong_name")
@@ -1759,7 +1761,8 @@ def test_dataset_name():
     )
 
 
-def test_dataset_name_train_ingest():
+def test_dataset_id_train_ingest():
+    """Test that the dataset ID is properly set for training ingestion jobs."""
     num_epochs = 3
     driver_script = f"""
 import ray
@@ -1774,9 +1777,11 @@ for epoch in range({num_epochs}):
     for _ in split.iter_batches():
         pass
     """
+    # Need to run the code as s sub process, because the executor
+    # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
     for i in range(num_epochs):
-        dataset_id = f"train_1234_epoch_{i}"
+        dataset_id = f"train_1234_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 

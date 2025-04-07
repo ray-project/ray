@@ -21,8 +21,8 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-
     from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import Dataset
 
 
@@ -79,9 +79,8 @@ class ExecutionPlan:
         self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
-        # Optional suffix for the dataset ID, can be used
-        # to distinguish between different runs of the same dataset.
-        self._dataset_id_suffix = ""
+        # Index of the current execution.
+        self._run_index = -1
 
         self._dataset_name = None
 
@@ -95,7 +94,20 @@ class ExecutionPlan:
             self._context = data_context
 
     def get_dataset_id(self) -> str:
-        return f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}{self._dataset_id_suffix}"
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return (
+            f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}_{self._run_index}"
+        )
+
+    def create_executor(self) -> "StreamingExecutor":
+        """Create an executor for this plan."""
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+        self._run_index += 1
+        executor = StreamingExecutor(self._context, self.get_dataset_id())
+        return executor
 
     def __repr__(self) -> str:
         return (
@@ -423,9 +435,8 @@ class ExecutionPlan:
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
         )
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        executor = StreamingExecutor(ctx, self.get_dataset_id())
+        executor = self.create_executor()
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -491,14 +502,7 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
-
-                executor = StreamingExecutor(
-                    context,
-                    self.get_dataset_id(),
-                )
+                executor = self.create_executor()
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,

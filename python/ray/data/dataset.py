@@ -429,16 +429,9 @@ class Dataset:
         """Returns the user-defined dataset name"""
         return self._plan._dataset_name
 
-    def set_id_suffix(self, suffix: str):
-        """
-        Set the dataset ID suffix. This can be used to distinguish between
-        different runs of the same dataset.
-        """
-        self._plan._dataset_id_suffix = suffix
-
     def get_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
-        UUID, and an optional suffix.
+        UUID, and current execution index.
         """
         return self._plan.get_dataset_id()
 

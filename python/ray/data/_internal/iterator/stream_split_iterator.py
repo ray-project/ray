@@ -8,7 +8,6 @@ import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
@@ -151,12 +150,7 @@ class SplitCoordinator:
 
         def gen_epochs():
             while True:
-                self._base_dataset.set_id_suffix(f"_epoch_{self._cur_epoch}")
-                executor = StreamingExecutor(
-                    self._data_context,
-                    self._base_dataset.get_id(),
-                )
-                self._executor = executor
+                executor = self._base_dataset._plan.create_executor()
 
                 def add_split_op(dag):
                     return OutputSplitter(
