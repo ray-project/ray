@@ -120,11 +120,11 @@ ray_cc_library(
     srcs = ["local_resource_manager.cc"],
     hdrs = ["local_resource_manager.h"],
     deps = [
-        "//:gcs_client_lib",
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
         "//src/ray/common:task_common",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/util:logging",

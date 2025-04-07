@@ -1,0 +1,84 @@
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+
+ray_cc_test(
+    name = "gcs_redis_store_client_test",
+    size = "small",
+    srcs = ["redis_store_client_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_store_client_test_lib",
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "@boost//:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_chaos_redis_store_client_test",
+    size = "small",
+    srcs = ["redis_store_client_test.cc"],
+    args = [
+        "$(location //:redis-server)",
+        "$(location //:redis-cli)",
+    ],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    env = {"REDIS_CHAOS": "1"},
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":gcs_store_client_test_lib",
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+        "@boost//:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_in_memory_store_client_test",
+    size = "small",
+    srcs = ["in_memory_store_client_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_store_client_test_lib",
+        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_observable_store_client_test",
+    size = "small",
+    srcs = ["in_memory_store_client_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_store_client_test_lib",
+        "//src/ray/gcs/store_client:gcs_in_memory_store_client",
+        "//src/ray/gcs/store_client:gcs_observable_store_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_store_client_test_lib",
+    hdrs = ["store_client_test_base.h"],
+    deps = [
+        "//src/ray/common:test_util",
+        "//src/ray/gcs/store_client:gcs_redis_store_client",
+    ],
+)

@@ -57,8 +57,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
-        "//:global_state_accessor_lib",
         "//:ray_common",
+        "//src/ray/gcs/gcs_client:gcs_global_state_accessor_lib",
         "//src/ray/util",
         "//src/ray/util:process",
         "//src/ray/util:cmd_line_utils",
