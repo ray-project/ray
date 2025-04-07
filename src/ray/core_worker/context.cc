@@ -348,10 +348,18 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
+// TODO(dayshah): Fixing thread-safety-reference-return here causes Java test failures.
+// Fix in follow up.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wthread-safety-reference-return"
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
 }
+#pragma clang diagnostic pop
+#pragma clang diagnostic pop
 
 ActorID WorkerContext::GetRootDetachedActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
