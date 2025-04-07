@@ -1,0 +1,13 @@
+name: Test Runner
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  say-hello:
+    runs-on: self-hosted  # 👈 Importante: este dice que usaremos un runner auto-hospedado
+    steps:
+      - name: Saludo en consola
+        run: echo "Hola, Javier. Este workflow está corriendo en un runner auto-hospedado 🎉"
