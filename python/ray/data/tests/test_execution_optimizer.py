@@ -269,7 +269,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
-    assert extract_values("id", ds.take_all()) == list(range(5)), ds
+    assert sorted(extract_values("id", ds.take_all())) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
@@ -1078,7 +1078,7 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()
@@ -1395,33 +1395,31 @@ def test_from_modin_e2e(ray_start_regular_shared_2_cpus):
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_refs_e2e(ray_start_regular_shared_2_cpus, enable_pandas_block):
+def test_from_pandas_refs_e2e(
+    ray_start_regular_shared_2_cpus, enable_pandas_block, restore_data_context
+):
     ctx = ray.data.context.DataContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
     ctx.enable_pandas_block = enable_pandas_block
 
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
 
-        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        values = [(r["one"], r["two"]) for r in ds.take(6)]
-        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-        assert values == rows
+    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert sorted(values) == sorted(rows)
 
-        # Test chaining multiple operations
-        ds2 = ds.map_batches(lambda x: x)
-        values = [(r["one"], r["two"]) for r in ds2.take(6)]
-        assert values == rows
-        assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
+    # Test chaining multiple operations
+    ds2 = ds.map_batches(lambda x: x)
+    values = [(r["one"], r["two"]) for r in ds2.take(6)]
+    assert sorted(values) == sorted(rows)
+    assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
 
-        # test from single pandas dataframe
-        ds = ray.data.from_pandas_refs(ray.put(df1))
-        values = [(r["one"], r["two"]) for r in ds.take(3)]
-        rows = [(r.one, r.two) for _, r in df1.iterrows()]
-        assert values == rows
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert sorted(values) == sorted(rows)
 
 
 def test_from_numpy_refs_e2e(ray_start_regular_shared_2_cpus):

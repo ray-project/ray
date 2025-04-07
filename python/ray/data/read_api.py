@@ -153,7 +153,7 @@ def from_items(
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5])
         >>> ds
-        Dataset(num_blocks=..., num_rows=5, schema={item: int64})
+        Dataset(num_rows=5, schema={item: int64})
         >>> ds.schema()
         Column  Type
         ------  ----
