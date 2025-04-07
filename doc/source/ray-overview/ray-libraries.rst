@@ -14,17 +14,20 @@ more information.
     To add an integration add an entry to this file, using the same
     ``grid-item-card`` directive that the other examples use.
 
+Data Sources
+============
+
+Ray Data provides connectors for most popular data sources.
+
 .. grid:: 1 2 2 3
     :gutter: 1
     :class-container: container pb-3
 
     .. grid-item-card::
-
         .. figure:: ../images/airflow_logo_full.png
             :class: card-figure
 
         .. div::
-
             .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social)]
                 :target: https://github.com/astronomer/astro-provider-ray
 
@@ -38,131 +41,31 @@ more information.
 
             Apache Airflow Integration
 
+Workflow Orchestration
+======================
+
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-3
 
     .. grid-item-card::
-
-        .. figure:: ../images/buildflow.png
+        .. figure:: ../images/airflow_logo_full.png
             :class: card-figure
 
         .. div::
+            .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social)]
+                :target: https://github.com/astronomer/astro-provider-ray
 
-            .. image:: https://img.shields.io/github/stars/launchflow/buildflow?style=social)]
-                :target: https://github.com/launchflow/buildflow
-
-            BuildFlow is a backend framework that allows you to build and manage complex cloud infrastructure using pure python. With BuildFlow's decorator pattern you can turn any function into a component of your backend system.
+            Apache Airflow® is an open-source platform that enables users to programmatically author, schedule, and monitor workflows using directed acyclic graphs (DAGs). With the Ray provider, users can seamlessly orchestrate Ray jobs within Airflow DAGs.
 
         +++
-        .. button-link:: https://docs.launchflow.com/buildflow/introduction
+        .. button-link:: https://astronomer.github.io/astro-provider-ray/
             :color: primary
             :outline:
             :expand:
 
-            BuildFlow Integration
+            Apache Airflow Integration
 
-
-    .. grid-item-card::
-
-        .. figure:: ../images/classyvision.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/facebookresearch/ClassyVision?style=social)]
-                :target: https://github.com/facebookresearch/ClassyVision
-
-            Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
-
-        +++
-        .. button-link:: https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb
-            :color: primary
-            :outline:
-            :expand:
-
-            Classy Vision Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/daft.webp
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
-                :target: https://github.com/Eventual-Inc/Daft
-
-            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
-
-        +++
-        .. button-link:: https://www.getdaft.io
-            :color: primary
-            :outline:
-            :expand:
-
-            Daft Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/dask.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/dask/dask?style=social)]
-                :target: https://github.com/dask/dask
-
-            Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
-
-        +++
-        .. button-ref:: dask-on-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            Dask Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/data_juicer.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/modelscope/data-juicer?style=social)]
-                :target: https://github.com/modelscope/data-juicer
-
-            Data-Juicer is a one-stop multimodal data processing system to make data higher-quality, juicier, and more digestible for foundation models. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
-
-        +++
-        .. button-link:: https://github.com/modelscope/data-juicer?tab=readme-ov-file#distributed-data-processing
-            :color: primary
-            :outline:
-            :expand:
-
-            Data-Juicer Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/flambe.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/asappresearch/flambe?style=social)]
-                :target: https://github.com/asappresearch/flambe
-
-            Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
-
-        +++
-        .. button-link:: https://github.com/asappresearch/flambe
-            :color: primary
-            :outline:
-            :expand:
-
-            Flambé Integration
 
     .. grid-item-card::
 
@@ -204,6 +107,98 @@ more information.
             :expand:
 
             Flyte Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/prefect.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/PrefectHQ/prefect-ray?style=social)]
+                :target: https://github.com/PrefectHQ/prefect-ray
+
+            Prefect is an open source workflow orchestration platform in Python. It allows you to easily define, track and schedule workflows in Python. This integration makes it easy to run a Prefect workflow on a Ray cluster in a distributed way.
+
+        +++
+        .. button-link:: https://github.com/PrefectHQ/prefect-ray
+            :color: primary
+            :outline:
+            :expand:
+
+            Prefect Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/sematic.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/sematic-ai/sematic?style=social)]
+                :target: https://github.com/sematic-ai/sematic
+
+            Sematic is an open-source ML pipelining tool written in Python. It enables users to write end-to-end pipelines that can seamlessly transition between your laptop and the cloud, with rich visualizations, traceability, reproducibility, and usability as first-class citizens. This integration enables dynamic allocation of Ray clusters within Sematic pipelines.
+
+        +++
+        .. button-link:: https://docs.sematic.dev/integrations/ray
+            :color: primary
+            :outline:
+            :expand:
+
+            Sematic Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ./images/volcano.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/volcano-sh/volcano?style=social)]
+                :target: https://github.com/volcano-sh/volcano/
+
+            Volcano is system for running high-performance workloads on Kubernetes. It features powerful batch scheduling capabilities required by ML and other data-intensive workloads.
+
+        +++
+        .. button-link:: https://github.com/volcano-sh/volcano/releases/tag/v1.7.0
+            :color: primary
+            :outline:
+            :expand:
+
+            Volcano Integration
+
+
+
+Training Frameworks
+===================
+
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-3
+
+    .. grid-item-card::
+
+        .. figure:: ../images/classyvision.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/facebookresearch/ClassyVision?style=social)]
+                :target: https://github.com/facebookresearch/ClassyVision
+
+            Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
+
+        +++
+        .. button-link:: https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb
+            :color: primary
+            :outline:
+            :expand:
+
+            Classy Vision Integration
 
 
     .. grid-item-card::
@@ -250,6 +245,140 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/scikit.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/scikit-learn/scikit-learn?style=social)]
+                :target: https://github.com/scikit-learn/scikit-learn
+
+            Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+
+        +++
+        .. button-link:: https://docs.ray.io/en/master/joblib.html
+            :color: primary
+            :outline:
+            :expand:
+
+            Scikit Learn Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/xgboost_logo.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/ray-project/xgboost_ray?style=social)]
+                :target: https://github.com/ray-project/xgboost_ray
+
+            XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
+
+        +++
+        .. button-link:: https://github.com/ray-project/xgboost_ray
+            :color: primary
+            :outline:
+            :expand:
+
+            XGBoost Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/lightgbm_logo.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/ray-project/lightgbm_ray?style=social)]
+                :target: https://github.com/ray-project/lightgbm_ray
+
+            LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
+
+        +++
+        .. button-link:: https://github.com/ray-project/lightgbm_ray
+            :color: primary
+            :outline:
+            :expand:
+
+            LightGBM Integration
+
+
+
+
+Data Processing
+===============
+
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-3
+    .. grid-item-card::
+
+        .. figure:: ../images/daft.webp
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/daft/daft?style=social)]
+                :target: https://github.com/Eventual-Inc/Daft
+
+            Daft is a data engine that supports SQL and Python DataFrames for data processing and analytics natively on your Ray clusters.
+
+        +++
+        .. button-link:: https://www.getdaft.io
+            :color: primary
+            :outline:
+            :expand:
+
+            Daft Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/data_juicer.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/modelscope/data-juicer?style=social)]
+                :target: https://github.com/modelscope/data-juicer
+
+            Data-Juicer is a one-stop multimodal data processing system to make data higher-quality, juicier, and more digestible for foundation models. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
+
+        +++
+        .. button-link:: https://github.com/modelscope/data-juicer?tab=readme-ov-file#distributed-data-processing
+            :color: primary
+            :outline:
+            :expand:
+
+            Data-Juicer Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/intel.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/Intel-bigdata/oap-raydp?style=social)]
+                :target: https://github.com/Intel-bigdata/oap-raydp
+
+            RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
+
+        +++
+        .. button-link:: https://github.com/Intel-bigdata/oap-raydp
+            :color: primary
+            :outline:
+            :expand:
+
+            RayDP Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/zoo.png
             :class: card-figure
 
@@ -268,6 +397,95 @@ more information.
 
             Intel Analytics Zoo Integration
 
+
+    .. grid-item-card::
+
+        .. figure:: ../images/mars.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/mars-project/mars?style=social)]
+                :target: https://github.com/mars-project/mars
+
+            Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
+
+        +++
+        .. button-ref:: mars-on-ray
+            :color: primary
+            :outline:
+            :expand:
+
+            MARS Integration
+
+
+Miscellaneous
+=============
+
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-3
+    .. grid-item-card::
+
+        .. figure:: ../images/buildflow.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/launchflow/buildflow?style=social)]
+                :target: https://github.com/launchflow/buildflow
+
+            BuildFlow is a backend framework that allows you to build and manage complex cloud infrastructure using pure python. With BuildFlow's decorator pattern you can turn any function into a component of your backend system.
+
+        +++
+        .. button-link:: https://docs.launchflow.com/buildflow/introduction
+            :color: primary
+            :outline:
+            :expand:
+
+            BuildFlow Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/dask.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/dask/dask?style=social)]
+                :target: https://github.com/dask/dask
+
+            Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
+
+        +++
+        .. button-ref:: dask-on-ray
+            :color: primary
+            :outline:
+            :expand:
+
+            Dask Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/flambe.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/asappresearch/flambe?style=social)]
+                :target: https://github.com/asappresearch/flambe
+
+            Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
+
+        +++
+        .. button-link:: https://github.com/asappresearch/flambe
+            :color: primary
+            :outline:
+            :expand:
+
+            Flambé Integration
 
     .. grid-item-card::
 
@@ -313,27 +531,6 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/mars.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/mars-project/mars?style=social)]
-                :target: https://github.com/mars-project/mars
-
-            Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
-
-        +++
-        .. button-ref:: mars-on-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            MARS Integration
-
-
-    .. grid-item-card::
-
         .. figure:: ../images/modin.png
             :class: card-figure
 
@@ -351,27 +548,6 @@ more information.
             :expand:
 
             Modin Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/prefect.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/PrefectHQ/prefect-ray?style=social)]
-                :target: https://github.com/PrefectHQ/prefect-ray
-
-            Prefect is an open source workflow orchestration platform in Python. It allows you to easily define, track and schedule workflows in Python. This integration makes it easy to run a Prefect workflow on a Ray cluster in a distributed way.
-
-        +++
-        .. button-link:: https://github.com/PrefectHQ/prefect-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            Prefect Integration
 
 
     .. grid-item-card::
@@ -397,48 +573,6 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/intel.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/Intel-bigdata/oap-raydp?style=social)]
-                :target: https://github.com/Intel-bigdata/oap-raydp
-
-            RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
-
-        +++
-        .. button-link:: https://github.com/Intel-bigdata/oap-raydp
-            :color: primary
-            :outline:
-            :expand:
-
-            RayDP Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/scikit.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/scikit-learn/scikit-learn?style=social)]
-                :target: https://github.com/scikit-learn/scikit-learn
-
-            Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
-
-        +++
-        .. button-link:: https://docs.ray.io/en/master/joblib.html
-            :color: primary
-            :outline:
-            :expand:
-
-            Scikit Learn Integration
-
-
-    .. grid-item-card::
-
         .. figure:: ../images/seldon.png
             :class: card-figure
 
@@ -456,27 +590,6 @@ more information.
             :expand:
 
             Seldon Alibi Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/sematic.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/sematic-ai/sematic?style=social)]
-                :target: https://github.com/sematic-ai/sematic
-
-            Sematic is an open-source ML pipelining tool written in Python. It enables users to write end-to-end pipelines that can seamlessly transition between your laptop and the cloud, with rich visualizations, traceability, reproducibility, and usability as first-class citizens. This integration enables dynamic allocation of Ray clusters within Sematic pipelines.
-
-        +++
-        .. button-link:: https://docs.sematic.dev/integrations/ray
-            :color: primary
-            :outline:
-            :expand:
-
-            Sematic Integration
 
 
     .. grid-item-card::
@@ -500,64 +613,3 @@ more information.
             spaCy Integration
 
 
-    .. grid-item-card::
-
-        .. figure:: ../images/xgboost_logo.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/ray-project/xgboost_ray?style=social)]
-                :target: https://github.com/ray-project/xgboost_ray
-
-            XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
-
-        +++
-        .. button-link:: https://github.com/ray-project/xgboost_ray
-            :color: primary
-            :outline:
-            :expand:
-
-            XGBoost Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ../images/lightgbm_logo.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/ray-project/lightgbm_ray?style=social)]
-                :target: https://github.com/ray-project/lightgbm_ray
-
-            LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
-
-        +++
-        .. button-link:: https://github.com/ray-project/lightgbm_ray
-            :color: primary
-            :outline:
-            :expand:
-
-            LightGBM Integration
-
-
-    .. grid-item-card::
-
-        .. figure:: ./images/volcano.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/volcano-sh/volcano?style=social)]
-                :target: https://github.com/volcano-sh/volcano/
-
-            Volcano is system for running high-performance workloads on Kubernetes. It features powerful batch scheduling capabilities required by ML and other data-intensive workloads.
-
-        +++
-        .. button-link:: https://github.com/volcano-sh/volcano/releases/tag/v1.7.0
-            :color: primary
-            :outline:
-            :expand:
-
-            Volcano Integration
