@@ -1201,7 +1201,7 @@ ray_cc_library(
         ":gcs_client_lib",
         ":runtime_env_agent_client",
         ":worker",
-        ":core_worker_lib",
+        "//src/ray/core_worker:core_worker_common",
     ],
 )
 
@@ -1279,6 +1279,7 @@ ray_cc_library(
         ":worker_pool",
         ":worker_rpc",
         "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/common:memory_monitor",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
@@ -1424,6 +1425,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1438,6 +1440,7 @@ ray_cc_test(
     deps = [
         ":raylet_lib",
         "@boost//:endian",
+        "//src/ray/common:test_util",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1610,6 +1613,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1622,6 +1626,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1634,6 +1639,7 @@ ray_cc_test(
     deps = [
         ":ray_mock",
         ":raylet_lib",
+        "//src/ray/common:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2821,7 +2827,6 @@ pyx_library(
     ),
     deps = [
         ":python_callbacks",
-        "//:core_worker_lib",
         "//:exported_internal",
         "//:gcs_server_lib",
         "//:global_state_accessor_lib",
@@ -2830,6 +2835,7 @@ pyx_library(
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
         "//src/ray/stats:stats_lib",
+        "//src/ray/core_worker:core_worker_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
