@@ -281,7 +281,6 @@ class EnvRunnerGroup:
             local_env_runner
             and self._worker_manager.num_actors() > 0
             and not config.enable_env_runner_and_connector_v2
-            and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
             spaces = self.get_spaces()
@@ -379,6 +378,8 @@ class EnvRunnerGroup:
         connector_states: Optional[List[Dict[str, Any]]] = None,
         rl_module_state: Optional[Dict[str, Any]] = None,
         env_runner_indices_to_update: Optional[List[int]] = None,
+        env_to_module=None,
+        module_to_env=None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -407,7 +408,7 @@ class EnvRunnerGroup:
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
-        if self.num_healthy_remote_workers() == 0:
+        if self.num_healthy_remote_workers() == 0 and self.local_env_runner:
             self.local_env_runner.set_state(
                 {
                     **(
@@ -455,14 +456,18 @@ class EnvRunnerGroup:
                     if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
                 ]
 
+                if self.local_env_runner is not None:
+                    assert env_to_module is None
+                    env_to_module = self.local_env_runner._env_to_module
+                    assert module_to_env is None
+                    module_to_env = self.local_env_runner._module_to_env
+
                 env_runner_states = {}
                 if env_to_module_states:
                     env_runner_states.update(
                         {
                             COMPONENT_ENV_TO_MODULE_CONNECTOR: (
-                                self.local_env_runner._env_to_module.merge_states(
-                                    env_to_module_states
-                                )
+                                env_to_module.merge_states(env_to_module_states)
                             ),
                         }
                     )
@@ -470,15 +475,14 @@ class EnvRunnerGroup:
                     env_runner_states.update(
                         {
                             COMPONENT_MODULE_TO_ENV_CONNECTOR: (
-                                self.local_env_runner._module_to_env.merge_states(
-                                    module_to_env_states
-                                )
+                                module_to_env.merge_states(module_to_env_states)
                             ),
                         }
                     )
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
+            assert from_worker is not None
             env_runner_states = from_worker.get_state(
                 components=[
                     COMPONENT_ENV_TO_MODULE_CONNECTOR,
@@ -499,7 +503,15 @@ class EnvRunnerGroup:
         # only update the local worker here (with all state components, except the model
         # weights) and then remove the connector components.
         if not config.update_worker_filter_stats:
-            self.local_env_runner.set_state(env_runner_states)
+            if self.local_env_runner is not None:
+                self.local_env_runner.set_state(env_runner_states)
+            else:
+                env_to_module.set_state(
+                    env_runner_states.get(COMPONENT_ENV_TO_MODULE_CONNECTOR), {}
+                )
+                module_to_env.set_state(
+                    env_runner_states.get(COMPONENT_MODULE_TO_ENV_CONNECTOR), {}
+                )
             env_runner_states.pop(COMPONENT_ENV_TO_MODULE_CONNECTOR, None)
             env_runner_states.pop(COMPONENT_MODULE_TO_ENV_CONNECTOR, None)
 
@@ -509,7 +521,7 @@ class EnvRunnerGroup:
             # Update the local EnvRunner, but NOT with the weights. If used at all for
             # evaluation (through the user calling `self.evaluate`), RLlib would update
             # the weights up front either way.
-            if config.update_worker_filter_stats:
+            if self.local_env_runner is not None and config.update_worker_filter_stats:
                 self.local_env_runner.set_state(env_runner_states)
 
             # Send the model weights only to remote EnvRunners.

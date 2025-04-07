@@ -963,7 +963,7 @@ class IMPALA(Algorithm):
             # worker (either because they have all died, or because there was none to
             # begin) check if the local_worker exists. If the local worker has an
             # env_instance (either because there are no remote workers or
-            # self.config.create_env_on_local_worker == True), then sample from the
+            # self.config.create_local_env_runner == True), then sample from the
             # local worker. Otherwise just return an empty list.
             if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
