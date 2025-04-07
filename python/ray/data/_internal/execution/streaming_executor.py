@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-import uuid
 from typing import Dict, Iterator, List, Optional
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
@@ -64,8 +63,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
 
-        self._execution_id = uuid.uuid4().hex
-
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
         self._execution_started = False
@@ -88,7 +85,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._last_debug_log_time = 0
 
         Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}-{self._execution_id}"
+        thread_name = f"StreamingExecutor-{self._dataset_id}-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
@@ -138,7 +135,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._autoscaler = create_autoscaler(
             self._topology,
             self._resource_manager,
-            self._execution_id,
+            self._dataset_id,
         )
 
         self._has_op_completed = {op: False for op in self._topology}
