@@ -37,7 +37,9 @@ inline constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
 inline constexpr std::string_view kProcFilename = "cgroup.procs";
 // Filename within cgroup, writing to which is used to kill all processes inside.
 inline constexpr std::string_view kProcKillFilename = "cgroup.kill";
-// Subtree controller filename within a cgroup, which contains enabled controllers for
+// Controller filename within a cgroup, with contains available controllers.
+inline constexpr std::string_view kControllerFilename = "cgroup.controllers";
+// Subtree controller filename within a cgroup, which contains activated controllers for
 // children cgroups.
 inline constexpr std::string_view kSubtreeControlFilename = "cgroup.subtree_control";
 // Cgroup type filename.
