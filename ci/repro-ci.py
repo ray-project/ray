@@ -520,9 +520,7 @@ class ReproSession:
 
     def print_buildkite_command(self, skipped: bool = False):
         print("-" * 80)
-        print(
-            "These are the commands you need to execute to fully reproduce the run"
-        )
+        print("These are the commands you need to execute to fully reproduce the run")
         print("-" * 80)
         print(self.env["BUILDKITE_COMMAND"])
         print("-" * 80)

@@ -902,9 +902,9 @@ class TestAsyncAPI:
             pid_file, _, job_id = await _run_hanging_command(
                 job_manager, tmp_dir, start_signal_actor=start_signal_actor
             )
-            assert not os.path.exists(pid_file), (
-                "driver subprocess should NOT be running while job is still PENDING."
-            )
+            assert not os.path.exists(
+                pid_file
+            ), "driver subprocess should NOT be running while job is still PENDING."
 
             assert job_manager.stop_job(job_id) is True
             # Send run signal to unblock run function
@@ -927,9 +927,9 @@ class TestAsyncAPI:
                 job_manager, tmp_dir, start_signal_actor=start_signal_actor
             )
 
-            assert not os.path.exists(pid_file), (
-                "driver subprocess should NOT be running while job is still PENDING."
-            )
+            assert not os.path.exists(
+                pid_file
+            ), "driver subprocess should NOT be running while job is still PENDING."
 
             actor = job_manager._get_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
