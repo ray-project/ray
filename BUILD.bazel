@@ -789,7 +789,7 @@ ray_cc_library(
     hdrs = ["src/ray/core_worker/reference_count.h"],
     deps = [
         ":lease_policy",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         ":worker_rpc"
     ]
 )
