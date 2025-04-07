@@ -24,6 +24,9 @@ class FromBlocks(LogicalOperator):
             len(input_blocks),
             len(input_metadata),
         )
+        assert all(m.num_rows is not None for m in self._input_metadata)
+        assert all(m.size_bytes is not None for m in self._input_metadata)
+
         self._input_blocks = input_blocks
         self._input_metadata = input_metadata
 
@@ -52,16 +55,10 @@ class FromBlocks(LogicalOperator):
         )
 
     def _num_rows(self):
-        if all(m.num_rows is not None for m in self._input_metadata):
-            return sum(m.num_rows for m in self._input_metadata)
-        else:
-            return None
+        return sum(m.num_rows for m in self._input_metadata)
 
     def _size_bytes(self):
-        if all(m.size_bytes is not None for m in self._input_metadata):
-            return sum(m.size_bytes for m in self._input_metadata)
-        else:
-            return None
+        return sum(m.size_bytes for m in self._input_metadata)
 
     def _schema(self):
         return unify_block_metadata_schema(self._input_metadata)
