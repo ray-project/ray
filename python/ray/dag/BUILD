@@ -169,6 +169,24 @@ py_test(
 )
 
 py_test(
+    name = "test_execution_schedule_gpu",
+    size = "enormous",
+    srcs = [
+        "tests/experimental/test_execution_schedule_gpu.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_execution_schedule_gpu.py",
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_cpu_communicator_dag",
     size = "medium",
     srcs = dag_tests_srcs,
