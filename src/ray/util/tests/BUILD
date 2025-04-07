@@ -97,8 +97,8 @@ ray_cc_test(
     srcs = ["filesystem_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
-        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -133,7 +133,6 @@ ray_cc_test(
     srcs = ["sample_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
         "//src/ray/util:sample",
         "@com_google_googletest//:gtest_main",
     ],
@@ -376,6 +375,17 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:concurrent_flat_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "filesystem_monitor_test",
+    size = "small",
+    srcs = ["filesystem_monitor_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:file_system_monitor",
         "@com_google_googletest//:gtest_main",
     ],
 )
