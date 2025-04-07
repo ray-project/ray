@@ -1,0 +1,9 @@
+name: Prueba en runner local
+
+on: [push]
+
+jobs:
+  prueba-local:
+    runs-on: self-hosted
+    steps:
+      - run: echo "¡Hola desde mi runner en Windows!"
