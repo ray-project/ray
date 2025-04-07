@@ -410,7 +410,7 @@ py_test(
 
 py_test(
     name = "test_hudi",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_hudi.py"],
     tags = [
         "exclusive",
