@@ -14,7 +14,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode
+from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -111,6 +111,7 @@ except ModuleNotFoundError:
 __all__ = [
     "ActorPoolStrategy",
     "BlockBasedFileDatasink",
+    "ClickHouseTableSettings",
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.

@@ -37,6 +37,7 @@ from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
+    ClickHouseTableSettings,
     SinkMode,
 )
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -4134,9 +4135,10 @@ class Dataset:
         dsn: str,
         *,
         mode: SinkMode = SinkMode.CREATE,
+        schema: Optional["pyarrow.Schema"] = None,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
-        table_settings: Optional[Dict[str, Any]] = None,
+        table_settings: Optional[ClickHouseTableSettings] = None,
         max_insert_block_rows: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -4151,15 +4153,26 @@ class Dataset:
                 :skipif: True
 
                 import ray
+                import pyarrow as pa
                 import pandas as pd
 
                 docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
+                user_schema = pa.schema(
+                    [
+                        ("id", pa.int64()),
+                        ("title", pa.string()),
+                    ]
+                )
                 ds.write_clickhouse(
                     table="default.my_table",
                     dsn="clickhouse+http://user:pass@localhost:8123/default",
                     mode=ray.data.SinkMode.OVERWRITE,
-                    table_settings={"engine": "ReplacingMergeTree()", "order_by": "id"}
+                    schema=user_schema,
+                    table_settings=ray.data.ClickHouseTableSettings(
+                        engine="ReplacingMergeTree()",
+                        order_by="id",
+                    ),
                 )
 
         Args:
@@ -4172,13 +4185,26 @@ class Dataset:
             mode: One of SinkMode.CREATE, SinkMode.APPEND, or
                 SinkMode.OVERWRITE:
 
-                * SinkMode.CREATE: Create a new table; fail if it already exists.
+                * SinkMode.CREATE: Create a new table; fail if it already exists. If the table
+                    does not exist, you must provide a schema (either via the `schema`
+                    argument or as part of the dataset's first block).
 
-                * SinkMode.APPEND: Use an existing table if present, otherwise create one;
-                    data will be appended to the table.
+                * SinkMode.APPEND: If the table exists, append data to it; if not, create
+                    the table using the provided or inferred schema. If the table does
+                    not exist, you must supply a schema.
 
-                * SinkMode.OVERWRITE: Drop an existing table (if any) and re-create it.
+                * SinkMode.OVERWRITE: Drop any existing table of this name, then create
+                    a new table and write data to it. You **must** provide a schema in
+                    this case, as the table is being re-created.
 
+            schema: Optional :class:`pyarrow.Schema` specifying column definitions.
+                This is mandatory if you are creating a new table (i.e., table doesn't
+                exist in CREATE or APPEND mode) or overwriting an existing table (OVERWRITE).
+                When appending to an existing table, a schema is optional, though you can
+                provide one to enforce column types or cast data as needed. If omitted
+                (and the table already exists), the existing table definition will be used.
+                If omitted and the table must be created, the schema is inferred from
+                the first block in the dataset.
             client_settings: Optional ClickHouse server settings to be used with the
                 session/every request. For more information, see
                 `ClickHouse Client Settings doc
@@ -4187,12 +4213,11 @@ class Dataset:
                 ClickHouse client. For more information, see
                 `ClickHouse Core Settings doc
                 <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
-            table_settings: Optional dictionary containing additional table creation instructions.
-                The recognized keys are:
+            table_settings: An optional :class:`ClickHouseTableSettings` dataclass
+                that specifies additional table creation instructions, including:
 
                 * engine (default: `"MergeTree()"`):
-                    Specifies the engine for the `CREATE TABLE` statement. For example,
-                    `{"engine": "ReplacingMergeTree()"}`.
+                    Specifies the engine for the `CREATE TABLE` statement.
 
                 * order_by:
                     Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
@@ -4202,17 +4227,14 @@ class Dataset:
 
                 * partition_by:
                     If present, adds a `PARTITION BY <value>` clause to the `CREATE TABLE` statement.
-                    For example, `{"partition_by": "toYYYYMMDD(event_time)"}`.
 
                 * primary_key:
-                    If present, adds a `PRIMARY KEY (<value>)` clause. For example,
-                    `{"primary_key": "id"}`.
+                    If present, adds a `PRIMARY KEY (<value>)` clause.
 
                 * settings:
                     Appends a `SETTINGS <value>` clause to the `CREATE TABLE` statement, allowing
-                    custom ClickHouse settings (e.g. `{"settings": "index_granularity=8192"}`).
+                    custom ClickHouse settings.
 
-                Any other keys in this dictionary are ignored.
             max_insert_block_rows: If you have extremely large blocks, specifying
                 a limit here will chunk the insert into multiple smaller insert calls.
                 Defaults to None (no chunking).
@@ -4226,11 +4248,13 @@ class Dataset:
             table=table,
             dsn=dsn,
             mode=mode,
+            schema=schema,
             client_settings=client_settings,
             client_kwargs=client_kwargs,
             table_settings=table_settings,
             max_insert_block_rows=max_insert_block_rows,
         )
+
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
