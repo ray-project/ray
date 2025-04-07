@@ -1,10 +1,9 @@
 import abc
-from datetime import datetime
-
 import itertools
 import json
 import logging
 import sys
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -13,14 +12,14 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
-    _is_ndarray_variable_shaped_tensor,
-    create_ragged_ndarray,
-    _should_convert_to_tensor,
     ArrayLike,
+    _is_ndarray_variable_shaped_tensor,
+    _should_convert_to_tensor,
+    create_ragged_ndarray,
 )
 from ray.data._internal.numpy_support import (
-    convert_to_numpy,
     _convert_datetime_to_np_datetime,
+    convert_to_numpy,
 )
 from ray.data._internal.util import GiB
 from ray.util import log_once
@@ -35,6 +34,10 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Minimum version supporting `infer_type` on a sequence of PyArrow scalars.
+MIN_PYARROW_VERSION_INFER_TYPE_FROM_SCALARS = parse_version("13.0.0")
+# Minimum version supporting `pa.array` on a sequence of PyArrow scalars.
+MIN_PYARROW_VERSION_ARRAY_FROM_SCALARS = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -232,6 +235,13 @@ def _convert_to_pyarrow_native_array(
             f"Inferred dtype of '{pa_type}' for column '{column_name}'",
         )
 
+        # NOTE: PyArrow 12.0 and earlier can't construct an array from a sequence of
+        #       scalars. To work around this, we convert the scalars to Python objects.
+        if PYARROW_VERSION < MIN_PYARROW_VERSION_ARRAY_FROM_SCALARS and all(
+            isinstance(column_values[0], pa.Scalar)
+        ):
+            column_values = [v.as_py() for v in column_values]
+
         # NOTE: Pyarrow 19.0 is not able to properly handle `ListScalar(None)` when
         #       creating native array and hence we have to manually replace any such
         #       cases w/ an explicit null value
@@ -328,7 +338,19 @@ def _infer_pyarrow_type(
     if dtype_with_timestamp_type is not None:
         return dtype_with_timestamp_type
 
-    inferred_pa_dtype = pa.infer_type(column_values)
+    try:
+        inferred_pa_dtype = pa.infer_type(column_values)
+    except pa.ArrowInvalid:
+        # NOTE: If you call `pa.infer_type` on a sequence of PyArrow scalars with
+        #       PyArrow 12.0.0 or earlier, the function raises an ArrowInvalid
+        #       exception. To avoid the error, we try to infer the type manually.
+        if (
+            PYARROW_VERSION < MIN_PYARROW_VERSION_INFER_TYPE_FROM_SCALARS
+            and isinstance(column_values[0], pa.Scalar)
+        ):
+            inferred_pa_dtype = column_values[0].type
+        else:
+            raise
 
     def _len_gt_overflow_threshold(obj: Any) -> bool:
         # NOTE: This utility could be seeing objects other than strings or bytes in

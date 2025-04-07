@@ -2,6 +2,7 @@ import gc
 from dataclasses import dataclass, field
 
 import numpy as np
+import psutil
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
@@ -9,16 +10,14 @@ from packaging.version import parse as parse_version
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
+    ArrowTensorArray,
     _convert_to_pyarrow_native_array,
     _infer_pyarrow_type,
     convert_to_pyarrow_array,
-    ArrowTensorArray,
 )
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data import DataContext
 from ray.tests.conftest import *  # noqa
-
-import psutil
 
 
 @dataclass
@@ -123,6 +122,18 @@ def test_convert_datetime_array(
 
     assert expected.type == converted.type
     assert expected == converted
+
+
+@pytest.mark.parametrize(
+    "column_values, expected_array",
+    [
+        ([pa.scalar(0)], pa.array([0])),
+        ([pa.scalar("spam"), pa.scalar("ham")], pa.array(["spam", "ham"])),
+    ],
+)
+def test_convert_list_of_scalars(column_values, expected_array):
+    array = convert_to_pyarrow_array(column_values, column_name="column")
+    assert array == expected_array
 
 
 @pytest.mark.parametrize("arg_type", ["list", "ndarray"])
