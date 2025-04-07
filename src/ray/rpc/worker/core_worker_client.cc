@@ -105,7 +105,7 @@ void CoreWorkerClient::SendRequests() {
     auto request = std::move(pair.first);
     int64_t task_size = RequestSizeInBytes(*request);
     int64_t seq_no = request->sequence_number();
-    request->set_client_processed_up_to(max_finished_seq_no_.value_or(-1));
+    request->set_client_processed_up_to(max_finished_seq_no_.value());
     rpc_bytes_in_flight_ += task_size;
 
     auto rpc_callback =
