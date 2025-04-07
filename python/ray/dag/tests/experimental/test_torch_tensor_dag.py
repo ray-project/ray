@@ -1118,7 +1118,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
         ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
     """
@@ -1150,7 +1150,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         assert result == args
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
@@ -1236,7 +1236,7 @@ def test_torch_tensor_exceptions(
         assert result == (i, shape, dtype)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_exceptions2(
     ray_start_regular,
@@ -1279,7 +1279,7 @@ def test_torch_tensor_exceptions2(
         ref = compiled_dag.execute(2)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_explicit_communicator(ray_start_regular):
     assert (
@@ -1321,7 +1321,7 @@ def test_torch_tensor_explicit_communicator(ray_start_regular):
         dag.experimental_compile(_default_communicator=None)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize(
     "operation, reduce_op",
@@ -1435,7 +1435,7 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
             assert torch.equal(result_tensor.to("cpu"), expected_tensor)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     """
@@ -1478,7 +1478,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         assert torch.equal(tensor, expected_tensor_val)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     """
@@ -1528,7 +1528,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         ray.get(ref)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
     """
@@ -1671,7 +1671,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     """
@@ -1724,7 +1724,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert result[2] == (value, shape, dtype)
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     """
@@ -1759,7 +1759,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
         assert result == [t1 + t4, t1 + t4, t2, t3]
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
     """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
@@ -1796,7 +1796,7 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     assert (
@@ -1831,7 +1831,7 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype)]
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     assert (
@@ -1866,7 +1866,7 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype), (i, (5,), dtype)]
 
 
-@pytest.skip(not USE_GPU)
+@pytest.mark.skipif(not USE_GPU)
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
     assert (
