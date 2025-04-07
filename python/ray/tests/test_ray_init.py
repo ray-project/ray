@@ -297,7 +297,6 @@ os.kill(os.getpid(), signal.SIGTERM)
 @pytest.fixture
 def ray_shutdown():
     yield
-    print("Calling cleanup!")
     ray.shutdown()
 
 

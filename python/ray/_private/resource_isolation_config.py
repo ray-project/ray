@@ -49,7 +49,10 @@ class ResourceIsolationConfig:
         self.system_reserved_memory = system_reserved_memory
         # cgroupv2 cpu.weight calculated from system_reserved_cpu
         # assumes ray uses all available cores
-        self.system_reserved_cpu_weight: float = None
+        self.system_reserved_cpu_weight: int = None
+        # used in add_object_store_memory to ensure
+        # object_store_memory is not added twice to the
+        # number of bytes reserved for system processes
         self._constructed = False
 
         if not enable_resource_isolation:
