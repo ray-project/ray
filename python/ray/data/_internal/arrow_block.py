@@ -96,6 +96,10 @@ class ArrowRow(TableRow):
 
             items = [col[0] for col in table.columns]
             try:
+                # item.as_py() sometime convert special scalar types to
+                # native python types, which is lossy.
+                if len(items) > 0 and items[0].type in (pyarrow.DataType.dictionary,):
+                    return items
                 # Try to interpret this as a pyarrow.Scalar value.
                 return tuple([item.as_py() for item in items])
 
