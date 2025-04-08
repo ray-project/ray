@@ -7,14 +7,18 @@ import yaml
 
 import ray
 
+DEFAULT_TEXT_FORMATTER = (
+    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"  # noqa: E501
+)
+DEFAULT_JSON_FORMATTER = ray._private.ray_logging.formatters.JSONFormatter
 DEFAULT_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "ray": {
-            "format": "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"  # noqa: E501
+        "ray": {"format": DEFAULT_TEXT_FORMATTER},
+        "ray_json": {
+            "class": f"{DEFAULT_JSON_FORMATTER.__module__}.{DEFAULT_JSON_FORMATTER.__name__}"
         },
-        "ray_json": {"class": "ray._private.ray_logging.formatters.JSONFormatter"},
     },
     "filters": {
         "console_filter": {"()": "ray.data._internal.logging.HiddenRecordFilter"},
@@ -206,3 +210,11 @@ def get_log_directory() -> Optional[str]:
 
     session_dir = global_node.get_session_dir_path()
     return os.path.join(session_dir, "logs", "ray-data")
+
+
+def get_default_formatter() -> logging.Formatter:
+    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
+    if log_encoding is not None and log_encoding.upper() == "JSON":
+        return DEFAULT_JSON_FORMATTER()
+
+    return logging.Formatter(DEFAULT_TEXT_FORMATTER)
