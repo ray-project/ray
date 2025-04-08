@@ -39,7 +39,7 @@ class BenchmarkConfig(BaseModel):
     max_failures: int = 0
 
     task: str = "image_classification"
-    locality_with_output: bool = True
+    locality_with_output: bool = False
     actor_locality_enabled: bool = True
     streaming_split_locality: bool = True
 

@@ -112,6 +112,9 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 # Defaults to 0
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
+# Set this to 1 to pass in the Train worker nodes as locality hints to streaming_split operations.
+# Defaults to 1 (on).
+RAY_TRAIN_STREAMING_SPLIT_LOCALITY = "RAY_TRAIN_STREAMING_SPLIT_LOCALITY"
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -123,6 +126,7 @@ TRAIN_ENV_VARS = {
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
+    RAY_TRAIN_STREAMING_SPLIT_LOCALITY,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

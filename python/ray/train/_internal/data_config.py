@@ -6,6 +6,8 @@ from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.ray_constants import env_bool
+from ray.train.constants import RAY_TRAIN_STREAMING_SPLIT_LOCALITY
 
 
 @PublicAPI(stability="stable")
@@ -20,7 +22,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
-        streaming_split_locality: bool = True,
+        streaming_split_locality: bool = env_bool(RAY_TRAIN_STREAMING_SPLIT_LOCALITY),
     ):
         """Construct a DataConfig.
 
