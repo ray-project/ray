@@ -5,6 +5,7 @@ import asyncio
 import time
 import aiohttp.web_exceptions
 import numpy as np
+import traceback
 from typing import Any, Dict, AsyncIterator, Optional, List, Type, Callable
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
@@ -77,7 +78,7 @@ class HttpRequestUDF(StatefulStageUDF):
             }
 
             # First send all requests based on QPS
-            for row_idx_in_list, row in enumerate(batch):
+            for row in batch:
                 # Rate limit based on qps if specified
                 if self.qps is not None:
                     request_count += 1
@@ -85,24 +86,25 @@ class HttpRequestUDF(StatefulStageUDF):
                     elapsed = time.time() - start_time
                     if elapsed < expected_time:
                         await asyncio.sleep(expected_time - elapsed)
-                json_body = request_bodies[row_idx_in_list]
+
+                # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
+                json_body = request_bodies[row[self.IDX_IN_BATCH_COLUMN]]
                 # Create request but don't await it yet
                 request = session.post(
                     self.url,
                     headers=headers,
                     json=json_body,
                 )
-                pending_requests.append(
-                    (row[self.IDX_IN_BATCH_COLUMN], row_idx_in_list, request)
-                )
+                pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
 
             # Now receive all responses
-            for idx_in_batch_column, row_idx_in_list, request in pending_requests:
+            for idx_in_batch_column, request in pending_requests:
                 resp_json = None
                 last_exception = None
+                last_exception_traceback = None
                 for retry_count in range(self.max_retries + 1):
                     if retry_count > 0:
-                        json_body = request_bodies[row_idx_in_list]
+                        json_body = request_bodies[idx_in_batch_column]
                         request = session.post(
                             self.url,
                             headers=headers,
@@ -130,13 +132,14 @@ class HttpRequestUDF(StatefulStageUDF):
                                 )
                         break
                     except (asyncio.TimeoutError, aiohttp.ClientConnectionError) as e:
-                        last_exception = e
+                        last_exception_traceback = traceback.format_exc()
+                        last_exception = type(e).__name__
                         wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
                         await asyncio.sleep(wait_time)
                         continue
                 if not resp_json:
                     raise RuntimeError(
-                        f"Reached maximum retries of {self.max_retries} for input row {batch[row_idx_in_list]}. Previous Exception: {last_exception}"
+                        f"Reached maximum retries of {self.max_retries} for input row {batch[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
                     )
                 yield {
                     self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,
