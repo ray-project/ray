@@ -102,6 +102,7 @@ class TestCatalog(unittest.TestCase):
         Catalog object for an Atari game's observation space without providing a cnn
         config.
         """
+        import pytest
 
         with pytest.raises(ValueError, match="This is the default atari obs shape."):
             Catalog(
