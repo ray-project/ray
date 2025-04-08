@@ -176,6 +176,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
