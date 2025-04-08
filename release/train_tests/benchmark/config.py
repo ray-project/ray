@@ -41,6 +41,7 @@ class BenchmarkConfig(BaseModel):
     task: str = "image_classification"
     locality_with_output: bool = True
     actor_locality_enabled: bool = True
+    streaming_split_locality: bool = True
 
     # Data
     dataloader_type: DataloaderType = DataloaderType.RAY_DATA
