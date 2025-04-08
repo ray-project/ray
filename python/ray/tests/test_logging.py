@@ -141,7 +141,7 @@ def test_log_file_exists(shutdown_only):
     # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_component = [
-        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
         (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
@@ -526,7 +526,7 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 def test_log_redirect_to_stderr(shutdown_only):
     log_components = {
-        ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
+        ray_constants.PROCESS_TYPE_DASHBOARD: "Starting dashboard metrics server on port",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
         ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
@@ -841,6 +841,34 @@ def test_log_monitor(tmp_path, live_dead_pids):
     # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
     assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
+
+
+def test_tpu_logs(tmp_path):
+    # Create the log directories. tpu_logs would be a symlink to the
+    # /tmp/tpu_logs directory created in Node _init_temp.
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    tpu_log_dir = log_dir / "tpu_logs"
+    tpu_log_dir.mkdir()
+    # Create TPU device log file in tpu_logs directory.
+    tpu_device_log_file = "tpu-device.log"
+    first_line = "First line\n"
+    create_file(tpu_log_dir, tpu_device_log_file, first_line)
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1",
+        str(log_dir),
+        mock_publisher,
+        is_proc_alive,
+        max_files_open=5,
+    )
+    # Verify TPU logs are ingested by LogMonitor.
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 1
+    file_info = log_monitor.open_file_infos[0]
+    assert Path(file_info.filename) == tpu_log_dir / tpu_device_log_file
 
 
 def test_log_monitor_actor_task_name_and_job_id(tmp_path):

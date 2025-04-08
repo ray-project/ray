@@ -51,6 +51,30 @@ steps:
         RAYCI_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
+  - label: "Check Ray commit in {{matrix}} nightly images"
+    key: check-ray-commit
+    if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    depends_on: trigger-postmerge-nightly
+    allow_dependency_failure: true
+    commands:
+      - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
+    matrix:
+      - ray
+      - ray-ml
+
+  - label: "Trigger :kubernetes: Kuberay CI Tests"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    trigger: "ray-ecosystem-ci-kuberay-ci"
+    key: trigger-kuberay
+    depends_on: check-ray-commit
+    build:
+      branch: "release-1.3"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        # KubeRay CI will pull an image based on this commit and the current date
+        RAY_NIGHTLY_COMMIT: "${BUILDKITE_COMMIT}"
+        IS_FROM_RAY_RELEASE_AUTOMATION: 1
+
   - label: "Trigger Postmerge MacOS test"
     key: trigger-postmerge-macos
     trigger: "postmerge-macos"
@@ -112,14 +136,3 @@ steps:
       env:
         AUTOMATIC: 1
         RELEASE_FREQUENCY: "weekly"
-
-  - label: "Check Ray commit in {{matrix}} nightly images"
-    key: check-ray-commit
-    if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
-    depends_on: trigger-postmerge-nightly
-    allow_dependency_failure: true
-    commands:
-      - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
-    matrix:
-      - ray
-      - ray-ml

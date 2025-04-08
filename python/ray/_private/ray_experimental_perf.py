@@ -10,7 +10,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private.test_utils import get_actor_node_id

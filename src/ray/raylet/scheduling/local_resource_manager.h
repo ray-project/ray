@@ -16,14 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
@@ -52,7 +49,7 @@ using rpc::autoscaler::DrainNodeReason;
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
-/// Whenever the resouce changes, it notifies the subscriber of the change.
+/// Whenever the resource changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
 class LocalResourceManager : public syncer::ReporterInterface {
  public:

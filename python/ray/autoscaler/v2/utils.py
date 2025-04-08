@@ -8,13 +8,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import ray
 from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilityRecord,
-    NodeAvailabilitySummary,
-    UnavailableNodeInformation,
+from ray.autoscaler._private import constants
+from ray.autoscaler._private.util import (
+    format_pg,
+    format_resource_demand_summary,
+    parse_usage,
 )
-from ray.autoscaler._private.util import LoadMetricsSummary, format_info_string
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
     ClusterConstraintDemand,
@@ -307,117 +306,269 @@ class ClusterStatusFormatter:
     """
     A formatter to format the ClusterStatus into a string.
 
-    TODO(rickyx): We right now parse the ClusterStatus to the legacy format
-    by using the `format_info_string`.
-    In the future, we should refactor the `format_info_string` to directly format
-    the ClusterStatus into a string as we migrate eventually away from v1.
-
     """
 
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
-        lm_summary = cls._parse_lm_summary(data)
-        autoscaler_summary = cls._parse_autoscaler_summary(data)
+        header, separator_len = cls._header_info(data, verbose)
+        separator = "-" * separator_len
 
-        return format_info_string(
-            lm_summary,
-            autoscaler_summary,
-            time=datetime.fromtimestamp(data.stats.request_ts_s),
-            gcs_request_time=data.stats.gcs_request_time_s,
-            non_terminated_nodes_time=data.stats.none_terminated_node_request_time_s,
-            autoscaler_update_time=data.stats.autoscaler_iteration_time_s,
-            verbose=verbose,
+        # Parse ClusterStatus information to reportable format
+        available_node_report = cls._available_node_report(data)
+        idle_node_report = cls._idle_node_report(data)
+        pending_report = cls._pending_node_report(data)
+        failure_report = cls._failed_node_report(data, verbose)
+        cluster_usage_report = cls._cluster_usage_report(data, verbose)
+        demand_report = cls._demand_report(data)
+        node_usage_report = (
+            ""
+            if not verbose
+            else cls._node_usage_report(data.active_nodes, data.idle_nodes)
         )
 
-    @classmethod
-    def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
+        # Format Cluster Status reports into one output
+        formatted_output_lines = [
+            header,
+            "Node status",
+            separator,
+            "Active:",
+            available_node_report,
+            "Idle:",
+            idle_node_report,
+            "Pending:",
+            pending_report,
+            failure_report,
+            "",
+            "Resources",
+            separator,
+            f"{'Total ' if verbose else ''}Usage:",
+            cluster_usage_report,
+            f"{'Total ' if verbose else ''}Demands:",
+            demand_report,
+            node_usage_report,
+        ]
+
+        formatted_output = "\n".join(formatted_output_lines)
+
+        return formatted_output.strip()
+
+    @staticmethod
+    def _node_usage_report(
+        active_nodes: List[NodeInfo], idle_nodes: List[NodeInfo]
+    ) -> str:
+        """[Example]:
+        Node: raycluster-autoscaler-small-group-worker-n8hrw (small-group)
+         Id: cc22041297e5fc153b5357e41f184c8000869e8de97252cc0291fd17
+         Usage:
+          1.0/1.0 CPU
+          0B/953.67MiB memory
+          0B/251.76MiB object_store_memory
+         Activity:
+          Resource: CPU currently in use.
+          Busy workers on node.
+        """
+        node_id_to_usage: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        node_id_to_type: Dict[str, str] = {}
+        node_id_to_idle_time: Dict[str, int] = {}
+        node_id_to_instance_id: Dict[str, str] = {}
+        node_id_to_activities: Dict[str, List[str]] = {}
+
+        # Populate mappings for node types, idle times, instance ids, and activities
+        for node in chain(active_nodes, idle_nodes):
+            node_id_to_usage[node.node_id] = {
+                u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
+            }
+            node_id_to_type[node.node_id] = node.ray_node_type_name
+            node_id_to_idle_time[node.node_id] = node.resource_usage.idle_time_ms
+            node_id_to_instance_id[node.node_id] = node.instance_id
+            node_id_to_activities[node.node_id] = node.node_activity
+
+        node_usage_report_lines = []
+        for node_id, usage in node_id_to_usage.items():
+            node_usage_report_lines.append("")  # Add a blank line between nodes
+
+            node_type_line = f"Node: {node_id_to_instance_id[node_id]}"
+            if node_id in node_id_to_type:
+                node_type = node_id_to_type[node_id]
+                node_type_line += f" ({node_type})"
+            node_usage_report_lines.append(node_type_line)
+            node_usage_report_lines.append(f" Id: {node_id}")
+
+            if node_id_to_idle_time.get(node_id, 0) > 0:
+                node_usage_report_lines.append(
+                    f" Idle: {node_id_to_idle_time[node_id]} ms"
+                )
+
+            node_usage_report_lines.append(" Usage:")
+            for line in parse_usage(usage, verbose=True):
+                node_usage_report_lines.append(f"  {line}")
+
+            activities = node_id_to_activities.get(node_id, [])
+            node_usage_report_lines.append(" Activity:")
+            if activities is None or len(activities) == 0:
+                node_usage_report_lines.append("  (no activity)")
+            else:
+                for activity in activities:
+                    node_usage_report_lines.append(f"  {activity}")
+
+        # Join the list into a single string with new lines
+        return "\n".join(node_usage_report_lines)
+
+    @staticmethod
+    def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
+        # Get the request timestamp or default to the current time
+        time = (
+            datetime.fromtimestamp(data.stats.request_ts_s)
+            if data.stats.request_ts_s
+            else datetime.now()
+        )
+
+        # Gather the time statistics
+        gcs_request_time = data.stats.gcs_request_time_s
+        non_terminated_nodes_time = data.stats.none_terminated_node_request_time_s
+        autoscaler_update_time = data.stats.autoscaler_iteration_time_s
+
+        # Create the header with autoscaler status
+        header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
+        separator_len = len(header)
+
+        # Add verbose details if required
+        if verbose:
+            details = []
+            if gcs_request_time:
+                details.append(f"GCS request time: {gcs_request_time:3f}s")
+            if non_terminated_nodes_time:
+                details.append(
+                    f"Node Provider non_terminated_nodes time: {non_terminated_nodes_time:3f}s"
+                )
+            if autoscaler_update_time:
+                details.append(
+                    f"Autoscaler iteration time: {autoscaler_update_time:3f}s"
+                )
+
+            if details:
+                header += "\n" + "\n".join(details) + "\n"
+
+        return header, separator_len
+
+    @staticmethod
+    def _available_node_report(data: ClusterStatus) -> str:
         active_nodes = _count_by(data.active_nodes, "ray_node_type_name")
+
+        # Build the available node report
+        if not active_nodes:
+            return " (no active nodes)"
+        return "\n".join(
+            f" {count} {node_type}" for node_type, count in active_nodes.items()
+        )
+
+    @staticmethod
+    def _idle_node_report(data: ClusterStatus) -> str:
         idle_nodes = _count_by(data.idle_nodes, "ray_node_type_name")
-        pending_launches = _count_by(data.pending_launches, "ray_node_type_name")
-        pending_nodes = []
-        for node in data.pending_nodes:
-            # We are using details for the pending node's status.
-            # TODO(rickyx): we should probably use instance id rather than ip address
-            # here.
-            pending_nodes.append(
-                (node.ip_address, node.ray_node_type_name, node.details)
+
+        # Build the idle node report
+        if not idle_nodes:
+            return " (no idle nodes)"
+        return "\n".join(
+            f" {count} {node_type}" for node_type, count in idle_nodes.items()
+        )
+
+    @staticmethod
+    def _failed_node_report(data: ClusterStatus, verbose: bool) -> str:
+        failure_lines = []
+
+        # Process failed launches
+        if data.failed_launches:
+            sorted_failed_launches = sorted(
+                data.failed_launches,
+                key=lambda launch: launch.request_ts_s,
+                reverse=True,
             )
 
-        failed_nodes = []
+            for failed_launch in sorted_failed_launches:
+                node_type = failed_launch.ray_node_type_name
+                category = "LaunchFailed"
+                description = failed_launch.details
+                attempted_time = datetime.fromtimestamp(failed_launch.request_ts_s)
+                formatted_time = f"{attempted_time.hour:02d}:{attempted_time.minute:02d}:{attempted_time.second:02d}"
+
+                line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+                if verbose:
+                    line += f" - {description}"
+
+                failure_lines.append(line)
+
+        # Process failed nodes
         for node in data.failed_nodes:
-            # TODO(rickyx): we should probably use instance id/node id rather
-            # than node ip here since node ip is not unique among failed nodes.
-            failed_nodes.append((node.ip_address, node.ray_node_type_name))
-
-        # From IP to node type name.
-        node_type_mapping = {}
-        for node in chain(data.active_nodes, data.idle_nodes):
-            node_type_mapping[node.ip_address] = node.ray_node_type_name
-
-        # Transform failed launches to node_availability_summary
-        node_availabilities = {}
-        for failed_launch in data.failed_launches:
-            # TODO(rickyx): we could also add failed timestamp, count info.
-            node_availabilities[
-                failed_launch.ray_node_type_name
-            ] = NodeAvailabilityRecord(
-                node_type=failed_launch.ray_node_type_name,
-                is_available=False,
-                last_checked_timestamp=failed_launch.request_ts_s,
-                unavailable_node_information=UnavailableNodeInformation(
-                    category="LaunchFailed",
-                    description=failed_launch.details,
-                ),
+            failure_lines.append(
+                f" {node.ray_node_type_name}: NodeTerminated (instance_id: {node.instance_id})"
             )
-        node_availabilities = NodeAvailabilitySummary(
-            node_availabilities=node_availabilities
+
+        # Limit the number of failures displayed
+        failure_lines = failure_lines[: constants.AUTOSCALER_MAX_FAILURES_DISPLAYED]
+
+        # Build the failure report
+        failure_report = "Recent failures:\n"
+        failure_report += (
+            "\n".join(failure_lines) if failure_lines else " (no failures)"
         )
 
-        node_activities = {
-            node.node_id: (node.ip_address, node.node_activity)
-            for node in data.active_nodes
-        }
+        return failure_report
 
-        return AutoscalerSummary(
-            active_nodes=active_nodes,
-            idle_nodes=idle_nodes,
-            pending_launches=pending_launches,
-            pending_nodes=pending_nodes,
-            failed_nodes=failed_nodes,
-            pending_resources={},  # NOTE: This is not used in ray status.
-            node_type_mapping=node_type_mapping,
-            node_availability_summary=node_availabilities,
-            node_activities=node_activities,
+    @staticmethod
+    def _pending_node_report(data: ClusterStatus) -> str:
+        # Prepare pending launch lines
+        pending_lines = [
+            f" {node_type}, {count} launching"
+            for node_type, count in _count_by(
+                data.pending_launches, "ray_node_type_name"
+            ).items()
+        ]
+
+        # Prepare pending node lines
+        pending_lines.extend(
+            f" {ip}: {node_type}, {status.lower()}"
+            for ip, node_type, status in (
+                (node.instance_id, node.ray_node_type_name, node.details)
+                for node in data.pending_nodes
+            )
         )
 
-    @classmethod
-    def _parse_lm_summary(cls, data: ClusterStatus) -> LoadMetricsSummary:
-        usage = {
-            u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
+        # Construct the pending report
+        if pending_lines:
+            return "\n".join(pending_lines)
+        return " (no pending nodes)"
+
+    @staticmethod
+    def _demand_report(data: ClusterStatus) -> str:
+        # Process resource demands
+        resource_demands = [
+            (bundle.bundle, bundle.count)
+            for demand in data.resource_demands.ray_task_actor_demand
+            for bundle in demand.bundles_by_count
+        ]
+        demand_lines = []
+        if resource_demands:
+            demand_lines.extend(format_resource_demand_summary(resource_demands))
+
+        # Process placement group demands
+        pg_demand_strs = [
+            f"{pg_demand.strategy}|{pg_demand.state}"
+            for pg_demand in data.resource_demands.placement_group_demand
+        ]
+        pg_demand_str_to_demand = {
+            f"{pg_demand.strategy}|{pg_demand.state}": pg_demand
+            for pg_demand in data.resource_demands.placement_group_demand
         }
-        resource_demands = []
-        for demand in data.resource_demands.ray_task_actor_demand:
-            for bundle_by_count in demand.bundles_by_count:
-                resource_demands.append((bundle_by_count.bundle, bundle_by_count.count))
-
-        pg_demand = []
-        pg_demand_strs = []
-        pg_demand_str_to_demand = {}
-        for pg_demand in data.resource_demands.placement_group_demand:
-            s = pg_demand.strategy + "|" + pg_demand.state
-            pg_demand_strs.append(s)
-            pg_demand_str_to_demand[s] = pg_demand
-
         pg_freqs = Counter(pg_demand_strs)
+
         pg_demand = [
             (
                 {
                     "strategy": pg_demand_str_to_demand[pg_str].strategy,
                     "bundles": [
-                        (bundle_count.bundle, bundle_count.count)
-                        for bundle_count in pg_demand_str_to_demand[
-                            pg_str
-                        ].bundles_by_count
+                        (bundle.bundle, bundle.count)
+                        for bundle in pg_demand_str_to_demand[pg_str].bundles_by_count
                     ],
                 },
                 freq,
@@ -425,34 +576,38 @@ class ClusterStatusFormatter:
             for pg_str, freq in pg_freqs.items()
         ]
 
+        for pg, count in pg_demand:
+            pg_str = format_pg(pg)
+            demand_lines.append(f" {pg_str}: {count}+ pending placement groups")
+
+        # Process cluster constraint demand
         request_demand = [
             (bc.bundle, bc.count)
             for constraint_demand in data.resource_demands.cluster_constraint_demand
             for bc in constraint_demand.bundles_by_count
         ]
+        for bundle, count in request_demand:
+            demand_lines.append(f" {bundle}: {count}+ from request_resources()")
 
-        usage_by_node = {}
-        node_type_mapping = {}
-        idle_time_map = {}
-        for node in chain(data.active_nodes, data.idle_nodes):
-            # TODO(rickyx): we should actually add node type info here.
-            # TODO(rickyx): we could also show node idle time.
-            usage_by_node[node.node_id] = {
-                u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
-            }
-            node_type_mapping[node.node_id] = node.ray_node_type_name
-            idle_time_map[node.node_id] = node.resource_usage.idle_time_ms
+        # Generate demand report
+        if demand_lines:
+            return "\n".join(demand_lines)
+        return " (no resource demands)"
 
-        return LoadMetricsSummary(
-            usage=usage,
-            resource_demand=resource_demands,
-            pg_demand=pg_demand,
-            request_demand=request_demand,
-            node_types=None,  # NOTE: This is not needed in ray status.
-            usage_by_node=usage_by_node,
-            node_type_mapping=node_type_mapping,
-            idle_time_map=idle_time_map,
-        )
+    @staticmethod
+    def _cluster_usage_report(data: ClusterStatus, verbose: bool) -> str:
+        # Build usage dictionary
+        usage = {
+            u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
+        }
+
+        # Parse usage lines
+        usage_lines = parse_usage(usage, verbose)
+
+        # Generate usage report
+        usage_report = [f" {line}" for line in usage_lines] + [""]
+
+        return "\n".join(usage_report)
 
 
 class ClusterStatusParser:

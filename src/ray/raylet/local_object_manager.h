@@ -14,9 +14,11 @@
 
 #pragma once
 
-#include <google/protobuf/repeated_field.h>
-
 #include <functional>
+#include <memory>
+#include <queue>
+#include <string>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -26,7 +28,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
@@ -34,7 +35,7 @@ namespace ray {
 namespace raylet {
 
 /// The default number of retries when spilled object deletion failed.
-const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+inline constexpr int64_t kDefaultSpilledObjectDeleteRetries = 3;
 
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
@@ -102,6 +103,8 @@ class LocalObjectManager {
   /// \return True if spilling is in progress.
   void SpillObjectUptoMaxThroughput();
 
+  /// TODO(dayshah): This function is only used for testing, we should remove and just
+  /// keep SpillObjectsInternal.
   /// Spill objects to external storage.
   ///
   /// \param objects_ids_to_spill The objects to be spilled.
@@ -182,7 +185,7 @@ class LocalObjectManager {
           object_size(object_size) {}
     rpc::Address owner_address;
     bool is_freed = false;
-    const std::optional<ObjectID> generator_id;
+    std::optional<ObjectID> generator_id;
     size_t object_size;
   };
 
@@ -313,12 +316,8 @@ class LocalObjectManager {
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
 
-  /// This class is accessed by both the raylet and plasma store threads. The
-  /// mutex protects private members that relate to object spilling.
-  mutable absl::Mutex mutex_;
-
   /// The current number of active spill workers.
-  int64_t num_active_workers_ ABSL_GUARDED_BY(mutex_);
+  std::atomic<int64_t> num_active_workers_;
 
   /// The max number of active spill workers.
   const int64_t max_active_workers_;

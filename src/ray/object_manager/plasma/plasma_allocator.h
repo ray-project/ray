@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "absl/types/optional.h"
 #include "ray/object_manager/plasma/allocator.h"
@@ -57,7 +58,7 @@ class PlasmaAllocator : public IAllocator {
 
   /// Fallback allocate memory from disk mmaped file. This is useful
   /// when we running out of memory but still want to allocate memory
-  /// with sub-optimal peformance.
+  /// with sub-optimal performance.
   ///
   /// On linux with fallocate support, it returns null if running out of
   /// space; On linux without fallocate it raises SIGBUS interrupt.

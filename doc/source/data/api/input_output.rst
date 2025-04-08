@@ -233,6 +233,16 @@ ClickHouse
 
    read_clickhouse
 
+Daft
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_daft
+   Dataset.to_daft
+
 Dask
 ----
 

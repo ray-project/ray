@@ -1,8 +1,7 @@
-import pathlib
-from collections import defaultdict
 import copy
 from functools import partial
 import itertools
+import pathlib
 from typing import (
     Any,
     Callable,
@@ -17,16 +16,15 @@ from typing import (
 )
 
 import ray
-from ray import ObjectRef
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import (
@@ -37,11 +35,6 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.minibatch_utils import (
-    ShardBatchIterator,
-    ShardEpisodesIterator,
-    ShardObjectRefIterator,
-)
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -198,25 +191,34 @@ class LearnerGroup(Checkpointable):
     def is_local(self) -> bool:
         return not self.is_remote
 
-    def update_from_batch(
+    def update(
         self,
-        batch: MultiAgentBatch,
         *,
+        batch: Optional[MultiAgentBatch] = None,
+        batches: Optional[List[MultiAgentBatch]] = None,
+        batch_refs: Optional[List[ray.ObjectRef]] = None,
+        episodes: Optional[List[EpisodeType]] = None,
+        episodes_refs: Optional[List[ray.ObjectRef]] = None,
+        data_iterators: Optional[List[ray.data.DataIterator]] = None,
+        training_data: Optional[TrainingData] = None,
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
-        num_epochs: int = 1,
-        minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = False,
-        # User kwargs.
+        # User kwargs passed onto the Learners.
         **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-        """Performs gradient based update(s) on the Learner(s), based on given batch.
+    ) -> List[Dict[str, Any]]:
+        """Performs gradient based updates on Learners, based on given training data.
 
         Args:
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
+            batch_refs:
+            episodes: A list of Episodes to process and perform the update
+                for. If there are more than one Learner workers, the list of episodes
+                is split amongst these and one list shard is sent to each Learner.
+            episodes_refs:
+            timesteps:
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -239,6 +241,7 @@ class LearnerGroup(Checkpointable):
                 trajectories. Also, shuffling is always skipped if `minibatch_size` is
                 None, meaning the entire train batch is processed each epoch, making it
                 unnecessary to shuffle.
+            **kwargs:
 
         Returns:
             If `async_update` is False, a dictionary with the reduced results of the
@@ -250,370 +253,105 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        return self._update(
-            batch=batch,
-            timesteps=timesteps,
-            async_update=async_update,
-            return_state=return_state,
-            num_epochs=num_epochs,
-            minibatch_size=minibatch_size,
-            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-            **kwargs,
-        )
+        # Create and validate TrainingData object, if not already provided.
+        if training_data is None:
+            training_data = TrainingData(
+                batch=batch,
+                batches=batches,
+                batch_refs=batch_refs,
+                episodes=episodes,
+                episodes_refs=episodes_refs,
+                data_iterators=data_iterators,
+            )
+        training_data.validate()
 
-    def update_from_episodes(
-        self,
-        episodes: List[EpisodeType],
-        *,
-        timesteps: Optional[Dict[str, Any]] = None,
-        async_update: bool = False,
-        return_state: bool = False,
-        num_epochs: int = 1,
-        minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = False,
-        # User kwargs.
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-        """Performs gradient based update(s) on the Learner(s), based on given episodes.
-
-        Args:
-            episodes: A list of Episodes to process and perform the update
-                for. If there are more than one Learner workers, the list of episodes
-                is split amongst these and one list shard is sent to each Learner.
-            async_update: Whether the update request(s) to the Learner workers should be
-                sent asynchronously. If True, will return NOT the results from the
-                update on the given data, but all results from prior asynchronous update
-                requests that have not been returned thus far.
-            return_state: Whether to include one of the Learner worker's state from
-                after the update step in the returned results dict (under the
-                `_rl_module_state_after_update` key). Note that after an update, all
-                Learner workers' states should be identical, so we use the first
-                Learner's state here. Useful for avoiding an extra `get_weights()` call,
-                e.g. for synchronizing EnvRunner weights.
-            num_epochs: The number of complete passes over the entire train batch. Each
-                pass might be further split into n minibatches (if `minibatch_size`
-                provided). The train batch is generated from the given `episodes`
-                through the Learner connector pipeline.
-            minibatch_size: The size of minibatches to use to further split the train
-                `batch` into sub-batches. The `batch` is then iterated over n times
-                where n is `len(batch) // minibatch_size`. The train batch is generated
-                from the given `episodes` through the Learner connector pipeline.
-            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
-                If the train batch has a time rank (axis=1), shuffling will only take
-                place along the batch axis to not disturb any intact (episode)
-                trajectories. Also, shuffling is always skipped if `minibatch_size` is
-                None, meaning the entire train batch is processed each epoch, making it
-                unnecessary to shuffle. The train batch is generated from the given
-                `episodes` through the Learner connector pipeline.
-
-        Returns:
-            If async_update is False, a dictionary with the reduced results of the
-            updates from the Learner(s) or a list of dictionaries of results from the
-            updates from the Learner(s).
-            If async_update is True, a list of list of dictionaries of results, where
-            the outer list corresponds to separate previous calls to this method, and
-            the inner list corresponds to the results from each Learner(s). Or if the
-            results are reduced, a list of dictionaries of the reduced results from each
-            call to async_update that is ready.
-        """
-        return self._update(
-            episodes=episodes,
-            timesteps=timesteps,
-            async_update=async_update,
-            return_state=return_state,
-            num_epochs=num_epochs,
-            minibatch_size=minibatch_size,
-            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-            **kwargs,
-        )
-
-    def _update(
-        self,
-        *,
-        batch: Optional[MultiAgentBatch] = None,
-        episodes: Optional[List[EpisodeType]] = None,
-        timesteps: Optional[Dict[str, Any]] = None,
-        async_update: bool = False,
-        return_state: bool = False,
-        num_epochs: int = 1,
-        num_iters: int = 1,
-        minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = False,
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-
-        # Define function to be called on all Learner actors (or the local learner).
-        def _learner_update(
-            _learner: Learner,
-            *,
-            _batch_shard=None,
-            _episodes_shard=None,
-            _timesteps=None,
-            _return_state=False,
-            _num_total_minibatches=0,
-            **_kwargs,
-        ):
-            # If the batch shard is an `DataIterator` we have an offline
-            # multi-learner setup and `update_from_iterator` needs to
-            # handle updating.
-            if isinstance(_batch_shard, ray.data.DataIterator):
-                result = _learner.update_from_iterator(
-                    iterator=_batch_shard,
-                    timesteps=_timesteps,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    **_kwargs,
-                )
-            elif _batch_shard is not None:
-                result = _learner.update_from_batch(
-                    batch=_batch_shard,
-                    timesteps=_timesteps,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-                    **_kwargs,
-                )
-            else:
-                result = _learner.update_from_episodes(
-                    episodes=_episodes_shard,
-                    timesteps=_timesteps,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-                    num_total_minibatches=_num_total_minibatches,
-                    **_kwargs,
-                )
-            if _return_state:
-                learner_state = _learner.get_state(
-                    # Only return the state of those RLModules that actually
-                    # returned results and thus got probably updated.
-                    components=[
-                        COMPONENT_RL_MODULE + "/" + mid
-                        for mid in _learner.module.keys()
-                        if _learner.should_module_be_updated(mid)
-                    ],
-                    inference_only=True,
-                )
-                learner_state[COMPONENT_RL_MODULE] = ray.put(
-                    learner_state[COMPONENT_RL_MODULE]
-                )
-                result["_rl_module_state_after_update"] = learner_state
-
-            return result
-
-        # Local Learner worker: Don't shard batch/episodes, just run data as-is through
-        # this Learner.
+        # Local Learner instance.
         if self.is_local:
             if async_update:
                 raise ValueError(
-                    "Cannot call `update_from_batch(async_update=True)` when running in"
-                    " local mode! Try setting `config.num_learners > 0`."
+                    "Can't call `update(async_update=True)` when running with "
+                    "`num_learners=0`! Set `config.num_learners > 0` to allow async "
+                    "updates."
                 )
-
-            if isinstance(batch, list):
-                # Ensure we are not in a multi-learner setting.
-                assert len(batch) == 1
-                # If we have `ObjectRef`s, get the respective objects.
-                if isinstance(batch[0], ray.ObjectRef):
-                    batch = ray.get(batch[0])
-                # If we have a `DataIterator`, get the iterator.
-                elif isinstance(batch[0], ray.data.DataIterator):
-                    batch = batch[0]
-
-            results = [
-                _learner_update(
-                    _learner=self._learner,
-                    _batch_shard=batch,
-                    _episodes_shard=episodes,
-                    _timesteps=timesteps,
-                    _return_state=return_state,
+            # Solve all ray refs locally already here.
+            training_data.solve_refs()
+            if return_state:
+                kwargs["return_state"] = return_state
+            # Return the single Learner's update results.
+            return [
+                self._learner.update(
+                    training_data=training_data,
+                    timesteps=timesteps,
                     **kwargs,
                 )
             ]
-        # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
-        # equal if multi-agent AND episodes) and send each Learner worker one of these
-        # shards.
-        else:
-            # MultiAgentBatch: Shard into equal pieces.
-            # TODO (sven): The sharder used here destroys - for multi-agent only -
-            #  the relationship of the different agents' timesteps to each other.
-            #  Thus, in case the algorithm requires agent-synchronized data (aka.
-            #  "lockstep"), the `ShardBatchIterator` should not be used.
-            #  Then again, we might move into a world where Learner always
-            #  receives Episodes, never batches.
-            if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
-                partials = [
-                    partial(
-                        _learner_update,
-                        _batch_shard=iterator,
-                        _return_state=(return_state and i == 0),
-                        _timesteps=timesteps,
-                        **kwargs,
-                    )
-                    # Note, `OfflineData` defines exactly as many iterators as there
-                    # are learners.
-                    for i, iterator in enumerate(batch)
-                ]
-            elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
-                assert len(batch) == len(self._workers)
-                partials = [
-                    partial(
-                        _learner_update,
-                        _batch_shard=batch_shard,
-                        _timesteps=timesteps,
-                        _return_state=(return_state and i == 0),
-                        **kwargs,
-                    )
-                    for i, batch_shard in enumerate(batch)
-                ]
-            elif batch is not None:
-                partials = [
-                    partial(
-                        _learner_update,
-                        _batch_shard=batch_shard,
-                        _return_state=(return_state and i == 0),
-                        _timesteps=timesteps,
-                        **kwargs,
-                    )
-                    for i, batch_shard in enumerate(
-                        ShardBatchIterator(batch, len(self._workers))
-                    )
-                ]
-            elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
-                partials = [
-                    partial(
-                        _learner_update,
-                        _episodes_shard=episodes_shard,
-                        _timesteps=timesteps,
-                        _return_state=(return_state and i == 0),
-                        **kwargs,
-                    )
-                    for i, episodes_shard in enumerate(
-                        ShardObjectRefIterator(episodes, len(self._workers))
-                    )
-                ]
-            # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
-            # in case of multi-agent).
-            else:
-                from ray.data.iterator import DataIterator
 
-                if isinstance(episodes[0], DataIterator):
-                    num_total_minibatches = 0
-                    partials = [
-                        partial(
-                            _learner_update,
-                            _episodes_shard=episodes_shard,
-                            _timesteps=timesteps,
-                            _num_total_minibatches=num_total_minibatches,
-                        )
-                        for episodes_shard in episodes
-                    ]
+        # Remote Learner actors' kwargs.
+        remote_call_kwargs = [
+            dict(
+                training_data=td_shard,
+                timesteps=timesteps,
+                # If `return_state=True`, only return it from the first Learner
+                # actor.
+                return_state=(return_state and i == 0),
+                **kw,
+                **kwargs,
+            )
+            for i, (td_shard, kw) in enumerate(
+                training_data.shard(
+                    num_shards=len(self),
+                    len_lookback_buffer=self.config.episode_lookback_horizon,
+                    **kwargs,
+                )
+            )
+        ]
+
+        # Async updates.
+        if async_update:
+            # Retrieve all ready results (kicked off by prior calls to this method).
+            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
+            # Send out new request(s), if there is still capacity on the actors
+            # (each actor is allowed only some number of max in-flight requests
+            # at the same time).
+            num_sent_requests = self._worker_manager.foreach_actor_async(
+                "update",
+                kwargs=remote_call_kwargs,
+            )
+
+            # Some requests were dropped, record lost ts/data.
+            if num_sent_requests != len(self):
+                factor = 1 - (num_sent_requests / len(self))
+                # TODO (sven): Move this logic into a TrainingData API as well
+                #  (`TrainingData.env_steps()`).
+                if training_data.batch_refs is not None:
+                    dropped = (
+                        len(training_data.batch_refs)
+                        * self.config.train_batch_size_per_learner
+                    )
+                elif training_data.batch is not None:
+                    dropped = len(training_data.batch)
+                # List of Ray ObjectRefs (each object ref is a list of episodes of
+                # total len=`rollout_fragment_length * num_envs_per_env_runner`)
+                elif training_data.episodes_refs is not None:
+                    dropped = (
+                        len(training_data.episodes_refs)
+                        * self.config.get_rollout_fragment_length()
+                        * self.config.num_envs_per_env_runner
+                    )
                 else:
-                    eps_shards = list(
-                        ShardEpisodesIterator(
-                            episodes,
-                            len(self._workers),
-                            len_lookback_buffer=self.config.episode_lookback_horizon,
-                        )
-                    )
-                    # In the multi-agent case AND `minibatch_size` AND num_workers
-                    # > 1, we compute a max iteration counter such that the different
-                    # Learners will not go through a different number of iterations.
-                    num_total_minibatches = 0
-                    if minibatch_size and len(self._workers) > 1:
-                        num_total_minibatches = self._compute_num_total_minibatches(
-                            episodes,
-                            len(self._workers),
-                            minibatch_size,
-                            num_epochs,
-                        )
-                    partials = [
-                        partial(
-                            _learner_update,
-                            _episodes_shard=eps_shard,
-                            _timesteps=timesteps,
-                            _num_total_minibatches=num_total_minibatches,
-                        )
-                        for eps_shard in eps_shards
-                    ]
+                    assert training_data.episodes is not None
+                    dropped = sum(len(e) for e in training_data.episodes)
 
-            if async_update:
-                # Retrieve all ready results (kicked off by prior calls to this method).
-                results = self._worker_manager.fetch_ready_async_reqs(
-                    timeout_seconds=0.0
-                )
-                # Send out new request(s), if there is still capacity on the actors
-                # (each actor is allowed only some number of max in-flight requests
-                # at the same time).
-                num_sent_requests = self._worker_manager.foreach_actor_async(partials)
+                self._ts_dropped += factor * dropped
+        # Sync updates.
+        else:
+            results = self._worker_manager.foreach_actor(
+                "update",
+                kwargs=remote_call_kwargs,
+            )
 
-                # Some requests were dropped, record lost ts/data.
-                if num_sent_requests != len(self._workers):
-                    factor = 1 - (num_sent_requests / len(self._workers))
-                    # Batch: Measure its length.
-                    if episodes is None:
-                        if isinstance(batch, list) and isinstance(batch[0], ObjectRef):
-                            dropped = (
-                                len(batch) * self.config.train_batch_size_per_learner
-                            )
-                        else:
-                            dropped = len(batch)
-                    # List of Ray ObjectRefs (each object ref is a list of episodes of
-                    # total len=`rollout_fragment_length * num_envs_per_env_runner`)
-                    elif isinstance(episodes[0], ObjectRef):
-                        dropped = (
-                            len(episodes)
-                            * self.config.get_rollout_fragment_length()
-                            * self.config.num_envs_per_env_runner
-                        )
-                    else:
-                        dropped = sum(len(e) for e in episodes)
-
-                    self._ts_dropped += factor * dropped
-
-                # NOTE: There is a strong assumption here that the requests launched to
-                # learner workers will return at the same time, since they have a
-                # barrier inside for gradient aggregation. Therefore, results should be
-                # a list of lists where each inner list should be the length of the
-                # number of learner workers, if results from an non-blocking update are
-                # ready.
-                results = self._get_async_results(results)
-
-            else:
-                results = self._get_results(
-                    self._worker_manager.foreach_actor(partials)
-                )
-
+        results = self._get_results(results)
         return results
-
-    # TODO (sven): Move this into FaultTolerantActorManager?
-    def _get_results(self, results):
-        processed_results = []
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                processed_results.append(result_or_error)
-            else:
-                raise result_or_error
-        return processed_results
-
-    def _get_async_results(self, results):
-        """Get results from the worker manager and group them by tag.
-
-        Returns:
-            A list of lists of results, where each inner list contains all results
-            for same tags.
-
-        """
-        ret = []
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                ret.append(result_or_error)
-            else:
-                raise result_or_error
-
-        return ret
 
     def add_module(
         self,
@@ -733,7 +471,7 @@ class LearnerGroup(Checkpointable):
                 )
             else:
                 worker = self._worker_manager.healthy_actor_ids()[0]
-                assert len(self._workers) == self._worker_manager.num_healthy_actors()
+                assert len(self) == self._worker_manager.num_healthy_actors()
                 _comps = self._get_subcomponents(COMPONENT_LEARNER, components)
                 _not_comps = self._get_subcomponents(COMPONENT_LEARNER, not_components)
                 results = self._worker_manager.foreach_actor(
@@ -871,53 +609,39 @@ class LearnerGroup(Checkpointable):
             mark_healthy=mark_healthy,
         )
 
+    def __len__(self):
+        return 0 if self.is_local else len(self._workers)
+
     def shutdown(self):
         """Shuts down the LearnerGroup."""
         if self.is_remote and hasattr(self, "_backend_executor"):
-            self._backend_executor.shutdown()
+            self._backend_executor.shutdown(graceful_termination=True)
         self._is_shut_down = True
 
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
 
-    @staticmethod
-    def _compute_num_total_minibatches(
-        episodes,
-        num_shards,
-        minibatch_size,
-        num_epochs,
-    ):
-        # Count total number of timesteps per module ID.
-        if isinstance(episodes[0], MultiAgentEpisode):
-            per_mod_ts = defaultdict(int)
-            for ma_episode in episodes:
-                for sa_episode in ma_episode.agent_episodes.values():
-                    per_mod_ts[sa_episode.module_id] += len(sa_episode)
-            max_ts = max(per_mod_ts.values())
-        else:
-            max_ts = sum(map(len, episodes))
+    def _get_results(self, results):
+        processed_results = []
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                processed_results.append(result_or_error)
+            else:
+                raise result_or_error
+        return processed_results
 
-        return int((num_epochs * max_ts) / (num_shards * minibatch_size))
+    @Deprecated(new="LearnerGroup.update(batch=.., **kwargs)", error=False)
+    def update_from_batch(self, batch, **kwargs):
+        return self.update(batch=batch, **kwargs)
 
-    @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
-    def update(self, *args, **kwargs):
-        # Just in case, we would like to revert this API retirement, we can do so
-        # easily.
-        return self._update(*args, **kwargs, async_update=False)
+    @Deprecated(new="LearnerGroup.update(episodes=.., **kwargs)", error=False)
+    def update_from_episodes(self, episodes, **kwargs):
+        return self.update(episodes=episodes, **kwargs)
 
-    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=False)
+    @Deprecated(new="LearnerGroup.update_from_batch(async=True)", error=True)
     def async_update(self, *args, **kwargs):
-        # Just in case, we would like to revert this API retirement, we can do so
-        # easily.
-        return self._update(*args, **kwargs, async_update=True)
-
-    @Deprecated(new="LearnerGroup.save_to_path(...)", error=True)
-    def save_state(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="LearnerGroup.restore_from_path(...)", error=True)
-    def load_state(self, *args, **kwargs):
         pass
 
     @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)

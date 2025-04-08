@@ -16,6 +16,7 @@
 
 #include <map>
 #include <utility>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "ray/common/id.h"

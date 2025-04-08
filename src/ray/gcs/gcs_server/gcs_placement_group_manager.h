@@ -15,8 +15,12 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <deque>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"

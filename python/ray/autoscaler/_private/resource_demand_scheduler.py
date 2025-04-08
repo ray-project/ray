@@ -181,7 +181,10 @@ class ResourceDemandScheduler:
         """Given resource demands, return node types to add to the cluster.
 
         This method:
-            (1) calculates the resources present in the cluster.
+            (1) calculates the resources present in the cluster by:
+                - computing available resources for each existing node
+                - counting the number of nodes per node type
+                - including both running and launching nodes
             (2) calculates the remaining nodes to add to respect min_workers
                 constraint per node type.
             (3) for each strict spread placement group, reserve space on
@@ -213,6 +216,7 @@ class ResourceDemandScheduler:
         )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
+        # Step 1: Calculate current cluster resources and node type counts
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = self.calculate_node_resources(
@@ -894,7 +898,7 @@ def get_bin_pack_residual(
 
     Returns:
         List[ResourceDict]: the residual list resources that do not fit.
-        List[ResourceDict]: The updated node_resources after the method.
+        List[ResourceDict]: The updated node_resources after the method. The order of the list elements remains unchanged.
     """
 
     unfulfilled = []
@@ -902,7 +906,7 @@ def get_bin_pack_residual(
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
-    used = []
+    used = set()
     # We order the resource demands in the following way:
     # More complex demands first.
     # Break ties: heavier demands first.
@@ -919,20 +923,21 @@ def get_bin_pack_residual(
         found = False
         node = None
         for i in range(len(nodes)):
+            if i in used:
+                continue
             node = nodes[i]
             if _fits(node, demand):
                 found = True
                 # In the strict_spread case, we can't reuse nodes.
                 if strict_spread:
-                    used.append(node)
-                    del nodes[i]
+                    used.add(i)
                 break
         if found and node:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)
 
-    return unfulfilled, nodes + used
+    return unfulfilled, nodes
 
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
@@ -969,7 +974,7 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
 
 def placement_groups_to_resource_demands(
     pending_placement_groups: List[PlacementGroupTableData],
-):
+) -> Tuple[List[ResourceDict], List[List[ResourceDict]]]:
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
         * STRICT_PACK - Convert to a single bundle.

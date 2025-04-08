@@ -30,6 +30,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_TO_MODULE_CONNECTOR,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -37,6 +38,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    MODULE_TO_ENV_CONNECTOR,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -45,11 +47,11 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    RLMODULE_INFERENCE_TIMER,
     SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -88,8 +90,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.worker_index: int = kwargs.get("worker_index")
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
-        # Set up all metrics-related structures and counters.
-        self.metrics: Optional[MetricsLogger] = None
         self._setup_metrics()
 
         # Create our callbacks object.
@@ -310,11 +310,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                             + ts
                         ) * (self.config.num_env_runners or 1)
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_exploration(
+                                to_module, t=global_env_steps_lifetime
+                            )
                     else:
-                        to_env = self.module.forward_inference(to_module)
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_inference(to_module)
 
                     # Module-to-env connector.
                     to_env = self._module_to_env(
@@ -324,6 +326,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         shared_data=shared_data,
                         metrics=self.metrics,
+                        metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                     )
                 # In case all environments had been terminated `to_module` will be
                 # empty and no actions are needed b/c we reset all environemnts.
@@ -453,12 +456,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
                     # user uses a connector that one-hot encodes observations.
+                    # Note, this pipeline run is not timed as the number of episodes
+                    # can differ from `num_envs_per_env_runner` and would bias time
+                    # measurements.
                     self._env_to_module(
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
                         rl_module=self.module,
                         shared_data=shared_data,
-                        metrics=self.metrics,
+                        metrics=None,
                     )
                 self._cached_to_module = self._env_to_module(
                     episodes=episodes,
@@ -466,6 +472,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     rl_module=self.module,
                     shared_data=shared_data,
                     metrics=self.metrics,
+                    metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -544,6 +551,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 explore=explore,
                 shared_data=shared_data,
                 metrics=self.metrics,
+                metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -871,8 +879,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.env.close()
 
     def _setup_metrics(self):
-        self.metrics = MetricsLogger()
-
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
             EpisodeID, List[MultiAgentEpisode]

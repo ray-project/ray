@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(Postable<void()> on_done) {
@@ -89,9 +93,7 @@ void GcsInitData::AsyncLoadActorTaskSpecTableData(Postable<void()> on_done) {
             actor_task_spec_table_data_ = std::move(result);
             RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
                           << actor_task_spec_table_data_.size();
-          })
-
-                                                         ));
+          })));
 }
 
 }  // namespace gcs

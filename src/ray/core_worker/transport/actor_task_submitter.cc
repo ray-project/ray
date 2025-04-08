@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -594,7 +600,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
-  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
+  RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
@@ -732,10 +738,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
         GetTaskFinisherWithoutMu().CompletePendingTask(
             task_id, reply, addr, reply.is_application_error());
-      }
-      // last failure = Actor death, but we still see the actor "alive" so we optionally
-      // wait for a grace period for the death info.
-      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+
+      } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+        // last failure = Actor death, but we still see the actor "alive" so we optionally
+        // wait for a grace period for the death info.
+
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();

@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric_defs.h"
 
@@ -151,7 +155,7 @@ void GcsResourceManager::UpdateFromResourceView(
     return;
   }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    // TODO (jjyao) This is currently an no-op and is broken.
+    // TODO(jjyao) This is currently an no-op and is broken.
     // UpdateNodeNormalTaskResources(node_id, data);
   } else {
     // We will only update the node's resources if it's from resource view reports.

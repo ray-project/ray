@@ -15,6 +15,7 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -55,7 +56,7 @@ class RedisClientOptions {
 /// This class is used to send commands to Redis.
 class RedisClient {
  public:
-  RedisClient(const RedisClientOptions &options);
+  explicit RedisClient(const RedisClientOptions &options);
 
   /// Connect to Redis. Non-thread safe.
   /// Call this function before calling other functions.

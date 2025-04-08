@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from ray.train.v2.api.config import RunConfig
 
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
@@ -38,6 +37,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 @pytest.fixture(scope="function")
@@ -88,6 +88,7 @@ def mock_worker():
         metadata=metadata,
         resources={"CPU": 1},
         distributed_context=distributed_context,
+        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
     )
 
 
@@ -110,6 +111,16 @@ def callback(mock_train_run_context, monkeypatch):
         ray.runtime_context, "get_runtime_context", lambda: mock_runtime_context
     )
 
+    # Mock the log path function
+    expected_controller_log_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
+    )
+    monkeypatch.setattr(
+        ray.train.v2._internal.callbacks.state_manager,
+        "get_train_application_controller_log_path",
+        lambda: expected_controller_log_path,
+    )
+
     callback = StateManagerCallback(mock_train_run_context)
     callback.after_controller_start()
     return callback
@@ -128,6 +139,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         status_detail=None,
         controller_actor_id="controller_1",
         start_time_ns=1000,
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
     )
 
     ray.get(actor.create_or_update_train_run.remote(run))
@@ -194,6 +206,7 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
         name="test",
         job_id="job_1",
         controller_actor_id="controller_1",
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
     )
 
     def get_run():
@@ -234,6 +247,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
         name="test",
         job_id="job_1",
         controller_actor_id="controller_1",
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
     )
 
     # Test attempt creation
@@ -262,6 +276,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
             ),
             resources={"CPU": 1},
             distributed_context=MagicMock(world_rank=i, local_rank=i, node_rank=0),
+            log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
         )
         for i in range(2)
     ]
@@ -288,6 +303,8 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     attempt = attempts["test_run"]["attempt_1"]
     assert attempt.status == RunAttemptStatus.FINISHED
     assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 2
+    assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -297,7 +314,11 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
-        RestartingState(training_failed_error=TrainingFailedError(worker_failures={})),
+        RestartingState(
+            training_failed_error=TrainingFailedError(
+                error_message="", worker_failures={}
+            )
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
@@ -395,8 +416,16 @@ def test_callback_worker_group_lifecycle(
 def test_callback_worker_group_error(
     ray_start_regular, callback, mock_worker_group, mock_worker_group_context
 ):
+    state_actor = get_state_actor()
+
     callback.before_worker_group_start(mock_worker_group_context)
     callback.after_worker_group_start(mock_worker_group)
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.RUNNING
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.ALIVE
 
     # Simulate error in worker group
     error_msg = "Test error"
@@ -407,12 +436,75 @@ def test_callback_worker_group_error(
 
     callback.before_worker_group_shutdown(mock_worker_group)
 
-    state_actor = get_state_actor()
     attempts = ray.get(state_actor.get_train_run_attempts.remote())
     attempt = list(attempts.values())[0]["attempt_1"]
     assert attempt.status == RunAttemptStatus.ERRORED
     assert attempt.status_detail == error_msg
     assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.DEAD
+
+
+def test_callback_log_file_paths(
+    ray_start_regular, monkeypatch, mock_worker_group_context, mock_worker
+):
+    """Test that StateManagerCallback correctly captures and propagates log file paths."""
+
+    # Mock the runtime context
+    mock_runtime_context = MagicMock()
+    mock_runtime_context.get_job_id.return_value = "test_job_id"
+    mock_runtime_context.get_actor_id.return_value = "test_controller_id"
+    monkeypatch.setattr(
+        ray.runtime_context, "get_runtime_context", lambda: mock_runtime_context
+    )
+
+    # Mock the log path function
+    expected_controller_log_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
+    )
+    monkeypatch.setattr(
+        ray.train.v2._internal.callbacks.state_manager,
+        "get_train_application_controller_log_path",
+        lambda: expected_controller_log_path,
+    )
+
+    # Create the callback
+    train_run_context = TrainRunContext(RunConfig(name="test_run"))
+    callback = StateManagerCallback(train_run_context)
+
+    # Initialize the callback
+    callback.after_controller_start()
+
+    # Verify the log path was set in the state actor
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    run = runs[callback._run_id]
+    assert run.controller_log_file_path == expected_controller_log_path
+
+    # Now test worker log paths
+    # Create a mock worker with a log file path
+    mock_worker = mock_worker
+    mock_worker.log_file_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log"
+    )
+
+    # Create a mock worker group
+    mock_worker_group = MagicMock(spec=WorkerGroup)
+    mock_worker_group.get_worker_group_context.return_value = mock_worker_group_context
+    mock_worker_group.get_worker_group_state.return_value = MagicMock(
+        workers=[mock_worker]
+    )
+    # mock_worker_group.get_latest_poll_status.return_value = None
+
+    # Start the worker group
+    callback.before_worker_group_start(mock_worker_group_context)
+    callback.after_worker_group_start(mock_worker_group)
+
+    # Verify the worker log path was set in the state actor
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0][mock_worker_group_context.run_attempt_id]
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].log_file_path == mock_worker.log_file_path
 
 
 if __name__ == "__main__":

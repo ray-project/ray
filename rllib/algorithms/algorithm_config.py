@@ -25,6 +25,9 @@ import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.differentiable_learner_config import (
+    DifferentiableLearnerConfig,
+)
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -39,7 +42,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -500,6 +503,8 @@ class AlgorithmConfig(_Config):
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_sample_timeout_s = 120.0
+        self.evaluation_auto_duration_min_env_steps_per_sample = 100
+        self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -2518,9 +2523,10 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            to_check = force_list(callbacks_class)
+            if not all(callable(c) for c in to_check):
                 raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
+                    "`config.callbacks_class` must be a callable or list of callables that "
                     "returns a subclass of DefaultCallbacks, got "
                     f"{callbacks_class}!"
                 )
@@ -2558,6 +2564,8 @@ class AlgorithmConfig(_Config):
         evaluation_interval: Optional[int] = NotProvided,
         evaluation_duration: Optional[Union[int, str]] = NotProvided,
         evaluation_duration_unit: Optional[str] = NotProvided,
+        evaluation_auto_duration_min_env_steps_per_sample: Optional[int] = NotProvided,
+        evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
@@ -2596,6 +2604,14 @@ class AlgorithmConfig(_Config):
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps". Note that this
                 setting is ignored if `evaluation_duration="auto"`.
+            evaluation_auto_duration_min_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at least how many timesteps should be done per remote
+                `sample()` call.
+            evaluation_auto_duration_max_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at most how many timesteps should be done per remote
+                `sample()` call.
             evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
                 to sample a complete episode in the case your config settings are:
                 `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
@@ -2684,6 +2700,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not NotProvided:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_auto_duration_min_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_min_env_steps_per_sample = (
+                evaluation_auto_duration_min_env_steps_per_sample
+            )
+        if evaluation_auto_duration_max_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_max_env_steps_per_sample = (
+                evaluation_auto_duration_max_env_steps_per_sample
+            )
         if evaluation_sample_timeout_s is not NotProvided:
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
@@ -5718,6 +5742,119 @@ class AlgorithmConfig(_Config):
             error=True,
         )
         pass
+
+
+class DifferentiableAlgorithmConfig(AlgorithmConfig):
+    """An RLlib DifferentiableAlgorithmConfig builds a Meta algorithm from a given
+    configuration
+
+    .. testcode::
+
+        from ray.rllib.algorithm.algorithm_config import DifferentiableAlgorithmConfig
+        # Construct a generic config for an algorithm that needs differentiable Learners.
+        config = (
+            DifferentiableAlgorithmConfig()
+            .training(lr=3e-4)
+            .environment(env="CartPole-v1")
+            .learners(
+                differentiable_learner_configs=[
+                    DifferentiableLearnerConfig(
+                        DifferentiableTorchLearner,
+                        lr=1e-4,
+                    )
+                ]
+            )
+        )
+        # Similar to `AlgorithmConfig` the config using differentiable Learners can be
+        # used to build a respective `Algorithm`.
+        algo = config.build()
+
+
+    """
+
+    # A list of `DifferentiableLearnerConfig` instances that define differentiable
+    # `Learner`'s. Note, each of them needs to implement the `DifferentiableLearner`
+    # API.
+    differentiable_learner_configs: List[DifferentiableLearnerConfig]
+
+    def __init__(self, algo_class=None):
+        """Initializes the DifferentiableLearnerConfig instance.
+
+        Args:
+            algo_class: An optional Algorithm class that this config class belongs to.
+                Used (if provided) to build a respective Algorithm instance from this
+                config.
+        """
+        # Initialize the `AlgorithmConfig` first.
+        super().__init__(algo_class=algo_class)
+
+        # Initialize the list of differentiable learner configs to an empty list, which
+        # defines the default, i.e. the `MetaLearner` will have no nested updates.
+        self.differentiable_learner_configs: List[DifferentiableLearnerConfig] = []
+
+    def learners(
+        self,
+        *,
+        differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+    ) -> "DifferentiableAlgorithmConfig":
+        """Sets the configurations for differentiable learners.
+
+        Args:
+            differentiable_learner_configs: A list of `DifferentiableLearnerConfig` instances
+                defining the `DifferentiableLearner` classes used for the nested updates in
+                `Algorithm`'s learner.
+        """
+        if differentiable_learner_configs is not NotProvided:
+            self.differentiable_learner_configs = differentiable_learner_configs
+
+        return self
+
+    def validate(self):
+        """Validates all values in this config."""
+
+        # First, call the `validate` method of super.
+        super().validate()
+
+        # TODO (simon): Maybe moving this to a private method?
+        # Ensure that the default learner class is derived from `TorchMetaLearner`.
+        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+
+        if not issubclass(self.get_default_learner_class(), TorchMetaLearner):
+            self._value_error(
+                "`get_default_learner_class` must return a `MetaLearner` class "
+                f"or sublass but got {self.get_default_learner_class()}."
+            )
+        # Make sure that the differentiable learner configs are contained in a list.
+        if not isinstance(self.differentiable_learner_configs, list):
+            self._value_error(
+                "`differentiable_learner_configs` must be a list of "
+                "`DifferentiableLearnerConfig` instances, but is "
+                f"{type(self.differentiable_learner_configs)}."
+            )
+        # In addition, check, if all configurations are wrapped in a
+        # `DifferentiableLearnerConfig`.
+        elif not all(
+            isinstance(learner_cfg, DifferentiableLearnerConfig)
+            for learner_cfg in self.differentiable_learner_configs
+        ):
+            self._value_error(
+                "`differentiable_learner_configs` must be a list of "
+                "`DifferentiableLearnerConfig` instances, but at least "
+                "one instance is not a `DifferentiableLearnerConfig`."
+            )
+
+    def get_default_learner_class(self):
+        """Returns the Learner class to use for this algorithm.
+
+        Override this method in the sub-class to return the `MetaLearner`.
+
+        Returns:
+            The `MetaLearner` class to use for this algorithm either as a class
+            type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
+        """
+        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+
+        return TorchMetaLearner
 
 
 class TorchCompileWhatToCompile(str, Enum):

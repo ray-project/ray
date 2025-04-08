@@ -16,12 +16,17 @@
 
 #include <boost/optional/optional_io.hpp>
 #include <chrono>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 namespace ray {
 
 namespace gcs {
@@ -177,16 +182,16 @@ TEST_F(RedisStoreClientTest, Complicated) {
 
                    if ((i / window) % 2 == 0) {
                      // Delete non exist keys
-                     for (size_t i = 0; i < keys.size(); ++i) {
+                     for (size_t jj = 0; jj < keys.size(); ++jj) {
                        ++sent;
-                       RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[i];
+                       RAY_LOG(INFO) << "S AsyncDelete: " << n_keys[jj];
                        ASSERT_TRUE(
                            store_client_
                                ->AsyncDelete("N",
-                                             n_keys[i],
-                                             {[&finished, n_keys, i](auto b) mutable {
+                                             n_keys[jj],
+                                             {[&finished, n_keys, jj](auto b) mutable {
                                                 RAY_LOG(INFO)
-                                                    << "F AsyncDelete: " << n_keys[i];
+                                                    << "F AsyncDelete: " << n_keys[jj];
                                                 ++finished;
                                                 ASSERT_FALSE(b);
                                               },
@@ -194,14 +199,14 @@ TEST_F(RedisStoreClientTest, Complicated) {
                                .ok());
 
                        ++sent;
-                       RAY_LOG(INFO) << "S AsyncExists: " << p_keys[i];
+                       RAY_LOG(INFO) << "S AsyncExists: " << p_keys[jj];
                        ASSERT_TRUE(
                            store_client_
                                ->AsyncExists("N",
-                                             p_keys[i],
-                                             {[&finished, p_keys, i](auto b) mutable {
+                                             p_keys[jj],
+                                             {[&finished, p_keys, jj](auto b) mutable {
                                                 RAY_LOG(INFO)
-                                                    << "F AsyncExists: " << p_keys[i];
+                                                    << "F AsyncExists: " << p_keys[jj];
                                                 ++finished;
                                                 ASSERT_TRUE(b);
                                               },
@@ -393,7 +398,8 @@ TEST_F(RedisStoreClientTest, Random) {
     ops[idx](i);
   }
   EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 10000));
-  auto redis_store_client_raw_ptr = (RedisStoreClient *)store_client_.get();
+  auto redis_store_client_raw_ptr =
+      reinterpret_cast<RedisStoreClient *>(store_client_.get());
   absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
   ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
 }

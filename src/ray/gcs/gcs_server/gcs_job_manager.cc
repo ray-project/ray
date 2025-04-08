@@ -14,6 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
+#include <limits>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric.h"
 
@@ -26,9 +33,9 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
         std::make_shared<rpc::JobConfig>(job_table_data.config());
     function_manager_.AddJobReference(job_id);
 
-    // Recover [running_job_ids_] from storage.
+    // Recover [running_job_start_times_] from storage.
     if (!job_table_data.is_dead()) {
-      running_job_ids_.insert(job_id);
+      running_job_start_times_.insert({job_id, job_table_data.start_time()});
     }
   }
 }
@@ -115,7 +122,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
 
       // Intentionally not checking return value, since the function could be invoked for
       // multiple times and requires idempotency (i.e. due to retry).
-      running_job_ids_.insert(job_id);
+      running_job_start_times_.insert({job_id, job_table_data.start_time()});
     }
     WriteDriverJobExportEvent(job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -152,9 +159,12 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     WriteDriverJobExportEvent(job_table_data);
 
     // Update running job status.
-    auto iter = running_job_ids_.find(job_id);
-    RAY_CHECK(iter != running_job_ids_.end());
-    running_job_ids_.erase(iter);
+    auto iter = running_job_start_times_.find(job_id);
+    RAY_CHECK(iter != running_job_start_times_.end());
+    running_job_start_times_.erase(iter);
+    ray::stats::STATS_job_duration_s.Record(
+        (job_table_data.end_time() - job_table_data.start_time()) / 1000.0,
+        {{"JobId", job_id.Hex()}});
     ++finished_jobs_count_;
 
     done_callback(status);
@@ -350,27 +360,27 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           num_finished_tasks->fetch_add(job_count) + job_count;
       try_send_reply(updated_finished_tasks);
     } else {
-      for (int i = 0; i < reply->job_info_list_size(); i++) {
-        const auto &data = reply->job_info_list(i);
+      for (int jj = 0; jj < reply->job_info_list_size(); jj++) {
+        const auto &data = reply->job_info_list(jj);
         auto job_id = JobID::FromBinary(data.job_id());
         WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
 
         // If job is dead, no need to get.
         if (data.is_dead()) {
-          reply->mutable_job_info_list(i)->set_is_running_tasks(false);
+          reply->mutable_job_info_list(jj)->set_is_running_tasks(false);
           core_worker_clients_.Disconnect(worker_id);
           size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
           try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
           auto client = core_worker_clients_.GetOrConnect(data.driver_address());
-          auto request = std::make_unique<rpc::NumPendingTasksRequest>();
+          auto pending_task_req = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
           RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
                          << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
           client->NumPendingTasks(
-              std::move(request),
-              [job_id, worker_id, reply, i, num_finished_tasks, try_send_reply](
+              std::move(pending_task_req),
+              [job_id, worker_id, reply, jj, num_finished_tasks, try_send_reply](
                   const Status &status,
                   const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
                 RAY_LOG(DEBUG).WithField(worker_id)
@@ -379,10 +389,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                   RAY_LOG(WARNING).WithField(job_id).WithField(worker_id)
                       << "Failed to get num_pending_tasks from core worker: " << status
                       << ", is_running_tasks is unset.";
-                  reply->mutable_job_info_list(i)->clear_is_running_tasks();
+                  reply->mutable_job_info_list(jj)->clear_is_running_tasks();
                 } else {
                   bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-                  reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+                  reply->mutable_job_info_list(jj)->set_is_running_tasks(
+                      is_running_tasks);
                 }
                 size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
                 try_send_reply(updated_finished_tasks);
@@ -465,7 +476,7 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
 
 void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO).WithField(node_id)
-      << "Node failed, mark all jobs from this node as finished";
+      << "Node is dead, mark all jobs from this node as finished";
 
   auto on_done = [this,
                   node_id](const absl::flat_hash_map<JobID, rpc::JobTableData> &result) {
@@ -490,8 +501,13 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 }
 
 void GcsJobManager::RecordMetrics() {
-  ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
+  ray::stats::STATS_running_jobs.Record(running_job_start_times_.size());
   ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
+
+  for (const auto &[job_id, start_time] : running_job_start_times_) {
+    ray::stats::STATS_job_duration_s.Record((current_sys_time_ms() - start_time) / 1000.0,
+                                            {{"JobId", job_id.Hex()}});
+  }
 }
 
 }  // namespace gcs

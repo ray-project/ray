@@ -201,4 +201,69 @@ enum TagKey {
 
   // Train V2 Trainer name (e.g. "TorchTrainer")
   TRAIN_TRAINER = 521;
+
+  // LLM Serve
+  // Whether or not multiple models are getting deployed in the cluster ("1" if used).
+  LLM_SERVE_SERVE_MULTIPLE_MODELS = 600;
+  // Whether or not multiple applications are getting deployed in the
+  // cluster ("1" if used).
+  LLM_SERVE_SERVE_MULTIPLE_APPS = 601;
+  // Comma separated list of models that supports json mode.
+  LLM_SERVE_JSON_MODE_MODELS = 602;
+  // Comma separated list of number of replicas that supports json mode.
+  LLM_SERVE_JSON_MODE_NUM_REPLICAS = 603;
+  // Comma separated list of models that supports LoRA.
+  LLM_SERVE_LORA_BASE_MODELS = 604;
+  // Comma separated list of initial number of LoRA adapters.
+  LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS = 605;
+  // Comma separated list of models that uses autoscaling.
+  LLM_SERVE_AUTOSCALING_ENABLED_MODELS = 606;
+  // Comma separated list of min replicas that uses autoscaling.
+  LLM_SERVE_AUTOSCALING_MIN_REPLICAS = 607;
+  // Comma separated list of max replicas that uses autoscaling.
+  LLM_SERVE_AUTOSCALING_MAX_REPLICAS = 608;
+  // Comma separated list of tensor parallel degree.
+  LLM_SERVE_TENSOR_PARALLEL_DEGREE = 609;
+  // Comma separated list of num replicas.
+  LLM_SERVE_NUM_REPLICAS = 610;
+  // Comma separated list of models.
+  LLM_SERVE_MODELS = 611;
+  // Comma separated list of GPU types.
+  LLM_SERVE_GPU_TYPE = 612;
+  // Comma separated list of num GPUs.
+  LLM_SERVE_NUM_GPUS = 613;
+
+  // LLM Batch
+  // Comma separated list of names of the config used to build processor.
+  // Example: "vLLMEngineProcessorConfig"
+  LLM_BATCH_PROCESSOR_CONFIG_NAME = 614;
+  // Comma separated list of names of model architectures used to build vLLM engine
+  // processor. Example: "OPTForCausalLM"
+  LLM_BATCH_MODEL_ARCHITECTURE = 615;
+  // Comma separated list of batch sizes of requests sent to processor.
+  // Example: "64"
+  LLM_BATCH_SIZE = 616;
+  // Comma separated list of accelerator types used to build processor.
+  // Example: "A10G,L40S"
+  LLM_BATCH_ACCELERATOR_TYPE = 617;
+  // Comma separated list of numbers of workers for data parallelism.
+  // Example: "4"
+  LLM_BATCH_CONCURRENCY = 618;
+  // Comma separated list of task types used to build vLLM engine processor.
+  // Example: "generate" "chat_complete"
+  LLM_BATCH_TASK_TYPE = 619;
+  // Comma separated list of pipeline parallelism degrees used to build vLLM engine
+  // processor. Example: "4"
+  LLM_BATCH_PIPELINE_PARALLEL_SIZE = 620;
+  // Comma separated list of tensor parallelism degrees used to build vLLM engine
+  // processor. Example: "4"
+  LLM_BATCH_TENSOR_PARALLEL_SIZE = 621;
+
+  //
+  // (a Haiku about Ray in the ocean; please keep this at the bottom.)
+  //
+  // Gliding through the waves,
+  // shadow dances in the deep,
+  // ocean breathes with him.
+  //
 }

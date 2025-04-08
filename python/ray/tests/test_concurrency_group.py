@@ -2,12 +2,13 @@
 import asyncio
 import sys
 import threading
-import pytest
-import ray
 import time
-
 from typing import Any, Tuple
-from ray._private.utils import get_or_create_event_loop
+
+import pytest
+
+import ray
+from ray._common.utils import get_or_create_event_loop
 from ray._private.test_utils import run_string_as_driver
 
 

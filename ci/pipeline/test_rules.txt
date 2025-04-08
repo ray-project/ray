@@ -18,6 +18,7 @@ python/ray/air/
 python/ray/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
+python/requirements_compiled_*.txt
 @ llm
 ;
 
@@ -190,6 +191,7 @@ ci/docker/ray.cuda.base.wanda.yaml
 ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
+build-docker.sh
 @ docker linux_wheels tools
 ;
 
@@ -199,11 +201,22 @@ ci/ci.sh
 ;
 
 src/
-@ ml tune train core_cpp cpp
+@ core_cpp cpp
 @ java python linux_wheels macos_wheels
 @ dashboard release_tests accelerated_dag
 ;
 
 .github/
+README.rst
+SECURITY.md
+CONTRIBUTING.rst
+LICENSE
+pylintrc
+semgrep.yml
+setup_hooks.sh
+.pre-commit-config.yaml
+.isort.cfg
+.prettierrc.toml
+build.sh
 # pass
 ;

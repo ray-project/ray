@@ -14,6 +14,11 @@
 
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"

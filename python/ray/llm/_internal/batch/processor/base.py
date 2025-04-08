@@ -1,3 +1,4 @@
+import logging
 from collections import OrderedDict
 from typing import Optional, List, Type, Callable, Dict
 
@@ -15,6 +16,9 @@ from ray.llm._internal.batch.stages import (
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
+logger = logging.getLogger(__name__)
+
+
 class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
@@ -25,6 +29,12 @@ class ProcessorConfig(BaseModelExtended):
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case. Defaults to 64.",
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,
@@ -157,6 +167,25 @@ class Processor:
         if name in self.stages:
             return self.stages[name]
         raise ValueError(f"Stage {name} not found")
+
+    def log_input_column_names(self):
+        """Log.info the input stage and column names of this processor.
+        If the input dataset does not contain these columns, you have to
+        provide a preprocess function to bridge the gap.
+        """
+        name, stage = list(self.stages.items())[0]
+        expected_input_keys = stage.get_required_input_keys()
+        optional_input_keys = stage.get_optional_input_keys()
+
+        message = f"The first stage of the processor is {name}."
+        if expected_input_keys:
+            message += "\nRequired input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in expected_input_keys.items())
+        if optional_input_keys:
+            message += "\nOptional input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in optional_input_keys.items())
+
+        logger.info(message)
 
 
 @DeveloperAPI

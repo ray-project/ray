@@ -114,8 +114,7 @@ of Ray Tasks itself, e.g.
 
 This will error with message:
 
-.. testoutput::
-  :options: +MOCK
+.. code-block::
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
@@ -243,7 +242,9 @@ Note that stacktrace capture is disabled by default to avoid any performance ove
 
 Example:
 
+.. NOTE(edoakes): test is skipped because it reinitializes Ray.
 .. testcode::
+    :skipif: True
 
     import ray
 
