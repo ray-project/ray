@@ -1102,7 +1102,7 @@ class Algorithm(Checkpointable, Trainable):
                     ):
                         self.eval_env_runner_group.sync_env_runner_states(
                             config=self.evaluation_config,
-                            from_worker=self.env_runner_group.local_env_runner,
+                            from_worker=self.env_runner,
                         )
             else:
                 self._sync_filters_if_needed(
