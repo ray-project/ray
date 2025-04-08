@@ -31,7 +31,7 @@ class DataConfig:
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
-            _streaming_split_locality[Advanced]: If it's true, then pass in the Train
+            _streaming_split_locality: (Advanced) If it's true, then pass in the Train
                 worker nodes as locality hints to streaming_split operations, which
                 prefers assigning data shards to Train workers located on the same node
                 as the ready data. On by default.
