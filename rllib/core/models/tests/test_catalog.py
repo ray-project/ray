@@ -1,4 +1,3 @@
-import pytest
 import dataclasses
 from collections import namedtuple
 import functools
