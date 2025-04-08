@@ -230,7 +230,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLabelNotIn* mutable_label_not_in()
         CLabelExists* mutable_label_exists()
         CLabelDoesNotExist* mutable_label_does_not_exist()
-    cdef enum LabelSelectorOperator "ray::core::LabelSelectorOperator":
+    cdef enum CLabelSelectorOperator "ray::core::LabelSelectorOperator":
         LABEL_OPERATOR_UNSPECIFIED
         LABEL_OPERATOR_IN
         LABEL_OPERATOR_NOT_IN
@@ -344,7 +344,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env, c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
-                     const unordered_map[c_string, c_string] &label_selector)
+                     const CLabelSelector &label_selector)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -364,7 +364,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             int32_t max_pending_calls,
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
-            const unordered_map[c_string, c_string] &label_selector)
+            const CLabelSelector &label_selector)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
