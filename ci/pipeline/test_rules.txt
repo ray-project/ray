@@ -16,6 +16,7 @@ python/ray/air/
 ;
 
 python/ray/llm/
+doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 python/requirements_compiled_*.txt
@@ -176,6 +177,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
