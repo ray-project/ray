@@ -397,9 +397,7 @@ def test_p2p_static_shape_and_direct_return(
             "[(shape=torch.Size([20]), dtype=torch.float16)]"
         )
     else:
-        msg = (
-            "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
-        )
+        msg = "Task annotated with _direct_return=True must return a CUDA torch.Tensor"
     wait_for_condition(lambda: error_logged(capsys, msg))
 
 

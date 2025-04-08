@@ -784,7 +784,7 @@ class BackendExecutor:
             self._last_failure = None
             if self._max_failures > 0:
                 exc = RuntimeError(
-                    "Training has failed after " f"{self._num_failures} " "attempts."
+                    f"Training has failed after {self._num_failures} attempts."
                 )
                 raise exc.with_traceback(None) from failure
             else:

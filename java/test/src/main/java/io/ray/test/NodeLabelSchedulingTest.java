@@ -24,7 +24,7 @@ public class NodeLabelSchedulingTest {
   }
 
   public void testSetNodeLabels() {
-    System.setProperty("ray.head-args.0", "--labels=\"gpu_type=A100,azone=azone-1\"");
+    System.setProperty("ray.head-args.0", "--labels={\"gpu_type\":\"A100\",\"azone\":\"azone-1\"}");
     try {
       Ray.init();
       List<NodeInfo> nodeInfos = Ray.getRuntimeContext().getAllNodeInfo();

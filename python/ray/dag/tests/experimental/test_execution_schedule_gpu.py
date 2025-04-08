@@ -18,6 +18,9 @@ if sys.platform != "linux" and sys.platform != "darwin":
 
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
+if not USE_GPU:
+    pytest.skip("Skipping, these tests require GPUs.", allow_module_level=True)
+
 
 @ray.remote(num_cpus=0, num_gpus=1)
 class Worker:

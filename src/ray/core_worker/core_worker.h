@@ -305,7 +305,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -1009,9 +1009,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const {
-    // TODO(dayshah): Figure out why Java tests fail if we lock here.
-    // absl::MutexLock lock(&mutex_);
+  ActorID GetActorId() const {
+    absl::MutexLock lock(&mutex_);
     return actor_id_;
   }
 
@@ -1832,8 +1831,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   mutable absl::Mutex mutex_;
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  /// TODO(dayshah): Java tests fail if we access this without a mutex.
-  ActorID actor_id_;
+  ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
 
   /// The currently executing task spec. We have to track this separately since
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()

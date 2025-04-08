@@ -3,8 +3,10 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._private.label_utils import validate_node_labels
-from ray._private.utils import check_ray_client_dependencies_installed
+from ray._private.utils import (
+    validate_node_labels,
+    check_ray_client_dependencies_installed,
+)
 
 
 logger = logging.getLogger(__name__)
