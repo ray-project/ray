@@ -49,6 +49,7 @@ from ray.rllib.algorithms.utils import (
 )
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
     COMPONENT_EVAL_ENV_RUNNER,
@@ -601,8 +602,8 @@ class Algorithm(Checkpointable, Trainable):
         # In case there is no local EnvRunner anymore, we need to handle connector
         # pipelines directly here.
         self.spaces: Optional[Dict] = None
-        self.env_to_module_connector: Optional[ConnectorV2] = None
-        self.module_to_env_connector: Optional[ConnectorV2] = None
+        self.env_to_module_connector: Optional[ConnectorPipelineV2] = None
+        self.module_to_env_connector: Optional[ConnectorPipelineV2] = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
@@ -648,12 +649,13 @@ class Algorithm(Checkpointable, Trainable):
                 tune_trial_id=self.trial_id,
             )
             self.spaces = self.env_runner_group.get_spaces()
-            self.env_to_module_connector = self.config.build_env_to_module_connector(
-                spaces=self.spaces
-            )
-            self.module_to_env_connector = self.config.build_module_to_env_connector(
-                spaces=self.spaces
-            )
+            if self.env_runner is None:
+                self.env_to_module_connector = (
+                    self.config.build_env_to_module_connector(spaces=self.spaces)
+                )
+                self.module_to_env_connector = (
+                    self.config.build_module_to_env_connector(spaces=self.spaces)
+                )
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
