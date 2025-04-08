@@ -186,7 +186,7 @@ def test_redeploy_multiple_apps_batched() -> None:
     assert pida1 == pida2
 
 
-def test_basic_composition():
+def test_reconfigure():
     @serve.deployment
     class Hello:
         def __init__(self):
