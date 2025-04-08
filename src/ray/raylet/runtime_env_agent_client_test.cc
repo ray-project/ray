@@ -391,7 +391,8 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, WorkerID::Nil());
+  client->DeleteRuntimeEnvIfPossible(
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -435,7 +436,8 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, WorkerID::Nil());
+  client->DeleteRuntimeEnvIfPossible(
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -484,7 +486,8 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, WorkerID::Nil());
+  client->DeleteRuntimeEnvIfPossible(
+      "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -589,7 +592,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
 
   for (int i = 0; i < 100; ++i) {
     client->DeleteRuntimeEnvIfPossible(
-        "serialized_runtime_env", callback, WorkerID::Nil());
+        "serialized_runtime_env", callback, WorkerID::Nil(), JobID::Nil());
   }
 
   ioc.run();

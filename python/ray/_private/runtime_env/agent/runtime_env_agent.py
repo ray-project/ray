@@ -584,6 +584,7 @@ class RuntimeEnvAgent:
                 await plugin_setup_context.class_instance.post_worker_exit(
                     runtime_env,
                     request.worker_id.decode(),
+                    request.job_id.decode(),
                     self._logger,
                 )
 

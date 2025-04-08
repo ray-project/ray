@@ -46,6 +46,7 @@ message DeleteRuntimeEnvIfPossibleRequest {
   string serialized_runtime_env = 1;
   string source_process = 2;
   bytes worker_id = 3;
+  bytes job_id = 4;
 }
 
 message DeleteRuntimeEnvIfPossibleReply {

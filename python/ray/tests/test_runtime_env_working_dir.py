@@ -660,7 +660,7 @@ def test_id_named_working_dir(tmp_working_dir, disable_working_dir_gc, shutdown_
 
 def test_add_working_dir_to_ld_library_path(tmp_working_dir, shutdown_only):
     ray.init(runtime_env={"working_dir": tmp_working_dir})
-    
+
     @ray.remote
     class A:
         def get_ld_library_path(self):
@@ -673,6 +673,88 @@ def test_add_working_dir_to_ld_library_path(tmp_working_dir, shutdown_only):
     working_dir = ray.get(a.get_cwd.remote())
     ld_library_path = ray.get(a.get_ld_library_path.remote())
     assert working_dir in ld_library_path
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("disable_job_dir_gc", [True, False])
+def test_job_dir(tmp_working_dir, disable_job_dir_gc, shutdown_only):
+    """Tests the independent id named job directory for echo job."""
+    if disable_job_dir_gc:
+        os.environ["RAY_RUNTIME_ENV_DISABLE_JOB_DIR_GC"] = "true"
+    else:
+        os.environ["RAY_RUNTIME_ENV_DISABLE_JOB_DIR_GC"] = "false"
+    ray.init(runtime_env={"working_dir": tmp_working_dir})
+
+    @ray.remote
+    class A:
+        def test_import(self):
+            import test_module
+
+            return test_module.one()
+
+        def get_cwd(self):
+            return os.getcwd()
+
+        def get_job_dir(self):
+            return os.environ.get("RAY_JOB_DIR")
+
+        def write_file_in_job_dir(self, file_name):
+            job_dir = self.get_job_dir()
+            file_path = os.path.join(job_dir, file_name)
+            with open(file_path, "w") as file:
+                file.write("job_dir_test")
+            return True
+
+        def check_file_in_job_dir(self, file_name):
+            job_dir = self.get_job_dir()
+            file_path = os.path.join(job_dir, file_name)
+            return os.path.exists(file_path)
+
+    a = A.remote()
+    assert ray.get(a.test_import.remote()) == 1
+    actor_cwd = ray.get(a.get_cwd.remote())
+    assert "working_dirs" in actor_cwd
+    assert os.path.exists(actor_cwd) and os.path.isdir(actor_cwd)
+
+    job_dir = ray.get(a.get_job_dir.remote())
+    # check if job_dir exists
+    assert "job_dirs" in job_dir
+    assert os.path.exists(job_dir) and os.path.isdir(job_dir)
+    ray.kill(a, no_restart=True)
+
+    # check if job_dir is cleaned up when all active actors are killed.
+    def _check_path_does_not_exist(path):
+        return not os.path.exists(path)
+
+    if not disable_job_dir_gc:
+        wait_for_condition(_check_path_does_not_exist, path=job_dir, timeout=3)
+    else:
+        assert os.path.exists(job_dir)
+
+    b = A.remote()
+    c = A.remote()
+
+    def _check_path_exist(path):
+        return os.path.exists(path)
+
+    wait_for_condition(_check_path_exist, path=job_dir, timeout=3)
+    test_file_name = "job_dir_test.txt"
+    # check if active actors for one job can access the job_dir of the job
+    assert ray.get(b.write_file_in_job_dir.remote(test_file_name))
+    assert ray.get(c.check_file_in_job_dir.remote(test_file_name))
+
+    # check when one of the actors is killed, the other actor can still access the job_dir
+    ray.kill(b, no_restart=True)
+    assert ray.get(c.check_file_in_job_dir.remote(test_file_name))
+
+    # check if the job_dir is cleaned up when all active actors are killed.
+    ray.kill(c, no_restart=True)
+    test_file_path = os.path.join(job_dir, test_file_name)
+
+    if not disable_job_dir_gc:
+        wait_for_condition(_check_path_does_not_exist, path=test_file_path, timeout=3)
+    else:
+        assert os.path.exists(test_file_path)
 
 
 if __name__ == "__main__":

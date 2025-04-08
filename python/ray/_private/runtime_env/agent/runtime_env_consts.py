@@ -18,6 +18,9 @@ DISABLE_WORKING_DIR_GC = ray_constants.env_bool(
     "RAY_RUNTIME_ENV_DISABLE_WORKING_DIR_GC", False
 )
 
+# Disable job dir GC or not
+DISABLE_JOB_DIR_GC = ray_constants.env_bool("RAY_RUNTIME_ENV_DISABLE_JOB_DIR_GC", False)
+
 RUNTIME_ENV_LOG_FILENAME = "runtime_env.log"
 RUNTIME_ENV_AGENT_PORT_PREFIX = "RUNTIME_ENV_AGENT_PORT_PREFIX:"
 RUNTIME_ENV_AGENT_LOG_FILENAME = "runtime_env_agent.log"
@@ -27,3 +30,5 @@ RUNTIME_ENV_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
 
 # Make the `RAY_WORKING_DIR` configurable
 RAY_WORKING_DIR = os.environ.get("RAY_WORKING_DIR", "RAY_WORKING_DIR")
+
+RAY_JOB_DIR = os.environ.get("RAY_JOB_DIR", "RAY_JOB_DIR")

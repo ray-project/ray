@@ -127,6 +127,7 @@ class RuntimeEnvPlugin(ABC):
         self,
         runtime_env: "RuntimeEnv",  # noqa: F821
         worker_id: str,
+        job_id: str,
         logger: logging.Logger,
     ) -> None:
         """Perform cleanup actions after a worker has finished its execution.
@@ -138,6 +139,7 @@ class RuntimeEnvPlugin(ABC):
         Args:
             runtime_env: The RuntimeEnv object.
             worker_id: The identifier of the worker.
+            job_id: The identifier of the job.
             logger: A logger to log messages during the post-worker exit process.
         """
         return

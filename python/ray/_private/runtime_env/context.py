@@ -32,6 +32,7 @@ class RuntimeEnvContext:
         java_jars: List[str] = None,
         working_dir: Optional[str] = None,
         symlink_paths_to_working_dir: List[str] = None,
+        job_dir: Optional[str] = None,
         native_libraries: List[Dict[str, str]] = None,
         preload_libraries: List[str] = None,
     ):
@@ -65,6 +66,7 @@ class RuntimeEnvContext:
         # Note that if there are conflict file or sub dir names in different
         # resource dirs, some contents will be covered and we don't guarantee it.
         self.symlink_paths_to_working_dir = symlink_paths_to_working_dir or []
+        self.job_dir = job_dir
         self.native_libraries = native_libraries or {
             "lib_path": [],
             "code_search_path": [],
