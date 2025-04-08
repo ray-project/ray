@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 
 import ray.data
 import ray.train
-from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks import DatasetsSetupCallback
@@ -11,7 +10,6 @@ from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
-from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.test_controller import DummyWorkerGroup
 
 
@@ -28,7 +26,9 @@ def test_streaming_split_iter_locality_hints():
     data_config._execution_options.actor_locality_enabled = False
 
     scaling_config = ray.train.ScalingConfig(
-        num_workers=NUM_TRAINING_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+        num_workers=NUM_TRAINING_WORKERS,
+        use_gpu=True,
+        resources_per_worker={"CPU": 1, "GPU": 1},
     )
 
     worker_group_context = WorkerGroupContext(
