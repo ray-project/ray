@@ -77,6 +77,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators.lazy_write_operator import LazyWrite
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -4238,6 +4239,59 @@ class Dataset:
         except Exception as e:
             datasink.on_write_failed(e)
             raise
+
+    def write_datasink_lazy(
+        self,
+        datasink: Datasink,
+        *,
+        prefilter_fn: Callable[[Block], Block] | None = None,
+        ray_remote_args: dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> "Dataset":
+        """Creates a lazy write operation for writing the dataset to a custom :class:`~ray.data.Datasink`.
+
+        Unlike :meth:`~write_datasink`, this method does not trigger execution immediately.
+        The write operation will be executed when the returned dataset is materialized or consumed.
+
+        Time complexity: O(1)
+
+        Args:
+            datasink: The :class:`~ray.data.Datasink` to write to.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+
+        Returns:
+            A Dataset containing the write operation in its execution plan.
+        """
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        if not datasink.supports_distributed_writes:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "If you're using Ray Client, Ray Data won't schedule write tasks "
+                    "on the driver's node."
+                )
+            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
+        plan = self._plan.copy()
+        write_op = LazyWrite(
+            self._logical_plan.dag,
+            prefilter_fn=prefilter_fn,
+            datasink_or_legacy_datasource=datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+        logical_plan = LogicalPlan(write_op, self.context)
+
+        # Return a new dataset with the write operation in its plan
+        return Dataset(plan, logical_plan)
 
     @ConsumptionAPI(
         delegate=(
