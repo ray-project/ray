@@ -1,10 +1,12 @@
 import logging
 import os
-from unittest.mock import MagicMock
 
 import torch
 import torch.nn
-from torchrec.distributed import TrainPipelineSparseDist
+
+# from torchrec.distributed import TrainPipelineSparseDist
+from torchrec.distributed.train_pipeline import StagedTrainPipeline, SparseDataDistUtil
+from torchrec.distributed.train_pipeline.utils import PipelineStage
 from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
 from torchrec.optim.optimizers import in_backward_optimizer_filter
 
@@ -33,32 +35,56 @@ class TorchRecRunner(TrainLoopRunner):
             [self.model.fused_optimizer, dense_optimizer]
         )
 
-        def dummy_fwd(self, x):
-            loss, outputs = MagicMock(), MagicMock()
-            return loss, outputs
-
-        custom_fwd = dummy_fwd if self.benchmark_config.skip_train_step else None
-
-        self.pipeline = TrainPipelineSparseDist(
-            self.model,
-            self.optimizer,
-            device,
-            execute_all_batches=True,
-            custom_fwd=custom_fwd,
+        sdd = SparseDataDistUtil(
+            model=self.model,
+            data_dist_stream=torch.cuda.Stream(),
+            prefetch_stream=torch.cuda.Stream(),
         )
+        pipeline = [
+            PipelineStage(
+                name="data_copy",
+                runnable=lambda batch, context: batch.to(device, non_blocking=True),
+                stream=torch.cuda.Stream(),
+            ),
+            PipelineStage(
+                name="start_sparse_data_dist",
+                runnable=sdd.start_sparse_data_dist,
+                stream=sdd.data_dist_stream,
+                fill_callback=sdd.wait_sparse_data_dist,
+            ),
+            # PipelineStage(
+            #     name="prefetch",
+            #     runnable=sdd.prefetch,
+            #     stream=sdd.prefetch_stream,
+            #     fill_callback=sdd.load_prefetch,
+            # ),
+        ]
 
-    def _train_step(self, train_dataloader):
-        if self.benchmark_config.skip_train_step:
-            # NOTE: Setting model to eval mode to skips the backward + optimizer
-            # step in the TrainPipelineSparseDist pipeline.
-            self.pipeline._model.eval()
-        else:
-            self.pipeline._model.train()
+        self.pipeline = StagedTrainPipeline(pipeline_stages=pipeline)
 
-        self.pipeline.progress(train_dataloader)
+    def _wrap_dataloader(self, dataloader, prefix: str):
+        dataloader_iter = iter(dataloader)
 
-    def _validate_step(self, val_dataloader):
-        return 0
+        def dataloader_with_torchrec_pipeline():
+            yield from self.pipeline.progress(dataloader_iter)
+
+        return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), prefix)
+
+    def _train_step(self, batch):
+        self.model.train()
+
+        self.optimizer.zero_grad()
+        loss, out = self.model(batch)
+        loss.backward()
+        self.optimizer.step()
+
+    def _validate_step(self, batch):
+        self.model.eval()
+
+        with torch.no_grad():
+            loss, out = self.model(batch)
+
+        return loss.item()
 
     def _save_training_state(self, local_dir: str):
         return

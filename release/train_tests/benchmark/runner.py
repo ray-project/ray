@@ -88,7 +88,7 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
-    def _wrap_dataloader_with_timer(self, dataloader, prefix: str):
+    def _wrap_dataloader(self, dataloader, prefix: str):
         dataloader_iter = iter(dataloader)
 
         def wrapped_dataloader():
@@ -118,9 +118,7 @@ class TrainLoopRunner:
             logger.info(f"Training starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
-        train_dataloader = self._wrap_dataloader_with_timer(
-            train_dataloader, prefix="train"
-        )
+        train_dataloader = self._wrap_dataloader(train_dataloader, prefix="train")
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
@@ -130,14 +128,16 @@ class TrainLoopRunner:
 
             for _ in range(self._train_batch_idx + 1):
                 with self._metrics["train/iter_skip_batch"].timer():
-                    self._get_next_batch(train_dataloader)
+                    next(train_dataloader)
 
         while True:
+            try:
+                batch = next(train_dataloader)
+            except StopIteration:
+                break
+
             with self._metrics["train/step"].timer():
-                try:
-                    self._train_step(train_dataloader)
-                except StopIteration:
-                    break
+                self._train_step(batch)
 
             # TODO: This is slightly off if the last batch is a partial batch.
             self._metrics["train/rows_processed"].add(
@@ -161,19 +161,19 @@ class TrainLoopRunner:
             )
 
         val_dataloader = self.factory.get_val_dataloader()
-        val_dataloader = self._wrap_dataloader_with_timer(
-            val_dataloader, prefix="validation"
-        )
+        val_dataloader = self._wrap_dataloader(val_dataloader, prefix="validation")
 
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
         while True:
+            try:
+                batch = next(val_dataloader)
+            except StopIteration:
+                break
+
             with self._metrics["validation/step"].timer():
-                try:
-                    total_loss += self._validate_step(val_dataloader)
-                except StopIteration:
-                    break
+                total_loss += self._validate_step(batch)
 
             num_rows += self.benchmark_config.dataloader_config.val_batch_size
             self._metrics["validation/rows_processed"].add(
