@@ -264,7 +264,6 @@ def ray_deps_setup():
         sha256 = "d74f8e99a433982a12d7899f6773e285c9824e1d9a173ea1d1fb26c9bd089299",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-avoid-goaway-messages.patch",
         ],
     )
