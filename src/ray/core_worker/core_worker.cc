@@ -819,7 +819,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                                                reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    absl::optional<rpc::Address> addr;
+    std::optional<rpc::Address> addr;
     if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
       rpc::Address address;
       address.set_raylet_id(node_info->node_id());
@@ -880,12 +880,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                const ObjectLookupCallback &callback) {
     std::vector<rpc::Address> locations;
-    const absl::optional<absl::flat_hash_set<NodeID>> object_locations =
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
         reference_counter_->GetObjectLocations(object_id);
     if (object_locations.has_value()) {
       locations.reserve(object_locations.value().size());
       for (const auto &node_id : object_locations.value()) {
-        absl::optional<rpc::Address> addr = node_addr_factory(node_id);
+        std::optional<rpc::Address> addr = node_addr_factory(node_id);
         if (addr.has_value()) {
           locations.emplace_back(std::move(addr.value()));
           continue;
