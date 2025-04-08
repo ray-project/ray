@@ -36,6 +36,7 @@ class SubprocessModuleConfig:
     gcs_address: str
     session_name: str
     temp_dir: str
+    session_dir: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -179,6 +180,10 @@ class SubprocessModule(abc.ABC):
     @property
     def temp_dir(self):
         return self._config.temp_dir
+
+    @property
+    def session_dir(self):
+        return self._config.session_dir
 
     @property
     def log_dir(self):

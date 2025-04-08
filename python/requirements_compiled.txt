@@ -541,7 +541,6 @@ freezegun==1.1.0
     # via -r python/requirements/test-requirements.txt
 frozenlist==1.4.1
     # via
-    #   -r python/requirements.txt
     #   aiohttp
     #   aiosignal
     #   ray
@@ -1699,7 +1698,7 @@ pytest==7.4.4
     #   pytest-docker-tools
     #   pytest-fixture-config
     #   pytest-forked
-    #   pytest-lazy-fixture
+    #   pytest-lazy-fixtures
     #   pytest-mock
     #   pytest-remotedata
     #   pytest-repeat
@@ -1723,7 +1722,7 @@ pytest-forked==1.4.0
     # via -r python/requirements/test-requirements.txt
 pytest-httpserver==1.0.6
     # via -r python/requirements/test-requirements.txt
-pytest-lazy-fixture==0.6.3
+pytest-lazy-fixtures==1.1.2
     # via -r python/requirements/test-requirements.txt
 pytest-mock==3.14.0
     # via -r python/requirements/ml/data-test-requirements.txt
