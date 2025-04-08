@@ -1364,11 +1364,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   }
 }
 
-absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
+std::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
-    return absl::optional<TaskSpecification>();
+    return std::optional<TaskSpecification>();
   }
   return it->second.spec;
 }
@@ -1476,7 +1476,7 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
 void TaskManager::SetTaskStatus(
     TaskEntry &task_entry,
     rpc::TaskStatus status,
-    const absl::optional<const rpc::RayErrorInfo> &error_info) {
+    const std::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       task_entry.spec.TaskId(),
