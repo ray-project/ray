@@ -23,7 +23,7 @@ worker_node_types:
     resources:
       CPU: 8
       memory: 32000
-      
+
   # GPU worker nodes for ML tasks
   - name: gpu_worker
     instance_type: n1-standard-4  # 4 vCPUs, 15 GB memory
