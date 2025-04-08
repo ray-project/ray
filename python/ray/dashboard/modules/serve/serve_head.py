@@ -217,7 +217,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
 
             return self._controller
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod
