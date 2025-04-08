@@ -292,6 +292,18 @@ METRICS_GAUGES = {
         "count",
         CLUSTER_TAG_KEYS,
     ),
+    "component_gpu_utilization": Gauge(
+        "component_gpu_utilization",
+        "GPU usage of all components on the node.",
+        "percentage",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_gpu_memory_usage": Gauge(
+        "component_gpu_memory_usage",
+        "GPU memory usage of all components on the node.",
+        "MB",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
 }
 
 PSUTIL_PROCESS_ATTRS = (
@@ -624,6 +636,56 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
+    @staticmethod
+    def _get_gpu_process_usage():
+        import ray._private.thirdparty.pynvml as pynvml
+
+        gpu_processes = defaultdict(lambda: {"memory": 0, "utilization": 0})
+        global enable_gpu_usage_check
+        if not enable_gpu_usage_check:
+            return gpu_processes
+
+        try:
+            pynvml.nvmlInit()
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+            return gpu_processes
+
+        try:
+            num_gpus = pynvml.nvmlDeviceGetCount()
+            for i in range(num_gpus):
+                gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
+                    gpu_handle
+                )
+                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
+                    gpu_handle
+                )
+
+                for nv_process in nv_comp_processes + nv_graphics_processes:
+                    pid = int(nv_process.pid)
+                    gpu_usage = nv_process.usedGpuMemory / MB
+                    gpu_utilization = 0
+
+                    try:
+                        utilization_info = pynvml.nvmlDeviceGetUtilizationRates(
+                            gpu_handle
+                        )
+                        gpu_utilization = int(utilization_info.gpu)
+                    except pynvml.NVMLError as e:
+                        logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
+
+                    gpu_processes[pid]["memory"] += gpu_usage
+                    gpu_processes[pid]["utilization"] = gpu_utilization
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+        pynvml.nvmlShutdown()
+
+        return gpu_processes
+
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
 
@@ -662,7 +724,11 @@ class ReporterAgent(
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
-
+            try:
+                gpu_usage = self._get_gpu_process_usage()
+            except Exception as e:
+                gpu_usage = defaultdict(dict)
+                logger.debug(f"failed to retrieve GPU processes usage: {e}")
             result = []
             for w in self._workers.values():
                 try:
@@ -672,7 +738,12 @@ class ReporterAgent(
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
+                proc_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                # Add GPU usage info if available
+                if w.pid in gpu_usage:
+                    proc_info["gpu_memory_usage"] = gpu_usage[w.pid]["memory"]
+                    proc_info["gpu_utilization"] = gpu_usage[w.pid]["utilization"]
+                result.append(proc_info)
             return result
 
     def _get_raylet_proc(self):
@@ -821,8 +892,15 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_num_fds"],
-                value=0,
+                gauge=METRICS_GAUGES["component_gpu_utilization"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_memory_usage"],
+                value=0.0,
                 tags=tags,
             )
         )
@@ -848,6 +926,8 @@ class ReporterAgent(
         total_uss = 0.0
         total_shm = 0.0
         total_num_fds = 0
+        total_gpu_utilization = 0.0
+        total_gpu_memory_usage = 0.0
 
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
@@ -861,6 +941,10 @@ class ReporterAgent(
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
+
+            # Add GPU usage info if available
+            total_gpu_memory_usage += stat.get("gpu_memory_usage", 0.0)
+            total_gpu_utilization += stat.get("gpu_utilization", 0.0)
 
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
@@ -903,6 +987,24 @@ class ReporterAgent(
                 tags=tags,
             )
         )
+        # Add GPU usage metrics
+        if total_gpu_memory_usage > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_memory_usage"],
+                    value=total_gpu_memory_usage,
+                    tags=tags,
+                )
+            )
+        if total_gpu_utilization > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_gpu_utilization"],
+                    value=total_gpu_utilization,
+                    tags=tags,
+                )
+            )
+
 
         return records
 

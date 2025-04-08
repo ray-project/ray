@@ -456,6 +456,30 @@ DEFAULT_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=45,
+        title="Component GPU Utilization",
+        description="GPU utilization of Ray components.",
+        unit="%",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_utilization{{{global_filters}}}) by (Component)",
+                legend="{{Component}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=46,
+        title="Component GPU Memory Usage",
+        description="GPU memory usage of Ray components.",
+        unit="MB",
+        targets=[
+            Target(
+                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component)",
+                legend="{{Component}}",
+            ),
+        ],
+    ),
 ]
 
 
