@@ -3045,7 +3045,7 @@ class AlgorithmConfig(_Config):
         if iter_batches_kwargs is not NotProvided:
             self.iter_batches_kwargs = iter_batches_kwargs
         if ignore_final_observation is not NotProvided:
-            self.ignore_final_observation = (ignore_final_observation,)
+            self.ignore_final_observation = ignore_final_observation
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_buffer_class is not NotProvided:
