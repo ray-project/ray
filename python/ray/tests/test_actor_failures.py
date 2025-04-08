@@ -257,47 +257,31 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     class RestartableActor:
         """An actor that will be restarted at most once."""
 
-        def __init__(self):
-            self.value = 0
-
-        def increase(self, delay=0):
+        def sleep_and_echo(self, value, delay=0):
             time.sleep(delay)
-            self.value += 1
-            return self.value
+            return value
 
         def get_pid(self):
             return os.getpid()
 
     actor = RestartableActor.remote()
     pid = ray.get(actor.get_pid.remote())
-    results = [actor.increase.remote() for _ in range(100)]
+    results = [actor.sleep_and_echo.remote(i) for i in range(100)]
     # Kill actor process, while the above task is still being executed.
     os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
-    # Check that none of the tasks failed and the actor is restarted.
-    seq = list(range(1, 101))
+    # All tasks should be executed successfully.
     results = ray.get(results)
-    failed_task_index = None
-    # Make sure that all tasks were executed in order before and after the
-    # actor's death.
-    for i, res in enumerate(results):
-        if res != seq[0]:
-            if failed_task_index is None:
-                failed_task_index = i
-            assert res + failed_task_index == seq[0]
-        seq.pop(0)
-    # Check that we can still call the actor.
-    result = actor.increase.remote()
-    assert ray.get(result) == results[-1] + 1
+    assert results == list(range(100))
 
     # kill actor process one more time.
-    results = [actor.increase.remote() for _ in range(100)]
+    results = [actor.sleep_and_echo.remote(i) for i in range(100)]
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, SIGKILL)
     wait_for_pid_to_exit(pid)
     # The actor has exceeded max restarts, and this task should fail.
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.increase.remote())
+        ray.get(actor.sleep_and_echo.remote(0))
 
     # Create another actor.
     actor = RestartableActor.remote()
@@ -305,7 +289,7 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
     actor.__ray_terminate__.remote()
     # Check that the actor won't be restarted.
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(actor.increase.remote())
+        ray.get(actor.sleep_and_echo.remote(0))
 
 
 def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
