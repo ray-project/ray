@@ -193,7 +193,6 @@ metadata:
 spec:
   rayVersion: '2.9.0'
   headGroupSpec:
-    rayStartParams: {}
     template:
       spec:
         containers:

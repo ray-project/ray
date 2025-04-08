@@ -6,7 +6,6 @@ metadata:
 spec:
   headGroupSpec:
     serviceType: ClusterIP
-    rayStartParams: {}
     template:
       spec:
         containers:
