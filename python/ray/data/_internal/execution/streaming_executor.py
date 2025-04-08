@@ -87,6 +87,12 @@ class StreamingExecutor(Executor, threading.Thread):
         self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
+        self._dataset_log_handler = SessionFileHandler(
+            filename=f"ray-data-{self._dataset_id}.log",
+        )
+        self._dataset_log_handler.setLevel(logging.DEBUG)
+        self._dataset_log_handler.setFormatter(get_default_formatter())
+        logger.addHandler(self._dataset_log_handler)
 
         register_dataset_logger(self._dataset_id)
         Executor.__init__(self, self._data_context.execution_options)
