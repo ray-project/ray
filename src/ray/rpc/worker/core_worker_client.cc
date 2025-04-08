@@ -62,7 +62,7 @@ void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
 
   {
     absl::MutexLock lock(&mutex_);
-    if (max_finished_seq_no_ == absl::nullopt) {
+    if (max_finished_seq_no_ == std::nullopt) {
       max_finished_seq_no_ = request->sequence_number() - 1;
     }
     // The RPC client assumes that the first request put into the send queue will be
