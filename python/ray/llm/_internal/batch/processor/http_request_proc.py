@@ -1,9 +1,8 @@
 """The HTTP request processor."""
 
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional
 
 from pydantic import Field
-from aiohttp import ClientSession
 
 from ray.data.block import UserDefinedFunction
 
@@ -48,9 +47,10 @@ class HttpRequestProcessorConfig(ProcessorConfig):
         default=1,
         description="The base wait time for a retry during exponential backoff.",
     )
-    session_factory: Optional[Callable[[], ClientSession]] = Field(
+    # Since `session_factory` is a callable, we use type Any to avoid pydantic serialization issues
+    session_factory: Optional[Any] = Field(
         default=None,
-        description="Optional session factory to be used for initializing a client session. ",
+        description="Optional session factory to be used for initializing a client session. Type: Callable[[], ClientSession]",
         # exclude from JSON serialization since `session_factory` is a callable
         exclude=True,
     )
