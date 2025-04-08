@@ -8,10 +8,10 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Sequence,
+    Tuple,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
 )
 
 import numpy as np
@@ -20,21 +20,20 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
+from ray.data._internal.util import NULL_SENTINEL, MiB, is_nan, keys_equal
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockType,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
-    BlockColumnAccessor,
     U,
 )
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
@@ -196,7 +195,7 @@ class TableBlockAccessor(BlockAccessor):
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         raise NotImplementedError
 
     def to_block(self) -> Block:
