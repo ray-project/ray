@@ -277,7 +277,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
 
-    # Assert that stdout is logged to "dashboard.TestModule.out"
+    # Assert that stdout is logged to "dashboard_TestModule.out"
     out_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
     )
@@ -285,7 +285,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
         out_log_file_content = f.read()
     assert out_log_file_content == "In /logging_in_module, stdout\n"
 
-    # Assert that stderr is logged to "dashboard.TestModule.err"
+    # Assert that stderr is logged to "dashboard_TestModule.err"
     err_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
     )
