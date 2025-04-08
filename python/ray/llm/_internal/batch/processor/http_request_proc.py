@@ -51,6 +51,8 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     session_factory: Optional[Callable[[], ClientSession]] = Field(
         default=None,
         description="Optional session factory to be used for initializing a client session. ",
+        # exclude from JSON serialization since `session_factory` is a callable
+        exclude=True,
     )
 
 

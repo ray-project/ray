@@ -12,7 +12,6 @@ from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
 
 class HttpRequestUDF(StatefulStageUDF):
-
     RETRYABLE_STATUS_CODES = [429, 408, 504, 502, 503]
 
     def __init__(
@@ -58,7 +57,7 @@ class HttpRequestUDF(StatefulStageUDF):
             A generator of rows of the response of the HTTP request.
         """
         # preprocess to get request body for the given batch
-        request_bodies = []
+        request_bodies = [None] * len(batch)
         for row in batch:
             # Normalize the row to a JSON body.
             json_body = {}
@@ -67,7 +66,8 @@ class HttpRequestUDF(StatefulStageUDF):
                     json_body[key] = value.tolist()
                 else:
                     json_body[key] = value
-            request_bodies.append(json_body)
+            request_bodies[row[self.IDX_IN_BATCH_COLUMN]] = json_body
+
         async with self.session_factory() as session:
             start_time = time.time()
             request_count = 0

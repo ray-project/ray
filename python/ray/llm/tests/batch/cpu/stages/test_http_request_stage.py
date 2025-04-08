@@ -65,7 +65,6 @@ async def test_http_request_udf_with_qps(mock_session):
     }
 
     with patch("time.time") as mock_time, patch("asyncio.sleep") as mock_sleep:
-
         # Mock time to test QPS limiting. Req2 cannot be sent until 0.5s,
         # so the asyncio.sleep should be called once.
         # [start_time, req1_time, req2_time]
@@ -81,7 +80,6 @@ async def test_http_request_udf_with_qps(mock_session):
 
 @pytest.mark.asyncio
 async def test_http_request_udf_with_retry(mock_response):
-
     batch = {
         "__data": [{"payload": {"text": "hello1"}}, {"payload": {"text": "hello2"}}]
     }
