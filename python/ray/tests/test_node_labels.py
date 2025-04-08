@@ -44,19 +44,6 @@ def test_ray_start_set_node_labels_from_string(call_ray_start):
     )
 
 
-def test_ray_start_set_node_labels_from_file():
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
-        test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
-        test_file.flush()  # Ensure data is written
-
-        cmd = ["ray", "start", "--head", "--labels-file", test_file.name]
-        subprocess.run(cmd, stderr=subprocess.PIPE).stderr.decode("utf-8")
-        node_info = ray.nodes()[0]
-        assert node_info["Labels"] == add_default_labels(
-            node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
-        )
-
-
 @pytest.mark.parametrize(
     "call_ray_start",
     [
@@ -167,6 +154,21 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
                 assert node["Labels"] == add_default_labels(node, {"region": "us"})
     finally:
         cluster.shutdown()
+
+
+def test_ray_start_set_node_labels_from_file():
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
+        test_file.flush()  # Ensure data is written
+
+        cmd = ["ray", "start", "--head", "--labels-file", test_file.name]
+        subprocess.check_call(cmd)
+        ray.init(address="auto")
+        node_info = ray.nodes()[0]
+        assert node_info["Labels"] == add_default_labels(
+            node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
+        )
+        subprocess.check_call(["ray", "stop", "--force"])
 
 
 if __name__ == "__main__":
