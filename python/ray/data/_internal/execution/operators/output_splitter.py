@@ -85,7 +85,7 @@ class OutputSplitter(PhysicalOperator):
 
     def start(self, options: ExecutionOptions) -> None:
         if options.preserve_order:
-            # If preserve_order is set, we need to ignore locality hints.
+            # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._min_buffer_size = 0
 
