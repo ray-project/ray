@@ -60,7 +60,7 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 std::shared_ptr<StatsHandle> EventTracker::RecordStart(
-    const std::string &name, int64_t expected_queueing_delay_ns) {
+    std::string name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t cum_count = 0;
   int64_t curr_count = 0;
@@ -72,7 +72,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
 
   if (RayConfig::instance().event_stats_metrics()) {
     ray::stats::STATS_operation_count.Record(cum_count, name);
-    ray::stats::STATS_operation_active_count.Record(curr_count, name);
+    ray::stats::STATS_operation_active_count.Record(curr_count, std::move(name));
   }
 
   return std::make_shared<StatsHandle>(
