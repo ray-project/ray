@@ -377,10 +377,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// task.
   const ResourceSet &GetRequiredResources() const;
 
-  /// Return the labels that are required for the node scheduled on to execute
-  /// this task.
+  /// Return the labels that are required for the node to execute
+  /// this task on.
   ///
-  /// \return The labels are required for the execution of this task on a node.
+  /// \return The labels that are required for the execution of this task on a node.
   const rpc::LabelSelector &GetLabelSelector() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
