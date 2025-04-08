@@ -51,7 +51,10 @@ class StreamSplitDataIterator(DataIterator):
         ).remote(base_dataset, n, equal, locality_hints)
 
         return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+            StreamSplitDataIterator(
+                base_dataset, coord_actor, i, n, equal, locality_hints
+            )
+            for i in range(n)
         ]
 
     def __init__(
@@ -60,11 +63,15 @@ class StreamSplitDataIterator(DataIterator):
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
+        equal: bool,
+        locality_hints: Optional[List[NodeIdStr]],
     ):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
+        self._equal = equal
+        self._locality_hints = locality_hints
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
     def _to_ref_bundle_iterator(
@@ -137,6 +144,11 @@ class SplitCoordinator:
         # Set current DataContext.
         self._data_context = dataset.context
         ray.data.DataContext._set_current(self._data_context)
+        if self._data_context.execution_options.locality_with_output is True:
+            # TODO: Need to set locality_with_output based on just the previous Operator
+            # for accurate locality_hints.
+            self._data_context.execution_options.locality_with_output = locality_hints
+            logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
