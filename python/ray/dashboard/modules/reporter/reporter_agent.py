@@ -892,6 +892,13 @@ class ReporterAgent(
         )
         records.append(
             Record(
+                gauge=METRICS_GAUGES["component_num_fds"],
+                value=0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
                 gauge=METRICS_GAUGES["component_gpu_utilization"],
                 value=0.0,
                 tags=tags,
