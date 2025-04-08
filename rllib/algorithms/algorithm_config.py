@@ -476,6 +476,9 @@ class AlgorithmConfig(_Config):
         self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
+        # Use always the final observation until the user explicitly ask
+        # to ignore it.
+        self.ignore_final_observation = False
         self.prelearner_class = None
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
@@ -2762,6 +2765,7 @@ class AlgorithmConfig(_Config):
         materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
+        ignore_final_observation: Optional[bool] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
@@ -2907,6 +2911,11 @@ class AlgorithmConfig(_Config):
                 `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
+            ignore_final_observation: If the final observation in an episode chunk should
+                be ignored. This concerns mainly column-based data and instead of using a
+                user-provided `NEXT_OBS` sets final observations to zero. This should be
+                used with BC only, as in true Offline RL algorithms the final observation
+                is important.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
@@ -3035,6 +3044,8 @@ class AlgorithmConfig(_Config):
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
             self.iter_batches_kwargs = iter_batches_kwargs
+        if ignore_final_observation is not NotProvided:
+            self.ignore_final_observation = (ignore_final_observation,)
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_buffer_class is not NotProvided:
@@ -4923,6 +4934,14 @@ class AlgorithmConfig(_Config):
             self._value_error(
                 "If no evaluation should be run, `action_space` and "
                 "`observation_space` must be provided."
+            )
+
+        if self.ignore_final_observation and self.algo_class.__name__ != "BC":
+            logger.warning(
+                "`ignore_final_observation=True` (which sets final observations to zero) "
+                "but the algorithm class is not `BC`. It is strongly recommended to use this "
+                "setting only in simple behavior cloning because RL relies heavily on final "
+                "observations."
             )
 
         from ray.rllib.offline.offline_data import OfflineData
