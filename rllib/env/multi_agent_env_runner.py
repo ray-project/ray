@@ -17,6 +17,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -563,6 +564,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Return the already agent-to-module translated spaces from our connector
         # pipeline.
         return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SINGLE_SPACES: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
             **{
                 mid: (o, self._env_to_module.action_space[mid])
                 for mid, o in self._env_to_module.observation_space.spaces.items()
