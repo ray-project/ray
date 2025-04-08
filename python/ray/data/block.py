@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -213,7 +213,7 @@ class BlockMetadata(BlockStats):
 
     def to_stats(self):
         return BlockStats(
-            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+            **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
     def __post_init__(self):
@@ -507,6 +507,21 @@ class BlockAccessor:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ) -> List[Block]:
+        """NOTE: PLEASE READ CAREFULLY
+
+        Returns dataset partitioned using list of boundaries
+
+        This method requires that
+            - Block being sorted (according to `sort_key`)
+            - Boundaries is a sorted list of tuples
+        """
+        raise NotImplementedError
+
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
@@ -600,6 +615,10 @@ class BlockColumnAccessor:
 
     def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """Converts underlying column to Numpy"""
         raise NotImplementedError()
 
     def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:

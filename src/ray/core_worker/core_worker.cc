@@ -32,6 +32,9 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/cgroup/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
@@ -368,17 +371,24 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
-      io_work_(io_service_),
+      io_work_(io_service_.get_executor()),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_),
+      task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  // Move worker process into cgroup on startup.
+  AppProcCgroupMetadata app_cgroup_metadata;
+  app_cgroup_metadata.pid = pid_;
+  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
+  GetCgroupSetup(options_.enable_resource_isolation)
+      .ApplyCgroupContext(app_cgroup_metadata);
+
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options_.debug_source;
 
   // Notify that core worker is initialized.
@@ -3270,7 +3280,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3451,7 +3461,7 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+  RAY_LOG(INFO).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status.ToString();
 
   std::ostringstream stream;
@@ -3840,7 +3850,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {

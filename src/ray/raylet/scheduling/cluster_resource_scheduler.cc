@@ -14,13 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
-#include <boost/algorithm/string.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "ray/common/grpc_util.h"
-#include "ray/common/ray_config.h"
 
 namespace ray {
 
