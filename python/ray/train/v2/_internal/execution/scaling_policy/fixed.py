@@ -12,8 +12,6 @@ from ray.train.v2._internal.execution.worker_group import (
 
 class FixedScalingPolicy(ScalingPolicy):
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
-        if self.scaling_config.num_workers is None:
-            raise ValueError("ScalingConfig cannot be None for FixedScalingPolicy")
         return ResizeDecision(
             num_workers=self.scaling_config.num_workers,
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
