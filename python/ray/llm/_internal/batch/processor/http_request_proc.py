@@ -80,6 +80,7 @@ def build_http_request_processor(
                 qps=config.qps,
                 max_retries=config.max_retries,
                 base_retry_wait_time_in_s=config.base_retry_wait_time_in_s,
+                session_factory=config.session_factory,
             ),
             map_batches_kwargs=dict(
                 concurrency=config.concurrency,
