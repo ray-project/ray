@@ -653,19 +653,21 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
     )
 
 
-# Test deleting a pg with pending actor.
-# details: https://github.com/ray-project/ray/pull/51125
-# Specific test steps:
-#   1. Launch a placement group with only 1 bundle.
-#   2. Create two actors using the aforementioned pg. At this point,
-#      the latter actor will definitely be pending in scheduling due to insufficient pg
-#      bundle resources.
-#   3. Remove the pg while one actor is pending in scheduling. Before the current PR,
-#      the observed phenomenon will be that the raylet crashes due to a failed check.
 @pytest.mark.parametrize("lifetime", [None, "detached"])
 def test_remove_placement_group_with_actor_waiting_on_resource(
     ray_start_cluster, lifetime
 ):
+    """
+    Test deleting a pg with pending actor.
+    details: https://github.com/ray-project/ray/pull/51125
+    Specific test steps:
+      1. Launch a placement group with only 1 bundle.
+      2. Create two actors using the aforementioned pg. At this point,
+         the latter actor will definitely be pending in scheduling due to insufficient pg
+         bundle resources.
+      3. Remove the pg while one actor is pending in scheduling.
+      4. Verify that the pending actor will not be scheduled to the pg during removal and the pg can be removed successfully.
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -706,9 +708,16 @@ def test_remove_placement_group_with_actor_waiting_on_resource(
     time.sleep(5)
     ray.util.remove_placement_group(pg)
 
-    # Ensure GCS finish remove pg.
-    with pytest.raises(psutil.TimeoutExpired):
-        raylet.wait(10)
+    def check_pg_removed():
+        pgs = list_placement_groups()
+        assert len(pgs) == 1
+        assert "REMOVED" == pgs[0].state
+        return True
+
+    wait_for_condition(check_pg_removed, timeout=10)
+    actors = list_actors()
+    assert len(actors) == 1
+    assert actors[0].state == "PENDING_CREATION"
 
     # check raylet pass raycheck:
     # `RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec))`
