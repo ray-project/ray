@@ -196,11 +196,10 @@ class DashboardHeadModule(abc.ABC):
         return self._aiogrpc_gcs_channel
 
     @abc.abstractmethod
-    async def run(self, server):
+    async def run(self):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -462,42 +461,6 @@ class Bunch(dict):
 
     def __setattr__(self, key, value):
         self.__setitem__(key, value)
-
-
-class Change:
-    """Notify change object."""
-
-    def __init__(self, owner=None, old=None, new=None):
-        self.owner = owner
-        self.old = old
-        self.new = new
-
-    def __str__(self):
-        return (
-            f"Change(owner: {type(self.owner)}), " f"old: {self.old}, new: {self.new}"
-        )
-
-
-class NotifyQueue:
-    """Asyncio notify queue for Dict signal."""
-
-    _queue = None
-
-    @classmethod
-    def queue(cls):
-        # Lazy initialization to avoid creating a asyncio.Queue
-        # whenever this Python file is imported.
-        if cls._queue is None:
-            cls._queue = asyncio.Queue()
-        return cls._queue
-
-    @classmethod
-    def put(cls, co):
-        cls.queue().put_nowait(co)
-
-    @classmethod
-    async def get(cls):
-        return await cls.queue().get()
 
 
 """
