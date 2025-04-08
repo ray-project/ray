@@ -1269,7 +1269,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {"format": "leading_1"}
+    options_dict = {}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:
@@ -1282,19 +1282,10 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        for bytes in r.iter_content(chunk_size=None):
-            bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
-                logs = bytes
-                if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
-            yield logs
+        for chunk in r.iter_content(chunk_size=None):
+            if encoding is not None:
+                chunk = chunk.decode(encoding=encoding, errors=errors)
+            yield chunk
 
 
 @DeveloperAPI

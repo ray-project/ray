@@ -28,7 +28,7 @@ def _write_fragment(
     uri: str,
     *,
     schema: Optional["pa.Schema"] = None,
-    max_rows_per_file: int = 1024 * 1024,
+    max_rows_per_file: int = 64 * 1024 * 1024,
     max_bytes_per_file: Optional[int] = None,
     max_rows_per_group: int = 1024,  # Only useful for v1 writer.
     data_storage_version: Optional[str] = None,
@@ -169,8 +169,10 @@ class LanceDatasink(_BaseLanceDatasink):
         mode : str, optional
             The write mode. Default is 'append'.
             Choices are 'append', 'create', 'overwrite'.
+        min_rows_per_file : int, optional
+            The minimum number of rows per file. Default is 1024 * 1024.
         max_rows_per_file : int, optional
-            The maximum number of rows per file. Default is 1024 * 1024.
+            The maximum number of rows per file. Default is 64 * 1024 * 1024.
         data_storage_version: optional, str, default None
             The version of the data storage format to use. Newer versions are more
             efficient but require newer versions of lance to read.  The default is
@@ -187,7 +189,8 @@ class LanceDatasink(_BaseLanceDatasink):
         uri: str,
         schema: Optional[pa.Schema] = None,
         mode: Literal["create", "append", "overwrite"] = "create",
-        max_rows_per_file: int = 1024 * 1024,
+        min_rows_per_file: int = 1024 * 1024,
+        max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         *args,
@@ -202,14 +205,15 @@ class LanceDatasink(_BaseLanceDatasink):
             **kwargs,
         )
 
+        self.min_rows_per_file = min_rows_per_file
         self.max_rows_per_file = max_rows_per_file
         self.data_storage_version = data_storage_version
         # if mode is append, read_version is read from existing dataset.
         self.read_version: Optional[int] = None
 
     @property
-    def num_rows_per_write(self) -> int:
-        return self.max_rows_per_file
+    def min_rows_per_write(self) -> int:
+        return self.min_rows_per_file
 
     def get_name(self) -> str:
         return self.NAME

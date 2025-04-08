@@ -183,8 +183,9 @@ steps:
     key: serve_flaky_tests
     tags:
       - serve
-      - skip-on-premerge
       - python
+      - flaky
+      - skip-on-premerge
     instance_type: medium
     soft_fail: true
     commands:

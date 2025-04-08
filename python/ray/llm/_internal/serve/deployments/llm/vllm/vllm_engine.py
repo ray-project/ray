@@ -305,12 +305,101 @@ class VLLMEngine:
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
+        from vllm import envs
+
+        # Since vLLM 0.8.0, the logic to determine v0/v1 engine is as follows:
+        # 1. If VLLM_USE_V1 is not set, then it tries to use v1 engine. However,
+        #    if any feature specified in the engine config is not supported, then
+        #    it falls back to v0. Note that launching vLLM on a non-main thread
+        #    is an experimental feature, so vLLM will fall back to v0 in this case.
+        # 2. If VLLM_USE_V1 is set to 1, then it will use v1 engine even with
+        #    experimental features (such as launching vLLM on a non-main thread).
+        # 3. If VLLM_USE_V1 is set to 0, force using v0 engine.
+        # In Ray Serve LLM, we forbid case 1 because we have to know exactly which engine is used.
+        if not envs.is_set("VLLM_USE_V1"):
+            logger.warning(
+                "VLLM_USE_V1 environment variable is not set, using vLLM v0 as default. "
+                "Later we may switch default to use v1 once vLLM v1 is mature."
+            )
+            envs.set_vllm_use_v1(False)
+
+        if not envs.VLLM_USE_V1:
+            return await self._start_engine_v0()
+        return await self._start_engine_v1()
+
+    async def _prepare_engine_config(self):
+        """
+        Prepare the engine config to start the engine.
+
+        Returns:
+            engine_args: The engine arguments.
+            engine_config: The engine configuration.
+            node_initialization: The node initialization.
+        """
+        # Initialize node and return all configurations
+        node_initialization = await self.initialize_node(self.llm_config)
+        if self.engine_config.use_gpu:
+            # Create engine config on a task with access to GPU,
+            # as GPU capability may be queried.
+            if self.llm_config.accelerator_type:
+                ref = (
+                    ray.remote(
+                        num_cpus=0,
+                        num_gpus=1,
+                        accelerator_type=self.llm_config.accelerator_type,
+                    )(_get_vllm_engine_config)
+                    .options(
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=node_initialization.placement_group,
+                        )
+                    )
+                    .remote(self.llm_config)
+                )
+            else:
+                ref = (
+                    ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
+                    .options(
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=node_initialization.placement_group,
+                        )
+                    )
+                    .remote(self.llm_config)
+                )
+            engine_args, engine_config = ray.get(ref)
+        else:
+            engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+        return engine_args, engine_config, node_initialization
+
+    async def _start_engine_v1(self) -> "EngineClient":
+        """Start the vLLM v1 engine. Note that we only use _get_async_engine_args
+        to get the engine args and don't use _get_vllm_engine_config, because
+        we integrate vLLM v1 using the highest-level async engine API.
+        TODO: Refactor vLLM v0 integration to use the same async engine API
+        to simplify the code.
+        """
+        (
+            engine_args,
+            engine_config,
+            node_initialization,
+        ) = await self._prepare_engine_config()
+
+        return self._start_async_llm_engine(
+            engine_args,
+            engine_config,
+            node_initialization.placement_group,
+            use_v1=True,
+        )
+
+    async def _start_engine_v0(self) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
 
-        args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
-        engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+        (
+            engine_args,
+            engine_config,
+            node_initialization,
+        ) = await self._prepare_engine_config()
 
-        if MQLLMEngineClient.is_unsupported_config(engine_args):
+        if MQLLMEngineClient.is_unsupported_config(engine_config):
             # If the engine is not supported, we fall back to the legacy async engine.
             #
             # Note (genesu): as of 2025-02-11, this code path is only triggered when
@@ -319,11 +408,12 @@ class VLLMEngine:
             return self._start_async_llm_engine(
                 engine_args,
                 engine_config,
-                args.placement_group,
+                node_initialization.placement_group,
+                use_v1=False,
             )
 
         return await self._start_mq_engine(
-            engine_args, engine_config, args.placement_group
+            engine_args, engine_config, node_initialization.placement_group
         )
 
     async def _start_mq_engine(
@@ -341,6 +431,11 @@ class VLLMEngine:
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=placement_group,
                 placement_group_capture_child_tasks=True,
+            ),
+            runtime_env=dict(
+                env_vars=dict(
+                    VLLM_USE_V1="0",
+                ),
             ),
         )(_EngineBackgroundProcess)
         # Run the process in the background
@@ -390,9 +485,13 @@ class VLLMEngine:
         engine_args: "AsyncEngineArgs",
         vllm_config: "VllmConfig",
         placement_group: PlacementGroup,
+        use_v1: bool = False,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+        if use_v1:
+            from vllm.v1.executor.ray_distributed_executor import RayDistributedExecutor
+        else:
+            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
 
@@ -502,20 +601,36 @@ class VLLMEngine:
                 )
 
             if request_output is not None:
-                time_in_queue_histogram.observe(request_output.metrics.time_in_queue)
                 total_request_time = time.perf_counter() - start
-                generation_time = (
-                    total_request_time - request_output.metrics.time_in_queue
-                )
+                if request_output.metrics is None:
+                    # vLLM V1 metrics are not included in the request output yet.
+                    queue_time = "N/A"
+                    generation_time_str = "N/A"
+                    tokens_s = "N/A"
+                    generated_tokens_s = "N/A"
+                else:
+                    time_in_queue_histogram.observe(
+                        request_output.metrics.time_in_queue
+                    )
+                    queue_time = f"{request_output.metrics.time_in_queue}s"
+                    generation_time = (
+                        total_request_time - request_output.metrics.time_in_queue
+                    )
+                    generation_time_str = f"{generation_time}s"
+                    tokens_s = (
+                        num_input_tokens + all_tokens_collected
+                    ) / generation_time
+                    generated_tokens_s = all_tokens_collected / generation_time
+
                 logger.info(
                     f"Request {vllm_generation_request.request_id} finished ({finish_reason}). "
                     f"Total time: {total_request_time}s, "
-                    f"Queue time: {request_output.metrics.time_in_queue}s, "
-                    f"Generation+async time: {generation_time}s, "
+                    f"Queue time: {queue_time}, "
+                    f"Generation+async time: {generation_time_str}, "
                     f"Input tokens: {num_input_tokens}, "
                     f"Generated tokens: {all_tokens_collected}, "
-                    f"tokens/s: {(num_input_tokens + all_tokens_collected) / generation_time}, "
-                    f"generated tokens/s: {all_tokens_collected / generation_time}."
+                    f"tokens/s: {tokens_s}, "
+                    f"generated tokens/s: {generated_tokens_s}."
                 )
             else:
                 logger.warning(

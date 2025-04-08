@@ -66,6 +66,10 @@ def aiohttp_cache(
                 #   * (Request, )
                 #   * (self, Request)
                 req = args[-1]
+                # If nocache=1 in query string, bypass cache.
+                if req.query.get("nocache") == "1":
+                    return await handler(*args)
+
                 # Make key.
                 if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
                     key = req.path_qs

@@ -573,7 +573,7 @@ def test_actor_max_concurrency(ray_start_regular_shared):
 
         def call(self):
             # Record the current thread that runs this function.
-            self.threads.add(threading.current_thread())
+            self.threads.add(threading.get_ident())
 
         def get_num_threads(self):
             return len(self.threads)

@@ -91,5 +91,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = get_parser().parse_args()
-    main(args)
+    parser = get_parser()
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    main(parser.parse_args())

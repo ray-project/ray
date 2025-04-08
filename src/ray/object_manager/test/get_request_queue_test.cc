@@ -59,7 +59,7 @@ class MockObjectLifecycleManager : public IObjectLifecycleManager {
 
 struct GetRequestQueueTest : public Test {
  public:
-  GetRequestQueueTest() : io_work_(io_context_) {}
+  GetRequestQueueTest() : io_work_(io_context_.get_executor()) {}
   void SetUp() override {
     Test::SetUp();
     object_id1 = ObjectID::FromRandom();
@@ -111,7 +111,7 @@ struct GetRequestQueueTest : public Test {
 
  protected:
   instrumented_io_context io_context_;
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   std::thread thread_;
   LocalObject object1{Allocation()};
   LocalObject object2{Allocation()};

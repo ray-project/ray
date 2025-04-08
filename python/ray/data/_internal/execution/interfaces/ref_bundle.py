@@ -106,7 +106,7 @@ class RefBundle:
             ref = self.block_refs[0]
             # This call is pretty fast for owned objects (~5k/s), so we don't need to
             # batch it for now.
-            locs = ray.experimental.get_object_locations([ref])
+            locs = ray.experimental.get_local_object_locations([ref])
             nodes = locs[ref]["node_ids"]
             if nodes:
                 self._cached_location = nodes[0]

@@ -92,7 +92,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    True,
+)
 
 # NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
 #       total cumulative size (due to it internally utilizing int32 offsets)

@@ -279,9 +279,10 @@ class StandardAutoscaler:
         )
         logger.info(f"{DISABLE_NODE_UPDATERS_KEY}:{self.disable_node_updaters}")
 
-        # Disable launch config checking if true.
-        # This is set in the fake_multinode situations where there isn't any
-        # meaningful node "type" to enforce.
+        # Disable launch configuration checking if set to true.
+        # This setting is used in scenarios where there is no meaningful node type
+        # to enforce, such as in fake multinode situations. When this option is enabled,
+        # outdated nodes will not be terminated.
         self.disable_launch_config_check = self.config["provider"].get(
             DISABLE_LAUNCH_CONFIG_CHECK_KEY, False
         )

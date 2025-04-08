@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import (

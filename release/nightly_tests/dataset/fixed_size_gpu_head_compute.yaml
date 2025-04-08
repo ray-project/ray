@@ -1,0 +1,22 @@
+# This config matches the default config for Anyscale workspaces with autoscaling,
+# except instead of using CPU instances, it uses GPU instances.
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    # Use a GPU head node so we can test `iter_torch_batches` with `device='cuda'`.
+    # We use the same number of vCPUs and memory as the default m5.2xlarge head node.
+    instance_type: g4dn.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: worker-node
+      instance_type: m5.2xlarge
+      min_workers: 10
+      max_workers: 10
+      use_spot: false

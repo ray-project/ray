@@ -1,4 +1,3 @@
-import sys
 import asyncio
 import logging
 import multiprocessing
@@ -6,6 +5,7 @@ import os
 from typing import Optional, Union
 import multidict
 
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.subprocesses.module import (
@@ -16,8 +16,7 @@ from ray.dashboard.subprocesses.module import (
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     ResponseType,
-    get_socket_path,
-    get_named_pipe_path,
+    get_http_session_to_module,
 )
 
 """
@@ -138,16 +137,18 @@ class SubprocessModuleHandle:
         Wait for the module to be ready. This is called after start_module()
         and can be blocking.
         """
-        self.process_ready_event.wait()
+        if not self.process_ready_event.wait(
+            dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT
+        ):
+            raise RuntimeError(
+                f"Module {self.module_cls.__name__} failed to start. "
+                f"Timeout after {dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT} seconds."
+            )
 
         module_name = self.module_cls.__name__
-        if sys.platform == "win32":
-            named_pipe_path = get_named_pipe_path(module_name)
-            connector = aiohttp.NamedPipeConnector(named_pipe_path)
-        else:
-            socket_path = get_socket_path(self.config.socket_dir, module_name)
-            connector = aiohttp.UnixConnector(socket_path)
-        self.http_client_session = aiohttp.ClientSession(connector=connector)
+        self.http_client_session = get_http_session_to_module(
+            module_name, self.config.socket_dir
+        )
 
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 

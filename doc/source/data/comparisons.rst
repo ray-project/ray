@@ -23,7 +23,7 @@ How does Ray Data compare to other solutions for offline inference?
 
     Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.getdaft.io>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
-    However, Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic ETL pipelines like Spark and Daft.
+    However, Ray Data doesn't have a SQL interface unlike Spark and Daft.
 
     For a more detailed performance comparison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 

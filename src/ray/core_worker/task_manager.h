@@ -27,6 +27,7 @@
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/core_worker/task_finisher.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,47 +38,6 @@ namespace ray {
 namespace core {
 
 class ActorManager;
-
-class TaskFinisherInterface {
- public:
-  virtual void CompletePendingTask(const TaskID &task_id,
-                                   const rpc::PushTaskReply &reply,
-                                   const rpc::Address &actor_addr,
-                                   bool is_application_error) = 0;
-
-  virtual bool RetryTaskIfPossible(const TaskID &task_id,
-                                   const rpc::RayErrorInfo &error_info) = 0;
-
-  virtual void FailPendingTask(const TaskID &task_id,
-                               rpc::ErrorType error_type,
-                               const Status *status = nullptr,
-                               const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
-
-  virtual bool FailOrRetryPendingTask(const TaskID &task_id,
-                                      rpc::ErrorType error_type,
-                                      const Status *status,
-                                      const rpc::RayErrorInfo *ray_error_info = nullptr,
-                                      bool mark_task_object_failed = true,
-                                      bool fail_immediately = false) = 0;
-
-  virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                           const NodeID &node_id,
-                                           const WorkerID &worker_id) = 0;
-
-  virtual void OnTaskDependenciesInlined(
-      const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids) = 0;
-
-  virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
-
-  virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
-
-  virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
-
-  virtual bool IsTaskPending(const TaskID &task_id) const = 0;
-
-  virtual ~TaskFinisherInterface() = default;
-};
 
 class TaskResubmissionInterface {
  public:
@@ -545,7 +505,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
   std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
@@ -779,7 +739,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
-      const absl::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
+      const std::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///

@@ -68,7 +68,7 @@ std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
   auto head = requests.begin();
   if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&

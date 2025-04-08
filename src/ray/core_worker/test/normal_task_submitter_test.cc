@@ -177,7 +177,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
     TaskSpecification task = BuildEmptyTaskSpec();
     return task;
   }

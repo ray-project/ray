@@ -15,6 +15,7 @@ class Frequency(enum.Enum):
     NIGHTLY = enum.auto()
     NIGHTLY_3x = enum.auto()
     WEEKLY = enum.auto()
+    MONTHTLY = enum.auto()
 
 
 frequency_str_to_enum = {
@@ -25,6 +26,7 @@ frequency_str_to_enum = {
     "nightly": Frequency.NIGHTLY,
     "nightly-3x": Frequency.NIGHTLY_3x,
     "weekly": Frequency.WEEKLY,
+    "monthly": Frequency.MONTHTLY,
 }
 
 

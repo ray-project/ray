@@ -513,7 +513,7 @@ class SACConfig(AlgorithmConfig):
             return RLModuleSpec(module_class=DefaultSACTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)
@@ -524,7 +524,7 @@ class SACConfig(AlgorithmConfig):
             return SACTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)

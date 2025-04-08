@@ -213,6 +213,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block",
+    size = "small",
+    srcs = ["tests/test_block.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_block_batching",
     size = "medium",
     srcs = ["tests/block_batching/test_block_batching.py"],
@@ -410,7 +424,7 @@ py_test(
 
 py_test(
     name = "test_hudi",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_hudi.py"],
     tags = [
         "exclusive",
@@ -538,6 +552,20 @@ py_test(
     name = "test_parquet",
     size = "medium",
     srcs = ["tests/test_parquet.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_path_util",
+    size = "small",
+    srcs = ["tests/test_path_util.py"],
     tags = [
         "exclusive",
         "team:data",

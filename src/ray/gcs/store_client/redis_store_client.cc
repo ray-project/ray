@@ -510,7 +510,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service;
 
   auto thread = std::make_unique<std::thread>([&]() {
-    boost::asio::io_service::work work(io_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        io_service.get_executor());
     io_service.run();
   });
 

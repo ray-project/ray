@@ -26,7 +26,7 @@ namespace {
 const size_t UINT64_size = sizeof(uint64_t);
 }
 
-/* static */ absl::optional<SpilledObjectReader>
+/* static */ std::optional<SpilledObjectReader>
 SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
   std::string file_path;
   uint64_t object_offset = 0;
@@ -35,7 +35,7 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
   if (!SpilledObjectReader::ParseObjectURL(
           object_url, file_path, object_offset, object_size)) {
     RAY_LOG(WARNING) << "Failed to parse spilled object url: " << object_url;
-    return absl::optional<SpilledObjectReader>();
+    return std::optional<SpilledObjectReader>();
   }
 
   uint64_t data_offset = 0;
@@ -53,10 +53,10 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
                                                      metadata_size,
                                                      owner_address)) {
     RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
-    return absl::optional<SpilledObjectReader>();
+    return std::optional<SpilledObjectReader>();
   }
 
-  return absl::optional<SpilledObjectReader>(
+  return std::optional<SpilledObjectReader>(
       SpilledObjectReader(std::move(file_path),
                           object_size,
                           data_offset,

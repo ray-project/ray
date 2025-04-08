@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 from ray.data.datasource import (
     BaseFileMetadataProvider,

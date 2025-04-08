@@ -331,7 +331,7 @@ struct GcsServerMocker {
 
     /// ShutdownRaylet
     void ShutdownRaylet(
-        const NodeID &node_id,
+        const NodeID &raylet_node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 

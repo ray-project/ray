@@ -16,4 +16,4 @@ coeffcient.
 
 **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#sac)**
 
-**[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py)**
+**[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py)**

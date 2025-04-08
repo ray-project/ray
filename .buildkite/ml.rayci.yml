@@ -274,6 +274,7 @@ steps:
     key: ml_flaky_tests
     tags:
       - train
+      - flaky
       - skip-on-premerge
     instance_type: large
     commands:

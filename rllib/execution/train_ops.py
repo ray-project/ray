@@ -111,7 +111,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     """
     if log_once("mulit_gpu_train_one_step_deprecation_warning"):
         deprecation_warning(
-            old=("ray.rllib.execution.train_ops." "multi_gpu_train_one_step")
+            old=("ray.rllib.execution.train_ops.multi_gpu_train_one_step")
         )
     config = algorithm.config
     workers = algorithm.env_runner_group

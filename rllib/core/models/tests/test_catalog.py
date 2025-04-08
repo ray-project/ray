@@ -97,6 +97,20 @@ class TestCatalog(unittest.TestCase):
                 outputs[Columns.STATE_OUT],
             )
 
+    def test_atari_help(self):
+        """Tests that we raise an appropriate error message if a user tries to create a
+        Catalog object for an Atari game's observation space without providing a cnn
+        config.
+        """
+        import pytest
+
+        with pytest.raises(ValueError, match="This is the default atari obs shape."):
+            Catalog(
+                observation_space=Box(-np.inf, np.inf, [210, 160, 3], dtype=np.float32),
+                action_space=Box(-1, 1, (1,)),
+                model_config_dict={},
+            )
+
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
 

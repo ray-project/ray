@@ -28,6 +28,7 @@ class SelfSupervisedLossAPI(abc.ABC):
         config: "AlgorithmConfig",
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
+        **kwargs,
     ) -> TensorType:
         """Computes the loss for a single module.
 

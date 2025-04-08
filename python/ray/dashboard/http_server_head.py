@@ -264,7 +264,7 @@ class HttpServerDashboardHead:
         self.runner = aiohttp.web.AppRunner(
             app,
             access_log_format=(
-                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+                "%a %t '%r' %s %b bytes %D us '%{Referer}i' '%{User-Agent}i'"
             ),
         )
         await self.runner.setup()

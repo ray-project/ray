@@ -1940,3 +1940,20 @@ def validate_socket_filepath(filepath: str):
         raise OSError(
             f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
         )
+
+
+# Whether we're currently running in a test, either local or CI.
+in_test = None
+
+
+def is_in_test():
+    global in_test
+
+    if in_test is None:
+        in_test = any(
+            env_var in os.environ
+            # These environment variables are always set by pytest and Buildkite,
+            # respectively.
+            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
+        )
+    return in_test

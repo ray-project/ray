@@ -25,12 +25,6 @@ def get_parser():
         default=False,
     )
     parser.add_argument(
-        "--model-source",
-        type=str,
-        default="unsloth/Llama-3.1-8B-Instruct",
-        help="Model source.",
-    )
-    parser.add_argument(
         "--dynamic-lora-loading-path",
         type=str,
         default=None,

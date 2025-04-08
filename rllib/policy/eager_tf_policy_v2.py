@@ -786,7 +786,9 @@ class EagerTFPolicyV2(Policy):
             if is_overridden(self.action_sampler_fn):
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
-                    input_dict[SampleBatch.OBS],
+                    obs_batch=input_dict[SampleBatch.OBS],
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
                     explore=explore,
                     timestep=timestep,
                     episodes=episodes,

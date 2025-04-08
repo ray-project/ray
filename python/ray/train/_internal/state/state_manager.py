@@ -38,7 +38,6 @@ class TrainRunStateManager:
         datasets: Dict[str, Dataset],
         worker_group: WorkerGroup,
         start_time_ms: float,
-        controller_log_file_path: str,
         resources: List[Dict[str, float]],
         status_detail: str = "",
     ) -> None:
@@ -53,7 +52,6 @@ class TrainRunStateManager:
         def collect_train_worker_info():
             train_context = ray.train.get_context()
             core_context = ray.runtime_context.get_runtime_context()
-            worker_log_file_path = ray._private.worker.global_worker.get_err_file_path()
             return TrainWorkerInfo(
                 world_rank=train_context.get_world_rank(),
                 local_rank=train_context.get_local_rank(),
@@ -64,7 +62,6 @@ class TrainRunStateManager:
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
                 resources=resources[0],
-                worker_log_file_path=worker_log_file_path,
                 status=ActorStatusEnum.ALIVE,
             )
 
@@ -103,7 +100,6 @@ class TrainRunStateManager:
             start_time_ms=start_time_ms,
             run_status=run_status,
             status_detail=status_detail,
-            controller_log_file_path=controller_log_file_path,
             resources=resources,
         )
 

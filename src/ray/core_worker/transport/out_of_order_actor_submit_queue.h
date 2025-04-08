@@ -58,7 +58,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   ///   - nullopt if no task ready to send
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
-  absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
+  std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
   /// On client connect/reconnect, find all the TASK that's known to be
   /// executed out of order. This ALWAYS RETURNS empty.
   std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;

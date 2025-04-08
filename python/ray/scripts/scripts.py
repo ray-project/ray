@@ -520,7 +520,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -539,6 +539,12 @@ Windows powershell users need additional escaping:
     required=False,
     type=str,
     help="object store directory for memory mapped files",
+)
+@click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
 )
 @click.option(
     "--autoscaling-config",
@@ -669,11 +675,12 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -747,6 +754,11 @@ def start(
         warnings.warn(
             "--storage is deprecated and will be removed in a future version of Ray.",
         )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -767,6 +779,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -777,7 +790,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,

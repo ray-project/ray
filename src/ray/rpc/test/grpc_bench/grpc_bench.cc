@@ -74,7 +74,8 @@ int main() {
   GrpcServer server("grpc_bench", 50051, false, parallelism);
   instrumented_io_context main_service;
   std::thread t([&main_service] {
-    boost::asio::io_service::work work(main_service);
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        main_service.get_executor());
     main_service.run();
   });
   GreeterServiceHandler handler;

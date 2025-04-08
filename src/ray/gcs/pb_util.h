@@ -431,7 +431,7 @@ inline std::string FormatPlacementGroupDetails(
 /// \param strategy The placement strategy of placement group.
 /// \return The placement constraint for placement group if it's not a strict
 ///   strategy, else absl::nullopt.
-inline absl::optional<rpc::autoscaler::PlacementConstraint>
+inline std::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
   rpc::autoscaler::PlacementConstraint pg_constraint;

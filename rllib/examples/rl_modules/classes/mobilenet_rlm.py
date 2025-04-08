@@ -55,7 +55,6 @@ class MobileNetTorchPPORLModule(DefaultPPOTorchRLModule):
 
 config = (
     PPOConfig()
-    .rl_module(rl_module_spec=RLModuleSpec(module_class=MobileNetTorchPPORLModule))
     .environment(
         RandomEnv,
         env_config={
@@ -73,7 +72,12 @@ config = (
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!
-    .training(train_batch_size_per_learner=32, minibatch_size=16, num_epochs=1)
+    .training(
+        train_batch_size_per_learner=32,
+        minibatch_size=16,
+        num_epochs=1,
+    )
+    .rl_module(rl_module_spec=RLModuleSpec(module_class=MobileNetTorchPPORLModule))
 )
 
 config.build().train()

@@ -37,7 +37,7 @@ using namespace boost::asio::ip;  // NOLINT
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 
 int GetFreePort() {
-  io_service io_service;
+  io_context io_service;
   tcp::acceptor acceptor(io_service);
   tcp::endpoint endpoint;
 
@@ -265,7 +265,8 @@ TEST_F(GcsHealthCheckManagerTest, StressTest) {
 #ifdef _RAY_TSAN_BUILD
   GTEST_SKIP() << "Disabled in tsan because of performance";
 #endif
-  boost::asio::io_service::work work(io_service);
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+      io_service.get_executor());
   std::srand(std::time(nullptr));
   auto t = std::make_unique<std::thread>([this]() { this->io_service.run(); });
 

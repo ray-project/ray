@@ -2351,7 +2351,7 @@ def test_list_cluster_events(shutdown_only):
         print(events)
         assert len(events) == 1
         assert (
-            "Error: No available node types can fulfill " "resource request"
+            "Error: No available node types can fulfill resource request"
         ) in events[0]["message"]
         return True
 

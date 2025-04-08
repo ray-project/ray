@@ -19,7 +19,6 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 

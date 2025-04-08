@@ -46,6 +46,7 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.utils import ResponseType
+import time
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -178,13 +179,30 @@ class JobHead(SubprocessModule):
         # {node_id: JobAgentSubmissionClient}
         self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
 
-    async def get_target_agent(self) -> JobAgentSubmissionClient:
+    async def get_target_agent(
+        self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
+    ) -> JobAgentSubmissionClient:
+        """
+        Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
+        via an agent process.
+
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via an agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
+        """
         if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
-            return await self._get_head_node_agent()
+            return await self._get_head_node_agent(timeout_s)
 
-        return await self._pick_random_agent()
+        return await self._pick_random_agent(timeout_s)
 
-    async def _pick_random_agent(self) -> Optional[JobAgentSubmissionClient]:
+    async def _pick_random_agent(
+        self, timeout_s: float
+    ) -> Optional[JobAgentSubmissionClient]:
         """
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
@@ -201,15 +219,30 @@ class JobHead(SubprocessModule):
 
         If there's no agent available at all, or there's exception, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
+
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via an agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
         """
-        while True:
+        start_time_s = time.time()
+        last_exception = None
+        while time.time() < start_time_s + timeout_s:
             try:
                 return await self._pick_random_agent_once()
-            except Exception:
+            except Exception as e:
+                last_exception = e
                 logger.exception(
                     f"Failed to pick a random agent, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        raise TimeoutError(
+            f"Failed to pick a random agent within {timeout_s} seconds. The last exception is {last_exception}"
+        )
 
     async def _pick_random_agent_once(self) -> JobAgentSubmissionClient:
         """
@@ -237,7 +270,7 @@ class JobHead(SubprocessModule):
                 # Fetch agent info from InternalKV, and create a new
                 # JobAgentSubmissionClient. May raise if the node_id is removed in
                 # InternalKV after the _fetch_all_agent_node_ids, though unlikely.
-                ip, http_port, grpc_port = await self._fetch_agent_info(node_id)
+                ip, http_port, _ = await self._fetch_agent_info(node_id)
                 agent_http_address = f"http://{ip}:{http_port}"
                 self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
@@ -252,25 +285,40 @@ class JobHead(SubprocessModule):
         head_node_id = NodeID.from_hex(head_node_id_hex)
 
         if head_node_id not in self._agents:
-            ip, http_port, grpc_port = await self._fetch_agent_info(head_node_id)
+            ip, http_port, _ = await self._fetch_agent_info(head_node_id)
             agent_http_address = f"http://{ip}:{http_port}"
             self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
 
         return self._agents[head_node_id]
 
-    async def _get_head_node_agent(self) -> JobAgentSubmissionClient:
+    async def _get_head_node_agent(self, timeout_s: float) -> JobAgentSubmissionClient:
         """Retrieves HTTP client for `JobAgent` running on the Head node. If the head
         node does not have an agent, it will retry every
         `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
+
+        Args:
+            timeout_s: The timeout for the operation.
+
+        Returns:
+            A `JobAgentSubmissionClient` for interacting with jobs via the head node's agent process.
+
+        Raises:
+            TimeoutError: If the operation times out.
         """
-        while True:
+        timeout_point = time.time() + timeout_s
+        exception = None
+        while time.time() < timeout_point:
             try:
                 return await self._get_head_node_agent_once()
-            except Exception:
+            except Exception as e:
+                exception = e
                 logger.exception(
                     f"Failed to get head node agent, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
                 )
                 await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        raise TimeoutError(
+            f"Failed to get head node agent within {timeout_s} seconds. The last exception is {exception}"
+        )
 
     async def _fetch_all_agent_node_ids(self) -> List[NodeID]:
         """
@@ -307,7 +355,10 @@ class JobHead(SubprocessModule):
         )
         if not value:
             raise KeyError(
-                f"Agent info not found in internal kv for node {target_node_id}"
+                f"Agent info not found in internal KV for node {target_node_id}. "
+                "It's possible that the agent didn't launch successfully due to "
+                "port conflicts or other issues. Please check `dashboard_agent.log` "
+                "for more details."
             )
         return json.loads(value.decode())
 
@@ -384,10 +435,7 @@ class JobHead(SubprocessModule):
             submit_request: JobSubmitRequest = result
 
         try:
-            job_agent_client = await asyncio.wait_for(
-                self.get_target_agent(),
-                timeout=WAIT_AVAILABLE_AGENT_TIMEOUT,
-            )
+            job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
             return Response(
@@ -431,10 +479,7 @@ class JobHead(SubprocessModule):
             )
 
         try:
-            job_agent_client = await asyncio.wait_for(
-                self.get_target_agent(),
-                timeout=WAIT_AVAILABLE_AGENT_TIMEOUT,
-            )
+            job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.stop_job_internal(job.submission_id)
         except Exception:
             return Response(
@@ -466,10 +511,7 @@ class JobHead(SubprocessModule):
             )
 
         try:
-            job_agent_client = await asyncio.wait_for(
-                self.get_target_agent(),
-                timeout=WAIT_AVAILABLE_AGENT_TIMEOUT,
-            )
+            job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.delete_job_internal(job.submission_id)
         except Exception:
             return Response(

@@ -19,7 +19,7 @@ from typing import (
 import ray
 import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.channel.utils import get_default_torch_device
+from ray.experimental.channel.utils import get_devices
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -163,7 +163,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-            self._torch_device = get_default_torch_device(allow_cpu=True)
+            self._torch_device = get_devices()[0]
 
         return self._torch_device
 

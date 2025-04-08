@@ -221,6 +221,7 @@ steps:
     tags:
       - python
       - data
+      - flaky
       - skip-on-premerge
     instance_type: medium
     soft_fail: true

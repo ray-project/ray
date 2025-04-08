@@ -28,18 +28,15 @@
 
 #include "ray/object_manager/plasma/store.h"
 
-#include <limits.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include <boost/bind/bind.hpp>
 #include <chrono>
+#include <climits>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
