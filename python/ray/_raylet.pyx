@@ -180,6 +180,8 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
+from ray.cython_components.object_ref_generator cimport DynamicObjectRefGenerator
+
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -275,22 +277,6 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
-
-
-class DynamicObjectRefGenerator:
-    def __init__(self, refs):
-        # TODO(swang): As an optimization, can also store the generator
-        # ObjectID so that we don't need to keep individual ref counts for the
-        # inner ObjectRefs.
-        self._refs = refs
-
-    def __iter__(self):
-        while self._refs:
-            yield self._refs.pop(0)
-
-    def __len__(self):
-        return len(self._refs)
-
 
 class ObjectRefGenerator:
     """A generator to obtain object references
