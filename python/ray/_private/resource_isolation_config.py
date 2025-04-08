@@ -48,11 +48,11 @@ class ResourceIsolationConfig:
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
         # cgroupv2 cpu.weight calculated from system_reserved_cpu
-        # assumes ray uses all available cores
+        # assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
         # used in add_object_store_memory to ensure
         # object_store_memory is not added twice to the
-        # number of bytes reserved for system processes
+        # number of bytes reserved for system processes.
         self._constructed = False
 
         if not enable_resource_isolation:
@@ -78,13 +78,13 @@ class ResourceIsolationConfig:
             return
 
         # resource isolation is enabled
-        self.system_reserved_cpu_weight = self._validate_system_reserved_cpu(
+        self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
             system_reserved_cpu
         )
-        self.system_reserved_memory = self._validate_system_reserved_memory(
+        self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
             system_reserved_memory
         )
-        self.cgroup_path = self._validate_cgroup_path(cgroup_path)
+        self.cgroup_path = self._validate_and_get_cgroup_path(cgroup_path)
 
     def is_enabled(self) -> bool:
         return self._resource_isolation_enabled
@@ -113,7 +113,7 @@ class ResourceIsolationConfig:
         self._constructed = True
 
     @staticmethod
-    def _validate_cgroup_path(cgroup_path: Optional[str]) -> str:
+    def _validate_and_get_cgroup_path(cgroup_path: Optional[str]) -> str:
         """Returns the ray_constants.DEFAULT_CGROUP_PATH if cgroup_path is not
         specified. Checks the type of cgroup_path.
 
@@ -137,7 +137,9 @@ class ResourceIsolationConfig:
         return cgroup_path
 
     @staticmethod
-    def _validate_system_reserved_cpu(system_reserved_cpu: Optional[float]) -> int:
+    def _validate_and_get_system_reserved_cpu(
+        system_reserved_cpu: Optional[float],
+    ) -> int:
         """If system_reserved_cpu is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range, and converts it into cpu.weights
         for cgroupv2. See https://docs.kernel.org/admin-guide/cgroup-v2.html#weights for more information.
@@ -196,7 +198,9 @@ class ResourceIsolationConfig:
         )
 
     @staticmethod
-    def _validate_system_reserved_memory(system_reserved_memory: Optional[int]) -> int:
+    def _validate_and_get_system_reserved_memory(
+        system_reserved_memory: Optional[int],
+    ) -> int:
         """If system_reserved_memory is not specified, returns the default value. Otherwise,
         checks the type, makes sure that the value is in range.
 
