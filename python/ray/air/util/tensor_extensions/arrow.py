@@ -773,16 +773,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             if column_name:
                 data_str += f"column: '{column_name}', "
             data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-            try:
-                from ray.data.extensions.object_extension import ArrowPythonObjectArray
-
-                return ArrowPythonObjectArray.from_objects(arr)
-            except Exception:
-                data_str = ""
-                if column_name:
-                    data_str += f"column: '{column_name}', "
-                data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-                raise ArrowConversionError(data_str) from e
+            raise ArrowConversionError(data_str) from e
 
     @classmethod
     def _from_numpy(
