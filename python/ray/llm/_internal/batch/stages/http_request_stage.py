@@ -78,10 +78,8 @@ class HttpRequestUDF(StatefulStageUDF):
 
             # First send all requests based on QPS
             for row_idx_in_list, row in enumerate(batch):
-                print(f"HEREERERE: {self.qps}")
                 # Rate limit based on qps if specified
                 if self.qps is not None:
-                    print("INSIDE")
                     request_count += 1
                     expected_time = request_count / self.qps
                     elapsed = time.time() - start_time
@@ -125,7 +123,6 @@ class HttpRequestUDF(StatefulStageUDF):
                                 await asyncio.sleep(wait_time)
                                 continue
                             resp_json = await response.json()
-                            print(f"json : {resp_json}")
                             if self.IDX_IN_BATCH_COLUMN in resp_json:
                                 raise ValueError(
                                     "The response of the HTTP request must not contain "
