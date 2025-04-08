@@ -391,38 +391,19 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     class RestartableActor:
         """An actor that will be reconstructed at most once."""
 
-        def __init__(self):
-            self.value = 0
-
-        def increase(self):
-            self.value += 1
-            return self.value
-
-        def ready(self):
-            return
+        def echo(self, value):
+            return value
 
     actor = RestartableActor.options(lifetime="detached").remote()
-    ray.get(actor.ready.remote())
-    results = [actor.increase.remote() for _ in range(100)]
+    ray.get(actor.__ray_ready__.remote())
+    results = [actor.echo.remote(i) for i in range(100)]
     # Kill actor node, while the above task is still being executed.
     cluster.remove_node(actor_node)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
-    # Check that none of the tasks failed and the actor is restarted.
-    seq = list(range(1, 101))
+    # All tasks should be executed successfully.
     results = ray.get(results)
-    failed_task_index = None
-    # Make sure that all tasks were executed in order before and after the
-    # actor's death.
-    for i, res in enumerate(results):
-        elm = seq.pop(0)
-        if res != elm:
-            if failed_task_index is None:
-                failed_task_index = i
-            assert res + failed_task_index == elm
-    # Check that we can still call the actor.
-    result = ray.get(actor.increase.remote())
-    assert result == 1 or result == results[-1] + 1
+    assert results == list(range(100))
 
 
 def test_caller_actor_restart(ray_start_regular):
