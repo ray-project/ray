@@ -174,9 +174,7 @@ def test_configure_execution_options_carryover_context(ray_start_4_cpus):
 
 @pytest.mark.parametrize("enable_locality", [True, False])
 def test_configure_locality(enable_locality):
-    options = DataConfig.default_ingest_options()
-    options.locality_with_output = enable_locality
-    data_config = DataConfig(execution_options=options)
+    data_config = DataConfig(_streaming_split_locality=enable_locality)
 
     mock_ds = MagicMock()
     mock_ds.streaming_split = MagicMock()
