@@ -88,6 +88,10 @@ class DataConfig:
         """
         output = [{} for _ in range(world_size)]
 
+        for dataset_name, dataset in datasets.items():
+            if dataset.name is None:
+                dataset.set_name(dataset_name)
+
         if self._datasets_to_split == "all":
             datasets_to_split = set(datasets.keys())
         else:
