@@ -101,7 +101,9 @@ class ArrowRow(TableRow):
             try:
                 # item.as_py() sometime convert special scalar types to
                 # native python types, which is lossy.
-                if len(items) > 0 and isinstance(items[0].type, pyarrow.lib.DictionaryType):
+                if len(items) > 0 and isinstance(
+                    items[0].type, pyarrow.lib.DictionaryType
+                ):
                     return items
                 # Try to interpret this as a pyarrow.Scalar value.
                 return tuple([item.as_py() for item in items])
