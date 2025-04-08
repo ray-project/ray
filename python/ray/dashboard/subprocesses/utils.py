@@ -17,13 +17,14 @@ class ResponseType(enum.Enum):
 
 
 def module_logging_filename(
-    module_name: str, logging_filename: str, is_stderr=False
+    module_name: str, logging_filename: str, extension: str = ""
 ) -> str:
     """
     Parse logging_filename = STEM EXTENSION,
     return STEM _ MODULE_NAME _ EXTENSION
 
-    If is_stderr is True, EXTENSION is ".err"
+    If logging_filename is empty, return empty string.
+    If extension is empty, use the extension from logging_filename.
 
     Example:
     module_name = "TestModule"
@@ -32,9 +33,11 @@ def module_logging_filename(
     EXTENSION = ".log"
     return "dashboard_TestModule.log"
     """
-    stem, extension = os.path.splitext(logging_filename)
-    if is_stderr:
-        extension = ".err"
+    if not logging_filename:
+        return ""
+    stem, ext = os.path.splitext(logging_filename)
+    if not extension:
+        extension = ext
     return f"{stem}_{module_name}{extension}"
 
 
