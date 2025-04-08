@@ -2,6 +2,7 @@ import os
 import sys
 import pytest
 import subprocess
+import tempfile
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
@@ -22,12 +23,42 @@ def add_default_labels(node_info, labels):
     ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
     indirect=True,
 )
-def test_ray_start_set_node_labels(call_ray_start):
+def test_ray_start_set_node_labels_from_json(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
     assert node_info["Labels"] == add_default_labels(
         node_info, {"gpu_type": "A100", "region": "us"}
     )
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ['ray start --head --labels-str "gpu_type=A100,region=us"'],
+    indirect=True,
+)
+def test_ray_start_set_node_labels_from_string(call_ray_start):
+    ray.init(address=call_ray_start)
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(
+        node_info, {"gpu_type": "A100", "region": "us"}
+    )
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --labels-file "],
+    indirect=True,
+)
+def test_ray_start_set_node_labels_from_file(call_ray_start):
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
+        test_file.flush()  # Ensure data is written
+        call_ray_start += test_file.name  # Pass in the generated file name
+        ray.init(address=call_ray_start)
+        node_info = ray.nodes()[0]
+        assert node_info["Labels"] == add_default_labels(
+            node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
+        )
 
 
 @pytest.mark.parametrize(
