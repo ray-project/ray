@@ -507,6 +507,21 @@ class BlockAccessor:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
 
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ) -> List[Block]:
+        """NOTE: PLEASE READ CAREFULLY
+
+        Returns dataset partitioned using list of boundaries
+
+        This method requires that
+            - Block being sorted (according to `sort_key`)
+            - Boundaries is a sorted list of tuples
+        """
+        raise NotImplementedError
+
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
@@ -600,6 +615,10 @@ class BlockColumnAccessor:
 
     def to_pylist(self) -> List[Any]:
         """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """Converts underlying column to Numpy"""
         raise NotImplementedError()
 
     def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
