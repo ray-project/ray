@@ -786,6 +786,8 @@ class IMPALA(Algorithm):
                     config=self.config,
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
 
     def _sample_and_get_connector_states(self):
