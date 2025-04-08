@@ -68,17 +68,28 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
-class _NullSentinel:
-    """Sentinel value that sorts greater than any other value."""
+class _OrderedNullSentinel:
+    """Sentinel value that sorts greater than any other non-null value.
+
+    NOTE: Semantic of this sentinel is closely mirroring that one of
+          ``np.nan`` for the purpose of consistency in handling of
+          ``None``s and ``np.nan``s.
+    """
 
     def __eq__(self, other):
-        return isinstance(other, _NullSentinel)
-
-    def __lt__(self, other):
         return False
 
+    def __lt__(self, other):
+        # not None < _OrderedNullSentinel
+        # _OrderedNullSentinel < _OrderedNullSentinel
+        # _OrderedNullSentinel < None
+        # _OrderedNullSentinel < np.nan
+        return isinstance(other, _OrderedNullSentinel) or is_null(other)
+
     def __le__(self, other):
-        return isinstance(other, _NullSentinel)
+        # NOTE: This is just a shortened version of
+        #   self < other or self == other
+        return self.__lt__(other)
 
     def __gt__(self, other):
         return not self.__le__(other)
@@ -90,7 +101,7 @@ class _NullSentinel:
         return id(self)
 
 
-NULL_SENTINEL = _NullSentinel()
+NULL_SENTINEL = _OrderedNullSentinel()
 
 
 def _lazy_import_pyarrow_dataset() -> LazyModule:
@@ -766,12 +777,6 @@ def find_partition_index(
         if desired_val is None:
             desired_val = NULL_SENTINEL
 
-        # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # noqa: E711
-        if null_mask.any():
-            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
-            col_vals[null_mask] = NULL_SENTINEL
-
         prevleft = left
         if descending[i] is True:
             # ``np.searchsorted`` expects the array to be sorted in ascending
@@ -801,32 +806,8 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+
     return right if descending[0] is True else left
-
-
-def find_partitions(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Union[int, float]]],
-    sort_key: "SortKey",
-):
-    partitions = []
-
-    # For each boundary value, count the number of items that are less
-    # than it. Since the block is sorted, these counts partition the items
-    # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-    # partition[i]. If `descending` is true, `boundaries` would also be
-    # in descending order and we only need to count the number of items
-    # *greater than* the boundary value instead.
-    bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
-    ]
-
-    last_idx = 0
-    for idx in bounds:
-        partitions.append(table[last_idx:idx])
-        last_idx = idx
-    partitions.append(table[last_idx:])
-    return partitions
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
@@ -1466,13 +1447,6 @@ def iterate_with_retry(
                 time.sleep(backoff)
             else:
                 raise e from None
-
-
-def create_dataset_tag(dataset_name: Optional[str], *args):
-    tag = dataset_name or "dataset"
-    for arg in args:
-        tag += f"_{arg}"
-    return tag
 
 
 def convert_bytes_to_human_readable_str(num_bytes: int) -> str:

@@ -35,7 +35,7 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     const std::shared_ptr<const TaskSpecification> &task_spec,
-    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
     : TaskEvent(task_id, job_id, attempt_number),
       task_status_(task_status),
       timestamp_(timestamp),
@@ -212,7 +212,7 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     bool include_task_info,
-    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
   if (!Enabled()) {
     return false;
   }
