@@ -173,7 +173,6 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-# @pytest.mark.timeout(30)
 def test_redeploy_multiple_replicas(serve_instance):
     """
     This test demonstrates zero downtime when redeploying a deployment with
