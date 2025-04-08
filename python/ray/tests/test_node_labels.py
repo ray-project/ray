@@ -44,17 +44,13 @@ def test_ray_start_set_node_labels_from_string(call_ray_start):
     )
 
 
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --labels-file "],
-    indirect=True,
-)
-def test_ray_start_set_node_labels_from_file(call_ray_start):
+def test_ray_start_set_node_labels_from_file():
     with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
         test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
         test_file.flush()  # Ensure data is written
-        call_ray_start += test_file.name  # Pass in the generated file name
-        ray.init(address=call_ray_start)
+
+        cmd = ["ray", "start", "--head", "--labels-file", test_file.name]
+        subprocess.run(cmd, stderr=subprocess.PIPE).stderr.decode("utf-8")
         node_info = ray.nodes()[0]
         assert node_info["Labels"] == add_default_labels(
             node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
@@ -112,7 +108,7 @@ def test_ray_init_set_node_labels_value_error(ray_start_cluster):
 
 def test_ray_start_set_node_labels_value_error():
     out = check_cmd_stderr(["ray", "start", "--head", "--labels=xxx"])
-    assert "is not a valid JSON string, detail error" in out
+    assert "is not a valid JSON string, detailed error" in out
 
     out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
     assert 'The value of the "gpu_type" is not string type' in out
