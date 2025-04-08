@@ -642,7 +642,8 @@ class Algorithm(Checkpointable, Trainable):
                 # New API stack: User decides whether to create local env runner.
                 # Old API stack: Always create local EnvRunner.
                 local_env_runner=(
-                    True if not self.config.enable_env_runner_and_connector_v2
+                    True
+                    if not self.config.enable_env_runner_and_connector_v2
                     else self.config.create_local_env_runner
                 ),
                 logdir=self.logdir,
@@ -793,8 +794,8 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )[COMPONENT_LEARNER]
             if self.env_runner_group:
-                #if self.env_runner is not None:
-                #self.env_runner.set_state(rl_module_state)
+                # if self.env_runner is not None:
+                # self.env_runner.set_state(rl_module_state)
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
