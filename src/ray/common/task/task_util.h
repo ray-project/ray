@@ -172,10 +172,9 @@ class TaskSpecBuilder {
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
-    message_->mutable_labels()
-        ->insert(labels.begin(), labels.end());
-    message_->mutable_label_selector()
-        ->insert(label_selector.begin(), label_selector.end());
+    message_->mutable_labels()->insert(labels.begin(), labels.end());
+    message_->mutable_label_selector()->insert(label_selector.begin(),
+                                               label_selector.end());
     return *this;
   }
 
