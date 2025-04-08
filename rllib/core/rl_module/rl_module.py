@@ -108,7 +108,7 @@ class RLModuleSpec:
             )
         # Older custom model might still require the old `RLModuleConfig` under
         # the `config` arg.
-        except AttributeError as e:
+        except AttributeError:
             module_config = self.get_rl_module_config()
             module = self.module_class(module_config)
         return module
