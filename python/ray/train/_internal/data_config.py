@@ -6,8 +6,6 @@ from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private.ray_constants import env_bool
-from ray.train.constants import RAY_TRAIN_STREAMING_SPLIT_LOCALITY
 
 
 @PublicAPI(stability="stable")
@@ -22,9 +20,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
-        streaming_split_locality: bool = env_bool(
-            RAY_TRAIN_STREAMING_SPLIT_LOCALITY, True
-        ),
+        _streaming_split_locality: bool = True,
     ):
         """Construct a DataConfig.
 
@@ -35,8 +31,10 @@ class DataConfig:
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
-            streaming_split_locality: If it's true, then pass in the Train worker nodes
-                as locality hints to streaming_split operations. On by default.
+            _streaming_split_locality[Advanced]: If it's true, then pass in the Train
+                worker nodes as locality hints to streaming_split operations, which
+                prefers assigning data shards to Train workers located on the same node
+                as the ready data. On by default.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
@@ -50,7 +48,7 @@ class DataConfig:
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )
-        self._streaming_split_locality = streaming_split_locality
+        self._streaming_split_locality = _streaming_split_locality
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0

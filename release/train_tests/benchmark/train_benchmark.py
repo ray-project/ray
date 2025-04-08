@@ -351,14 +351,6 @@ def main():
     else:
         raise ValueError
 
-    ray_data_execution_options = ray.train.DataConfig.default_ingest_options()
-    ray_data_execution_options.locality_with_output = (
-        benchmark_config.locality_with_output
-    )
-    ray_data_execution_options.actor_locality_enabled = (
-        benchmark_config.actor_locality_enabled
-    )
-
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={"factory": factory},
@@ -366,11 +358,6 @@ def main():
             num_workers=benchmark_config.num_workers,
             use_gpu=not benchmark_config.mock_gpu,
             resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
-        ),
-        dataset_config=ray.train.DataConfig(
-            datasets_to_split="all",
-            execution_options=ray_data_execution_options,
-            streaming_split_locality=benchmark_config.streaming_split_locality,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
