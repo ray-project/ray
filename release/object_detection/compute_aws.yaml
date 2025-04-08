@@ -23,7 +23,7 @@ worker_node_types:
     resources:
       CPU: 8
       memory: 32000
-      
+
   # GPU worker nodes for ML tasks
   - name: gpu_worker
     instance_type: g4dn.xlarge  # 4 vCPUs, 16 GB memory, 1 T4 GPU
