@@ -22,7 +22,9 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
-        streaming_split_locality: bool = env_bool(RAY_TRAIN_STREAMING_SPLIT_LOCALITY),
+        streaming_split_locality: bool = env_bool(
+            RAY_TRAIN_STREAMING_SPLIT_LOCALITY, True
+        ),
     ):
         """Construct a DataConfig.
 
