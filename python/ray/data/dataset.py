@@ -4248,7 +4248,7 @@ class Dataset:
         ray_remote_args: dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> "Dataset":
-        """Creates a lazy write operation for writing the dataset to a custom :class:`~ray.data.Datasink`.
+        """Writes the dataset to a custom :class:`~ray.data.Datasink` lazily while allowing subsequent data operations.
 
         Unlike :meth:`~write_datasink`, this method does not trigger execution immediately.
         The write operation will be executed when the returned dataset is materialized or consumed.
@@ -4264,7 +4264,8 @@ class Dataset:
                 decided based on the available resources.
 
         Returns:
-            A Dataset containing the write operation in its execution plan.
+            A Dataset containing the write operation in its execution plan, with the same data
+            as the original dataset.
         """
         if ray_remote_args is None:
             ray_remote_args = {}
