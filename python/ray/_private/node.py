@@ -139,7 +139,6 @@ class Node:
         self._config = ray_params._system_config or {}
 
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
-        self._dashboard_grpc_port = ray_params.dashboard_grpc_port
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -714,11 +713,6 @@ class Node:
         return self._dashboard_agent_listen_port
 
     @property
-    def dashboard_grpc_port(self):
-        """Get the dashboard head grpc port"""
-        return self._dashboard_grpc_port
-
-    @property
     def logging_config(self):
         """Get the logging config of the current node."""
         return {
@@ -1169,10 +1163,8 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
-        # Only redirect logs to .err. .err file is only useful when the
-        # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
-            "dashboard", unique=True, create_out=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "dashboard", unique=True, create_out=True, create_err=True
         )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
@@ -1185,13 +1177,11 @@ class Node:
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
-            dashboard_grpc_port=self._ray_params.dashboard_grpc_port,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:

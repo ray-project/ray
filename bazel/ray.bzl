@@ -11,10 +11,15 @@ COPTS_WITHOUT_LOG = select({
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
+    "@platforms//os:osx": [
+        # TODO(dayshah): The fixes required to keep this on break Java tests. Fix ASAP!
+        "-Wno-thread-safety-reference-return",
+    ],
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
     ],
 }) + select({
     "//:clang-cl": [
@@ -32,6 +37,7 @@ PYX_COPTS = select({
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
         "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
     "@platforms//os:windows": [

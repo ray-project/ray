@@ -1009,7 +1009,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  const ActorID &GetActorId() const {
+    // TODO(dayshah): Figure out why Java tests fail if we lock here.
+    // absl::MutexLock lock(&mutex_);
+    return actor_id_;
+  }
 
   std::string GetActorName() const;
 
@@ -1732,7 +1736,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1828,7 +1832,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   mutable absl::Mutex mutex_;
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_ ABSL_GUARDED_BY(mutex_);
+  /// TODO(dayshah): Java tests fail if we access this without a mutex.
+  ActorID actor_id_;
 
   /// The currently executing task spec. We have to track this separately since
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
@@ -1870,7 +1875,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
