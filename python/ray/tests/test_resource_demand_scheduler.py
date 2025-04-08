@@ -3918,9 +3918,9 @@ def _lexical_scorer_plugin(
 
 @pytest.fixture
 def lexical_score_plugin():
-    os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
-        "ray.tests.test_resource_demand_scheduler." "_lexical_scorer_plugin"
-    )
+    os.environ[
+        AUTOSCALER_UTILIZATION_SCORER_KEY
+    ] = "ray.tests.test_resource_demand_scheduler._lexical_scorer_plugin"
     try:
         yield None
     finally:
