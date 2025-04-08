@@ -418,8 +418,11 @@ class MARWILConfig(AlgorithmConfig):
             )
 
     @property
-    def _model_auto_keys(self):
-        return super()._model_auto_keys | {"beta": self.beta, "vf_share_layers": False}
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {
+            "beta": self.beta,
+            "vf_share_layers": False,
+        }
 
 
 class MARWIL(Algorithm):

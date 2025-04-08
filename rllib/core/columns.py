@@ -35,6 +35,8 @@ class Columns:
     AGENT_ID = "agent_id"
     MODULE_ID = "module_id"
 
+    # The episode lengths of episodes within a train batch.
+    EPS_LENS = "eps_len"
     # The size of non-zero-padded data within a (e.g. LSTM) zero-padded
     # (B, T, ...)-style train batch.
     SEQ_LENS = "seq_lens"

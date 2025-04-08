@@ -209,10 +209,16 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         Returns:
             The updated parameters in the same (dict) format as `params`.
         """
+        policies_to_update = self.learner_config.policies_to_update or list(
+            gradients.keys()
+        )
         # Note, because this is a functional update we cannot apply in-place
         # modifications of parameters.
         updated_params = {}
         for module_id, module_grads in gradients.items():
+            if module_id not in policies_to_update:
+                updated_params[module_id] = params[module_id]
+                continue
             updated_params[module_id] = {}
             for name, grad in module_grads.items():
                 # If updates should not be skipped turn `nan` and `inf` gradients to zero.
@@ -257,6 +263,28 @@ class TorchDifferentiableLearner(DifferentiableLearner):
             lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
             return_dict=True,
         )
+
+    @override(DifferentiableLearner)
+    def _get_tensor_variable(
+        self, value, dtype=None, trainable=False
+    ) -> "torch.Tensor":
+        tensor = torch.tensor(
+            value,
+            requires_grad=trainable,
+            # TODO (simon): Make GPU-trainable.
+            # device=self._device,
+            dtype=(
+                dtype
+                or (
+                    torch.float32
+                    if isinstance(value, float)
+                    else torch.int32
+                    if isinstance(value, int)
+                    else None
+                )
+            ),
+        )
+        return nn.Parameter(tensor) if trainable else tensor
 
     def _convert_batch_type(
         self,

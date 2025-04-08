@@ -124,7 +124,7 @@ class DifferentiableLearner(Checkpointable):
 
         # TODO (simon): Move the `build_learner_connector` to the
         # `DifferentiableLearnerConfig`.
-        self._learner_connector = self.config.build_learner_connector(
+        self._learner_connector = self.learner_config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
             device=None,
@@ -679,6 +679,26 @@ class DifferentiableLearner(Checkpointable):
                 )
             return False
         return True
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-classes.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property.
+        """
 
     # TODO (simon): Duplicate in Learner. Move to base class "Learnable".
     def _reset(self):
