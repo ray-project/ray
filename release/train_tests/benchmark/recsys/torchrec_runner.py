@@ -38,12 +38,12 @@ class TorchRecRunner(TrainLoopRunner):
         sdd = SparseDataDistUtil(
             model=self.model,
             data_dist_stream=torch.cuda.Stream(),
-            prefetch_stream=torch.cuda.Stream(),
+            # prefetch_stream=torch.cuda.Stream(),
         )
         pipeline = [
             PipelineStage(
                 name="data_copy",
-                runnable=lambda batch, context: batch.to(device, non_blocking=True),
+                runnable=lambda batch: batch.to(device, non_blocking=True),
                 stream=torch.cuda.Stream(),
             ),
             PipelineStage(
@@ -66,7 +66,8 @@ class TorchRecRunner(TrainLoopRunner):
         dataloader_iter = iter(dataloader)
 
         def dataloader_with_torchrec_pipeline():
-            yield from self.pipeline.progress(dataloader_iter)
+            while batch := self.pipeline.progress(dataloader_iter):
+                yield batch
 
         return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), prefix)
 

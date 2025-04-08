@@ -10,10 +10,11 @@ from typing import Dict
 import ray.train
 from ray.data._internal.stats import Timer
 import torch
+from logger_utils import ContextLoggerAdapter
 
 from factory import BenchmarkFactory
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
 class TrainLoopRunner:
