@@ -718,7 +718,7 @@ def start(
     tracing_startup_hook,
     ray_debugger_external,
     disable_usage_stats,
-    labels_json,
+    labels,
     labels_str,
     labels_file,
     include_log_monitor,
@@ -745,7 +745,7 @@ def start(
     # Compose labels passed in with `--labels`, `--labels-str`, and `--labels-file`.
     # In the case of duplicate keys, the values from labels-str, label-file,
     # and then labels take precedence in that order.
-    labels_from_json = parse_node_labels_json(labels_json, cli_logger, cf)
+    labels_from_json = parse_node_labels_json(labels, cli_logger, cf)
     try:
         labels_from_file = parse_node_labels_from_yaml_file(labels_file)
     except Exception as e:
