@@ -1,8 +1,9 @@
 import logging
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, Iterable
 
 from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data.block import DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -56,12 +57,16 @@ class JSONDatasource(FileBasedDatasource):
         )
         self.arrow_json_args = arrow_json_args
 
-    def _read_jsonl_pandas(self, buffer: "pyarrow.lib.Buffer"):
+    def _read_jsonlines_pandas(
+        self, buffer: "pyarrow.lib.Buffer"
+    ) -> Iterable[DataBatch]:
         """Read JSONL files with pandas."""
         import pandas as pd
 
         reader = pd.read_json(
-            BytesIO(buffer), chunksize=_JSONL_ROWS_PER_CHUNK, lines=True
+            BytesIO(buffer),
+            chunksize=_JSONL_ROWS_PER_CHUNK,
+            lines=True,
         )
         for df in reader:
             # Note: PandasBlockAccessor doesn't support RangeIndex, so we need to convert
