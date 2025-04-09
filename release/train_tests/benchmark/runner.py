@@ -142,7 +142,8 @@ class TrainLoopRunner:
 
         for batch in train_dataloader:
             with self._metrics["train/step"].timer():
-                self._train_step(batch)
+                if not self.benchmark_config.skip_train_step:
+                    self._train_step(batch)
 
             # TODO: This is slightly off if the last batch is a partial batch.
             self._metrics["train/rows_processed"].add(
@@ -173,7 +174,8 @@ class TrainLoopRunner:
 
         for batch in val_dataloader:
             with self._metrics["validation/step"].timer():
-                total_loss += self._validate_step(batch)
+                if not self.benchmark_config.skip_validation_step:
+                    total_loss += self._validate_step(batch)
 
             num_rows += self.benchmark_config.dataloader_config.validation_batch_size
             self._metrics["validation/rows_processed"].add(
@@ -352,13 +354,10 @@ class VanillaTorchRunner(TrainLoopRunner):
         self.loss_fn = self.factory.get_loss_fn()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
-    def _train_step(self, train_dataloader):
+    def _train_step(self, batch):
         self.model.train()
 
-        input_batch, labels = next(train_dataloader)
-
-        if self.benchmark_config.skip_train_step:
-            return
+        input_batch, labels = batch
 
         self.model.train()
         self.optimizer.zero_grad()
@@ -367,10 +366,10 @@ class VanillaTorchRunner(TrainLoopRunner):
         loss.backward()
         self.optimizer.step()
 
-    def _validate_step(self, val_dataloader):
+    def _validate_step(self, batch):
         self.model.eval()
 
-        input_batch, labels = next(val_dataloader)
+        input_batch, labels = batch
 
         with torch.no_grad():
             out = self.model(input_batch)
