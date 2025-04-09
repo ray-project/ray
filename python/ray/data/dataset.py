@@ -427,8 +427,14 @@ class Dataset:
 
     @property
     def name(self) -> Optional[str]:
-        """Returns the dataset name"""
+        """Returns the user-defined dataset name"""
         return self._plan._dataset_name
+
+    def get_dataset_id(self) -> str:
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return self._plan.get_dataset_id()
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -827,6 +833,16 @@ class Dataset:
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
+                import pandas as pd
+
+                # The index of the column must be set
+                # to align with the index of the batch.
+                if (
+                    isinstance(column, pd.Series)
+                    or isinstance(column, pd.DataFrame)
+                    or isinstance(column, pd.Index)
+                ):
+                    column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
