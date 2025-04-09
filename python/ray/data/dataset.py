@@ -408,7 +408,11 @@ class Dataset:
         logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
+    @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
+        self.set_name(name)
+
+    def set_name(self, name: Optional[str]):
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -416,9 +420,20 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
+    @Deprecated(message="Use name() instead", warning=True)
     def _name(self) -> Optional[str]:
-        """Returns the dataset name"""
+        return self.name
+
+    @property
+    def name(self) -> Optional[str]:
+        """Returns the user-defined dataset name"""
         return self._plan._dataset_name
+
+    def get_dataset_id(self) -> str:
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return self._plan.get_dataset_id()
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -817,6 +832,16 @@ class Dataset:
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
+                import pandas as pd
+
+                # The index of the column must be set
+                # to align with the index of the batch.
+                if (
+                    isinstance(column, pd.Series)
+                    or isinstance(column, pd.DataFrame)
+                    or isinstance(column, pd.Index)
+                ):
+                    column.index = batch.index
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
@@ -5292,7 +5317,7 @@ class Dataset:
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
-        output._set_name(copy._name)
+        output.set_name(copy.name)
         output._set_uuid(copy._get_uuid())
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output

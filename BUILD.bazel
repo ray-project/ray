@@ -155,7 +155,7 @@ ray_cc_library(
     srcs = ["src/ray/rpc/server_call.cc"],
     hdrs = ["src/ray/rpc/server_call.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -508,7 +508,7 @@ ray_cc_library(
         ":plasma_eviction_policy",
         ":plasma_get_request_queue",
         ":plasma_malloc",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:file_system_monitor",
         "//src/ray/common:id",
@@ -561,7 +561,7 @@ ray_cc_library(
     hdrs = ["src/ray/object_manager/plasma/stats_collector.h"],
     deps = [
         ":object_manager_plasma_common",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
     ],
 )
@@ -762,7 +762,7 @@ cc_grpc_library(
 ray_cc_library(
     name = "ray_common",
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:event_stats",
@@ -940,7 +940,7 @@ ray_cc_library(
         ":gcs_service_rpc",
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
     ],
 )
 
@@ -949,7 +949,7 @@ ray_cc_library(
     srcs = ["src/ray/gcs/gcs_server/gcs_health_check_manager.cc"],
     hdrs = ["src/ray/gcs/gcs_server/gcs_health_check_manager.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_github_grpc_grpc//:grpc++",
         "//src/ray/common:id",
@@ -998,7 +998,7 @@ ray_cc_library(
     srcs = ["src/ray/gcs/gcs_server/gcs_job_manager.cc"],
     deps = [
         ":gcs_pb_util",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:event",
         "//src/ray/util:thread_checker",
         ":worker_rpc",
@@ -1041,29 +1041,29 @@ ray_cc_library(
         ":gcs_function_manager",
         ":gcs_health_check_manager",
         ":gcs_init_data",
-        ":gcs_kv_manager",
         ":gcs_job_manager",
-        ":gcs_task_manager",
+        ":gcs_kv_manager",
         ":gcs_pub_sub_lib",
         ":gcs_pubsub_handler",
-        ":gcs_server_io_context_policy",
         ":gcs_redis_failure_detector",
         ":gcs_runtime_env_handler",
+        ":gcs_server_io_context_policy",
         ":gcs_service_cc_grpc",
         ":gcs_service_rpc",
         ":gcs_state_util",
         ":gcs_store_client_kv",
         ":gcs_table_storage",
         ":gcs_table_storage_lib",
+        ":gcs_task_manager",
         ":gcs_usage_stats_client",
         ":gcs_worker_manager",
         ":node_manager_rpc",
         ":observable_store_client",
         ":pubsub_lib",
         ":raylet_client_lib",
-        ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/util:counter_map",
         "//src/ray/util:thread_checker",
         "//src/ray/util:throttler",
@@ -1081,7 +1081,7 @@ ray_cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         ":gcs_server_lib",
-        ":stats_lib",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
         "@com_github_gflags_gflags//:gflags",
@@ -1133,344 +1133,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "stats_opentelemetry",
-    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
-    deps = [
-        "@io_opentelemetry_cpp//sdk/src/logs",
-        "@io_opentelemetry_cpp//sdk/src/trace",
-    ],
-)
-
-ray_cc_library(
-    name = "stats_metric",
-    srcs = [
-        "src/ray/stats/metric.cc",
-        "src/ray/stats/metric_defs.cc",
-        "src/ray/stats/tag_defs.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric.h",
-        "src/ray/stats/metric_defs.h",
-        "src/ray/stats/tag_defs.h",
-    ],
-    deps = [
-        "//src/ray/util",
-        "//src/ray/util:logging",
-        "//src/ray/util:size_literals",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_prod",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
-    ],
-)
-
-ray_cc_library(
-    name = "stats_lib",
-    srcs = [
-        "src/ray/stats/metric_exporter.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric.h",
-        "src/ray/stats/metric_exporter.h",
-        "src/ray/stats/stats.h",
-        "src/ray/stats/tag_defs.h",
-    ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
-    deps = [
-        ":reporter_rpc",
-        ":stats_metric",
-        "//src/ray/util:size_literals",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
-    ],
-)
-
-ray_cc_library(
-    name = "scheduler",
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "@platforms//os:macos": [
-            "-pthread",
-        ],
-        "@platforms//os:linux": [
-            "-lpthread",
-        ],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":affinity_with_bundle_scheduling_policy",
-        ":bundle_scheduling_policy",
-        ":cluster_resource_manager",
-        ":cluster_resource_scheduler",
-        ":cluster_task_manager",
-        ":composite_scheduling_policy",
-        ":hybrid_scheduling_policy",
-        ":local_resource_manager",
-        ":node_affinity_scheduling_policy",
-        ":node_label_scheduling_policy",
-        ":random_scheduling_policy",
-        ":spread_scheduling_policy",
-    ],
-)
-
-ray_cc_library(
-    name = "scheduling_options",
-    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_options.h"],
-    deps = [
-        ":scheduling_context",
-        "//src/ray/common:ray_config",
-    ],
-)
-
-ray_cc_library(
-    name = "scheduling_context",
-    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_context.h"],
-    deps = [
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "scheduler_internal",
-    hdrs = ["src/ray/raylet/scheduling/internal.h"],
-    deps = [
-        "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
-        "//src/ray/protobuf:node_manager_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "cluster_resource_manager",
-    srcs = ["src/ray/raylet/scheduling/cluster_resource_manager.cc"],
-    hdrs = ["src/ray/raylet/scheduling/cluster_resource_manager.h"],
-    deps = [
-        ":local_resource_manager",
-        "//src/ray/common:grpc_util",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util:container_util",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "cluster_resource_scheduler",
-    srcs = ["src/ray/raylet/scheduling/cluster_resource_scheduler.cc"],
-    hdrs = ["src/ray/raylet/scheduling/cluster_resource_scheduler.h"],
-    deps = [
-        ":cluster_resource_manager",
-        ":composite_scheduling_policy",
-        ":scheduler_internal",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util:container_util",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "cluster_task_manager",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_task_manager.cc",
-        "src/ray/raylet/scheduling/scheduler_stats.cc",
-    ],
-    hdrs = [
-        "src/ray/raylet/scheduling/cluster_task_manager.h",
-        "src/ray/raylet/scheduling/scheduler_stats.h",
-    ],
-    deps = [
-        ":cluster_resource_scheduler",
-        ":cluster_task_manager_interface",
-        ":local_task_manager_interface",
-        ":scheduler_internal",
-        ":scheduler_resource_reporter",
-        ":stats_lib",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:task_common",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "cluster_task_manager_interface",
-    hdrs = ["src/ray/raylet/scheduling/cluster_task_manager_interface.h"],
-    deps = [
-        ":rpc_server_call",
-        "//src/ray/protobuf:node_manager_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "local_task_manager_interface",
-    hdrs = ["src/ray/raylet/scheduling/local_task_manager_interface.h"],
-    deps = [
-        ":scheduler_internal",
-        "//src/ray/common:task_common",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "local_resource_manager",
-    srcs = ["src/ray/raylet/scheduling/local_resource_manager.cc"],
-    hdrs = ["src/ray/raylet/scheduling/local_resource_manager.h"],
-    deps = [
-        ":gcs_client_lib",
-        "//src/ray/common:grpc_util",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:ray_syncer",
-        "//src/ray/common:task_common",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/protobuf:node_manager_cc_proto",
-        "//src/ray/util:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "affinity_with_bundle_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"],
-    deps = [
-        ":scheduling_policy",
-        "//src/ray/common:task_common",
-    ],
-)
-
-ray_cc_library(
-    name = "bundle_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/bundle_scheduling_policy.h"],
-    deps = [
-        ":cluster_resource_manager",
-        ":scheduling_context",
-        ":scheduling_policy",
-        ":scorer",
-        "//src/ray/common:task_common",
-    ],
-)
-
-ray_cc_library(
-    name = "composite_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/composite_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/composite_scheduling_policy.h"],
-    deps = [
-        ":affinity_with_bundle_scheduling_policy",
-        ":bundle_scheduling_policy",
-        ":cluster_resource_manager",
-        ":hybrid_scheduling_policy",
-        ":node_affinity_scheduling_policy",
-        ":node_label_scheduling_policy",
-        ":random_scheduling_policy",
-        ":spread_scheduling_policy",
-    ],
-)
-
-ray_cc_library(
-    name = "hybrid_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"],
-    deps = [
-        ":scheduling_policy",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/random:bit_gen_ref",
-        "@com_google_googletest//:gtest_prod",
-    ],
-)
-
-ray_cc_library(
-    name = "node_affinity_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"],
-    deps = [
-        ":hybrid_scheduling_policy",
-        ":scheduling_policy",
-    ],
-)
-
-ray_cc_library(
-    name = "node_label_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/node_label_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/node_label_scheduling_policy.h"],
-    deps = [
-        ":scheduling_context",
-        ":scheduling_policy",
-    ],
-)
-
-ray_cc_library(
-    name = "random_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/random_scheduling_policy.h"],
-    deps = [":scheduling_policy"],
-)
-
-ray_cc_library(
-    name = "spread_scheduling_policy",
-    srcs = ["src/ray/raylet/scheduling/policy/spread_scheduling_policy.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/spread_scheduling_policy.h"],
-    deps = [
-        ":hybrid_scheduling_policy",
-        ":scheduling_policy",
-        "//src/ray/util:container_util",
-    ],
-)
-
-ray_cc_library(
-    name = "scorer",
-    srcs = ["src/ray/raylet/scheduling/policy/scorer.cc"],
-    hdrs = ["src/ray/raylet/scheduling/policy/scorer.h"],
-    deps = ["//src/ray/common:task_common"],
-)
-
-ray_cc_library(
-    name = "scheduler_resource_reporter",
-    srcs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.cc"],
-    hdrs = ["src/ray/raylet/scheduling/scheduler_resource_reporter.h"],
-    deps = [
-        ":local_task_manager_interface",
-        ":scheduler_internal",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:task_common",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "scheduling_policy",
-    hdrs = ["src/ray/raylet/scheduling/policy/scheduling_policy.h"],
-    deps = [
-        ":scheduling_options",
-        "//src/ray/common:task_common",
-    ],
-)
-
-ray_cc_library(
     name = "raylet_agent_manager",
     hdrs = ["src/ray/raylet/agent_manager.h"],
     srcs = ["src/ray/raylet/agent_manager.cc"],
@@ -1489,19 +1151,19 @@ ray_cc_library(
 
 ray_cc_library(
     name = "worker",
-    hdrs = ["src/ray/raylet/worker.h"],
     srcs = ["src/ray/raylet/worker.cc"],
+    hdrs = ["src/ray/raylet/worker.h"],
     deps = [
+        ":node_manager_fbs",
+        ":worker_rpc",
+        "//src/ray/common:id",
+        "//src/ray/common:network",
+        "//src/ray/common:task_common",
+        "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/util:process",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_prod",
-        "//src/ray/common:network",
-        "//src/ray/common:id",
-        "//src/ray/common:task_common",
-        ":worker_rpc",
-        "//src/ray/util:process",
-        ":node_manager_fbs",
-        ":cluster_resource_scheduler",
     ],
 )
 
@@ -1601,26 +1263,26 @@ ray_cc_library(
         ],
     }),
     deps = [
-        ":local_object_manager",
-        ":wait_manager",
-        ":runtime_env_agent_client",
-        ":raylet_agent_manager",
         ":core_worker_lib",
         ":gcs",
-        ":worker",
-        ":worker_pool",
         ":gcs_client_lib",
+        ":local_object_manager",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
         ":plasma_client",
         ":pubsub_lib",
-        ":scheduler",
-        ":stats_lib",
+        ":raylet_agent_manager",
+        ":runtime_env_agent_client",
+        "//src/ray/stats:stats_lib",
+        ":wait_manager",
+        ":worker",
+        ":worker_pool",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
+        "//src/ray/raylet/scheduling:scheduler",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
@@ -1670,105 +1332,370 @@ ray_cc_library(
 ray_cc_library(
     name = "core_worker_lib",
     srcs = [
-        "src/ray/core_worker/actor_handle.cc",
-        "src/ray/core_worker/actor_manager.cc",
-        "src/ray/core_worker/common.cc",
-        "src/ray/core_worker/context.cc",
         "src/ray/core_worker/core_worker.cc",
         "src/ray/core_worker/core_worker_process.cc",
-        "src/ray/core_worker/experimental_mutable_object_manager.cc",
-        "src/ray/core_worker/experimental_mutable_object_provider.cc",
-        "src/ray/core_worker/future_resolver.cc",
-        "src/ray/core_worker/generator_waiter.cc",
-        "src/ray/core_worker/lease_policy.cc",
-        "src/ray/core_worker/object_recovery_manager.cc",
-        "src/ray/core_worker/profile_event.cc",
-        "src/ray/core_worker/reference_count.cc",
-        "src/ray/core_worker/store_provider/memory_store/memory_store.cc",
-        "src/ray/core_worker/store_provider/plasma_store_provider.cc",
-        "src/ray/core_worker/task_event_buffer.cc",
-        "src/ray/core_worker/task_manager.cc",
-        "src/ray/core_worker/transport/actor_scheduling_queue.cc",
-        "src/ray/core_worker/transport/actor_task_submitter.cc",
-        "src/ray/core_worker/transport/concurrency_group_manager.cc",
-        "src/ray/core_worker/transport/dependency_resolver.cc",
-        "src/ray/core_worker/transport/normal_scheduling_queue.cc",
-        "src/ray/core_worker/transport/normal_task_submitter.cc",
-        "src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.cc",
-        "src/ray/core_worker/transport/out_of_order_actor_submit_queue.cc",
-        "src/ray/core_worker/transport/scheduling_util.cc",
-        "src/ray/core_worker/transport/sequential_actor_submit_queue.cc",
-        "src/ray/core_worker/transport/task_receiver.cc",
     ],
     hdrs = [
-        "src/ray/core_worker/actor_creator.h",
-        "src/ray/core_worker/actor_handle.h",
-        "src/ray/core_worker/actor_manager.h",
-        "src/ray/core_worker/common.h",
-        "src/ray/core_worker/context.h",
         "src/ray/core_worker/core_worker.h",
-        "src/ray/core_worker/core_worker_options.h",
         "src/ray/core_worker/core_worker_process.h",
-        "src/ray/core_worker/experimental_mutable_object_manager.h",
-        "src/ray/core_worker/experimental_mutable_object_provider.h",
-        "src/ray/core_worker/fiber.h",
-        "src/ray/core_worker/future_resolver.h",
-        "src/ray/core_worker/generator_waiter.h",
-        "src/ray/core_worker/lease_policy.h",
-        "src/ray/core_worker/object_recovery_manager.h",
-        "src/ray/core_worker/profile_event.h",
-        "src/ray/core_worker/reference_count.h",
-        "src/ray/core_worker/store_provider/memory_store/memory_store.h",
-        "src/ray/core_worker/store_provider/plasma_store_provider.h",
-        "src/ray/core_worker/task_event_buffer.h",
-        "src/ray/core_worker/task_manager.h",
-        "src/ray/core_worker/transport/actor_scheduling_queue.h",
-        "src/ray/core_worker/transport/actor_submit_queue.h",
-        "src/ray/core_worker/transport/actor_task_submitter.h",
-        "src/ray/core_worker/transport/concurrency_group_manager.h",
-        "src/ray/core_worker/transport/dependency_resolver.h",
-        "src/ray/core_worker/transport/normal_scheduling_queue.h",
-        "src/ray/core_worker/transport/normal_task_submitter.h",
-        "src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.h",
-        "src/ray/core_worker/transport/out_of_order_actor_submit_queue.h",
-        "src/ray/core_worker/transport/scheduling_queue.h",
-        "src/ray/core_worker/transport/scheduling_util.h",
-        "src/ray/core_worker/transport/sequential_actor_submit_queue.h",
-        "src/ray/core_worker/transport/task_receiver.h",
     ],
     deps = [
-        ":gcs",
-        ":gcs_client_lib",
-        ":plasma_client",
-        ":ray_common",
-        ":raylet_client_lib",
-        ":stats_lib",
-        ":thread_pool",
-        ":worker_rpc",
-        "//src/ray/common/cgroup:base_cgroup_setup",
+        ":actor_handle",
+        ":actor_submit_queue",
+        ":core_worker_options",
+        ":experimental_mutable_object_provider",
+        ":fiber",
+        ":future_resolver",
+        ":generator_waiter",
+        ":normal_task_submitter",
+        ":object_recovery_manager",
+        ":plasma_store_provider",
+        ":profile_event",
+        ":scheduling_queue",
         "//src/ray/common/cgroup:cgroup_context",
         "//src/ray/common/cgroup:cgroup_manager",
-        "//src/ray/common/cgroup:constants",
-        "//src/ray/common/cgroup:scoped_cgroup_handle",
-        "//src/ray/protobuf:worker_cc_proto",
-        "//src/ray/util",
-        "//src/ray/util:container_util",
-        "//src/ray/util:counter_map",
         "//src/ray/util:env",
-        "//src/ray/util:mutex_protected",
-        "//src/ray/util:process",
         "//src/ray/util:shared_lru",
         "//src/ray/util:stream_redirection",
-        "//src/ray/util:stream_redirection_options",
-        "@boost//:circular_buffer",
-        "@boost//:fiber",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:btree",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_options",
+    hdrs = ["src/ray/core_worker/core_worker_options.h"]
+)
+
+ray_cc_library(
+    name = "fiber",
+    hdrs = ["src/ray/core_worker/fiber.h"]
+)
+
+ray_cc_library(
+    name = "actor_submit_queue",
+    hdrs = ["src/ray/core_worker/transport/actor_submit_queue.h"]
+)
+
+ray_cc_library(
+    name = "scheduling_queue",
+    hdrs = ["src/ray/core_worker/transport/scheduling_queue.h"]
+)
+
+ray_cc_library(
+    name = "core_worker_common",
+    srcs = ["src/ray/core_worker/common.cc"],
+    hdrs = ["src/ray/core_worker/common.h"],
+    deps = [
+        ":raylet_client_lib",
+        ":ray_common",
+    ],
+)
+
+ray_cc_library(
+    name = "core_worker_context",
+    srcs = ["src/ray/core_worker/context.cc"],
+    hdrs = ["src/ray/core_worker/context.h"],
+    deps = [
+        ":core_worker_common",
+        ":ray_common",
+        "@boost//:thread",
+    ]
+)
+
+ray_cc_library(
+    name = "actor_handle",
+    srcs = ["src/ray/core_worker/actor_handle.cc"],
+    hdrs = ["src/ray/core_worker/actor_handle.h"],
+    deps = [
+        ":core_worker_context",
+         "//src/ray/protobuf:worker_cc_proto",
+    ]
+)
+
+ray_cc_library(
+    name = "actor_creator",
+    hdrs = [
+        "src/ray/core_worker/actor_creator.h",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_manager",
+    srcs = ["src/ray/core_worker/actor_manager.cc"],
+    hdrs = ["src/ray/core_worker/actor_manager.h"],
+    deps = [
+        ":actor_creator",
+        ":actor_handle",
+        ":gcs_client_lib",
+        ":reference_count",
+        ":task_receiver",
+    ]
+)
+
+ray_cc_library(
+    name = "reference_count",
+    srcs = ["src/ray/core_worker/reference_count.cc"],
+    hdrs = ["src/ray/core_worker/reference_count.h"],
+    deps = [
+        ":lease_policy",
+        ":pubsub_lib",
+        ":worker_rpc"
+    ]
+)
+
+ray_cc_library(
+    name = "lease_policy",
+    srcs = ["src/ray/core_worker/lease_policy.cc"],
+    hdrs = ["src/ray/core_worker/lease_policy.h"],
+    deps = [
+        ":ray_common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+    ]
+)
+
+ray_cc_library(
+    name = "task_event_buffer",
+    srcs = ["src/ray/core_worker/task_event_buffer.cc"],
+    hdrs = ["src/ray/core_worker/task_event_buffer.h"],
+    deps = [
+        ":ray_common",
+        ":gcs_client_lib",
+        "//src/ray/util:counter_map",
+        "@boost//:circular_buffer",
+    ]
+)
+
+ray_cc_library(
+    name = "out_of_order_actor_submit_queue",
+    srcs = ["src/ray/core_worker/transport/out_of_order_actor_submit_queue.cc"],
+    hdrs = ["src/ray/core_worker/transport/out_of_order_actor_submit_queue.h"],
+    deps = [
+        "actor_submit_queue",
+        ":ray_common"
+    ]
+)
+
+ray_cc_library(
+    name = "sequential_actor_submit_queue",
+    srcs = ["src/ray/core_worker/transport/sequential_actor_submit_queue.cc"],
+    hdrs = ["src/ray/core_worker/transport/sequential_actor_submit_queue.h"],
+    deps = [
+        "actor_submit_queue",
+        ":ray_common"
+    ]
+)
+
+ray_cc_library(
+    name = "memory_store",
+    srcs = ["src/ray/core_worker/store_provider/memory_store/memory_store.cc"],
+    hdrs = ["src/ray/core_worker/store_provider/memory_store/memory_store.h"],
+    deps = [
+        ":core_worker_context",
+        ":ray_common",
+        ":reference_count",
+    ]
+)
+
+ray_cc_library(
+    name = "task_finisher",
+    hdrs = ["src/ray/core_worker/task_finisher.h"],
+)
+
+ray_cc_library(
+    name = "task_manager",
+    srcs = ["src/ray/core_worker/task_manager.cc"],
+    hdrs = ["src/ray/core_worker/task_manager.h"],
+    deps = [
+        ":actor_manager",
+        ":ray_common",
+        ":memory_store",
+        ":task_event_buffer",
+        ":task_finisher",
+    ]
+)
+
+ray_cc_library(
+    name = "dependency_resolver",
+    srcs = ["src/ray/core_worker/transport/dependency_resolver.cc"],
+    hdrs = ["src/ray/core_worker/transport/dependency_resolver.h"],
+    deps = [
+        "actor_creator",
+        ":gcs_client_lib",
+        ":memory_store",
+        ":ray_common",
+        ":task_finisher",
+    ]
+)
+
+ray_cc_library(
+    name = "actor_task_submitter",
+    srcs = ["src/ray/core_worker/transport/actor_task_submitter.cc"],
+    hdrs = ["src/ray/core_worker/transport/actor_task_submitter.h"],
+    deps = [
+        ":actor_creator",
+        ":actor_submit_queue",
+        ":dependency_resolver",
+        ":out_of_order_actor_submit_queue",
+        ":sequential_actor_submit_queue",
+    ]
+)
+
+ray_cc_library(
+    name = "scheduling_util",
+    srcs = ["src/ray/core_worker/transport/scheduling_util.cc"],
+    hdrs = ["src/ray/core_worker/transport/scheduling_util.h"],
+    deps = [
+        ":raylet_client_lib",
+        ":ray_common",
+        "//src/ray/protobuf:worker_cc_proto",
+    ]
+)
+
+ray_cc_library(
+    name = "normal_scheduling_queue",
+    srcs = ["src/ray/core_worker/transport/normal_scheduling_queue.cc"],
+    hdrs = ["src/ray/core_worker/transport/normal_scheduling_queue.h"],
+    deps = [
+        "scheduling_queue",
+        ":scheduling_util",
+    ]
+)
+
+ray_cc_library(
+    name = "actor_scheduling_queue",
+    srcs = ["src/ray/core_worker/transport/actor_scheduling_queue.cc"],
+    hdrs = ["src/ray/core_worker/transport/actor_scheduling_queue.h"],
+    deps = [
+        ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
+        ":scheduling_util",
+        ":task_event_buffer",
+        "@boost//:fiber",
+    ]
+)
+
+ray_cc_library(
+    name = "concurrency_group_manager",
+    srcs = ["src/ray/core_worker/transport/concurrency_group_manager.cc"],
+    hdrs = ["src/ray/core_worker/transport/concurrency_group_manager.h"],
+    deps = [
+        ":fiber",
+        ":ray_common",
+        ":thread_pool",
+        "@boost//:fiber",
+    ]
+)
+
+ray_cc_library(
+    name = "out_of_order_actor_scheduling_queue",
+    srcs = ["src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.cc"],
+    hdrs = ["src/ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"],
+    deps = [
+        ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
+        ":scheduling_util",
+        ":task_event_buffer",
+    ]
+)
+
+ray_cc_library(
+    name = "task_receiver",
+    srcs = ["src/ray/core_worker/transport/task_receiver.cc"],
+    hdrs = ["src/ray/core_worker/transport/task_receiver.h"],
+    deps = [
+        ":actor_handle",
+        ":actor_scheduling_queue",
+        ":actor_task_submitter",
+        ":concurrency_group_manager",
+        ":fiber",
+        ":normal_scheduling_queue",
+        ":out_of_order_actor_scheduling_queue",
+        "scheduling_queue",
+    ]
+)
+
+ray_cc_library(
+    name = "experimental_mutable_object_manager",
+    srcs = ["src/ray/core_worker/experimental_mutable_object_manager.cc"],
+    hdrs = ["src/ray/core_worker/experimental_mutable_object_manager.h"],
+    deps = [
+        ":plasma_client",
+        ":ray_common",
         "@com_google_absl//absl/container:node_hash_map",
-        "@nlohmann_json",
-    ],
+    ]
+)
+
+ray_cc_library(
+    name = "future_resolver",
+    srcs = ["src/ray/core_worker/future_resolver.cc"],
+    hdrs = ["src/ray/core_worker/future_resolver.h"],
+    deps = [
+        ":memory_store",
+        ":ray_common",
+    ]
+)
+
+ray_cc_library(
+    name = "experimental_mutable_object_provider",
+    srcs = ["src/ray/core_worker/experimental_mutable_object_provider.cc"],
+    hdrs = ["src/ray/core_worker/experimental_mutable_object_provider.h"],
+    deps = [
+        ":experimental_mutable_object_manager",
+        ":raylet_client_lib",
+    ]
+)
+
+ray_cc_library(
+    name = "generator_waiter",
+    srcs = ["src/ray/core_worker/generator_waiter.cc"],
+    hdrs = ["src/ray/core_worker/generator_waiter.h"],
+    deps = [
+        ":core_worker_common",
+    ]
+)
+
+ray_cc_library(
+    name = "object_recovery_manager",
+    srcs = ["src/ray/core_worker/object_recovery_manager.cc"],
+    hdrs = ["src/ray/core_worker/object_recovery_manager.h"],
+    deps = [
+        ":reference_count",
+        ":task_manager",
+    ]
+)
+
+ray_cc_library(
+    name = "profile_event",
+    srcs = ["src/ray/core_worker/profile_event.cc"],
+    hdrs = ["src/ray/core_worker/profile_event.h"],
+    deps = [
+        ":core_worker_context",
+        ":task_event_buffer",
+    ]
+)
+
+ray_cc_library(
+    name = "plasma_store_provider",
+    srcs = ["src/ray/core_worker/store_provider/plasma_store_provider.cc"],
+    hdrs = ["src/ray/core_worker/store_provider/plasma_store_provider.h"],
+    deps = [
+        ":core_worker_context",
+        ":plasma_client",
+        ":reference_count",
+        ":ray_common",
+    ]
+)
+
+ray_cc_library(
+    name = "normal_task_submitter",
+    srcs = ["src/ray/core_worker/transport/normal_task_submitter.cc"],
+    hdrs = ["src/ray/core_worker/transport/normal_task_submitter.h"],
+    deps = [
+        ":task_manager",
+        ":task_receiver",
+    ]
 )
 
 ray_cc_library(
@@ -2034,101 +1961,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "cluster_resource_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":ray_mock",
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "local_resource_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/local_resource_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":ray_mock",
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "cluster_resource_scheduler_2_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_resource_scheduler_2_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "scheduling_policy_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/policy/scheduling_policy_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "hybrid_scheduling_policy_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/policy/hybrid_scheduling_policy_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":scheduler",
-        "@com_google_absl//absl/random:mock_distributions",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "cluster_task_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":ray_mock",
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "cluster_resource_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/cluster_resource_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2522,37 +2354,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "stats_test",
-    size = "small",
-    srcs = ["src/ray/stats/stats_test.cc"],
-    tags = [
-        "no_tsan",
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_grpc_test",
-    size = "small",
-    srcs = [
-        "src/ray/stats/metric_exporter_grpc_test.cc",
-    ],
-    tags = [
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -3105,7 +2906,7 @@ ray_cc_library(
     srcs = ["src/ray/object_manager/push_manager.cc"],
     hdrs = ["src/ray/object_manager/push_manager.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
@@ -3122,7 +2923,7 @@ ray_cc_library(
     deps = [
         ":object_manager_rpc",
         ":ownership_based_object_directory",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
@@ -3349,7 +3150,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:status",
         "//src/ray/common:ray_config",
-        ":stats_lib",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util",
         "//src/ray/util:exponential_backoff",
         "@boost//:asio",
@@ -3656,7 +3457,7 @@ pyx_library(
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//:stats_lib",
+        "//src/ray/stats:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
@@ -3690,7 +3491,7 @@ ray_cc_binary(
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//:stats_lib",
+        "//src/ray/stats:stats_lib",
         "@bazel_tools//tools/jdk:jni",
     ],
 )

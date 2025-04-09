@@ -506,7 +506,7 @@ if __name__ == "__main__":
         "--address",
         required=False,
         type=str,
-        help="The address to use for Ray. " "`auto` if running through `ray submit.",
+        help="The address to use for Ray. `auto` if running through `ray submit.",
     )
     parser.add_argument(
         "--num-workers",
