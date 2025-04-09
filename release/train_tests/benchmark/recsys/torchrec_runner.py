@@ -1,10 +1,10 @@
 import logging
+import gc
 import os
 
 import torch
 import torch.nn
 
-# from torchrec.distributed import TrainPipelineSparseDist
 from torchrec.distributed.train_pipeline import StagedTrainPipeline, SparseDataDistUtil
 from torchrec.distributed.train_pipeline.utils import PipelineStage
 from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
@@ -100,3 +100,12 @@ class TorchRecRunner(TrainLoopRunner):
         self.optimizer.load_state_dict(
             torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
         )
+
+    def _cleanup(self):
+        del self.model
+        del self.optimizer
+        del self.pipeline
+
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        gc.collect()

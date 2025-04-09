@@ -47,6 +47,10 @@ class TrainLoopRunner:
         other overridden methods."""
         pass
 
+    def _cleanup(self):
+        """Subclasses can override this to cleanup any resources."""
+        pass
+
     def _train_step(self, train_dataloader):
         """Subclasses should override this to implement the training step.
         A training step represents a single forward and backward pass on a batch of data.
@@ -277,6 +281,8 @@ class TrainLoopRunner:
 
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
+
+        self._cleanup()
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
