@@ -1162,6 +1162,7 @@ def test_exit_actor_queued(shutdown_only):
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL not supported on windows")
 def test_actor_restart_and_actor_received_task(shutdown_only):
     # Create an actor with max_restarts=1 and max_task_retries=1.
     # Submit a task to the actor and kill the actor after it receives
@@ -1197,6 +1198,7 @@ def test_actor_restart_and_actor_received_task(shutdown_only):
     assert ray.get(ref) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL not supported on windows")
 def test_actor_restart_and_partial_task_not_completed(shutdown_only):
     # Create an actor with max_restarts=1 and max_task_retries=1.
     # Submit 3 tasks to the actor and wait for them to complete.
