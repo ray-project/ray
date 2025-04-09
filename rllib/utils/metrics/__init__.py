@@ -3,12 +3,13 @@ from ray.rllib.core import ALL_MODULES  # noqa
 
 # Algorithm ResultDict keys.
 AGGREGATOR_ACTOR_RESULTS = "aggregator_actors"
+DIFFERENTIABLE_LEARNER_RESULTS = "differentiable_learners"
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
-REPLAY_BUFFER_RESULTS = "replay_buffer"
+FAULT_TOLERANCE_STATS = "fault_tolerance"
 LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
-FAULT_TOLERANCE_STATS = "fault_tolerance"
+REPLAY_BUFFER_RESULTS = "replay_buffer"
 TIMERS = "timers"
 
 # RLModule metrics.

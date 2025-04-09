@@ -25,14 +25,11 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.label_utils import (
-    parse_node_labels_from_yaml_file,
-    parse_node_labels_string,
-)
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
     load_class,
     parse_resources_json,
+    parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.usage import usage_lib
@@ -523,7 +520,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -638,19 +635,9 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
-    default="",
+    default="{}",
     type=str,
-    help="a string list of key-value pairs mapping label name to label value."
-    "These values take precedence over conflicting keys passed in from --labels-file."
-    'Ex: --labels "key1=val1,key2=val2"',
-)
-@click.option(
-    "--labels-file",
-    required=False,
-    hidden=True,
-    default="",
-    type=str,
-    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
+    help="a JSON serialized dictionary mapping label name to label value.",
 )
 @click.option(
     "--include-log-monitor",
@@ -688,8 +675,8 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
@@ -708,7 +695,6 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
-    labels_file,
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
@@ -729,34 +715,7 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-
-    # Compose labels passed in with `--labels` and `--labels-file`.
-    # The label value from `--labels` will overrwite the value of any duplicate keys.
-    try:
-        labels_from_file_dict = parse_node_labels_from_yaml_file(labels_file)
-    except Exception as e:
-        cli_logger.abort(
-            "The file at `{}` is not a valid YAML file, detailed error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"--labels-file={labels_file}"),
-            str(e),
-            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
-        )
-    try:
-        labels_from_string = parse_node_labels_string(labels)
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid string of key-value pairs, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"--labels={labels}"),
-            str(e),
-            cf.bold('--labels="key1=val1,key2=val2"'),
-        )
-    labels_dict = (
-        {**labels_from_file_dict, **labels_from_string}
-        if labels_from_file_dict
-        else labels_from_string
-    )
+    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -795,6 +754,11 @@ def start(
         warnings.warn(
             "--storage is deprecated and will be removed in a future version of Ray.",
         )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -826,7 +790,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,

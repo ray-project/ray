@@ -36,14 +36,14 @@ int64_t Random(int64_t max) {
 
 class DummyAllocator : public IAllocator {
  public:
-  absl::optional<Allocation> Allocate(size_t bytes) override {
+  std::optional<Allocation> Allocate(size_t bytes) override {
     allocated_ += bytes;
     auto allocation = Allocation();
     allocation.size = bytes;
     return std::move(allocation);
   }
 
-  absl::optional<Allocation> FallbackAllocate(size_t bytes) override {
+  std::optional<Allocation> FallbackAllocate(size_t bytes) override {
     return absl::nullopt;
   }
 
