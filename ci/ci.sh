@@ -240,7 +240,8 @@ _bazel_build_before_install() {
     # bazel build --config asan "${target}"
     echo "Not needed"
   elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
-    bazel build --config debug "${target}"
+    # reduce the number of jobs from 6 to 4 in debug mode so the build succeeds on the CI machines
+    bazel build --config debug --jobs 4 "${target}"
   else
     echo "Invalid config given"
     exit 1
