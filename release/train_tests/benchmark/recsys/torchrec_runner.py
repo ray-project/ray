@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 class TorchRecRunner(TrainLoopRunner):
     def _setup(self):
+        if self.factory.benchmark_config.mock_gpu:
+            raise ValueError("Mock GPU is not supported for running TorchRec.")
+
         device = ray.train.torch.get_device()
 
         self.model = self.factory.get_model()
