@@ -1194,10 +1194,12 @@ def test_actor_restart_and_actor_received_task(shutdown_only):
     ray.get(signal_actor.wait.remote())
     os.kill(pid, signal.SIGKILL)
 
-    # Unlock the signal actor's `send` task.
+    # Unlock the signal actor's `send(clear=True)` task.
     ray.get(signal_actor.wait.remote())
-    # Unlock the signal actor's `wait` task.
-    ray.get(signal_actor.send.remote(clear=True))
+    # Unlock the signal actor's `wait` task. If we set `clear=True` and
+    # the `SignalActor` receives the `send` task before `wait`, the `ready_event`
+    # will be cleared, causing the `wait` task to be blocked indefinitely.
+    ray.get(signal_actor.send.remote())
     assert ray.get(ref) == 1
 
 
@@ -1239,7 +1241,10 @@ def test_actor_restart_and_partial_task_not_completed(shutdown_only):
 
     os.kill(pid, signal.SIGKILL)
     ray.get(signal_actor.wait.remote())
-    ray.get(signal_actor.send.remote(clear=True))
+    # Unlock the signal actor's `wait` task. If we set `clear=True` and
+    # the `SignalActor` receives the `send` task before `wait`, the `ready_event`
+    # will be cleared, causing the `wait` task to be blocked indefinitely.
+    ray.get(signal_actor.send.remote())
     assert ray.get(refs) == [3, 4, 5]
 
 
