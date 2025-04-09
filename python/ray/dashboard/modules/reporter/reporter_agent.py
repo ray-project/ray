@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import sys
 import traceback
 from collections import defaultdict
@@ -332,6 +333,7 @@ Megabytes = int
 class ProcessGPUInfo(TypedDict):
     pid: int
     gpu_memory_usage: Megabytes
+    gpu_utilization: Optional[Percentage]
 
 
 # gpu utilization for nvidia gpu
@@ -496,12 +498,54 @@ class ReporterAgent(
             return psutil.cpu_percent()
 
     @staticmethod
-    def _get_gpu_usage():
-        import ray._private.thirdparty.pynvml as pynvml
-
+    def _get_gpu_usage(using_pmon: bool = False) -> List[GpuUtilizationInfo]:
         global enable_gpu_usage_check
         if not enable_gpu_usage_check:
             return []
+
+        process_utilizations = None
+        if using_pmon:
+            # Start a subprocess to get GPU usage
+            # Some information i.e utilization per process is
+            # not available in pynvml
+            try:
+                result = subprocess.run(
+                    ["nvidia-smi", "pmon", "-c", "1"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    text=True,
+                )
+                process_utilizations = {}
+                lines = result.stdout.splitlines()
+                for line in lines:
+                    if line.startswith("#") or not line.strip():
+                        continue
+
+                    columns = line.split()
+
+                    gpu_id, pid, proc_type, sm, mem, enc, dec, cmd = columns
+                    if pid == "-":  # no process on this GPU
+                        continue
+                    gpu_id = int(gpu_id)
+                    pinfo = ProcessGPUInfo(
+                        pid=int(pid),
+                        gpu_memory_usage=int(mem) // MB,
+                        gpu_utilization=int(sm),
+                    )
+                    if gpu_id not in process_utilizations:
+                        process_utilizations[gpu_id] = [pinfo]
+                    else:
+                        process_utilizations[gpu_id].append(pinfo)
+
+            except subprocess.CalledProcessError as e:
+                process_utilizations = None
+                logger.debug(
+                    f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
+                )
+
+        import ray._private.thirdparty.pynvml as pynvml
+
         gpu_utilizations = []
 
         def decode(b: Union[str, bytes]) -> str:
@@ -535,26 +579,32 @@ class ReporterAgent(
             except pynvml.NVMLError as e:
                 logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
 
-            # processes pids
-            processes_pids = None
-            try:
-                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
-                    gpu_handle
-                )
-                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
-                    gpu_handle
-                )
-                processes_pids = [
-                    ProcessGPUInfo(
-                        pid=int(nv_process.pid),
-                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
-                        if nv_process.usedGpuMemory
-                        else 0,
+            if not process_utilizations:
+                # processes pids
+                processes_pids = None
+                try:
+                    nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
+                        gpu_handle
                     )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+                    nv_graphics_processes = (
+                        pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                    )
+                    processes_pids = [
+                        ProcessGPUInfo(
+                            pid=int(nv_process.pid),
+                            gpu_memory_usage=int(nv_process.usedGpuMemory) // MB,
+                            gpu_utilization=(
+                                None  # Not available in pynvml
+                                if nv_process.usedGpuMemory
+                                else 0
+                            ),
+                        )
+                        for nv_process in (nv_comp_processes + nv_graphics_processes)
+                    ]
+                except pynvml.NVMLError as e:
+                    logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+            else:
+                processes_pids = process_utilizations.get(i, None)
 
             info = GpuUtilizationInfo(
                 index=i,
@@ -636,59 +686,8 @@ class ReporterAgent(
     def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
-    @staticmethod
-    def _get_gpu_process_usage():
-        import ray._private.thirdparty.pynvml as pynvml
-
-        gpu_processes = defaultdict(lambda: {"memory": 0, "utilization": 0})
-        global enable_gpu_usage_check
-        if not enable_gpu_usage_check:
-            return gpu_processes
-
-        try:
-            pynvml.nvmlInit()
-        except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
-
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-            return gpu_processes
-
-        try:
-            num_gpus = pynvml.nvmlDeviceGetCount()
-            for i in range(num_gpus):
-                gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
-                    gpu_handle
-                )
-                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
-                    gpu_handle
-                )
-
-                for nv_process in nv_comp_processes + nv_graphics_processes:
-                    pid = int(nv_process.pid)
-                    gpu_usage = nv_process.usedGpuMemory / MB
-                    gpu_utilization = 0
-
-                    try:
-                        utilization_info = pynvml.nvmlDeviceGetUtilizationRates(
-                            gpu_handle
-                        )
-                        gpu_utilization = int(utilization_info.gpu)
-                    except pynvml.NVMLError as e:
-                        logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
-
-                    gpu_processes[pid]["memory"] += gpu_usage
-                    gpu_processes[pid]["utilization"] = gpu_utilization
-        except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
-        pynvml.nvmlShutdown()
-
-        return gpu_processes
-
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
-
         if raylet_proc is None:
             return []
         else:
@@ -725,9 +724,9 @@ class ReporterAgent(
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             try:
-                gpu_usage = self._get_gpu_process_usage()
+                gpu_usage = self._get_gpu_usage(using_pmon=True)
             except Exception as e:
-                gpu_usage = defaultdict(dict)
+                gpu_usage = []
                 logger.debug(f"failed to retrieve GPU processes usage: {e}")
             result = []
             for w in self._workers.values():
@@ -740,9 +739,16 @@ class ReporterAgent(
 
                 proc_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
                 # Add GPU usage info if available
-                if w.pid in gpu_usage:
-                    proc_info["gpu_memory_usage"] = gpu_usage[w.pid]["memory"]
-                    proc_info["gpu_utilization"] = gpu_usage[w.pid]["utilization"]
+                for gpuinfo in gpu_usage:
+                    if gpuinfo.processes_pids is None:
+                        continue
+                    for proc in gpuinfo.processes_pids:
+                        if proc.pid == w.pid:
+                            proc_info["gpu_memory_usage"] = proc.gpu_memory_usage
+                            proc_info["gpu_utilization"] = (
+                                proc.gpu_utilization if proc.gpu_utilization else 0
+                            )
+                            break
                 result.append(proc_info)
             return result
 
@@ -935,7 +941,6 @@ class ReporterAgent(
         total_num_fds = 0
         total_gpu_utilization = 0.0
         total_gpu_memory_usage = 0.0
-
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
             memory_info = stat.get("memory_info")
@@ -994,24 +999,22 @@ class ReporterAgent(
                 tags=tags,
             )
         )
-        # Add GPU usage metrics
-        if total_gpu_memory_usage > 0.0:
-            records.append(
-                Record(
-                    gauge=METRICS_GAUGES["component_gpu_memory_usage"],
-                    value=total_gpu_memory_usage,
-                    tags=tags,
-                )
-            )
-        if total_gpu_utilization > 0.0:
-            records.append(
-                Record(
-                    gauge=METRICS_GAUGES["component_gpu_utilization"],
-                    value=total_gpu_utilization,
-                    tags=tags,
-                )
-            )
 
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_memory_usage"],
+                value=total_gpu_memory_usage,
+                tags=tags,
+            )
+        )
+
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_utilization"],
+                value=total_gpu_utilization,
+                tags=tags,
+            )
+        )
 
         return records
 
