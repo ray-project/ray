@@ -4938,10 +4938,10 @@ class AlgorithmConfig(_Config):
 
         if self.ignore_final_observation and self.algo_class.__name__ != "BC":
             logger.warning(
-                "`ignore_final_observation=True` (which sets final observations to zero) "
-                "but the algorithm class is not `BC`. It is strongly recommended to use this "
-                "setting only in simple behavior cloning because RL relies heavily on final "
-                "observations."
+                "`ignore_final_observation=True` (zeros-out truncation observations), "
+                "but the algorithm isn't `BC`. It is recommended to use this "
+                "setting only with `BC`, b/c other RL algorithms rely on truncation-"
+                "observations due to value function estimates."
             )
 
         from ray.rllib.offline.offline_data import OfflineData
