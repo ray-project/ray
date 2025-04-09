@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     generate_system_config_map,
     SignalActor,
-    Semaphore,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
