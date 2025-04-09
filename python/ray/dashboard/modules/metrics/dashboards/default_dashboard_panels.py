@@ -463,8 +463,8 @@ DEFAULT_GRAFANA_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_utilization{{{global_filters}}}) by (Component)",
-                legend="{{Component}}",
+                expr="sum(ray_component_gpu_utilization{{{global_filters}}}) by (Component, pid, GpuIndex, GpuDeviceName)",
+                legend="{{Component}}::{{pid}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
     ),
@@ -472,11 +472,15 @@ DEFAULT_GRAFANA_PANELS = [
         id=46,
         title="Component GPU Memory Usage",
         description="GPU memory usage of Ray components.",
-        unit="MB",
+        unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component)",
-                legend="{{Component}}",
+                expr="sum(ray_component_gpu_memory_usage{{{global_filters}}}) by (Component, pid, GpuIndex, GpuDeviceName)",
+                legend="{{Component}}::{{pid}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+            Target(
+                expr='(sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}))*1024*1024',
+                legend="MAX",
             ),
         ],
     ),
