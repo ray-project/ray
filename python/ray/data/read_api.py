@@ -217,7 +217,7 @@ def from_items(
 
     from_items_op = FromItems(blocks, metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+        DatasetStats(metadata={"FromItems": metadata}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)
@@ -2775,7 +2775,7 @@ def from_pandas_refs(
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             DataContext.get_current().copy(),
         )
         logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
@@ -2790,7 +2790,7 @@ def from_pandas_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        DatasetStats(metadata={"FromPandas": metadata}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
@@ -2876,7 +2876,7 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+        DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
@@ -2956,7 +2956,7 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+        DatasetStats(metadata={"FromArrow": metadata}, parent=None),
         DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
