@@ -105,7 +105,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
         elif file_path.is_absolute():
             if not file_path.is_dir():
                 raise ValueError(f"Can't find conda env directory {file_path}.")
-            result = str(file_path.resolve())
+            result = str(file_path)
     elif isinstance(conda, dict):
         result = conda
     else:
