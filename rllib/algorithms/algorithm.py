@@ -1862,7 +1862,15 @@ class Algorithm(Checkpointable, Trainable):
             The RLModule found under the ModuleID key inside the local EnvRunner's
             MultiRLModule. None if `module_id` doesn't exist.
         """
-        module = self.env_runner.module
+        if self.env_runner is not None:
+            module = self.env_runner.module
+        else:
+            module = self.env_runner_group.foreach_env_runner(
+                lambda er: er.module,
+                remote_worker_ids=[1],
+                local_env_runner=False,
+            )[0]
+
         if isinstance(module, MultiRLModule):
             return module.get(module_id)
         else:
