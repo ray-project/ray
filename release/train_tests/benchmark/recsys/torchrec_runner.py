@@ -105,6 +105,8 @@ class TorchRecRunner(TrainLoopRunner):
         )
 
     def _cleanup(self):
+        # NOTE: This cleanup is needed to avoid zombie Train worker processes
+        # that hang on gc collect on python teardown.
         del self.model
         del self.optimizer
         del self.pipeline
