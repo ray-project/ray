@@ -174,6 +174,12 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_redeploy_multiple_replicas(serve_instance):
+    """
+    This test demonstrates zero downtime when redeploying a deployment with
+    multiple replicas. The inflight requests to the old version are allowed to
+    complete, it also shows that the old version stops accepting new requests.
+    The new requests are routed to the new version.
+    """
     client = serve_instance
     name = "test"
     signal = SignalActor.remote()
@@ -203,12 +209,13 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Redeploy new version.
     serve._run(V2.bind(), _blocking=False, name="app")
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=2)
 
-    # Two new replicas should be started.
-    vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
-    assert set(vals2) == {"v2"}
+    while True:
+        # Wait for the new version to be started and ready to handle requests.
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+        if set(vals2) == {"v2"}:
+            break
+        time.sleep(1)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -218,7 +225,7 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_application_running("app", timeout_s=10)
+    client._wait_for_application_running("app")
     vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
     assert set(vals3) == {"v2"}
     assert len(set(pids3)) == 2

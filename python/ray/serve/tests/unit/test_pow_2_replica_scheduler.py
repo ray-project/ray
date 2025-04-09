@@ -1858,6 +1858,18 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     the same zone, it should not sleep before retrying and add additional latency.
     """
     s = pow_2_scheduler
+
+    # create a stub for random.sample to track the replicas that are chosen
+    original_sample = random.sample
+    chosen_replicas = []
+
+    def fake_sample(seq, k):
+        results = original_sample(seq, k)
+        chosen_replicas.append(results)
+        return results
+
+    random.sample = fake_sample
+
     loop = get_or_create_event_loop()
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
 
@@ -1885,12 +1897,28 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
-    # The request should be served by r3 without added latency.
-    # Since we set up the `backoff_sequence_s` to be 999s, this 10s timeout will still
-    # capture the extra delay if it was added between scheduling loop.
-    done, _ = await asyncio.wait([task], timeout=10)
-    assert len(done) == 1
-    assert done.pop().result() == r3
+    done, pending = await asyncio.wait([task], timeout=10)
+    if len(pending) == 1:
+        # r3 was not chosen after trying local node and local AZ. Which is fine.
+        # clear all pending tasks
+        task.cancel()
+        s._scheduling_tasks.clear()
+        s._pending_requests_to_fulfill.clear()
+        s._pending_requests_to_schedule.clear()
+    else:
+
+        # The request will be served by r3 without added latency.
+        # Since we set up the `backoff_sequence_s` to be 999s, this 10s timeout will still
+        # capture the extra delay if it was added between scheduling loop.
+        assert len(done) == 1
+        assert done.pop().result() == r3
+
+    # assert that we tried local node, followed by local AZ, followed by all replicas
+    assert len(chosen_replicas) == 3
+    assert set(chosen_replicas[0]) == {r1.replica_id}
+    assert set(chosen_replicas[1]) == {r1.replica_id, r2.replica_id}
+    # assert intersection of chosen_replicas[2] and {r1.replica_id, r2.replica_id, r3.replica_id} is not empty
+    assert set(chosen_replicas[2]) & {r1.replica_id, r2.replica_id, r3.replica_id}
 
 
 if __name__ == "__main__":

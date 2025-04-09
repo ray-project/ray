@@ -207,7 +207,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   last_idle_times_[resource_id] = absl::Now();
 }
 
-absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
+std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 

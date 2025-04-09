@@ -44,7 +44,7 @@ class MockLocalityDataProvider : public LocalityDataProviderInterface {
       absl::flat_hash_map<ObjectID, LocalityData> locality_data)
       : locality_data_(locality_data) {}
 
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const {
+  std::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const {
     num_locality_data_fetches++;
     return locality_data_[object_id];
   };
@@ -55,14 +55,14 @@ class MockLocalityDataProvider : public LocalityDataProviderInterface {
   mutable absl::flat_hash_map<ObjectID, LocalityData> locality_data_;
 };
 
-absl::optional<rpc::Address> MockNodeAddrFactory(const NodeID &node_id) {
+std::optional<rpc::Address> MockNodeAddrFactory(const NodeID &node_id) {
   rpc::Address mock_rpc_address;
   mock_rpc_address.set_raylet_id(node_id.Binary());
-  absl::optional<rpc::Address> opt_mock_rpc_address = mock_rpc_address;
+  std::optional<rpc::Address> opt_mock_rpc_address = mock_rpc_address;
   return opt_mock_rpc_address;
 }
 
-absl::optional<rpc::Address> MockNodeAddrFactoryAlwaysNull(const NodeID &node_id) {
+std::optional<rpc::Address> MockNodeAddrFactoryAlwaysNull(const NodeID &node_id) {
   return absl::nullopt;
 }
 

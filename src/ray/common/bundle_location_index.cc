@@ -115,7 +115,7 @@ bool BundleLocationIndex::Erase(const PlacementGroupID &placement_group_id) {
   return true;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations> const>
+const std::optional<std::shared_ptr<BundleLocations> const>
 BundleLocationIndex::GetBundleLocations(
     const PlacementGroupID &placement_group_id) const {
   auto it = placement_group_to_bundle_locations_.find(placement_group_id);
@@ -125,7 +125,7 @@ BundleLocationIndex::GetBundleLocations(
   return it->second;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations> const>
+const std::optional<std::shared_ptr<BundleLocations> const>
 BundleLocationIndex::GetBundleLocationsOnNode(const NodeID &node_id) const {
   auto it = node_to_leased_bundles_.find(node_id);
   if (it == node_to_leased_bundles_.end()) {

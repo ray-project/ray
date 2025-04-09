@@ -64,7 +64,7 @@ class TaskFinisherInterface {
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
-  virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
+  virtual std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
   virtual bool IsTaskPending(const TaskID &task_id) const = 0;
 };
