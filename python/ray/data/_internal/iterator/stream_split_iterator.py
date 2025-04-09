@@ -12,6 +12,7 @@ from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -106,6 +107,9 @@ class StreamSplitDataIterator(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
         return self._base_dataset.schema()
+
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
 
     def world_size(self) -> int:
         """Returns the number of splits total."""
