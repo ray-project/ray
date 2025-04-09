@@ -16,10 +16,10 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-LEGACY_LightGBM_TRAINER_DEPRECATION_MESSAGE = (
+LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE = (
     "Passing in `lightgbm.train` kwargs such as `params`, `num_boost_round`, "
     "`label_column`, etc. to `LightGBMTrainer` is deprecated "
-    "in favor of the new API which accepts a ``train_loop_per_worker`` argument, "
+    "in favor of the new API which accepts a `train_loop_per_worker` argument, "
     "similar to the other DataParallelTrainer APIs (ex: TorchTrainer). "
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/50042"
@@ -267,7 +267,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         num_boost_round = num_boost_round or 10
 
         # TODO: [Deprecated] Legacy LightGBMTrainer API
-        # _log_deprecation_warning(LEGACY_LightGBM_TRAINER_DEPRECATION_MESSAGE)
+        # _log_deprecation_warning(LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = lightgbm_train_kwargs.get("callbacks", [])
