@@ -245,8 +245,7 @@ class TaskEventBuffer {
       const TaskSpecification &spec,
       rpc::TaskStatus status,
       bool include_task_info = false,
-      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
-          absl::nullopt);
+      std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = absl::nullopt);
 
   /// Add a task event to be reported.
   ///

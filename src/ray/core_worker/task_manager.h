@@ -505,7 +505,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
+  std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
   std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
@@ -739,7 +739,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void SetTaskStatus(
       TaskEntry &task_entry,
       rpc::TaskStatus status,
-      const absl::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
+      const std::optional<const rpc::RayErrorInfo> &error_info = absl::nullopt);
 
   /// Update the task entry for the task attempt to reflect retry on resubmit.
   ///
