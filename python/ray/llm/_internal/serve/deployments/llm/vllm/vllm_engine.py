@@ -332,7 +332,7 @@ class VLLMEngine:
         Prepare the engine config to start the engine.
 
         Args:
-            use_v1: Whether to use v1 engine.
+            use_v1: Whether to use vLLM V1 engine.
 
         Returns:
             engine_args: The engine arguments.
@@ -352,6 +352,10 @@ class VLLMEngine:
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
+                        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
+                        # decide which engine to use based on the passed configs.
+                        # Here we set it explicitly to make sure Ray LLM and vLLM
+                        # configs are consistent.
                         runtime_env=dict(
                             env_vars=dict(
                                 VLLM_USE_V1=str(int(use_v1)),
