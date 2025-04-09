@@ -327,9 +327,12 @@ class VLLMEngine:
             return await self._start_engine_v0()
         return await self._start_engine_v1()
 
-    async def _prepare_engine_config(self):
+    async def _prepare_engine_config(self, use_v1: bool):
         """
         Prepare the engine config to start the engine.
+
+        Args:
+            use_v1: Whether to use v1 engine.
 
         Returns:
             engine_args: The engine arguments.
@@ -349,9 +352,14 @@ class VLLMEngine:
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
+                        runtime_env=dict(
+                            env_vars=dict(
+                                VLLM_USE_V1=str(int(use_v1)),
+                            ),
+                        ),
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
-                        )
+                        ),
                     )
                     .remote(self.llm_config)
                 )
@@ -381,7 +389,7 @@ class VLLMEngine:
             engine_args,
             engine_config,
             node_initialization,
-        ) = await self._prepare_engine_config()
+        ) = await self._prepare_engine_config(use_v1=True)
 
         return self._start_async_llm_engine(
             engine_args,
@@ -397,7 +405,7 @@ class VLLMEngine:
             engine_args,
             engine_config,
             node_initialization,
-        ) = await self._prepare_engine_config()
+        ) = await self._prepare_engine_config(use_v1=False)
 
         if MQLLMEngineClient.is_unsupported_config(engine_config):
             # If the engine is not supported, we fall back to the legacy async engine.
