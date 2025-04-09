@@ -446,7 +446,6 @@ For structured output, you can use JSON mode similar to OpenAI's API:
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
 
-            # Configure the model with LoRA
             llm_config = LLMConfig(
                 model_loading_config=dict(
                     model_id="qwen-0.5b",

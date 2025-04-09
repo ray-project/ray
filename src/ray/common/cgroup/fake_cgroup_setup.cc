@@ -14,6 +14,8 @@
 
 #include "ray/common/cgroup/fake_cgroup_setup.h"
 
+#include <utility>
+
 #include "ray/util/logging.h"
 
 namespace ray {
