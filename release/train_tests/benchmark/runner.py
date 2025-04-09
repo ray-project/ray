@@ -5,7 +5,7 @@ import os
 import pprint
 import time
 import tempfile
-from typing import Dict
+from typing import Dict, Optional
 
 import ray.train
 from ray.data._internal.stats import Timer
@@ -32,6 +32,7 @@ class TrainLoopRunner:
         # Training progress state.
         self._train_batch_idx: int = 0
         self._train_epoch_idx: int = 0
+        self._restored_train_batch_idx: Optional[int] = None
 
         # Performance metrics
         self._metrics = collections.defaultdict(lambda: Timer())
@@ -93,14 +94,17 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
-    def _wrap_dataloader(self, dataloader, prefix: str):
+    def _wrap_dataloader(self, dataloader, train: bool):
         dataloader_iter = iter(dataloader)
 
-        def wrapped_dataloader():
+        prefix = "train" if train else "validation"
+
+        def dataloader_with_timers():
             try:
                 with self._metrics[f"{prefix}/iter_first_batch"].timer():
                     batch = next(dataloader_iter)
-                    self._train_batch_idx += 1
+                    if train:
+                        self._train_batch_idx += 1
             except StopIteration:
                 return
 
@@ -110,11 +114,12 @@ class TrainLoopRunner:
                 try:
                     with self._metrics[f"{prefix}/iter_batch"].timer():
                         batch = next(dataloader_iter)
-                    self._train_batch_idx += 1
+                        if train:
+                            self._train_batch_idx += 1
                 except StopIteration:
                     return
 
-        return wrapped_dataloader()
+        return dataloader_with_timers()
 
     def _train_epoch(self):
         """Subclasses can override the entrire `_train_epoch` method for more training
@@ -127,20 +132,15 @@ class TrainLoopRunner:
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
-        if self._train_batch_idx > 0:
+        if self._restored_train_batch_idx is not None:
             if ray.train.get_context().get_world_rank() == 0:
-                logger.info(f"Skipping {self._train_batch_idx} batches...")
+                logger.info(f"Skipping {self._restored_train_batch_idx + 1} batches...")
 
-            for _ in range(self._train_batch_idx + 1):
+            for _ in range(self._restored_train_batch_idx + 1):
                 with self._metrics["train/iter_skip_batch"].timer():
                     next(train_dataloader)
 
-        while True:
-            try:
-                batch = next(train_dataloader)
-            except StopIteration:
-                break
-
+        for batch in train_dataloader:
             with self._metrics["train/step"].timer():
                 self._train_step(batch)
 
@@ -171,18 +171,13 @@ class TrainLoopRunner:
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
-        while True:
-            try:
-                batch = next(val_dataloader)
-            except StopIteration:
-                break
-
+        for batch in val_dataloader:
             with self._metrics["validation/step"].timer():
                 total_loss += self._validate_step(batch)
 
-            num_rows += self.benchmark_config.dataloader_config.val_batch_size
+            num_rows += self.benchmark_config.dataloader_config.validation_batch_size
             self._metrics["validation/rows_processed"].add(
-                self.benchmark_config.dataloader_config.val_batch_size
+                self.benchmark_config.dataloader_config.validation_batch_size
             )
 
         return {"validation/loss": total_loss.item() / num_rows}
@@ -224,7 +219,7 @@ class TrainLoopRunner:
 
         run_state = torch.load(os.path.join(local_dir, "run_state.pt"))
         self._train_epoch_idx = run_state["epoch"]
-        self._train_batch_idx = run_state["batch_idx"]
+        self._restored_train_batch_idx = run_state["batch_idx"]
 
         with open(os.path.join(local_dir, "metrics.json"), "r") as f:
             metrics_json = json.load(f)
@@ -235,11 +230,16 @@ class TrainLoopRunner:
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
                 f"Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"train_batch_idx={self._restored_train_batch_idx} from checkpoint: "
                 f"{ray.train.get_checkpoint()}"
             )
 
     def _save_checkpoint(self, local_dir: str):
+        logger.info(
+            f"Saving checkpoint @ epoch={self._train_epoch_idx}, "
+            f"train_batch_idx={self._train_batch_idx}"
+        )
+
         self._save_training_state(local_dir)
 
         if ray.train.get_context().get_world_rank() == 0:
@@ -253,12 +253,12 @@ class TrainLoopRunner:
             with open(os.path.join(local_dir, "metrics.json"), "w") as f:
                 json.dump(metrics_json, f)
 
-            logger.info(
-                f"Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
-            )
-
     def _report_checkpoint(self, metrics, checkpoint):
+        logger.info(
+            f"Uploading checkpoint @ epoch={self._train_epoch_idx}, "
+            f"train_batch_idx={self._train_batch_idx}"
+        )
+
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )

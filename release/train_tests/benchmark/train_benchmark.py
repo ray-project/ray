@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import pprint
+import time
 
 import ray.train
 from ray._private.test_utils import safe_write_to_results_json
@@ -16,9 +17,9 @@ from image_classification.image_classification_parquet.factory import (
 from image_classification.image_classification_jpeg.factory import (
     ImageClassificationJpegFactory,
 )
-from logger_utils import ContextLoggerAdapter
 
-logger = ContextLoggerAdapter(logging.getLogger(__name__))
+
+logger = logging.getLogger(__name__)
 
 
 METRICS_OUTPUT_PATH = "/mnt/cluster_storage/train_benchmark_metrics.json"
@@ -48,7 +49,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     benchmark_config: BenchmarkConfig = cli_to_config()
-    logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
+    logger.info("\nBenchmark config:\n" + pprint.pformat(benchmark_config.__dict__, indent=2))
 
     if benchmark_config.task == "image_classification_parquet":
         factory = ImageClassificationParquetFactory(benchmark_config)
@@ -60,6 +61,8 @@ def main():
         factory = RecsysFactory(benchmark_config)
     else:
         raise ValueError
+
+    start_time = time.perf_counter()
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -80,10 +83,13 @@ def main():
     )
     trainer.fit()
 
+    end_time = time.perf_counter()
+
     with open(METRICS_OUTPUT_PATH, "r") as f:
         metrics = json.load(f)
 
     final_metrics_str = (
+        f"\nTotal training time: {end_time - start_time} seconds\n"
         "Final metrics:\n" + "-" * 80 + "\n" + pprint.pformat(metrics) + "\n" + "-" * 80
     )
     logger.info(final_metrics_str)

@@ -24,8 +24,6 @@ class TorchRecRunner(TrainLoopRunner):
         if self.factory.benchmark_config.mock_gpu:
             raise ValueError("Mock GPU is not supported for running TorchRec.")
 
-        device = ray.train.torch.get_device()
-
         self.model = self.factory.get_model()
 
         # TODO: This code depends on the model having a fused_optimizer,
@@ -38,16 +36,23 @@ class TorchRecRunner(TrainLoopRunner):
             [self.model.fused_optimizer, dense_optimizer]
         )
 
+        self._data_dist_stream = torch.cuda.Stream()
+        self._h2d_stream = torch.cuda.Stream()
+
+    def _wrap_dataloader(self, dataloader, prefix: str):
+        dataloader_iter = iter(dataloader)
+
+        device = ray.train.torch.get_device()
         sdd = SparseDataDistUtil(
             model=self.model,
-            data_dist_stream=torch.cuda.Stream(),
+            data_dist_stream=self._data_dist_stream,
             # prefetch_stream=torch.cuda.Stream(),
         )
         pipeline = [
             PipelineStage(
                 name="data_copy",
                 runnable=lambda batch: batch.to(device, non_blocking=True),
-                stream=torch.cuda.Stream(),
+                stream=self._h2d_stream,
             ),
             PipelineStage(
                 name="start_sparse_data_dist",
@@ -63,14 +68,13 @@ class TorchRecRunner(TrainLoopRunner):
             # ),
         ]
 
-        self.pipeline = StagedTrainPipeline(pipeline_stages=pipeline)
-
-    def _wrap_dataloader(self, dataloader, prefix: str):
-        dataloader_iter = iter(dataloader)
+        pipeline = StagedTrainPipeline(pipeline_stages=pipeline)
 
         def dataloader_with_torchrec_pipeline():
-            while batch := self.pipeline.progress(dataloader_iter):
+            while batch := pipeline.progress(dataloader_iter):
                 yield batch
+
+            pipeline.flush_end()
 
         return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), prefix)
 
@@ -88,7 +92,7 @@ class TorchRecRunner(TrainLoopRunner):
         with torch.no_grad():
             loss, out = self.model(batch)
 
-        return loss.item()
+        return loss
 
     def _get_model_and_optim_filenames(self):
         rank = ray.train.get_context().get_world_rank()
@@ -128,7 +132,8 @@ class TorchRecRunner(TrainLoopRunner):
         # that hang on gc collect on python teardown.
         del self.model
         del self.optimizer
-        del self.pipeline
+        del self._data_dist_stream
+        del self._h2d_stream
 
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
