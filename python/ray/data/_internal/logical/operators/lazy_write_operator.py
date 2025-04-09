@@ -2,10 +2,9 @@ from typing import Any, Optional, Union, Callable
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data.block import Block
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
-
-from python.ray.data.block import Block
 
 
 class LazyWrite(AbstractMap):
