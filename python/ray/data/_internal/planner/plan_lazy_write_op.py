@@ -1,5 +1,5 @@
 import itertools
-from typing import Callable, Iterator, Union
+from typing import Callable, Iterator, Union, Optional
 
 
 from ray.data._internal.compute import TaskPoolStrategy
@@ -19,8 +19,8 @@ from ray.data._internal.logical.operators.lazy_write_operator import LazyWrite
 
 
 def generate_lazy_write_fn(
-    prefilter_fn: Callable[[Block], Block] | None,
     datasink_or_legacy_datasource: Union[Datasink, Datasource],
+    prefilter_fn: Optional[Callable[[Block], Block]] = None,
     **write_args,
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
@@ -54,7 +54,7 @@ def plan_lazy_write_op(
 
     prefilter_fn = op._prefilter_fn
     write_fn = generate_lazy_write_fn(
-        prefilter_fn, op._datasink_or_legacy_datasource, **op._write_args
+        op._datasink_or_legacy_datasource, prefilter_fn=prefilter_fn, **op._write_args
     )
     # collect_stats_fn = generate_collect_write_stats_fn()
     # Create a MapTransformer for a write operator

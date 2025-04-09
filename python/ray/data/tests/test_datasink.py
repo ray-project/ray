@@ -31,8 +31,8 @@ def test_write_datasink(ray_start_regular_shared):
 def test_write_datasink_lazy(ray_start_regular_shared):
     sink = DummyOutputDatasink()
     ds = ray.data.range(10, override_num_blocks=2)
-    ds = ds.write_datasink_lazy(sink)
-    ds = ds.map(lambda x: dict(id=x["id"] * 2))
+    ds = ds.map(lambda x: x | dict(id2=x["id"] * 2))
+    ds = ds.write_datasink_lazy(sink, prefilter_fn=lambda b: b.select(["id2"]))
     result = ds.take_all()
     assert [e["id"] for e in result] == list(range(0, 20, 2))
     assert ray.get(sink.data_sink.get_rows_written.remote()) == 10

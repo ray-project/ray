@@ -4244,7 +4244,7 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        prefilter_fn: Callable[[Block], Block] | None = None,
+        prefilter_fn: Optional[Callable[[Block], Block]] = None,
         ray_remote_args: dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> "Dataset":
@@ -4257,6 +4257,7 @@ class Dataset:
 
         Args:
             datasink: The :class:`~ray.data.Datasink` to write to.
+            prefilter_fn: This function is applied to each block before writing it to the datasink.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the

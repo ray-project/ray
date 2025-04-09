@@ -13,8 +13,8 @@ class LazyWrite(AbstractMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        prefilter_fn: Callable[[Block], Block] | None,
         datasink_or_legacy_datasource: Union[Datasink, Datasource],
+        prefilter_fn: Optional[Callable[[Block], Block]] = None,
         ray_remote_args: Optional[dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_args,
@@ -33,6 +33,6 @@ class LazyWrite(AbstractMap):
             ray_remote_args=ray_remote_args,
         )
         self._datasink_or_legacy_datasource = datasink_or_legacy_datasource
+        self._prefilter_fn = prefilter_fn
         self._write_args = write_args
         self._concurrency = concurrency
-        self._prefilter_fn = prefilter_fn
