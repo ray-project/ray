@@ -14,9 +14,9 @@ echo "Installing cypress"
 if [ -n "$BUILDKITE" ]; then
   apt-get update -qq
   apt install -y libgtk2.0-0 libgtk-3-0 libgbm-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2 libxtst6 xauth xvfb
-  sudo npm install cypress
+  sudo npm install cypress==14.2.1
 else
-  which cypress || npm install cypress -g
+  which cypress || npm install cypress==14.2.1 -g
 fi
 
 ray stop --force
@@ -28,6 +28,7 @@ curl localhost:8653 || cat /tmp/ray/session_latest/logs/dashboard.log
 node_modules/.bin/cypress run --project . --headless
 
 # Run frontend UI tests
-pushd ../client
-CI=true npm test
-popd
+(
+  cd ../client
+  CI=true npm test
+)
