@@ -242,17 +242,17 @@ class TrainLoopRunner:
     def _save_checkpoint(self, local_dir: str):
         self._save_training_state(local_dir)
 
-        run_state = {
-            "epoch": self._train_epoch_idx,
-            "batch_idx": self._train_batch_idx,
-        }
-        torch.save(run_state, os.path.join(local_dir, "run_state.pt"))
-
-        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
-        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
-            json.dump(metrics_json, f)
-
         if ray.train.get_context().get_world_rank() == 0:
+            run_state = {
+                "epoch": self._train_epoch_idx,
+                "batch_idx": self._train_batch_idx,
+            }
+            torch.save(run_state, os.path.join(local_dir, "run_state.pt"))
+
+            metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+            with open(os.path.join(local_dir, "metrics.json"), "w") as f:
+                json.dump(metrics_json, f)
+
             logger.info(
                 f"Saved @ epoch={self._train_epoch_idx}, "
                 f"train_batch_idx={self._train_batch_idx}"
@@ -378,8 +378,10 @@ class VanillaTorchRunner(TrainLoopRunner):
         return loss
 
     def _save_training_state(self, local_dir: str):
-        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
-        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
+        # Standard DDP checkpointing.
+        if ray.train.get_context().get_world_rank() == 0:
+            torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
+            torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
 
     def _load_training_state(self, local_dir: str):
         self.model.load_state_dict(

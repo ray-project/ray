@@ -34,7 +34,7 @@ class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
 
     def get_val_dataloader(self):
         return mock_dataloader(
-            256, self.benchmark_config.dataloader_config.validation_batch_size
+            10, self.benchmark_config.dataloader_config.validation_batch_size
         )
 
 

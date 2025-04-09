@@ -90,18 +90,37 @@ class TorchRecRunner(TrainLoopRunner):
 
         return loss.item()
 
+    def _get_model_and_optim_filenames(self):
+        rank = ray.train.get_context().get_world_rank()
+        return f"model_shard_{rank=}.pt", f"optimizer_shard_{rank=}.pt"
+
     def _save_training_state(self, local_dir: str):
-        return
-        torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
-        torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
+        # Save sharded model and optimizer state.
+        model_filename, optimizer_filename = self._get_model_and_optim_filenames()
+
+        torch.save(
+            self.model.state_dict(),
+            os.path.join(local_dir, model_filename)
+        )
+        torch.save(
+            self.optimizer.state_dict(),
+            os.path.join(local_dir, optimizer_filename)
+        )
 
     def _load_training_state(self, local_dir: str):
-        return
+        model_filename, optimizer_filename = self._get_model_and_optim_filenames()
+
         self.model.load_state_dict(
-            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
+            torch.load(
+                os.path.join(local_dir, model_filename),
+                map_location=self.model.device,
+            )
         )
         self.optimizer.load_state_dict(
-            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
+            torch.load(
+                os.path.join(local_dir, optimizer_filename),
+                map_location=self.model.device,
+            )
         )
 
     def _cleanup(self):
