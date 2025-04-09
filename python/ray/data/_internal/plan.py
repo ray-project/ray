@@ -310,7 +310,10 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(copy.copy(self._in_stats))
+        plan_copy = ExecutionPlan(
+            copy.copy(self._in_stats),
+            data_context=copy.deepcopy(self._context),
+        )
         if self._snapshot_bundle:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)

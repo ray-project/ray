@@ -43,11 +43,14 @@ def test_context_saved_when_dataset_created(
     assert d1.context.get_config("foo") == 2
     assert d2.context.get_config("foo") == 1
 
-    # The global context has changed.
-    # Applying new operators to the existing datasets should use the new
-    # global context.
+    # Applying new operators to an existing dataset should inherit
+    # the context.
     d2 = d2.map_batches(lambda batch: batch)
     assert d2.context.get_config("foo") == 1
+
+    # Materialized datasets should also inherit the context.
+    mds = d2.materialize()
+    assert mds.context.get_config("foo") == 1
 
 
 def _test_updating_context_after_dataset_creation(gen_ds):

@@ -5278,6 +5278,8 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
+        print(copy.context._kv_configs)
+        print(self.context._kv_configs)
         copy._plan.execute()
 
         bundle = copy._plan._snapshot_bundle
@@ -5296,7 +5298,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats()),
+            ExecutionPlan(copy._plan.stats(), data_context=copy._plan._context),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
