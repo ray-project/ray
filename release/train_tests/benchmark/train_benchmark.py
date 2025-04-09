@@ -370,7 +370,7 @@ def main():
         dataset_config=ray.train.DataConfig(
             datasets_to_split="all",
             execution_options=ray_data_execution_options,
-            _streaming_split_locality=benchmark_config.streaming_split_locality,
+            enable_split_locality=benchmark_config.enable_split_locality,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
