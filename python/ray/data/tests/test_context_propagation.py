@@ -47,6 +47,7 @@ def test_context_saved_when_dataset_created(
 def test_context_inheritance(ray_start_regular_shared):
     ds = ray.data.range(10)
     ds.context.set_config("foo", 1)
+    assert DataContext.get_current().get_config("foo", None) is None
 
     # Test that applying a new operator to an existing dataset
     # inherits the context.
