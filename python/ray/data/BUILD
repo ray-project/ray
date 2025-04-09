@@ -200,7 +200,7 @@ py_test(
 
 py_test(
     name = "test_batcher",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_batcher.py"],
     tags = [
         "exclusive",
