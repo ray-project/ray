@@ -385,7 +385,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Move worker process into cgroup on startup.
   AppProcCgroupMetadata app_cgroup_metadata;
   app_cgroup_metadata.pid = pid_;
-  app_cgroup_metadata.max_memory = kUnlimitedMemory;
+  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
   GetCgroupSetup(options_.enable_resource_isolation)
       .ApplyCgroupContext(app_cgroup_metadata);
 
@@ -819,7 +819,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                                                reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    absl::optional<rpc::Address> addr;
+    std::optional<rpc::Address> addr;
     if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
       rpc::Address address;
       address.set_raylet_id(node_info->node_id());
@@ -880,12 +880,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                const ObjectLookupCallback &callback) {
     std::vector<rpc::Address> locations;
-    const absl::optional<absl::flat_hash_set<NodeID>> object_locations =
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
         reference_counter_->GetObjectLocations(object_id);
     if (object_locations.has_value()) {
       locations.reserve(object_locations.value().size());
       for (const auto &node_id : object_locations.value()) {
-        absl::optional<rpc::Address> addr = node_addr_factory(node_id);
+        std::optional<rpc::Address> addr = node_addr_factory(node_id);
         if (addr.has_value()) {
           locations.emplace_back(std::move(addr.value()));
           continue;
@@ -3276,7 +3276,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3457,7 +3457,7 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+  RAY_LOG(INFO).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status.ToString();
 
   std::ostringstream stream;
@@ -3846,7 +3846,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
