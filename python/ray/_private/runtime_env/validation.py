@@ -102,9 +102,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
                 result = yaml.safe_load(file_path.read_text())
             except Exception as e:
                 raise ValueError(f"Failed to read conda file {file_path}: {e}.")
-        elif (sys.platform != "win32" and "/" in conda) or (
-            sys.platform == "win32" and "\\" in conda
-        ):
+        elif file_path.is_absolute():
             if not file_path.is_dir():
                 raise ValueError(f"Can't find conda env directory {file_path}.")
             result = str(file_path.resolve())
