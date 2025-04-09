@@ -24,8 +24,8 @@ class FromBlocks(LogicalOperator):
             len(input_blocks),
             len(input_metadata),
         )
-        assert all(m.num_rows is not None for m in self._input_metadata)
-        assert all(m.size_bytes is not None for m in self._input_metadata)
+        assert all(m.num_rows is not None for m in input_metadata)
+        assert all(m.size_bytes is not None for m in input_metadata)
 
         self._input_blocks = input_blocks
         self._input_metadata = input_metadata
