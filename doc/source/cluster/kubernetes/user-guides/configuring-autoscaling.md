@@ -368,6 +368,19 @@ workerGroupSpecs:
             memory: "1G"
 ```
 
+### 5. Autoscaler environment configuration
+
+The Ray Autoscaler can be configured through environment variables specified in the `env` or `envFrom` fields under the `autoscalerOptions` section of your RayCluster custom resource. These variables enable fine-grained control over the Autoscaler’s internal behaviors, such as update intervals, timeouts, and scaling strategies.
+
+Some of the environment variables supported by the Ray Autoscaler can be found in [constants.py](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/constants.py#L23-L89). These variables allow you to adjust internal behaviors such as scaling strategies, timeouts, and logging verbosity.
+
+Example:
+```yaml
+autoscalerOptions:
+  env:
+    - name: AUTOSCALER_UPDATE_INTERVAL_S
+      value: "30"
+```
 
 ## Next steps
 
