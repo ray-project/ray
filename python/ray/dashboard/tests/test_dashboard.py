@@ -149,6 +149,11 @@ def test_basic(ray_start_regular):
         ray_constants.DASHBOARD_ADDRESS, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
     assert dashboard_address is not None
+    dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
+        dashboard_consts.DASHBOARD_RPC_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+    )
+    assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
     agent_addr = ray.experimental.internal_kv._internal_kv_get(
         key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
@@ -1159,6 +1164,7 @@ async def test_dashboard_module_load(tmpdir):
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
         cluster_id_hex=ray.ClusterID.from_random().hex(),
+        grpc_port=0,
         log_dir=str(tmpdir),
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,

@@ -40,6 +40,7 @@ class Dashboard:
         port_retries: The retry times to select a valid port.
         gcs_address: GCS address of the cluster.
         cluster_id_hex: Cluster ID hex string.
+        grpc_port: Port used to listen for gRPC on.
         node_ip_address: The IP address of the dashboard.
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
@@ -58,6 +59,7 @@ class Dashboard:
         port_retries: int,
         gcs_address: str,
         cluster_id_hex: str,
+        grpc_port: int,
         node_ip_address: str,
         log_dir: str,
         logging_level: int,
@@ -78,6 +80,7 @@ class Dashboard:
             gcs_address=gcs_address,
             cluster_id_hex=cluster_id_hex,
             node_ip_address=node_ip_address,
+            grpc_port=grpc_port,
             log_dir=log_dir,
             logging_level=logging_level,
             logging_format=logging_format,
@@ -115,6 +118,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--cluster-id-hex", required=True, type=str, help="The cluster ID in hex."
+    )
+    parser.add_argument(
+        "--grpc-port",
+        required=False,
+        type=int,
+        default=dashboard_consts.DASHBOARD_RPC_PORT,
+        help="The port for the dashboard to listen for gRPC on.",
     )
     parser.add_argument(
         "--node-ip-address",
@@ -257,6 +267,10 @@ if __name__ == "__main__":
             # None == default.
             modules_to_load = None
 
+        # NOTE: Creating and attaching the event loop to the main OS thread be called
+        # before initializing Dashboard, which will initialize the grpc aio server,
+        # which assumes a working event loop. Ref:
+        # https://github.com/grpc/grpc/blob/master/src/python/grpcio/grpc/_cython/_cygrpc/aio/common.pyx.pxi#L174-L188
         loop = get_or_create_event_loop()
         dashboard = Dashboard(
             host=args.host,
@@ -264,6 +278,7 @@ if __name__ == "__main__":
             port_retries=args.port_retries,
             gcs_address=args.gcs_address,
             cluster_id_hex=args.cluster_id_hex,
+            grpc_port=args.grpc_port,
             node_ip_address=args.node_ip_address,
             log_dir=args.log_dir,
             logging_level=args.logging_level,

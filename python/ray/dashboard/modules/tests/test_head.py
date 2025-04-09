@@ -89,7 +89,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             timestamp=time.time(),
         )
 
-    async def run(self):
+    async def run(self, server):
         pass
 
 

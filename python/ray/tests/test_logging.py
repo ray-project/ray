@@ -526,7 +526,7 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 def test_log_redirect_to_stderr(shutdown_only):
     log_components = {
-        ray_constants.PROCESS_TYPE_DASHBOARD: "Starting dashboard metrics server on port",
+        ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
         ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
