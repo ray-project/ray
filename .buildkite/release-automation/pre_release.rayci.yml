@@ -36,7 +36,6 @@ steps:
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
         RAYCI_RELEASE: 1
-        RAYCI_FULL_PLATFORM_RELEASE: "${RAYCI_FULL_PLATFORM_RELEASE}"
 
   - label: "Trigger Postmerge nightly build & test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"

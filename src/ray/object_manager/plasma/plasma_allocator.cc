@@ -84,7 +84,7 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
   Free(std::move(allocation.value()));
 }
 
-absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
+std::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(kAlignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
@@ -95,7 +95,7 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
   return BuildAllocation(mem, bytes, /* is_fallback_allocated */ false);
 }
 
-absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
+std::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
   bool is_fallback_allocated = false;
 
   // Forces allocation as a separate file.
@@ -135,9 +135,9 @@ int64_t PlasmaAllocator::Allocated() const { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() const { return fallback_allocated_; }
 
-absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
-                                                            size_t size,
-                                                            bool is_fallback_allocated) {
+std::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr,
+                                                           size_t size,
+                                                           bool is_fallback_allocated) {
   if (addr == nullptr) {
     return absl::nullopt;
   }
