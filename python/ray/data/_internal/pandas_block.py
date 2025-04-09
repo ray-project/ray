@@ -24,12 +24,12 @@ from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
-    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -261,18 +261,10 @@ class PandasBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.columns
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
-
-        table = self._table.copy()
-        table[name] = data
-        return table
+        return self._table.assign(**{name: value})
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
