@@ -20,8 +20,7 @@ class DataConfig:
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
         execution_options: Optional[ExecutionOptions] = None,
-        enable_split_locality: bool = True,
-        _streaming_split_locality: bool = True,
+        enable_shard_locality: bool = True,
     ):
         """Construct a DataConfig.
 
@@ -32,7 +31,7 @@ class DataConfig:
             execution_options: The execution options to pass to Ray Data. By default,
                 the options will be optimized for data ingest. When overriding this,
                 base your options off of `DataConfig.default_ingest_options()`.
-            enable_split_locality: If true, when splitting the datasets across Train
+            enable_shard_locality: If true, when sharding the datasets across Train
                 workers, locality will be considered to minimize cross-node data transfer.
                 This is on by default.
         """
@@ -48,7 +47,7 @@ class DataConfig:
         self._execution_options: ExecutionOptions = (
             execution_options or DataConfig.default_ingest_options()
         )
-        self._enable_split_locality = enable_split_locality
+        self._enable_shard_locality = enable_shard_locality
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
