@@ -172,15 +172,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.column_names
 
-        import pyarrow as pa
         import pyarrow.compute as pc
 
-        if isinstance(value, pa.Scalar):
+        if isinstance(value, pyarrow.Scalar):
             type = value.type
         else:
-            type = pa.infer_type([value])
+            type = pyarrow.infer_type([value])
 
-        array = pa.nulls(len(self._table), type=type)
+        array = pyarrow.nulls(len(self._table), type=type)
         array = pc.fill_null(array, value)
         return self._table.append_column(name, array)
 
