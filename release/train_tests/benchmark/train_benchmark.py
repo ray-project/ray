@@ -49,7 +49,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     benchmark_config: BenchmarkConfig = cli_to_config()
-    logger.info("\nBenchmark config:\n" + pprint.pformat(benchmark_config.__dict__, indent=2))
+    logger.info(
+        "\nBenchmark config:\n" + pprint.pformat(benchmark_config.__dict__, indent=2)
+    )
 
     if benchmark_config.task == "image_classification_parquet":
         factory = ImageClassificationParquetFactory(benchmark_config)

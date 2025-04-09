@@ -76,7 +76,9 @@ class TorchRecRunner(TrainLoopRunner):
 
             pipeline.flush_end()
 
-        return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), train=train)
+        return super()._wrap_dataloader(
+            dataloader_with_torchrec_pipeline(), train=train
+        )
 
     def _train_step(self, batch):
         self.model.train()
@@ -102,13 +104,9 @@ class TorchRecRunner(TrainLoopRunner):
         # Save sharded model and optimizer state.
         model_filename, optimizer_filename = self._get_model_and_optim_filenames()
 
+        torch.save(self.model.state_dict(), os.path.join(local_dir, model_filename))
         torch.save(
-            self.model.state_dict(),
-            os.path.join(local_dir, model_filename)
-        )
-        torch.save(
-            self.optimizer.state_dict(),
-            os.path.join(local_dir, optimizer_filename)
+            self.optimizer.state_dict(), os.path.join(local_dir, optimizer_filename)
         )
 
     def _load_training_state(self, local_dir: str):

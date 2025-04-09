@@ -380,7 +380,9 @@ class VanillaTorchRunner(TrainLoopRunner):
         # Standard DDP checkpointing.
         if ray.train.get_context().get_world_rank() == 0:
             torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
-            torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
+            torch.save(
+                self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt")
+            )
 
     def _load_training_state(self, local_dir: str):
         self.model.load_state_dict(
