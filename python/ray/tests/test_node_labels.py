@@ -33,7 +33,7 @@ def test_ray_start_set_node_labels_from_json(call_ray_start):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ['ray start --head --labels-str "gpu_type=A100,region=us"'],
+    ['ray start --head --labels "gpu_type=A100,region=us"'],
     indirect=True,
 )
 def test_ray_start_set_node_labels_from_string(call_ray_start):
@@ -95,18 +95,16 @@ def test_ray_init_set_node_labels_value_error(ray_start_cluster):
 
 def test_ray_start_set_node_labels_value_error():
     out = check_cmd_stderr(["ray", "start", "--head", "--labels=xxx"])
-    assert "is not a valid JSON string, detailed error" in out
+    assert "is not a valid string of key-value pairs" in out
 
     out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
     assert 'The value of the "gpu_type" is not string type' in out
 
-    out = check_cmd_stderr(
-        ["ray", "start", "--head", '--labels={"ray.io/node_id":"111"}']
-    )
+    out = check_cmd_stderr(["ray", "start", "--head", "--labels", "ray.io/node_id=111"])
     assert "cannot start with the prefix `ray.io/`" in out
 
     out = check_cmd_stderr(
-        ["ray", "start", "--head", '--labels={"ray.io/other_key":"111"}']
+        ["ray", "start", "--head", "--labels", "ray.io/other_key=111"]
     )
     assert "cannot start with the prefix `ray.io/`" in out
 

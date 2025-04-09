@@ -635,25 +635,15 @@ Windows powershell users need additional escaping:
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
-# TODO (ryanaoleary@) replace this command with labels-str after
-# migrating all Ray libraries that use the --labels API.
 @click.option(
     "--labels",
     required=False,
     hidden=True,
-    default="{}",
-    type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
-)
-@click.option(
-    "--labels-str",
-    required=False,
-    hidden=True,
     default="",
     type=str,
-    help="a string list of key-value pairs mapping label name to label value."
-    "These values take precedence over conflicting keys passed in from --labels-file."
-    'Ex: --labels-str "key1=val1,key2=val2"',
+    help="Accepts a string list of key-value pairs or a JSON serialized "
+    "dictionary mapping label name to label value."
+    'Ex: --labels "key1=val1,key2=val2" or --labels {"key":"value"}',
 )
 @click.option(
     "--labels-file",
@@ -719,7 +709,6 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
-    labels_str,
     labels_file,
     include_log_monitor,
 ):
@@ -742,10 +731,8 @@ def start(
 
     resources = parse_resources_json(resources, cli_logger, cf)
 
-    # Compose labels passed in with `--labels`, `--labels-str`, and `--labels-file`.
-    # In the case of duplicate keys, the values from labels-str, label-file,
-    # and then labels take precedence in that order.
-    labels_from_json = parse_node_labels_json(labels, cli_logger, cf)
+    # Compose labels passed in with `--labels` and `--labels-file`.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
     try:
         labels_from_file = parse_node_labels_from_yaml_file(labels_file)
     except Exception as e:
@@ -757,16 +744,28 @@ def start(
             cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
         )
     try:
-        labels_from_string = parse_node_labels_string(labels_str)
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid string of key-value pairs, detailed error: {} "
-            "Valid values look like this: `{}`",
-            cf.bold(f"--labels-str={labels_str}"),
-            str(e),
-            cf.bold('--labels-str="key1=val1,key2=val2"'),
-        )
-    labels_dict = {**labels_from_json, **labels_from_file, **labels_from_string}
+        # Attempt to parse labels from new string format first.
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception:
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception as e2:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e2),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
 
     if plasma_store_socket_name is not None:
         warnings.warn(

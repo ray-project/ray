@@ -21,28 +21,16 @@ LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
 LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
 
-def parse_node_labels_json(
-    labels_json: str, cli_logger, cf, command_arg="--labels"
-) -> Dict[str, str]:
-    try:
-        labels = json.loads(labels_json)
-        if not isinstance(labels, dict):
-            raise ValueError(
-                "The format after deserialization is not a key-value pair map"
-            )
-        for key, value in labels.items():
-            if not isinstance(key, str):
-                raise ValueError("The key is not string type.")
-            if not isinstance(value, str):
-                raise ValueError(f'The value of the "{key}" is not string type')
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid JSON string, detailed error: {} "
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={labels_json}"),
-            str(e),
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
-        )
+def parse_node_labels_json(labels_json: str) -> Dict[str, str]:
+    labels = json.loads(labels_json)
+    if not isinstance(labels, dict):
+        raise ValueError("The format after deserialization is not a key-value pair map")
+    for key, value in labels.items():
+        if not isinstance(key, str):
+            raise ValueError("The key is not string type.")
+        if not isinstance(value, str):
+            raise ValueError(f'The value of the "{key}" is not string type')
+
     return labels
 
 
@@ -63,7 +51,7 @@ def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
         # Split each pair by `=`
         key_value = pair.split("=")
         if len(key_value) != 2:
-            raise ValueError("Label value is not a key-value pair.")
+            raise ValueError("Label string is not a key-value pair.")
         key = key_value[0].strip()
         value = key_value[1].strip()
         labels[key] = value

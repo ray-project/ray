@@ -1,6 +1,5 @@
-import click
+import json
 import pytest
-from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray._private.label_utils import (
     parse_node_labels_json,
     parse_node_labels_string,
@@ -14,30 +13,29 @@ import tempfile
 def test_parse_node_labels_from_json():
     # Empty label argument passed
     labels_json = "{}"
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    labels_dict = parse_node_labels_json(labels_json)
     assert labels_dict == {}
 
     # Valid label key with empty value
     labels_json = '{"region":""}'
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    labels_dict = parse_node_labels_json(labels_json)
     assert labels_dict == {"region": ""}
 
     # Multiple valid label keys and values
     labels_json = '{"ray.io/accelerator-type":"A100", "region":"us-west4"}'
-    labels_dict = parse_node_labels_json(labels_json, cli_logger, cf)
+    labels_dict = parse_node_labels_json(labels_json)
     assert labels_dict == {"ray.io/accelerator-type": "A100", "region": "us-west4"}
 
-    # Invalid label key
+    # Invalid label key - json.loads should fail
     labels_json = '{500:"A100"}'
-    with pytest.raises(click.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+    with pytest.raises(json.decoder.JSONDecodeError):
+        parse_node_labels_json(labels_json)
 
-    # Invalid label value
+    # Invalid label value - must be string type
     labels_json = '{"ray.io/accelerator-type":500}'
-    with pytest.raises(click.ClickException) as e:
-        parse_node_labels_json(labels_json, cli_logger, cf)
-    assert "is not a valid JSON string" in str(e)
+    with pytest.raises(ValueError) as e:
+        parse_node_labels_json(labels_json)
+    assert 'The value of the "ray.io/accelerator-type" is not string type' in str(e)
 
 
 def test_parse_node_labels_from_string():
@@ -60,7 +58,7 @@ def test_parse_node_labels_from_string():
     labels_string = "ray.io/accelerator-type=type=A100"
     with pytest.raises(ValueError) as e:
         parse_node_labels_string(labels_string)
-    assert "Label value is not a key-value pair" in str(e)
+    assert "Label string is not a key-value pair" in str(e)
 
 
 def test_parse_node_labels_from_yaml_file():
