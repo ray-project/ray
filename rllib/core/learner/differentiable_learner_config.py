@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from typing import Callable, List, Optional, Union
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
