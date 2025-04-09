@@ -97,9 +97,7 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
-        locality_hints = (
-            worker_node_ids if self._enable_split_locality else None
-        )
+        locality_hints = worker_node_ids if self._enable_split_locality else None
         for name, ds in datasets.items():
             execution_options = copy.deepcopy(self._execution_options)
 
