@@ -100,13 +100,13 @@ ray_cc_library(
         ":plasma_malloc",
         ":plasma_object_store",
         "//:object_manager_common",
-        "//:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:file_system_monitor",
         "//src/ray/common:id",
         "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util",
         "@boost//:bind",
         "@com_google_absl//absl/base:core_headers",
@@ -153,7 +153,7 @@ ray_cc_library(
     hdrs = ["stats_collector.h"],
     deps = [
         ":object_manager_plasma_common",
-        "//:stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
     ],
 )
