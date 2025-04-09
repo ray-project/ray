@@ -5,7 +5,6 @@ steps:
   # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
     key: pip_compile_dependencies
-    soft_fail: true
     tags: always
     instance_type: small
     commands:
