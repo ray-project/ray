@@ -289,7 +289,9 @@ class ActorPool:
         timeout_msg = "Timed out waiting for result"
         raise_timeout_after_ignore = False
         if timeout is not None:
-            res, _ = ray.wait([future], timeout=timeout)
+            res, _ = ray.wait(
+                future if isinstance(future, list) else [future], timeout=timeout
+            )
             if not res:
                 if not ignore_if_timedout:
                     raise TimeoutError(timeout_msg)
@@ -314,7 +316,9 @@ class ActorPool:
         This returns some result produced by submit(), blocking for up to
         the specified timeout until it is available. Unlike get_next(), the
         results are not always returned in same order as submitted, which can
-        improve performance.
+        improve performance. If timed out, setting ignore_if_timedout to True
+        will make this method ignore timeout and return None, indicating
+        no task is finished; otherwise a TimeoutError will be raised.
 
         Returns:
             The next result.
@@ -351,22 +355,17 @@ class ActorPool:
         # TODO(ekl) bulk wait for performance
         res, _ = ray.wait(list(self._future_to_actor), num_returns=1, timeout=timeout)
         timeout_msg = "Timed out waiting for result"
-        raise_timeout_after_ignore = False
         if res:
             [future] = res
         else:
             if not ignore_if_timedout:
                 raise TimeoutError(timeout_msg)
             else:
-                raise_timeout_after_ignore = True
+                return None
         i, a = self._future_to_actor.pop(future)
         self._return_actor(a)
         del self._index_to_future[i]
         self._next_return_index = max(self._next_return_index, i + 1)
-        if raise_timeout_after_ignore:
-            raise TimeoutError(
-                timeout_msg + ". The task {} has been ignored.".format(future)
-            )
         return ray.get(future)
 
     def _return_actor(self, actor):
