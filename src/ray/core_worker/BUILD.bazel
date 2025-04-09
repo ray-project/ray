@@ -547,9 +547,7 @@ ray_cc_library(
         "//:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/common:id",
-        "//src/ray/common:ray_object",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
