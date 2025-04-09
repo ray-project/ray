@@ -180,7 +180,7 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
-from ray.cython_components.object_ref_generator cimport DynamicObjectRefGenerator
+from ray.cython_components.object_ref_generator import DynamicObjectRefGenerator
 
 import ray
 from ray.exceptions import (
