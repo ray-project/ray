@@ -277,21 +277,16 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
 
-    # Assert that stdout is logged to "dashboard_TestModule.out"
-    out_log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.out"
-    )
-    with out_log_file_path.open("r") as f:
-        out_log_file_content = f.read()
-    assert out_log_file_content == "In /logging_in_module, stdout\n"
-
-    # Assert that stderr is logged to "dashboard_TestModule.err"
+    # Assert that stdout and stderr are logged to "dashboard.TestModule.err"
     err_log_file_path = (
         pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.err"
     )
     with err_log_file_path.open("r") as f:
         err_log_file_content = f.read()
-    assert err_log_file_content == "In /logging_in_module, stderr\n"
+    assert (
+        err_log_file_content
+        == "In /logging_in_module, stdout\nIn /logging_in_module, stderr\n"
+    )
 
 
 async def test_logging_in_module_with_multiple_incarnations(
