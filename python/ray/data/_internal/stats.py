@@ -527,6 +527,18 @@ class _StatsActor:
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
             )
+            if op_state.get("total", 0) and op_state.get("total_rows", 0):
+                # For some operators (input, limit, etc.), the number of tasks are not available so it cannot
+                # be used to calculate the number of outputted rows. In this case, we use the number of
+                # outputted blocks to calculate the number of outputted rows instead.
+                self.output_rows.set(
+                    int(
+                        op_state.get("progress", 0)
+                        * op_state.get("total_rows")
+                        / op_state.get("total")
+                    ),
+                    operator_tags,
+                )
 
             # Get state code directly from enum
             state_string = op_state.get("state", DatasetState.UNKNOWN.name)
