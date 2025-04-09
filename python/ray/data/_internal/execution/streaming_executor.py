@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 import uuid
-from typing import Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
@@ -141,6 +141,7 @@ class StreamingExecutor(Executor, threading.Thread):
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_tag,
             self._get_operator_tags(),
+            self._dump_dag_structure(dag),
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
@@ -438,6 +439,89 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_state_dict(state=state),
             force_update=force_update,
         )
+
+    def _dump_dag_structure(self, dag: PhysicalOperator) -> Dict[str, Any]:
+        """Dump the DAG structure as a dictionary that can be converted to JSON.
+        
+        Args:
+            dag: The operator DAG to analyze.
+            
+        Returns:
+            A dictionary with the DAG structure, containing operator names,
+            IDs, dependencies, and sub-operators where applicable.
+        """
+        # Return an empty dict if the topology isn't initialized yet
+        if not self._topology:
+            return {}
+
+        # Create a mapping of operators to their IDs
+        op_to_id = {op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)}
+
+        # Create the result structure
+        result = {
+            "operators": [],
+        }
+
+        # Add detailed operator information with dependencies
+        for op in dag.post_order_iter():
+            # Skip operators that aren't in the topology
+            if op not in op_to_id:
+                continue
+
+            op_id = op_to_id[op]
+            op_entry = {
+                "name": op.name,
+                "id": op_id,
+                "input_dependencies": [op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id],
+                "sub_operators": []
+            }
+
+            # Add sub-operators if they exist
+            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
+                for j, sub_name in enumerate(op._sub_progress_bar_names):
+                    sub_op_id = f"{op_id}_sub_{j}"
+                    op_entry["sub_operators"].append({
+                        "name": sub_name,
+                        "id": sub_op_id
+                    })
+
+            result["operators"].append(op_entry)
+
+        return result
+
+    def export_topology_structure(self) -> Dict[str, List[Dict]]:
+        """Export the topology structure as a dictionary that can be converted to JSON.
+
+        Returns:
+            A dictionary with the structure of the topology, containing operator names,
+            IDs, and sub-operators where applicable.
+        """
+        if not self._topology:
+            return {"operators": []}
+
+        result = {"operators": []}
+
+        for i, (op, _) in enumerate(self._topology.items()):
+            op_id = self._get_operator_id(op, i)
+            op_entry = {
+                "name": op.name,
+                "id": op_id,
+                "sub_operators": []
+            }
+
+            # Check if the operator has sub-progress bars (indicating sub-operations)
+            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
+                # If so, create sub-operator entries for each
+                for j, sub_name in enumerate(op._sub_progress_bar_names):
+                    sub_op_id = f"{op_id}_sub_{j}"
+                    op_entry["sub_operators"].append({
+                        "name": sub_name,
+                        "id": sub_op_id
+                    })
+
+            result["operators"].append(op_entry)
+
+        return result
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

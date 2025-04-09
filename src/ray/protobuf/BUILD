@@ -256,6 +256,7 @@ proto_library(
         ":export_submission_job_event_proto",
         ":export_task_event_proto",
         ":export_train_state_proto",
+        ":export_data_metadata_proto",
     ],
 )
 
@@ -381,7 +382,23 @@ cc_proto_library(
 python_grpc_compile(
     name = "export_train_state_py_proto",
     deps = [":export_train_state_proto"],
+)   
+
+proto_library(
+    name = "export_data_metadata_proto",
+    srcs = ["export_api/export_data_metadata.proto"],
 )
+
+cc_proto_library(
+    name = "export_data_metadata_cc_proto",
+    deps = [":export_data_metadata_proto"],
+)
+
+python_grpc_compile(
+    name = "export_data_metadata_py_proto",
+    deps = [":export_data_metadata_proto"],
+)
+
 
 # Agent manager gRPC lib.
 proto_library(
