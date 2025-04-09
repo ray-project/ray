@@ -746,7 +746,7 @@ def start(
     try:
         # Attempt to parse labels from new string format first.
         labels_from_string = parse_node_labels_string(labels)
-    except Exception:
+    except Exception as e:
         try:
             # Fall back to JSON format if parsing from string fails.
             labels_from_string = parse_node_labels_json(labels)
@@ -756,13 +756,13 @@ def start(
                 DeprecationWarning,
                 stacklevel=2,
             )
-        except Exception as e2:
+        except Exception:
             # If parsing labels from both formats fails, return the original error message.
             cli_logger.abort(
                 "`{}` is not a valid string of key-value pairs, detailed error: {} "
                 "Valid values look like this: `{}`",
                 cf.bold(f"--labels={labels}"),
-                str(e2),
+                str(e),
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
