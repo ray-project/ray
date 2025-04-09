@@ -225,6 +225,15 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 datasets=datasets,
             )
             train_loop_config = params or {}
+        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+        # elif train_kwargs:
+        #     _log_deprecation_warning(
+        #         "Passing `lightgbm.train` kwargs to `LightGBMTrainer` is deprecated. "
+        #         f"Got kwargs: {train_kwargs.keys()}\n"
+        #         "Please pass in a `train_loop_per_worker` function instead, "
+        #         "which has full flexibility on the call to `lightgbm.train(**kwargs)`. "
+        #         f"{LEGACY_LIGHTGBMGBM_TRAINER_DEPRECATION_MESSAGE}"
+        #     )
 
         super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
