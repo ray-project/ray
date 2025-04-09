@@ -94,7 +94,7 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
-    def _wrap_dataloader(self, dataloader, train: bool):
+    def _wrap_dataloader(self, dataloader, train: bool = True):
         dataloader_iter = iter(dataloader)
 
         prefix = "train" if train else "validation"
@@ -128,7 +128,7 @@ class TrainLoopRunner:
             logger.info(f"Training starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
-        train_dataloader = self._wrap_dataloader(train_dataloader, prefix="train")
+        train_dataloader = self._wrap_dataloader(train_dataloader, train=True)
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
@@ -166,7 +166,7 @@ class TrainLoopRunner:
             )
 
         val_dataloader = self.factory.get_val_dataloader()
-        val_dataloader = self._wrap_dataloader(val_dataloader, prefix="validation")
+        val_dataloader = self._wrap_dataloader(val_dataloader, train=False)
 
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0

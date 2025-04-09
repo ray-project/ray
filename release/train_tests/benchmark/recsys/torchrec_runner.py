@@ -39,7 +39,7 @@ class TorchRecRunner(TrainLoopRunner):
         self._data_dist_stream = torch.cuda.Stream()
         self._h2d_stream = torch.cuda.Stream()
 
-    def _wrap_dataloader(self, dataloader, prefix: str):
+    def _wrap_dataloader(self, dataloader, train: bool = True):
         dataloader_iter = iter(dataloader)
 
         device = ray.train.torch.get_device()
@@ -76,7 +76,7 @@ class TorchRecRunner(TrainLoopRunner):
 
             pipeline.flush_end()
 
-        return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), prefix)
+        return super()._wrap_dataloader(dataloader_with_torchrec_pipeline(), train=train)
 
     def _train_step(self, batch):
         self.model.train()
