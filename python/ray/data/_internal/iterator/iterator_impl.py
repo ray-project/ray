@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 
@@ -40,6 +39,4 @@ class DataIteratorImpl(DataIterator):
         return self._base_dataset.context
 
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name, self._base_dataset._uuid
-        )
+        return self._base_dataset.get_dataset_id()

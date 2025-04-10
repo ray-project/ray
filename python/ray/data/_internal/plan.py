@@ -14,15 +14,15 @@ from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-
     from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import Dataset
 
 
@@ -78,12 +78,30 @@ class ExecutionPlan:
         self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
+        # Index of the current execution.
+        self._run_index = -1
 
         self._dataset_name = None
 
         self._has_started_execution = False
 
         self._context = data_context
+
+    def get_dataset_id(self) -> str:
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return (
+            f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}_{self._run_index}"
+        )
+
+    def create_executor(self) -> "StreamingExecutor":
+        """Create an executor for this plan."""
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+        self._run_index += 1
+        executor = StreamingExecutor(self._context, self.get_dataset_id())
+        return executor
 
     def __repr__(self) -> str:
         return (
@@ -407,9 +425,6 @@ class ExecutionPlan:
         """
         self._has_started_execution = True
 
-        # Always used the saved context for execution.
-        ctx = self._context
-
         if self.has_computed_output():
             bundle = self.execute()
             return iter([bundle]), self._snapshot_stats, None
@@ -417,10 +432,8 @@ class ExecutionPlan:
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
         )
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(ctx, metrics_tag)
+        executor = self.create_executor()
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -486,15 +499,7 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
-
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-                executor = StreamingExecutor(
-                    context,
-                    metrics_tag,
-                )
+                executor = self.create_executor()
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
