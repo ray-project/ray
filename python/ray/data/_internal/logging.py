@@ -69,6 +69,10 @@ RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 # Env. variable to specify the logging config path use defaults if not set
 RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
+# A dictionary to store loggers for each dataset. The keys are dataset IDs, and the
+# values are the corresponding loggers.
+DATASET_LEVEL_LOGGERS = {}
+
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
 # level where logs aren't written by default.
@@ -218,3 +222,37 @@ def get_default_formatter() -> logging.Formatter:
         return DEFAULT_JSON_FORMATTER()
 
     return logging.Formatter(DEFAULT_TEXT_FORMATTER)
+
+
+def register_dataset_logger(dataset_id: str) -> None:
+    """Add a logger for a dataset with the given ID.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    logger = logging.getLogger("ray.data")
+    handler = SessionFileHandler(
+        filename=f"ray-data-{dataset_id}.log",
+    )
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(get_default_formatter())
+
+    # Add the handler to the logger
+    logger.addHandler(handler)
+    DATASET_LEVEL_LOGGERS[dataset_id] = handler
+
+
+def unregister_dataset_logger(dataset_id: str) -> None:
+    """Remove the logger for a dataset with the given ID.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    logger = logging.getLogger("ray.data")
+    handler = DATASET_LEVEL_LOGGERS.get(dataset_id)
+    if not handler:
+        # This mean the dataset logger has not been registered. Do nothing.
+        return
+
+    logger.removeHandler(handler)
+    DATASET_LEVEL_LOGGERS.pop(dataset_id)
