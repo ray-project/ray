@@ -232,7 +232,7 @@ bool ClusterResourceManager::HasRequiredLabels(
 
   // Check if node labels satisfy all label constraints
   for (const auto &constraint : label_selector.label_constraints()) {
-    if (!NodeLabelMatchesConstraint(*(it->second), constraint)) {
+    if (!NodeLabelMatchesConstraint(it->second, constraint)) {
       return false;
     }
   }
@@ -241,19 +241,24 @@ bool ClusterResourceManager::HasRequiredLabels(
 }
 
 bool ClusterResourceManager::NodeLabelMatchesConstraint(
-    const Node &node, const rpc::LabelConstraint &constraint) {
+    const ray::Node &node, const rpc::LabelConstraint &constraint) const {
   const auto &key = constraint.label_key();
   const auto &match_operator = constraint.operator_();
   const auto &values = constraint.label_values();
 
-  if (match_operator == LabelSelectorOperator.LABEL_OPERATOR_IN) {
+  absl::flat_hash_set<std::string> values_set;
+  for (const auto &v : values) {
+    values_set.insert(v);
+  }
+
+  if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_IN) {
     // Check for equals or in() labels
-    if (IsNodeLabelInValues(node, key, values)) {
+    if (IsNodeLabelInValues(node, key, values_set)) {
       return true;
     }
-  } else if (match_operator == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN) {
+  } else if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN) {
     // Check for not equals (!) or not in (!in()) labels
-    if (!IsNodeLabelInValues(node, key, values)) {
+    if (!IsNodeLabelInValues(node, key, values_set)) {
       return true;
     }
   } else {
@@ -264,19 +269,8 @@ bool ClusterResourceManager::NodeLabelMatchesConstraint(
   return false;
 }
 
-bool ClusterResourceManager::IsNodeLabelEqual(const Node &node,
-                                              const std::string &key,
-                                              const std::string &value) const {
-  const auto &node_labels = node.GetLocalView().labels;
-  if (!node_labels.contains(key)) {
-    return false;
-  }
-
-  return node_labels.get(key) == value
-}
-
 bool ClusterResourceManager::IsNodeLabelInValues(
-    const Node &node,
+    const ray::Node &node,
     const std::string &key,
     const absl::flat_hash_set<std::string> &values) const {
   const auto &node_labels = node.GetLocalView().labels;

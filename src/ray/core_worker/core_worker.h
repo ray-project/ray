@@ -1417,7 +1417,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {});
+      const ray::rpc::LabelSelector &label_selector = ray::rpc::LabelSelector());
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

@@ -797,13 +797,13 @@ cdef int prepare_label_selector(
             values = [v.strip() for v in values if v.strip()]
             if not values:
                 raise ValueError(f"No values provided for key '{key}'")
-            constraint.set_operator(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
+            constraint.set_operator_(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
             for v in values:
                 constraint.add_label_values(v.encode("utf-8"))
         elif "," in val:
             raise ValueError(f"Invalid multi-value label format for key '{key}': '{value}'")
         else:
-            constraint.set_operator(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
+            constraint.set_operator_(CLabelSelectorOperator.LABEL_OPERATOR_NOT_IN if is_negated else CLabelSelectorOperator.LABEL_OPERATOR_IN)
             constraint.add_label_values(val.encode("utf-8"))
 
     return 0

@@ -230,14 +230,14 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLabelNotIn* mutable_label_not_in()
         CLabelExists* mutable_label_exists()
         CLabelDoesNotExist* mutable_label_does_not_exist()
-    cdef enum CLabelSelectorOperator "ray::core::LabelSelectorOperator":
-        LABEL_OPERATOR_UNSPECIFIED
-        LABEL_OPERATOR_IN
-        LABEL_OPERATOR_NOT_IN
+    cdef enum CLabelSelectorOperator "ray::rpc::LabelSelectorOperator": # noqa: E501
+        LABEL_OPERATOR_UNSPECIFIED "ray::rpc::LABEL_OPERATOR_UNSPECIFIED"
+        LABEL_OPERATOR_IN "ray::rpc::LABEL_OPERATOR_IN"
+        LABEL_OPERATOR_NOT_IN "ray::rpc::LABEL_OPERATOR_NOT_IN"
     cdef cppclass CLabelConstraint "ray::rpc::LabelConstraint":  # noqa: E501
         CLabelConstraint()
         void set_label_key(const c_string &key)
-        void set_operator(CLabelSelectorOperator op)
+        void set_operator_(CLabelSelectorOperator op)
         void add_label_values(const c_string &value)
     cdef cppclass CLabelSelector "ray::rpc::LabelSelector":  # noqa: E501
         CLabelSelector()
@@ -342,7 +342,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events,
+                     c_string serialized_runtime_env,
+                     c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
                      const CLabelSelector &label_selector)
 

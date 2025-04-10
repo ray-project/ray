@@ -161,6 +161,16 @@ class ClusterResourceScheduler {
   ///
   ///  \return: Whether the request can be scheduled.
   bool IsSchedulable(const ResourceRequest &resource_request,
+                     scheduling::NodeID node_id) const;
+
+  /// Check whether a resource request can be scheduled given a node.
+  ///
+  ///  \param resource_request: Resource request to be scheduled.
+  ///  \param label_selector: Label constraints to schedule a Task on a node.
+  ///  \param node_id: ID of the node.
+  ///
+  ///  \return: Whether the request can be scheduled.
+  bool IsSchedulable(const ResourceRequest &resource_request,
                      const rpc::LabelSelector &label_selector,
                      scheduling::NodeID node_id) const;
 

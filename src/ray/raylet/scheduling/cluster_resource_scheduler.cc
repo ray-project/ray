@@ -111,11 +111,22 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
 }
 
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
-                                             const rpc::LabelSelector &label_selector,
                                              scheduling::NodeID node_id) const {
   // It's okay if the local node's pull manager is at capacity because we
   // will eventually spill the task back from the waiting queue if its args
   // cannot be pulled.
+  return cluster_resource_manager_->HasAvailableResources(
+             node_id,
+             resource_request,
+             /*ignore_object_store_memory_requirement*/ node_id == local_node_id_) &&
+         NodeAvailable(node_id);
+}
+
+bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
+                                             const rpc::LabelSelector &label_selector,
+                                             scheduling::NodeID node_id) const {
+  // Check both resource and label constraints when determining if an available node
+  // is schedulable.
   return cluster_resource_manager_->HasAvailableResources(
              node_id,
              resource_request,

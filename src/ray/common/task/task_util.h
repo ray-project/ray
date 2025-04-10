@@ -141,7 +141,7 @@ class TaskSpecBuilder {
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const rpc::LabelSelector &label_selector) {
+      const rpc::LabelSelector &label_selector = rpc::LabelSelector()) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
