@@ -44,6 +44,7 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._input_data_index = 0
+        self.mark_execution_completed()
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:

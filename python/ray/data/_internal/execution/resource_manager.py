@@ -426,7 +426,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
-        return not op.throttling_disabled() and not op.completed()
+        return not op.throttling_disabled() and not op.execution_completed()
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         return [

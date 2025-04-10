@@ -554,7 +554,7 @@ class TestReservationOpResourceAllocator:
         assert o2 in allocator._op_budgets
         assert o3 not in allocator._op_budgets
 
-        o2.completed = MagicMock(return_value=True)
+        o2.execution_completed = MagicMock(return_value=True)
         allocator.update_usages()
         assert o2 not in allocator._op_budgets
 

@@ -276,6 +276,12 @@ class PhysicalOperator(Operator):
         """Manually mark this operator has completed execution."""
         self._execution_completed = True
 
+    def execution_completed(self) -> bool:
+        """Return True when this operator has completed execution.
+        The outputs may or may not have been taken.
+        """
+        return self._execution_completed
+
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
