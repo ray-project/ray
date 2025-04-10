@@ -49,6 +49,7 @@ class ThreadRunner:
                     self._exc = UserExceptionWithTraceback(
                         e, traceback_str=exc_traceback_str
                     )
+
             with self._lock:
                 self._is_running = False
 
