@@ -10,7 +10,6 @@ from ray.core.generated import (
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray._private.utils import open_log
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private import logging_utils
 
