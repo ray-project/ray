@@ -649,14 +649,6 @@ class Algorithm(Checkpointable, Trainable):
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
-            self.spaces = self.env_runner_group.get_spaces()
-            if self.env_runner is None:
-                self.env_to_module_connector = (
-                    self.config.build_env_to_module_connector(spaces=self.spaces)
-                )
-                self.module_to_env_connector = (
-                    self.config.build_module_to_env_connector(spaces=self.spaces)
-                )
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -690,6 +682,19 @@ class Algorithm(Checkpointable, Trainable):
                     else self.evaluation_config.create_local_env_runner
                 ),
                 pg_offset=self.config.num_env_runners,
+            )
+
+        if self.env_runner_group:
+            self.spaces = self.env_runner_group.get_spaces()
+        elif self.eval_env_runner_group:
+            self.spaces = self.eval_env_runner_group.get_spaces()
+
+        if self.env_runner is None:
+            self.env_to_module_connector = self.config.build_env_to_module_connector(
+                spaces=self.spaces
+            )
+            self.module_to_env_connector = self.config.build_module_to_env_connector(
+                spaces=self.spaces
             )
 
         self.evaluation_dataset = None
@@ -3310,7 +3315,9 @@ class Algorithm(Checkpointable, Trainable):
     @property
     def env_runner(self):
         """The local EnvRunner instance within the algo's EnvRunnerGroup."""
-        return self.env_runner_group.local_env_runner
+        if self.env_runner_group:
+            return self.env_runner_group.local_env_runner
+        return None
 
     @property
     def eval_env_runner(self):
