@@ -38,6 +38,7 @@ from ray.autoscaler.tags import (
 logger = logging.getLogger(__name__)
 
 TAG_BATCH_DELAY = 1
+LIST_RETRY_DELAY = 1
 
 
 def to_aws_format(tags):
@@ -594,9 +595,23 @@ class AWSNodeProvider(NodeProvider):
 
         # Node not in {pending, running} -- retry with a point query. This
         # usually means the node was recently preempted or terminated.
-        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
-        assert len(matches) == 1, "Invalid instance id {}".format(node_id)
-        return matches[0]
+        # The EC2 API is eventually consistent. This means that an instance
+        # might not be immediately visible. So we need to retry the query a few times.
+        # See: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
+        # and https://github.com/ray-project/ray/issues/51861
+        for attempts in range(max(BOTO_MAX_RETRIES, 1)):  # at least try once.
+            matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
+            if len(matches) == 1:
+                return matches[0]
+            cli_logger.warning(
+                "get_node({}): Attempt failed with len(matches) == {}, retrying ({}/{}).",
+                node_id,
+                len(matches),
+                attempts + 1,
+                BOTO_MAX_RETRIES,
+            )
+            time.sleep(LIST_RETRY_DELAY)
+        raise AssertionError("Invalid instance id {}".format(node_id))
 
     def _get_cached_node(self, node_id):
         """Return node info from cache if possible, otherwise fetches it."""
