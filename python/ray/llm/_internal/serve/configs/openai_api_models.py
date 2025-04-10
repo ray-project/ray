@@ -672,6 +672,31 @@ class CompletionStreamResponse(BaseModel):
     usage: Optional[UsageInfo] = Field(default=None)
 
 
+class EmbeddingRequest(BaseModel):
+    model: str
+    input: Union[str, List[str], List[int], List[List[int]]]
+    encoding_format: Optional[Literal["float", "base64"]] = "float"
+    dimensions: Optional[int] = None
+    user: Optional[str] = None
+
+
+class EmbeddingData(BaseModel):
+    embedding: Union[List[float], str]
+    index: int
+    object: str = "embedding"
+
+
+class EmbeddingResponse(BaseModel):
+    data: List[EmbeddingData]
+    model: str
+    object: str = "list"
+    usage: UsageInfo
+
+
+LLMEmbeddingsResponse = Union[
+    AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
+]
+
 LLMChatResponse = Union[
     AsyncGenerator[
         Union[ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse], None

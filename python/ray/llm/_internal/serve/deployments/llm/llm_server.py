@@ -34,8 +34,12 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionResponseStreamChoice,
     CompletionStreamResponse,
     DeltaMessage,
+    EmbeddingData,
+    EmbeddingRequest,
+    EmbeddingResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
+    LLMEmbeddingsResponse,
     UsageInfo,
 )
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
@@ -55,6 +59,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
+    VLLMEmbeddingRequest,
 )
 from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
@@ -597,6 +602,53 @@ class LLMServer(_LLMServerBase):
         return self.response_postprocessor.process_completions(
             model=self._llm_config.model_id, gen=gen, stream=stream
         )
+
+    async def embeddings(self, request: EmbeddingRequest) -> LLMEmbeddingsResponse:
+        """Runs an embeddings request to the vllm engine, and return the response.
+
+        Args:
+            request: An EmbeddingRequest object.
+
+        Returns:
+            A LLMEmbeddingsResponse object.
+        """
+        request_id = get_serve_request_id()
+        try:
+            multiplexed_model_id = serve.get_multiplexed_model_id()
+
+            if multiplexed_model_id:
+                assert (
+                    self._llm_config.lora_config is not None
+                ), "Must setup lora config for multiplexed requests."
+                disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
+            else:
+                disk_lora_model = None
+
+            request_params = {
+                "request_id": request_id,
+                "prompt": request.input,
+                "encoding_format": request.encoding_format,
+                "disk_multiplex_config": disk_lora_model,
+                "serve_request_context": serve.context._serve_request_context.get(),
+            }
+            vllm_request = VLLMEmbeddingRequest(**request_params)
+            embedding_data, total_tokens = await self.engine.embed(vllm_request)
+
+            data = [
+                EmbeddingData(object="embedding", index=index, embedding=embedding)
+                for index, embedding in enumerate(embedding_data)
+            ]
+
+            usage = UsageInfo(prompt_tokens=total_tokens, total_tokens=total_tokens)
+
+            yield EmbeddingResponse(
+                model=self._llm_config.model_id, data=data, usage=usage, object="list"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed while handling embeddings for request ({request_id}): {repr(e)}",
+                exc_info=e,
+            )
 
     async def check_health(self):
         """Check the health of the vllm engine."""

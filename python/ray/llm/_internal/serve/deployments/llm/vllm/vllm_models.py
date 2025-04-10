@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
 from ray import serve
@@ -17,6 +17,7 @@ from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     GenerationRequest,
+    EmbeddingRequest,
     GPUType,
     LLMConfig,
     SamplingParams,
@@ -224,6 +225,28 @@ class VLLMGenerationRequest(GenerationRequest):
 
     sampling_params: VLLMSamplingParams
     multi_modal_data: Optional[Dict[str, Any]] = None
+    serve_request_context: Optional[serve.context._RequestContext] = None
+    disk_multiplex_config: Optional[DiskMultiplexConfig] = None
+
+    @property
+    def lora_request(self) -> "LoRARequest":
+
+        disk_vllm_config = self.disk_multiplex_config
+        if not disk_vllm_config:
+            return None
+        else:
+            return vllm.lora.request.LoRARequest(
+                lora_name=disk_vllm_config.model_id,
+                lora_int_id=disk_vllm_config.lora_assigned_int_id,
+                lora_local_path=disk_vllm_config.local_path,
+                long_lora_max_len=disk_vllm_config.max_total_tokens,
+            )
+
+
+class VLLMEmbeddingRequest(EmbeddingRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    encoding_format: Optional[Literal["float", "base64"]] = "float"
+    dimensions: Optional[int] = None
     serve_request_context: Optional[serve.context._RequestContext] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 

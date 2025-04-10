@@ -1,6 +1,9 @@
 import asyncio
 import os
 import time
+import base64
+import struct
+
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
@@ -27,6 +30,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
+    VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
@@ -57,9 +61,8 @@ if TYPE_CHECKING:
     from vllm.config import ModelConfig, VllmConfig
     from vllm.engine.arg_utils import AsyncEngineArgs
     from vllm.engine.protocol import EngineClient
-    from vllm.outputs import RequestOutput
+    from vllm.outputs import RequestOutput, PoolingRequestOutput
     from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
-
 vllm = try_import("vllm")
 logger = get_logger(__name__)
 
@@ -674,6 +677,53 @@ class VLLMEngine:
             raise InputTooLong(
                 len(request_output.prompt_token_ids), self.model_config.max_model_len
             ).exception
+
+    async def embed(
+        self, vllm_embedding_request: VLLMEmbeddingRequest
+    ) -> Tuple[List[List[float]], int]:  # Return (embeddings, num_prompt_tokens)
+        def floats_to_base64(float_list):
+            binary = struct.pack(f"{len(float_list)}f", *float_list)
+            encoded = base64.b64encode(binary).decode("utf-8")
+            return encoded
+
+        num_prompts = len(vllm_embedding_request.prompt)
+        if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
+            logger.info(
+                f"Encoding request {vllm_embedding_request.request_id} started. "
+                f"Num prompts: {num_prompts}"
+            )
+
+        generators: List[AsyncGenerator["PoolingRequestOutput", None]] = []
+
+        prompts = vllm_embedding_request.prompt
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        for i, prompt in enumerate(prompts):
+            request_id = f"{vllm_embedding_request.request_id}-{i}"
+            gen: AsyncGenerator["PoolingRequestOutput", None] = self.engine.encode(
+                prompt=vllm.inputs.TextPrompt(
+                    prompt=prompt,
+                ),
+                pooling_params=vllm.pooling_params.PoolingParams(),
+                request_id=request_id,
+                lora_request=vllm_embedding_request.lora_request,  # type: ignore
+            )
+            generators.append(gen)
+
+        embedding_data = []
+        total_prompt_tokens = 0
+
+        for gen in generators:
+            async for result in gen:
+                embedding = result.outputs.embedding
+                if vllm_embedding_request.encoding_format == "base64":
+                    embedding = floats_to_base64(embedding)
+
+                embedding_data.append(embedding)
+                total_prompt_tokens += len(result.prompt_token_ids)
+
+        return embedding_data, total_prompt_tokens
 
     async def check_health(self):
         if not hasattr(self.engine, "check_health"):
