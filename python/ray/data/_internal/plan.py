@@ -178,7 +178,7 @@ class ExecutionPlan:
                     assert len(sources) == 1
                     plan = ExecutionPlan(
                         DatasetStats(metadata={}, parent=None),
-                        self._context.copy(),
+                        self._context,
                     )
                     plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
