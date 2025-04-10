@@ -403,6 +403,9 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                     )
                 ),
                 accelerator_type="A10G",
+                engine_kwargs=dict(
+                    enable_lora=True,
+                ),
             )
 
             # Build and deploy the model
