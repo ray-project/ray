@@ -3426,7 +3426,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/python/lance.html#lance.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance/api/py_modules.html#lance.dataset.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3445,11 +3445,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/object_store.html#object-store-configuration>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io\
-            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
+            see `LanceDB API doc <https://lancedb.github.io/\
+                lance/api/py_modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
