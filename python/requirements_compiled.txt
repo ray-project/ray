@@ -287,7 +287,6 @@ click==8.1.7
     #   pyiceberg
     #   ray
     #   semgrep
-    #   tensorflow-datasets
     #   typer
     #   uvicorn
     #   wandb
@@ -444,7 +443,9 @@ docker==6.1.3
 docker-pycreds==0.4.0
     # via wandb
 docstring-parser==0.15
-    # via yahp
+    # via
+    #   simple-parsing
+    #   yahp
 docutils==0.19
     # via
     #   -r python/requirements/lint-requirements.txt
@@ -457,6 +458,8 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
+einops==0.8.1
+    # via etils
 entrypoints==0.4
     # via
     #   jupyter-client
@@ -464,9 +467,8 @@ entrypoints==0.4
     #   nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
-etils==1.5.2 ; python_version < "3.12"
+etils==1.12.2
     # via
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
     #   mujoco
     #   tensorflow-datasets
@@ -774,6 +776,8 @@ imageio-ffmpeg==0.4.5
     # via -r python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
     # via sphinx
+immutabledict==4.2.1
+    # via tensorflow-datasets
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1583,6 +1587,7 @@ pyarrow==14.0.2
     #   mlflow
     #   pylance
     #   raydp
+    #   tensorflow-datasets
     #   triad
 pyarrow-hotfix==0.6
     # via
@@ -2030,6 +2035,8 @@ shimmy==2.0.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via -r python/requirements/ml/tune-test-requirements.txt
+simple-parsing==0.1.7
+    # via tensorflow-datasets
 simpleitk==2.3.1
     # via medpy
 simplejson==3.19.2
@@ -2186,7 +2193,7 @@ tensorboardx==2.6.2.2
     #   pytorch-lightning
 tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-datasets==4.9.3 ; python_version < "3.12"
+tensorflow-datasets==4.9.8 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2394,6 +2401,7 @@ typing-extensions==4.12.2
     #   pytorch-lightning
     #   referencing
     #   semgrep
+    #   simple-parsing
     #   snowflake-connector-python
     #   sqlalchemy
     #   tensorflow
