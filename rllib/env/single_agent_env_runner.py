@@ -97,7 +97,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
         self.num_envs: int = 0
-        if self.worker_index > 0 or self.config.create_env_on_local_worker:
+        if (
+            self.worker_index > 0
+            or self.config.create_env_on_local_worker
+            or self.config.num_env_runners == 0
+        ):
             self.make_env()
 
         # Create the env-to-module connector pipeline.
