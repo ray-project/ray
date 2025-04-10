@@ -460,7 +460,7 @@ DEFAULT_GRAFANA_PANELS = [
         id=45,
         title="Component GPU Utilization",
         description="GPU utilization of Ray components.",
-        unit="%",
+        unit="GPUs",
         targets=[
             Target(
                 expr="sum(ray_component_gpu_utilization{{{global_filters}}} / 100) by (Component, pid, GpuIndex, GpuDeviceName)",
