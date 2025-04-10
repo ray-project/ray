@@ -854,7 +854,9 @@ class ReporterAgent(
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-        result['gpu_processes'] = self._get_gpu_process_usages() if result['gpus'] else []
+        result["gpu_processes"] = (
+            self._get_gpu_process_usages() if result["gpus"] else []
+        )
         return result
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
@@ -1077,7 +1079,9 @@ class ReporterAgent(
                         records.append(
                             Record(
                                 gauge=METRICS_GAUGES["component_gpu_memory_usage"],
-                                value=int(proc["gpu_memory_usage"] * MB),  # Convert to bytes
+                                value=int(
+                                    proc["gpu_memory_usage"] * MB
+                                ),  # Convert to bytes
                                 tags=tags,
                             )
                         )
@@ -1089,7 +1093,7 @@ class ReporterAgent(
                                     tags=tags,
                                 )
                             )
-                        break # Same pid can be in multiple GPUs
+                        break  # Same pid can be in multiple GPUs
 
         for pid, proc_name in worker_processes.items():
             _generate_records(proc_name, pid)
