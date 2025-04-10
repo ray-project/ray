@@ -147,7 +147,7 @@ std::string Status::ToString() const {
 
   if (IsRpcError()) {
     result += " rpc_code: ";
-    result += std::to_string(state_->rpc_code);
+    result += absl::StrFormat("%d", state_->rpc_code);
   }
 
   if (IsValidSourceLoc(state_->loc)) {
