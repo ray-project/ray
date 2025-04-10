@@ -132,7 +132,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
 
     - name: Check Test Image Existence
       id: check_test_image
@@ -196,6 +196,11 @@ jobs:
     strategy:
       matrix:
         python: ['3.11']
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -207,19 +212,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
-    - name: Start local registry
-      if: '!cancelled()'
-      run: |
-        # Check if registry container exists and handle accordingly
-        if ! docker ps -a --format '{{.Names}}' | grep -q '^local-registry$'; then
-          docker run -d -p 5000:5000 --name local-registry registry:2
-        elif ! docker ps --format '{{.Names}}' | grep -q '^local-registry$'; then
-          docker start local-registry
-        fi
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: network=host
 
     - name: Check Core Image Existence
       id: check_core_image
@@ -244,6 +240,11 @@ jobs:
           DOCKER_IMAGE_BASE_BUILD=ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }}
         push: true
 
+    - name: Install bazel
+      if: '!cancelled()'
+      run: |
+        bash ci/env/install-bazel.sh
+
     - name: Push core build image to local registry
       if: '!cancelled()'
       run: |
@@ -261,33 +262,6 @@ jobs:
             sleep 10
           fi
         done
-    
-    - name: Install bazel
-      if: '!cancelled()'
-      run: |
-        bash ci/env/install-bazel.sh
-
-    - name: Check Manylinux Image Existence
-      id: check_manylinux_image
-      run: |
-        if docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -q "localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-manylinux"; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Build Manylinux Image
-      if: steps.check_manylinux_image.outputs.exists != 'true'
-      uses: docker/build-push-action@v3
-      with:
-        context: .
-        file: ci/docker/manylinux.Dockerfile
-        tags: |
-          localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-manylinux
-        push: true
-        build-args: |
-          BUILDKITE_BAZEL_CACHE_URL
-          HOSTTYPE=x86_64
 
     - name: Run Core Python Tests (1)
       if: '!cancelled()'

@@ -191,8 +191,25 @@ MODERN_CSS = """
 
 # rename all log files to remove colons
 def rename_log_files():
+    """Rename log files to remove invalid characters for GitHub artifact uploads."""
     for log_file in FAILED_LOGS_DIR.glob("*.zip"):
-        safe_name = log_file.name.replace("::", "/")
+        # Replace all invalid characters
+        safe_name = log_file.name
+        safe_name = safe_name.replace("::", "/")
+        safe_name = safe_name.replace('"', "_")
+        safe_name = safe_name.replace("<", "_")
+        safe_name = safe_name.replace(">", "_")
+        safe_name = safe_name.replace("|", "_")
+        safe_name = safe_name.replace("*", "_")
+        safe_name = safe_name.replace("?", "_")
+        safe_name = safe_name.replace("\r", "")
+        safe_name = safe_name.replace("\n", "")
+        safe_name = safe_name.replace("[", "_")
+        safe_name = safe_name.replace("]", "_")
+        safe_name = safe_name.replace("{", "_")
+        safe_name = safe_name.replace("}", "_")
+        safe_name = safe_name.replace(":", "_")
+
         dest_path = FAILED_LOGS_DIR / safe_name
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(log_file, dest_path)
