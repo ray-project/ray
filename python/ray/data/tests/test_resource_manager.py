@@ -531,7 +531,8 @@ class TestReservationOpResourceAllocator:
         """Test that we only handle non-completed map ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
 
-        o1 = InputDataBuffer(DataContext.get_current(), [])
+        input = make_ref_bundles([[x] for x in range(1)])
+        o1 = InputDataBuffer(DataContext.get_current(), input)
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
@@ -551,10 +552,11 @@ class TestReservationOpResourceAllocator:
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
         allocator.update_usages()
+        assert o1 not in allocator._op_budgets
         assert o2 in allocator._op_budgets
         assert o3 not in allocator._op_budgets
 
-        o2.execution_completed = MagicMock(return_value=True)
+        o2.mark_execution_completed()
         allocator.update_usages()
         assert o2 not in allocator._op_budgets
 
