@@ -1,6 +1,5 @@
 import functools
 import inspect
-
 import time
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
@@ -13,6 +12,9 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.utils import INT32_MAX
 from ray.anyscale.data._internal.logical.operators.list_files_operator import ListFiles
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.anyscale.data._internal.planner.file_indexer import (
+    NonSamplingFileIndexer,
+)
 from ray.anyscale.data._internal.readers import (
     AudioReader,
     AvroReader,
@@ -718,11 +720,12 @@ def read_files(
             else shuffle
         )
 
+    file_indexer = NonSamplingFileIndexer(ignore_missing_paths=ignore_missing_paths)
     list_files_op = ListFiles(
         paths=paths,
+        file_indexer=file_indexer,
         reader=reader,
         filesystem=filesystem,
-        ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
         shuffle_config_factory=_shuffle_config_factory,
