@@ -615,7 +615,7 @@ class _StatsActor:
             return
 
         data_metadata_proto = self._dataset_metadata_to_proto(dag_structure)
-        self._export_logger.export_data_metadata(data_metadata_proto)
+        self._export_logger.send_event(data_metadata_proto)
 
     def _dataset_metadata_to_proto(self, dag_structure: Dict[str, Any]) -> Any:
         """Convert the DAG structure dictionary to a protobuf message.

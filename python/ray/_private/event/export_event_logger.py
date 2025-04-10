@@ -120,6 +120,9 @@ class ExportEventLoggerAdapter:
         elif isinstance(event_data, ExportTrainRunAttemptEventData):
             event.train_run_attempt_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
+        elif isinstance(event_data, ExportDataMetadata):
+            event.data_metadata.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_DATA_METADATA
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if not self.log_type.supports_event_type(event_data):
@@ -204,7 +207,6 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
             _export_event_logger[log_type_name] = ExportEventLoggerAdapter(
                 log_type, logger
             )
-
         return _export_event_logger[log_type_name]
 
 
