@@ -7,7 +7,6 @@ tensorflow-probability==0.23.0; python_version < '3.12'
 tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
 tensorflow-datasets; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
-etils==1.5.2; python_version < '3.12'
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
