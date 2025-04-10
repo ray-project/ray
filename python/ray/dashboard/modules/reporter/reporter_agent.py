@@ -578,7 +578,45 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
-    def _get_gpu_process_usages() -> Optional[Dict[int, List[ProcessGPUInfo]]]:
+    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[ProcessGPUInfo]]:
+        """Parse the output of nvidia-smi pmon -c 1."""
+        process_utilizations = defaultdict(list)
+        lines = nvsmi_stdout.splitlines()
+        table_header = lines.pop(0).lower().split()[1:]
+        # Base on different versions, the header may be different.
+        gpu_id_index = table_header.index("gpu")
+        pid_index = table_header.index("pid")
+        sm_index = table_header.index("sm")
+        mem_index = table_header.index("mem")
+        for line in lines:
+            if line.startswith("#") or not line.strip():
+                continue
+
+            columns = line.split()
+            if len(columns) < max(gpu_id_index, pid_index, sm_index, mem_index) + 1:
+                continue
+
+            gpu_id, pid, sm, mem = (
+                columns[gpu_id_index],
+                columns[pid_index],
+                columns[sm_index],
+                columns[mem_index],
+            )
+            if pid == "-":  # no process on this GPU
+                continue
+            gpu_id = int(gpu_id)
+            pinfo = ProcessGPUInfo(
+                pid=int(pid),
+                # NOTE: The memory here is percentage
+                # NOTE: and will be converted to MB later
+                gpu_memory_usage=int(mem),
+                gpu_utilization=int(sm),
+            )
+            process_utilizations[gpu_id].append(pinfo)
+        return process_utilizations
+
+    @staticmethod
+    def _get_gpu_process_usages() -> Dict[int, List[ProcessGPUInfo]]:
         # Start a subprocess to get GPU usage
         # Some information i.e utilization per process is
         # not available in pynvml
@@ -590,46 +628,12 @@ class ReporterAgent(
                 check=True,
                 text=True,
             )
-            process_utilizations = defaultdict(list)
-            lines = result.stdout.splitlines()
-            table_header = lines.pop(0).lower().split()[1:]
-
-            # Base on different versions, the header may be different.
-            gpu_id_index = table_header.index("gpu")
-            pid_index = table_header.index("pid")
-            sm_index = table_header.index("sm")
-            mem_index = table_header.index("mem")
-            for line in lines:
-                if line.startswith("#") or not line.strip():
-                    continue
-
-                columns = line.split()
-                if len(columns) < max(gpu_id_index, pid_index, sm_index, mem_index) + 1:
-                    continue
-
-                gpu_id, pid, sm, mem = (
-                    columns[gpu_id_index],
-                    columns[pid_index],
-                    columns[sm_index],
-                    columns[mem_index],
-                )
-                if pid == "-":  # no process on this GPU
-                    continue
-                gpu_id = int(gpu_id)
-                pinfo = ProcessGPUInfo(
-                    pid=int(pid),
-                    # NOTE: The memory here is percentage
-                    # NOTE: and will be converted to MB later
-                    gpu_memory_usage=int(mem),
-                    gpu_utilization=int(sm),
-                )
-                process_utilizations[gpu_id].append(pinfo)
-            return process_utilizations
+            return ReporterAgent._parse_nvmsmi_output(result.stdout)
         except subprocess.CalledProcessError as e:
             logger.debug(
                 f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
             )
-            return None  # Processed later using the data from _get_gpu_usage()
+            return {}  # Processed later using the data from _get_gpu_usage()
 
     @staticmethod
     def _get_boot_time():
@@ -826,7 +830,7 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
-        return {
+        result = {
             "now": now,
             "hostname": self._hostname,
             "ip": self._ip,
@@ -844,12 +848,14 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": self._get_gpu_usage(),
-            "gpu_processes": self._get_gpu_process_usages(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
+
+        result['gpu_processes'] = self._get_gpu_process_usages() if result['gpus'] else []
+        return result
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
         """Return a list of Record that will reset
@@ -1033,7 +1039,7 @@ class ReporterAgent(
         self,
         worker_stats: List[dict],
         gpus: List[GpuUtilizationInfo],
-        gpu_processes: Optional[Dict[int, List[ProcessGPUInfo]]],
+        gpu_processes: Dict[int, List[ProcessGPUInfo]],
     ) -> List[Record]:
         worker_processes = {}
         for stat in worker_stats:
@@ -1044,17 +1050,19 @@ class ReporterAgent(
         if gpu_processes:  # Convert memory usage from percentage to MB
             for gpu in gpus:
                 for proc in gpu_processes.get(gpu["index"], []):
-                    proc["gpu_memory_usage"] = int(
+                    proc["gpu_memory_usage"] = (
                         proc["gpu_memory_usage"] * gpu["memory_total"] / 100
                     )
                 gpu["processes_pids"] = gpu_processes.get(
-                    gpu["index"], gpu["processes_pids"]
+                    gpu["index"], gpu.get("processes_pids", [])
                 )
 
         records = []
 
         def _generate_records(proc_name, pid):
             for gpu in gpus:
+                if "processes_pids" not in gpu:
+                    continue
                 for proc in gpu["processes_pids"]:
                     if pid == proc["pid"]:
                         tags = {
@@ -1069,7 +1077,7 @@ class ReporterAgent(
                         records.append(
                             Record(
                                 gauge=METRICS_GAUGES["component_gpu_memory_usage"],
-                                value=proc["gpu_memory_usage"] * MB,  # Convert to bytes
+                                value=int(proc["gpu_memory_usage"] * MB),  # Convert to bytes
                                 tags=tags,
                             )
                         )
@@ -1081,7 +1089,7 @@ class ReporterAgent(
                                     tags=tags,
                                 )
                             )
-                        return
+                        break # Same pid can be in multiple GPUs
 
         for pid, proc_name in worker_processes.items():
             _generate_records(proc_name, pid)
