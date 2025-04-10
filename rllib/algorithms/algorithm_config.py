@@ -143,13 +143,6 @@ class AlgorithmConfig(_Config):
         # Map any agent ID to "default_policy".
         return DEFAULT_MODULE_ID
 
-    @staticmethod
-    def DEFAULT_MERGE_ENV_RUNNER_STATES(
-        env_runner_states: List[StateDict],
-        is_evaluation: bool = False,
-    ):
-        self.env_to_
-
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
