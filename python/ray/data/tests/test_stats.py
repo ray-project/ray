@@ -1,5 +1,6 @@
 import gc
 import logging
+import platform
 import re
 import threading
 import time
@@ -8,12 +9,12 @@ from contextlib import contextmanager
 from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
-import platform
+
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition, run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -30,8 +31,8 @@ from ray.data._internal.stats import (
     _get_or_create_stats_actor,
     _StatsActor,
 )
-from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
@@ -982,12 +983,6 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     stats = ds.materialize().stats()
     assert "SortMap" in stats, stats
     assert "SortReduce" in stats, stats
-
-
-def test_dataset_stats_from_items(ray_start_regular_shared):
-    ds = ray.data.from_items(range(10))
-    stats = ds.materialize().stats()
-    assert "FromItems" in stats, stats
 
 
 def test_dataset_stats_range(ray_start_regular_shared, tmp_path):

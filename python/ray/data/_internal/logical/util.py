@@ -36,11 +36,7 @@ _op_name_white_list = [
     "ReadLance",
     "ReadHuggingFace",
     "ReadCustom",
-    # From
-    "FromArrow",
-    "FromItems",
-    "FromNumpy",
-    "FromPandas",
+    "FromBlocks",
     # Write
     "WriteBigQuery",
     "WriteParquet",
