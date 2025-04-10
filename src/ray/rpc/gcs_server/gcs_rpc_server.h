@@ -734,6 +734,11 @@ class VirtualClusterInfoGcsServiceHandler {
       CreateOrUpdateVirtualClusterReply *reply,
       SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleRemoveNodesFromVirtualCluster(
+      RemoveNodesFromVirtualClusterRequest request,
+      RemoveNodesFromVirtualClusterReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRemoveVirtualCluster(RemoveVirtualClusterRequest request,
                                           RemoveVirtualClusterReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
@@ -768,6 +773,7 @@ class VirtualClusterInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateOrUpdateVirtualCluster);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(RemoveNodesFromVirtualCluster);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(RemoveVirtualCluster);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetVirtualClusters);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateJobCluster);

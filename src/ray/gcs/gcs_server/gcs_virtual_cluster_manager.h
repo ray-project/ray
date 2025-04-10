@@ -95,6 +95,11 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
       rpc::CreateOrUpdateVirtualClusterReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleRemoveNodesFromVirtualCluster(
+      rpc::RemoveNodesFromVirtualClusterRequest request,
+      rpc::RemoveNodesFromVirtualClusterReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleRemoveVirtualCluster(rpc::RemoveVirtualClusterRequest request,
                                   rpc::RemoveVirtualClusterReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
@@ -113,6 +118,8 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
       rpc::SendReplyCallback send_reply_callback) override;
 
   Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
+
+  Status VerifyRequest(const rpc::RemoveNodesFromVirtualClusterRequest &request);
 
   Status VerifyRequest(const rpc::RemoveVirtualClusterRequest &request);
 

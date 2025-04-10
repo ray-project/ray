@@ -893,6 +893,16 @@ message CreateOrUpdateVirtualClusterReply {
   map<string, int32> replica_sets_to_recommend = 4;
 }
 
+message RemoveNodesFromVirtualClusterRequest {
+  string virtual_cluster_id = 1;
+  repeated string nodes_to_remove = 2;
+}
+
+message RemoveNodesFromVirtualClusterReply {
+  GcsStatus status = 1;
+  repeated string nodes_with_failure = 2;
+}
+
 message RemoveVirtualClusterRequest {
   // ID of the virtual cluster to be removed.
   string virtual_cluster_id = 1;
@@ -978,6 +988,9 @@ service VirtualClusterInfoGcsService {
   // Create or update a virtual cluster.
   rpc CreateOrUpdateVirtualCluster(CreateOrUpdateVirtualClusterRequest)
       returns (CreateOrUpdateVirtualClusterReply);
+  // Remove specified nodes from a virtual cluster.
+  rpc RemoveNodesFromVirtualCluster(RemoveNodesFromVirtualClusterRequest)
+      returns (RemoveNodesFromVirtualClusterReply);
   // Remove a virtual cluster.
   rpc RemoveVirtualCluster(RemoveVirtualClusterRequest)
       returns (RemoveVirtualClusterReply);

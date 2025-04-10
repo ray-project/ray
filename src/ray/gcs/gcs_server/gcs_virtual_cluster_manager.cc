@@ -208,6 +208,44 @@ void GcsVirtualClusterManager::HandleCreateOrUpdateVirtualCluster(
   }
 }
 
+void GcsVirtualClusterManager::HandleRemoveNodesFromVirtualCluster(
+    rpc::RemoveNodesFromVirtualClusterRequest request,
+    rpc::RemoveNodesFromVirtualClusterReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  RAY_LOG(INFO) << "Start removing nodes from virtual cluster " << virtual_cluster_id;
+  auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
+                     const Status &status,
+                     std::shared_ptr<rpc::VirtualClusterTableData> data,
+                     const ReplicaSets *replica_sets_to_recommend) {
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Succeed in removing nodes from virtual cluster "
+                    << virtual_cluster_id;
+    } else {
+      RAY_LOG(WARNING) << "Failed to remove nodes from virtual cluster "
+                       << virtual_cluster_id << ", status = " << status.ToString();
+      if (status.data().has_value()) {
+        auto nodes_with_failure = std::any_cast<std::vector<std::string>>(status.data());
+        reply->mutable_nodes_with_failure()->Assign(nodes_with_failure.begin(),
+                                                    nodes_with_failure.end());
+      }
+    }
+    GCS_RPC_SEND_REPLY(callback, reply, status);
+  };
+
+  // Verify if the arguments in the request is valid.
+  auto status = VerifyRequest(request);
+  if (!status.ok()) {
+    on_done(status, nullptr, nullptr);
+    return;
+  }
+
+  status = primary_cluster_->RemoveNodesFromVirtualCluster(std::move(request), on_done);
+  if (!status.ok()) {
+    on_done(status, nullptr, nullptr);
+  }
+}
+
 void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
     rpc::RemoveVirtualClusterRequest request,
     rpc::RemoveVirtualClusterReply *reply,
@@ -397,6 +435,28 @@ Status GcsVirtualClusterManager::VerifyRequest(
     }
   }
 
+  return Status::OK();
+}
+
+Status GcsVirtualClusterManager::VerifyRequest(
+    const rpc::RemoveNodesFromVirtualClusterRequest &request) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  if (virtual_cluster_id.empty()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, the virtual cluster id is empty.";
+    std::string message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
+
+  if (virtual_cluster_id == primary_cluster_->GetID()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, " << virtual_cluster_id
+         << " should not be updated via this API.";
+    auto message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
   return Status::OK();
 }
 

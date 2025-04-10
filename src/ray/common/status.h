@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <any>
 #include <cstring>
 #include <iosfwd>
 #include <string>
@@ -119,6 +120,7 @@ class RAY_EXPORT Status {
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
   Status(StatusCode code, const std::string &msg, SourceLocation loc, int rpc_code = -1);
+  Status(StatusCode code, const std::string &msg, const std::any &data);
 
   // Copy the specified status.
   Status(const Status &s);
@@ -256,8 +258,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
-  static Status UnsafeToRemove(const std::string &msg) {
-    return Status(StatusCode::UnsafeToRemove, msg);
+  static Status UnsafeToRemove(const std::string &msg, const std::any &data) {
+    return Status(StatusCode::UnsafeToRemove, msg, data);
   }
 
   static StatusCode StringToCode(const std::string &str);
@@ -335,6 +337,8 @@ class RAY_EXPORT Status {
 
   std::string message() const { return ok() ? "" : state_->msg; }
 
+  std::any data() const { return ok() ? std::any() : state_->data; }
+
   template <typename... T>
   Status &operator<<(T &&...msg) {
     absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
@@ -348,6 +352,8 @@ class RAY_EXPORT Status {
     SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
+    // The supportive data that helps explaining why status is not ok.
+    std::any data;
   };
   // Use raw pointer instead of unique pointer to achieve copiable `Status`.
   //

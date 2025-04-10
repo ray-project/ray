@@ -569,6 +569,12 @@ class GcsRpcClient {
                              virtual_cluster_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  // Remove specified nodes from a virtual cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             RemoveNodesFromVirtualCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   // Remove a virtual cluster.
   VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
                              RemoveVirtualCluster,

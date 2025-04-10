@@ -106,6 +106,16 @@ Status::Status(StatusCode code,
   state_->rpc_code = rpc_code;
 }
 
+Status::Status(StatusCode code, const std::string &msg, const std::any &data) {
+  assert(code != StatusCode::OK);
+  state_ = new State;
+  state_->code = code;
+  state_->msg = msg;
+  state_->loc = SourceLocation{};
+  state_->rpc_code = -1;
+  state_->data = data;
+}
+
 void Status::CopyFrom(const State *state) {
   delete state_;
   if (state == nullptr) {

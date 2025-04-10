@@ -43,6 +43,23 @@ def create_or_update_virtual_cluster(
         logger.info(ex)
 
 
+def remove_nodes_from_virtual_cluster(webui_url, virtual_cluster_id, nodes_to_remove):
+    try:
+        resp = requests.post(
+            webui_url + "/virtual_clusters/remove_nodes",
+            json={
+                "virtualClusterId": virtual_cluster_id,
+                "nodesToRemove": nodes_to_remove,
+            },
+            timeout=10,
+        )
+        result = resp.json()
+        print(result)
+        return result
+    except Exception as ex:
+        logger.info(ex)
+
+
 def remove_virtual_cluster(webui_url, virtual_cluster_id):
     try:
         resp = requests.delete(
@@ -295,6 +312,109 @@ def test_create_and_update_virtual_cluster_with_exceptions(
     # The primary cluster lacks one `4c8g` node to meet the
     # virtual cluster's requirement.
     assert replica_sets == {"4c8g": 0, "8c16g": 1}
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("divisible", [True, False])
+def test_remove_nodes_from_virtual_cluster(
+    disable_aiohttp_cache, ray_start_cluster_head, divisible
+):
+    cluster: Cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+
+    # Add two `4c8g` nodes and one `8c16g` node to the primary cluster.
+    cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "4c8g"}, resources={"4c8g": 1})
+    cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "4c8g"}, resources={"4c8g": 1})
+    cluster.add_node(env_vars={"RAY_NODE_TYPE_NAME": "8c16g"}, resources={"8c16g": 1})
+
+    cluster.wait_for_nodes()
+    # Create a new virtual cluster with all three nodes included.
+    result = create_or_update_virtual_cluster(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        divisible=divisible,
+        replica_sets={"4c8g": 2, "8c16g": 1},
+        revision=0,
+    )
+    assert result["result"] is True
+
+    resp = requests.get(webui_url + "/virtual_clusters")
+    resp.raise_for_status()
+    result = resp.json()
+    print(result)
+    assert result["result"] is True, resp.text
+
+    template_to_nodes = {}
+    for node_id, node_instance in result["data"]["virtualClusters"][0][
+        "nodeInstances"
+    ].items():
+        node_list = template_to_nodes.setdefault(node_instance["templateId"], [])
+        node_list.append(node_id)
+
+    # Remove one `4c8g` node from the virtual cluster.
+    result = remove_nodes_from_virtual_cluster(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        # Specify the exact node (the first `4c8g` node) to remove.
+        nodes_to_remove=template_to_nodes["4c8g"][:1],
+    )
+    assert result["result"] is True
+
+    resp = requests.get(webui_url + "/virtual_clusters")
+    resp.raise_for_status()
+    result = resp.json()
+    print(result)
+    assert result["result"] is True, resp.text
+
+    template_to_nodes_after_remove = {}
+    for node_id, node_instance in result["data"]["virtualClusters"][0][
+        "nodeInstances"
+    ].items():
+        node_list = template_to_nodes_after_remove.setdefault(
+            node_instance["templateId"], []
+        )
+        node_list.append(node_id)
+    # There should be only one `4c8g` and one `8c16` node left in the virtual cluster.
+    assert len(template_to_nodes_after_remove) == 2
+    # Make sure we removed the specified `4c8g` node.
+    assert (
+        len(template_to_nodes_after_remove["4c8g"]) == 1
+        and template_to_nodes_after_remove["4c8g"][0] == template_to_nodes["4c8g"][1]
+    )
+    assert (
+        len(template_to_nodes_after_remove["8c16g"]) == 1
+        and template_to_nodes_after_remove["8c16g"][0] == template_to_nodes["8c16g"][0]
+    )
+
+    # Create an actor requiring `8c16g` custom resource, which
+    # makes the actor running in `virtual_cluster_1`.
+    actor = SmallActor.options(num_cpus=1, resources={"8c16g": 1}).remote()
+    ray.get(actor.pid.remote(), timeout=10)
+
+    # This time, we try to remove the first `4c8g` node (which now
+    # belongs to the primary cluster) and the `8c16g` node (which is not idle).
+    nodes_to_remove = [template_to_nodes["4c8g"][0], template_to_nodes["8c16g"][0]]
+    result = remove_nodes_from_virtual_cluster(
+        webui_url=webui_url,
+        virtual_cluster_id="virtual_cluster_1",
+        nodes_to_remove=nodes_to_remove,
+    )
+    assert result["result"] is False
+    node_set_to_remove = set(nodes_to_remove)
+    # The two nodes we were trying to remove should fail.
+    assert len(result["data"]["nodesWithFailure"]) == 2
+    for node_id in result["data"]["nodesWithFailure"]:
+        assert node_id in node_set_to_remove
 
 
 @pytest.mark.parametrize(
