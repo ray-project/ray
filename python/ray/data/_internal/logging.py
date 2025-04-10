@@ -183,6 +183,11 @@ def configure_logging() -> None:
 
     logging.config.dictConfig(config)
 
+    # Register the default formatter for the dataset logger.
+    dataset_logger = logging.getLogger("ray.dataset")
+    dataset_logger.setLevel(logging.DEBUG)
+    dataset_logger.propagate = False
+
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
     if config_path is not None and log_encoding is not None:
