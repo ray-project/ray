@@ -832,7 +832,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         // pending queue for other states (RESCHEDULING, PREPARED). This is because
         // RESCHEDULING and PREPARED state indicate that the placement group is in
         // scheduling process and when completing the scheduling, we will check
-        // whether all bundles in the palcement group has been successfully scheduled.
+        // whether all bundles in the placement group has been successfully scheduled.
         // If not, the unplaced bundles will be rescheduled and thus the unplaced
         // bundles due to the node death will be handled there.
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
