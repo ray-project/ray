@@ -147,9 +147,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-
-  /// Updates the actor seqno if true.
-  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
