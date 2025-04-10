@@ -18,6 +18,12 @@ parser.add_argument(
     "AggregatorActor and Learner).",
 )
 parser.add_argument(
+    "--num-env-runner-state-aggregators",
+    type=int,
+    default=1,
+    help="Number of EnvRunner state aggregator actors.",
+)
+parser.add_argument(
     "--num-weights-server-actors",
     type=int,
     default=1,
@@ -53,6 +59,7 @@ config = (
     .training(
         num_weights_server_actors=args.num_weights_server_actors,
         num_batch_dispatchers=args.num_batch_dispatchers,
+        num_env_runner_state_aggregators=args.num_env_runner_state_aggregators,
         pipeline_sync_freq=args.sync_freq,
 
         vf_loss_coeff=0.005,

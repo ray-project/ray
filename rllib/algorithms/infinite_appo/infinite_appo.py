@@ -84,17 +84,27 @@ class InfiniteAPPO(APPO):
     @override(Algorithm)
     @classmethod
     def default_resource_request(cls, config):
-        pg_factory = Algorithm.default_resource_request(config)
+        pg_factory = APPO.default_resource_request(config)
+
         infinite_appo_bundles = pg_factory.bundles + [
-            # 1 metrics actor + n weights servers + m batch dispatchers
+            # 1 metrics actor + n weights servers + m batch dispatchers +
+            # o env runner state aggregators.
             {"CPU": 1} for _ in range(
-                1 + config.num_weights_server_actors + config.num_batch_dispatchers
+                1
+                + config["num_weights_server_actors"]
+                + config["num_batch_dispatchers"]
+                + config["num_env_runner_state_aggregators"]
             )
         ]
         return PlacementGroupFactory(
             bundles=infinite_appo_bundles,
-            strategy=config.placement_strategy,
+            strategy=config["placement_strategy"],
         )
+
+    @classmethod
+    @override(APPO)
+    def get_default_config(cls) -> AlgorithmConfig:
+        return InfiniteAPPOConfig()
 
     @override(APPO)
     def setup(self, config: AlgorithmConfig):

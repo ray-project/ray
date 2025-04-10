@@ -137,7 +137,10 @@ class TaskManagerTest : public ::testing::Test {
             [this](const RayObject &object, const ObjectID &object_id) {
               stored_in_plasma.insert(object_id);
             },
-            [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
+            [this](TaskSpecification &spec,
+                   bool object_recovery,
+                   bool update_seqno,
+                   uint32_t delay_ms) {
               num_retries_++;
               last_delay_ms_ = delay_ms;
               last_object_recovery_ = object_recovery;

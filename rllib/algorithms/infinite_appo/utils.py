@@ -74,15 +74,17 @@ class BatchDispatcher:
 @ray.remote
 class EnvRunnerStateAggregator:
     def __init__(self, *, config, spaces):
+        self._other_env_runner_state_aggregators = []
+
         self._env_to_module: EnvToModulePipeline = (
             # TODO (sven): Send `spaces` arg (instead of `env=None`),
             #  once this is supported by the API. 
-            config.build_env_to_module_connector(env=None)
+            config.build_env_to_module_connector(spaces=spaces)
         )
         self._module_to_env: ModuleToEnvPipeline = (
             # TODO (sven): Send `spaces` arg (instead of `env=None`),
             #  once this is supported by the API. 
-            config.build_module_to_env_connector(env=None)
+            config.build_module_to_env_connector(spaces=spaces)
         )
 
     def set_peers(self, other_env_runner_state_aggregators):
