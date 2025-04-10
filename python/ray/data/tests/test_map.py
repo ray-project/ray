@@ -801,11 +801,11 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(file_path))
 
     # Get schema and validate column types
-    original_schema = ds.schema().names
+    original_schema = ds.schema().types
 
     # Apply a trivial filter to test schema stability
     ds_filtered = ds.filter(lambda row: True)
-    filtered_schema = ds_filtered.schema().names
+    filtered_schema = ds_filtered.schema().types
 
     # Ensure schema remains unchanged
     assert (
