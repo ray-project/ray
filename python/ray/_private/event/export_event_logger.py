@@ -16,7 +16,9 @@ from ray.core.generated.export_submission_job_event_pb2 import (
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
-    ExportDataMetadataEventData,
+)
+from ray.core.generated.export_data_metadata_pb2 import (
+    ExportDataMetadata,
 )
 from ray._private.protobuf_compat import message_to_dict
 
@@ -28,7 +30,7 @@ ExportEventDataType = Union[
     ExportSubmissionJobEventData,
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
-    ExportDataMetadataEventData,
+    ExportDataMetadata,
 ]
 
 
@@ -51,7 +53,7 @@ class EventLogType(Enum):
 
     DATA_METADATA = (
         "EXPORT_DATA_METADATA",
-        {ExportDataMetadataEventData},
+        {ExportDataMetadata},
     )
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):

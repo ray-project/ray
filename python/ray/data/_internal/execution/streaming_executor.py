@@ -442,10 +442,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _dump_dag_structure(self, dag: PhysicalOperator) -> Dict[str, Any]:
         """Dump the DAG structure as a dictionary that can be converted to JSON.
-        
+
         Args:
             dag: The operator DAG to analyze.
-            
+
         Returns:
             A dictionary with the DAG structure, containing operator names,
             IDs, dependencies, and sub-operators where applicable.
@@ -455,7 +455,9 @@ class StreamingExecutor(Executor, threading.Thread):
             return {}
 
         # Create a mapping of operators to their IDs
-        op_to_id = {op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)}
+        op_to_id = {
+            op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
+        }
 
         # Create the result structure
         result = {
@@ -472,18 +474,19 @@ class StreamingExecutor(Executor, threading.Thread):
             op_entry = {
                 "name": op.name,
                 "id": op_id,
-                "input_dependencies": [op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id],
-                "sub_operators": []
+                "input_dependencies": [
+                    op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
+                ],
+                "sub_operators": [],
             }
 
             # Add sub-operators if they exist
             if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
                 for j, sub_name in enumerate(op._sub_progress_bar_names):
                     sub_op_id = f"{op_id}_sub_{j}"
-                    op_entry["sub_operators"].append({
-                        "name": sub_name,
-                        "id": sub_op_id
-                    })
+                    op_entry["sub_operators"].append(
+                        {"name": sub_name, "id": sub_op_id}
+                    )
 
             result["operators"].append(op_entry)
 
@@ -503,21 +506,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
         for i, (op, _) in enumerate(self._topology.items()):
             op_id = self._get_operator_id(op, i)
-            op_entry = {
-                "name": op.name,
-                "id": op_id,
-                "sub_operators": []
-            }
+            op_entry = {"name": op.name, "id": op_id, "sub_operators": []}
 
             # Check if the operator has sub-progress bars (indicating sub-operations)
             if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
                 # If so, create sub-operator entries for each
                 for j, sub_name in enumerate(op._sub_progress_bar_names):
                     sub_op_id = f"{op_id}_sub_{j}"
-                    op_entry["sub_operators"].append({
-                        "name": sub_name,
-                        "id": sub_op_id
-                    })
+                    op_entry["sub_operators"].append(
+                        {"name": sub_name, "id": sub_op_id}
+                    )
 
             result["operators"].append(op_entry)
 

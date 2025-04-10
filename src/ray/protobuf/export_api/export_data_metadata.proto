@@ -22,7 +22,7 @@ package ray.rpc;
 message SubOperator {
   // Name of the sub-operator
   string name = 1;
-  
+
   // Unique identifier for the sub-operator
   string id = 2;
 }
@@ -31,13 +31,13 @@ message SubOperator {
 message Operator {
   // Name of the operator
   string name = 1;
-  
+
   // Unique identifier for the operator
   string id = 2;
-  
+
   // List of operator IDs that this operator depends on for input
   repeated string input_dependencies = 3;
-  
+
   // List of sub-operators contained within this operator
   repeated SubOperator sub_operators = 4;
 }
@@ -49,7 +49,7 @@ message OperatorDAG {
 }
 
 // Top-level message containing full metadata about a Ray Data execution
-message DataExecutionMetadata {
+message ExportDataMetadata {
   // The operator DAG structure
   OperatorDAG dag = 1;
 }

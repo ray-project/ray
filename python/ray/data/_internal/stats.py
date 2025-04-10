@@ -485,7 +485,13 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str], dag_structure: Dict[str, Any]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        dag_structure: Dict[str, Any],
+    ):
         self.datasets[dataset_tag] = {
             "job_id": job_id,
             "state": DatasetState.RUNNING.name,
@@ -503,7 +509,7 @@ class _StatsActor:
                 for operator in operator_tags
             },
         }
-        self._maybe_export_dag_structure(dag_structure)
+        self._maybe_export_data_metadata(dag_structure)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -577,6 +583,7 @@ class _StatsActor:
         # Proto schemas should be imported within the scope of TrainStateActor to
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
+
         is_data_metadata_export_api_enabled = check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_DATA_METADATA
         )
@@ -603,12 +610,78 @@ class _StatsActor:
 
         return logger, is_data_metadata_export_api_enabled
 
-    def _maybe_export_dag_structure(self, dag_structure: Dict[str, Any]):
+    def _maybe_export_data_metadata(self, dag_structure: Dict[str, Any]) -> Any:
         if not self.is_export_api_enabled():
             return
 
+        data_metadata_proto = self._dataset_metadata_to_proto(dag_structure)
+        self._export_logger.export_data_metadata(data_metadata_proto)
 
+    def _dataset_metadata_to_proto(self, dag_structure: Dict[str, Any]) -> Any:
+        """Convert the DAG structure dictionary to a protobuf message.
 
+        Args:
+            dag_structure: Dictionary representation of the DAG structure.
+
+        Returns:
+            The protobuf message representing the DAG structure.
+        """
+        try:
+            from ray.core.generated.export_data_metadata_pb2 import (
+                ExportDataMetadata,
+                OperatorDAG,
+                Operator,
+                SubOperator,
+            )
+
+            # Create the protobuf message
+            data_metadata = ExportDataMetadata()
+            dag = OperatorDAG()
+
+            # Add operators to the DAG
+            if "operators" in dag_structure:
+                for op_dict in dag_structure["operators"]:
+                    operator = Operator()
+                    operator.name = op_dict.get("name", "unknown")
+                    operator.id = op_dict.get("id", "unknown")
+
+                    # Add input dependencies if they exist
+                    if "input_dependencies" in op_dict:
+                        for dep_id in op_dict["input_dependencies"]:
+                            operator.input_dependencies.append(dep_id)
+
+                    # Add sub-operators if they exist
+                    if "sub_operators" in op_dict:
+                        for sub_op_dict in op_dict["sub_operators"]:
+                            sub_op = SubOperator()
+                            sub_op.name = sub_op_dict.get("name", "unknown")
+                            sub_op.id = sub_op_dict.get("id", "unknown")
+                            operator.sub_operators.append(sub_op)
+
+                    # Add the operator to the DAG
+                    dag.operators.append(operator)
+
+            # Set the DAG in the metadata
+            data_metadata.dag.CopyFrom(dag)
+
+            # Add execution ID if available
+            if "execution_id" in dag_structure:
+                data_metadata.execution_id = dag_structure["execution_id"]
+
+            # Add dataset ID if available
+            if "dataset_id" in dag_structure:
+                data_metadata.dataset_id = dag_structure["dataset_id"]
+
+            # Add any other relevant metadata
+            if "start_time" in dag_structure:
+                data_metadata.start_time = int(dag_structure["start_time"])
+
+            return data_metadata
+
+        except Exception as e:
+            logger.warning(f"Failed to convert DAG structure to proto: {e}")
+            # Return a simple dictionary representation as fallback
+            return {"dag_structure": dag_structure}
 
 
 # Creating/getting an actor from multiple threads is not safe.
@@ -815,11 +888,21 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+    def register_dataset_to_stats_actor(
+        self, dataset_tag, operator_tags, dag_structure=None
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            dag_structure: Optional DAG structure to export
+        """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            dag_structure,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:
