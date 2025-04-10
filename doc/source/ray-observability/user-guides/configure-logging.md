@@ -47,18 +47,18 @@ System logs may include information about your applications. For example, ``runt
 ### System/component logs
 - ``dashboard.[log|out|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
 - ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files
-contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent. They're usually empty except when the dashboard agent crashes unexpectedly.
+contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
 - ``dashboard_[module_name].[log|out|err]``: The log files for the Ray Dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
-- ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor. They're usually empty except when the log monitor crashes unexpectedly.
+- ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor respectively. They're usually empty except when the log monitor crashes unexpectedly.
 - ``monitor.[log|out|err]``: Log files of the Autoscaler. ``.log`` files contain logs generated from the autoscaler's logger. ``.out`` and ``.err`` files contain stdout and stderr
-printed from the autoscaler. They're usually empty except when the autoscaler crashes unexpectedly.
+printed from the autoscaler respectively. They're usually empty except when the autoscaler crashes unexpectedly.
 - ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``raylet.[out|err]``: A log file of raylets.
 - ``runtime_env_agent.[log|out|err]``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
-  ``.log`` files contain logs generated from the runtime env agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the runtime env agent. They're usually empty except when the runtime env agent crashes unexpectedly.
+  ``.log`` files contain logs generated from the runtime env agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the runtime env agent respectively. They're usually empty except when the runtime env agent crashes unexpectedly.
  The logs of the actual installations for ``pip install`` logs are in the following ``runtime_env_setup-[job_id].log`` file.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
