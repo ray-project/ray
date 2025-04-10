@@ -226,7 +226,8 @@ if __name__ == "__main__":
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode, 1 is the only option.
             dataset_num_iters_per_learner=1 if not args.num_learners else None,
-        ).training(
+        )
+        .training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
@@ -262,6 +263,7 @@ if __name__ == "__main__":
     base_config = (
         PPOConfig()
         .environment(args.env)
+        .env_runners(create_env_on_local_worker=True)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.
             lr=0.00002,
