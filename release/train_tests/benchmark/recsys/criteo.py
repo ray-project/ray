@@ -5,7 +5,6 @@ import boto3
 import json
 import numpy as np
 import pyarrow.csv
-import torch
 
 import ray.data
 from ray.data import DataContext
@@ -61,62 +60,6 @@ CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
     104,
     35,
 ]
-# CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
-#     40000000,
-#     39060,
-#     17295,
-#     7424,
-#     20265,
-#     3,
-#     7122,
-#     1543,
-#     63,
-#     40000000,
-#     3067956,
-#     405282,
-#     10,
-#     2209,
-#     11938,
-#     155,
-#     4,
-#     976,
-#     14,
-#     40000000,
-#     40000000,
-#     40000000,
-#     590152,
-#     12973,
-#     108,
-#     36,
-# ]
-# [
-#     1000000,
-#     39060,
-#     17295,
-#     7424,
-#     20265,
-#     3,
-#     7122,
-#     1543,
-#     63,
-#     1000000,
-#     3067956,
-#     405282,
-#     10,
-#     2209,
-#     11938,
-#     155,
-#     4,
-#     976,
-#     14,
-#     1000000,
-#     1000000,
-#     1000000,
-#     590152,
-#     12973,
-#     108,
-#     36,
-# ]
 
 
 def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -127,7 +70,7 @@ def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         batch[feature_name] = np.nan_to_num(batch[feature_name], nan=0)
     for feature_name in DEFAULT_CAT_NAMES:
         features = batch[feature_name]
-        features[features == None] = ""
+        features[np.equal(features, None)] = ""
     return batch
 
 
@@ -189,6 +132,7 @@ def convert_to_torchrec_batch_format(batch: Dict[str, np.ndarray]):
     offset_per_key = [batch_size * i for i in range(CAT_FEATURE_COUNT + 1)]
     index_per_key = {key: i for i, key in enumerate(DEFAULT_CAT_NAMES)}
 
+    # Handle partial batches (last batch).
     # if batch_size == self.batch_size:
     #     length_per_key = self.length_per_key
     #     offset_per_key = self.offset_per_key
@@ -250,13 +194,6 @@ def get_ray_dataset(stage: str = "train"):
 
     # Convert categorical features to integers.
 
-    # Option 1: Use the built-in preprocessor (This is not performant enough.)
-    # from ray.data.preprocessors import OrdinalEncoder
-    # categorical_to_indices_preprocessor = OrdinalEncoder(columns=DEFAULT_CAT_NAMES)
-    # ds = categorical_to_indices_preprocessor.fit_transform(ds)
-
-    # Option 2: groupby() w/ hash-based shuffle
-
     # Fetch cached value counts instead of "fitting" the preprocessor from scratch.
     COMPUTE_VALUE_COUNTS_FROM_SCRATCH: bool = False
 
@@ -267,17 +204,16 @@ def get_ray_dataset(stage: str = "train"):
         if COMPUTE_VALUE_COUNTS_FROM_SCRATCH:
             logger.info(f"Computing value counts for: {cat_feature}")
 
-            def filter_features(batch):
-                features = batch[cat_feature]
-                features[features == None] = ""
-                return {cat_feature: features}
-
+            # TODO: This needs to be optimized in order to run on the full dataset.
+            # Need to fill missing values with empty string.
             value_counts = [
                 (group[cat_feature], group["count()"])
-                for group in ds.map_batches(filter_features)
-                .groupby(key=cat_feature)
-                .count()
-                .take_all()
+                for group in (
+                    ds.select_columns(cat_feature)
+                    .groupby(key=cat_feature)
+                    .count()
+                    .take_all()
+                )
             ]
         else:
             json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(
