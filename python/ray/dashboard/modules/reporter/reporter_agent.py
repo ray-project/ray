@@ -628,7 +628,7 @@ class ReporterAgent(
                 check=True,
                 text=True,
             )
-            return ReporterAgent._parse_nvmsmi_output(result.stdout)
+            return ReporterAgent._parse_nvsmi_output(result.stdout)
         except subprocess.CalledProcessError as e:
             logger.debug(
                 f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."

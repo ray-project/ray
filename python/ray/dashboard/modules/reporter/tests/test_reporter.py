@@ -496,11 +496,13 @@ def test_report_per_component_stats_gpu():
         "    0       7175     C     84     26      -      -      -      -    ray::TorchGPUWo\n"
         "    1       7175     C     86     26      -      -      -      -    ray::TorchGPUWo\n"
     )
-
+    STATS_TEMPLATE["gpu_processes"] = ReporterAgent._parse_nvsmi_output(
+        NVSMI_OUTPUT_TWO_TASK_ON_TWO_GPUS
+    )
     records = agent._to_records(STATS_TEMPLATE, {})
 
     gpu_component_records = defaultdict(list)
-    ip = STATS_TEMPLATE["ip"]
+
     for record in records:
         if record.gauge.name in gpu_metrics_aggregatd:
             gpu_component_records[record.gauge.name].append(record)
