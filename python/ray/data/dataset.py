@@ -4038,7 +4038,7 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-            job_config: A bigquery load job configuration object. See 
+            job_config: A bigquery load job configuration object. See
                 https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.job.LoadJobConfig
                 for valid values.
         """  # noqa: E501
