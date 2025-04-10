@@ -619,7 +619,7 @@ py_test(
 
 py_test(
     name = "test_tf",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tf.py"],
     tags = [
         "exclusive",
@@ -1281,7 +1281,7 @@ py_test(
 
 py_test(
     name = "test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_telemetry.py"],
     tags = [
         "exclusive",
