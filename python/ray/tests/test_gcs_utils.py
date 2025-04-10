@@ -4,7 +4,6 @@ import time
 import signal
 import sys
 import asyncio
-import async_timeout
 
 import pytest
 import ray
@@ -18,6 +17,12 @@ from ray._private.test_utils import (
     async_wait_for_condition,
 )
 import ray._private.ray_constants as ray_constants
+
+# Import asyncio timeout depends on python version
+if sys.version_info >= (3, 11):
+    from asyncio import timeout as asyncio_timeout
+else:
+    from async_timeout import timeout as asyncio_timeout
 
 
 @contextlib.contextmanager
@@ -263,7 +268,7 @@ async def test_gcs_aio_client_is_async(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(address=gcs_address)
 
     await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
-    async with async_timeout.timeout(3):
+    async with asyncio_timeout(3):
         none, result = await asyncio.gather(
             asyncio.sleep(2), gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
         )
