@@ -274,7 +274,7 @@ class CQLConfig(SACConfig):
             return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @property
