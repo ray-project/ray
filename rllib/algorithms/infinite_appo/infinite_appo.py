@@ -1,4 +1,7 @@
 import time
+from typing import Optional
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -6,6 +9,7 @@ from ray.rllib.algorithms.algorithm_config import NotProvided
 from ray.rllib.algorithms.appo import APPO, APPOConfig
 from ray.rllib.algorithms.infinite_appo.utils import (
     BatchDispatcher,
+    EnvRunnerStateAggregator,
     MetricsActor,
     WeightsServerActor,
 )
@@ -29,6 +33,7 @@ class InfiniteAPPOConfig(APPOConfig):
 
         self.num_weights_server_actors = 1
         self.num_batch_dispatchers = 1
+        self.num_env_runner_state_aggregators = 1
 
         self.pipeline_sync_freq = 10
 
@@ -54,17 +59,21 @@ class InfiniteAPPOConfig(APPOConfig):
     def training(
         self,
         *,
-        num_weights_server_actors: int = NotProvided,
-        num_batch_dispatchers: int = NotProvided,
-        pipeline_sync_freq: int = NotProvided,
+        num_weights_server_actors: Optional[int] = NotProvided,
+        num_batch_dispatchers: Optional[int] = NotProvided,
+        num_env_runner_state_aggregators: Optional[int] = NotProvided,
+        pipeline_sync_freq: Optional[int] = NotProvided,
         **kwargs,
     ):
+        """"""
         super().training(**kwargs)
 
         if num_weights_server_actors is not NotProvided:
             self.num_weights_server_actors = num_weights_server_actors
         if num_batch_dispatchers is not NotProvided:
             self.num_batch_dispatchers = num_batch_dispatchers
+        if num_env_runner_state_aggregators is not NotProvided:
+            self.num_env_runner_state_aggregators = num_env_runner_state_aggregators
         if pipeline_sync_freq is not NotProvided:
             self.pipeline_sync_freq = pipeline_sync_freq
 
@@ -94,13 +103,21 @@ class InfiniteAPPO(APPO):
         # Create metrics actor (last CPU bundle in pg).
         self.metrics_actor = MetricsActor.remote()
 
+        # Create env runner state aggregator actors.
+        self.env_runner_state_aggregators = [
+            EnvRunnerStateAggregator.remote(
+                config=self.config,
+                spaces=self.env_runner_group.get_spaces(),
+            ) for _ in range(self.config.num_env_runner_state_aggregators)
+        ]
+
         # Create weights server actors (next last n CPU-actors in pg).
         self.weights_server_actors = [
             WeightsServerActor.remote()
             for _ in range(self.config.num_weights_server_actors)
         ]
         for aid, actor in enumerate(self.weights_server_actors):
-            actor.add_peers.remote(
+            actor.set_peers.remote(
                 self.weights_server_actors[:aid] + self.weights_server_actors[aid + 1:])
         # Create batch dispatcher actors (next last n CPU-actors in pg).
         self.batch_dispatcher_actors = [
@@ -128,12 +145,14 @@ class InfiniteAPPO(APPO):
 
         # Add agg. actors, weights server actors and correct sync_freq to env runners.
         agg = self.aggregator_actors[:]
+        er_agg = self.env_runner_state_aggregators[:]
         ws = self.weights_server_actors[:]
         sync_freq = self.config.pipeline_sync_freq
 
-        def _setup_er(env_runner, agg=agg, ws=ws, sync_freq=sync_freq):
-            env_runner.add_aggregator_actors(aggregator_actor_refs=agg)
-            env_runner.weights_server_actors = ws
+        def _setup_er(env_runner, agg=agg, er_agg=er_agg, ws=ws, sync_freq=sync_freq):
+            env_runner.set_aggregator_actors(aggregator_actor_refs=agg)
+            env_runner.set_env_runner_state_aggregators(er_agg)
+            env_runner.set_weights_server_actors(weights_server_actors=ws)
             env_runner.sync_freq = sync_freq
 
         self.env_runner_group.foreach_env_runner(_setup_er)
@@ -146,6 +165,7 @@ class InfiniteAPPO(APPO):
             )
 
         self._env_runners_started = False
+        self._env_runners_pending_failure_checks = set()
 
     @override(APPO)
     def training_step(self):
@@ -153,12 +173,29 @@ class InfiniteAPPO(APPO):
 
         # Kick of sampling, aggregating, and training, if not done yet.
         if not self._env_runners_started:
-            self.env_runner_group.foreach_env_runner_async("start_infinite_sample")
+            self.env_runner_group.foreach_env_runner(
+                "start_infinite_sample",
+                local_env_runner=False,
+            )
             self._env_runners_started = True
 
-        # Ping metrics actor once per iteration.
-        metrics = ray.get(self.metrics_actor.get.remote())
-        self.metrics.merge_and_log_n_dicts([metrics])
+        # Pull previous `ping` command results.
+        health_check_results = self.env_runner_group.fetch_ready_async_reqs()
+        for env_runner_id, _ in health_check_results:
+            self._env_runners_pending_failure_checks.remove(env_runner_id)
+        # Check a random subset of EnvRunners for failures.
+        env_runner_ids_to_check = set(map(int, np.random.choice(
+            range(1, self.config.num_env_runners + 1),
+            max(self.config.num_env_runners // 10, 1),
+            replace=False,
+        )))
+        self.env_runner_group.foreach_env_runner_async(
+            func="ping",
+            remote_worker_ids=list(
+                env_runner_ids_to_check - self._env_runners_pending_failure_checks
+            ),
+        )
+        self._env_runners_pending_failure_checks.update(env_runner_ids_to_check)
 
         # Update all global timestep counters on all batch dispatchers.
         timesteps = {
@@ -173,6 +210,10 @@ class InfiniteAPPO(APPO):
         }
         for batch_dispatcher in self.batch_dispatcher_actors:
             batch_dispatcher.set_timesteps.remote(timesteps)
+
+        # Get results from metrics actor once per iteration.
+        metrics = ray.get(self.metrics_actor.get.remote())
+        self.metrics.merge_and_log_n_dicts([metrics])
 
         # Wait until iteration is done.
         time.sleep(max(0, self.config.min_time_s_per_iteration - (time.time() - t0)))

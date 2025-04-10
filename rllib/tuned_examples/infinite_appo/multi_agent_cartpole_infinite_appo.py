@@ -43,7 +43,10 @@ register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
 config = (
     InfiniteAPPOConfig()
     .framework(torch_skip_nan_gradients=True)
-    .environment("env", env_config={"num_agents": args.num_agents})
+    .environment(
+        "env",
+        env_config={"num_agents": args.num_agents},
+    )
     .learners(
         num_aggregator_actors_per_learner=2,
     )

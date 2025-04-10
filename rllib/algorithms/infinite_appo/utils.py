@@ -1,18 +1,36 @@
 from typing import Dict
 
 import ray
+from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
+    EnvToModulePipeline
+)
+from ray.rllib.connectors.module_to_env.module_to_env_pipeline import (
+    ModuleToEnvPipeline
+)
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+)
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 
 @ray.remote
 class BatchDispatcher:
+    """Actor class uniformly distributing incoming batches to n Learners.
+
+    Batches in the form of ray object refs are temporarily stashed until the actor
+    holds as many batch refs as there are Learner actors. Then n batches are sent all
+    at once to the n Learner actors.
+    """
     def __init__(self, sync_freq):
+        self.sync_freq = sync_freq
+
         self._learners = []
+        self._learner_idx = 0
+        self._metrics_actor = None
         self._batch_refs = None
         self._timesteps = None
-        self._learner_idx = 0
         self._updates = 0
-        self.sync_freq = sync_freq
 
     def sync(self):
         return None
@@ -51,6 +69,46 @@ class BatchDispatcher:
             self._updates += 1
             # Reset timesteps.
             self._timesteps = None
+
+
+@ray.remote
+class EnvRunnerStateAggregator:
+    def __init__(self, *, config, spaces):
+        self._env_to_module: EnvToModulePipeline = (
+            # TODO (sven): Send `spaces` arg (instead of `env=None`),
+            #  once this is supported by the API. 
+            config.build_env_to_module_connector(env=None)
+        )
+        self._module_to_env: ModuleToEnvPipeline = (
+            # TODO (sven): Send `spaces` arg (instead of `env=None`),
+            #  once this is supported by the API. 
+            config.build_module_to_env_connector(env=None)
+        )
+
+    def set_peers(self, other_env_runner_state_aggregators):
+        """Defines the peer actors of this one."""
+        self._other_env_runner_state_aggregators = other_env_runner_state_aggregators
+
+    def get_connector_states(self):
+        return {
+            COMPONENT_ENV_TO_MODULE_CONNECTOR: self._env_to_module.get_state(),
+            COMPONENT_MODULE_TO_ENV_CONNECTOR: self._module_to_env.get_state(),
+        }
+
+    def merge_connector_states(self, env_runner_state, broadcast: bool = False):
+        # Merge new EnvRunner state into our own pipelines.
+        self._env_to_module.merge_states(
+            [env_runner_state[COMPONENT_ENV_TO_MODULE_CONNECTOR]]
+        )
+        self._module_to_env.merge_states(
+            [env_runner_state[COMPONENT_MODULE_TO_ENV_CONNECTOR]]
+        )
+
+        # Send new state to all peers (but tell each peer to NOT broadcast it to all
+        # their peers as this would cause an endless broadcasting loop).
+        if broadcast:
+            for peer in self._other_env_runner_state_aggregators:
+                peer.merge_state.remote(env_runner_state, broadcast=False)
 
 
 @ray.remote
@@ -101,13 +159,12 @@ class WeightsServerActor:
         self._weights_ref = None
         self._other_weights_server_actors = []
 
-    def add_peers(self, other_weights_server_actors):
+    def set_peers(self, other_weights_server_actors):
         """Defines the peer actors of this one."""
         self._other_weights_server_actors = other_weights_server_actors
 
     def put(self, weights_ref: Dict[str, ray.ObjectRef], broadcast: bool = False):
         # Store new weights reference.
-
         self._weights_ref = weights_ref
         # Send new weights to all peers (but tell each peer to NOT broadcast it to all
         # their peers as this would cause an endless broadcasting loop).

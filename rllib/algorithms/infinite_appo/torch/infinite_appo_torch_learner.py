@@ -100,6 +100,7 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
                     for mid in self.module.keys()
                     if self.should_module_be_updated(mid)
                 ],
+                # Inference-only, b/c this is for the EnvRunners.
                 inference_only=True,
             )
             learner_state[COMPONENT_RL_MODULE] = ray.put(
@@ -111,7 +112,5 @@ class InfiniteAPPOTorchLearner(APPOTorchLearner):
 
         # Send metrics to metrics actor.
         if self._num_batches >= 10:
-            self._metrics_actor.add.remote(
-                learner_metrics=self.metrics.reduce(),
-            )
+            self._metrics_actor.add.remote(learner_metrics=self.metrics.reduce())
             self._num_batches = 0
