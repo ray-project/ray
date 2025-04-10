@@ -717,7 +717,7 @@ def test_remove_placement_group_with_actor_waiting_on_resource(
     wait_for_condition(check_pg_removed, timeout=10)
     actors = list_actors()
     assert len(actors) == 2
-    assert set([actors[0].state, actors[1].state]) == set(["DEAD", "PENDING_CREATION"])
+    assert {actors[0].state, actors[1].state} == {"DEAD", "PENDING_CREATION"}
 
     # check raylet pass raycheck:
     # `RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec))`
