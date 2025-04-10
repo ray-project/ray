@@ -38,7 +38,7 @@ from ray.autoscaler.tags import (
 logger = logging.getLogger(__name__)
 
 TAG_BATCH_DELAY = 1
-LIST_RETRY_DELAY = 1
+LIST_RETRY_DELAY_SEC = 1
 
 
 def to_aws_format(tags):
@@ -610,7 +610,7 @@ class AWSNodeProvider(NodeProvider):
                 attempts + 1,
                 BOTO_MAX_RETRIES,
             )
-            time.sleep(LIST_RETRY_DELAY)
+            time.sleep(LIST_RETRY_DELAY_SEC)
         raise AssertionError("Invalid instance id {}".format(node_id))
 
     def _get_cached_node(self, node_id):
