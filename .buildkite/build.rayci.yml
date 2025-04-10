@@ -28,7 +28,6 @@ steps:
     depends_on:
       - manylinux
       - forge
-    timeout_in_minutes: 100
 
   - label: ":tapioca: build: jar"
     key: java_wheels
