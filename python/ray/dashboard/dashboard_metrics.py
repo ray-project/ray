@@ -1,3 +1,5 @@
+import functools
+
 from typing import Optional
 
 from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS
@@ -19,6 +21,39 @@ class NullMetric:
 try:
 
     from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+
+    @functools.cache
+    def metrics_dashboard_cpu(registry: CollectorRegistry, module_name: str = ""):
+        return Gauge(
+            "component_cpu",
+            "Dashboard CPU percentage usage.",
+            tuple(COMPONENT_METRICS_TAG_KEYS),
+            unit="percentage",
+            namespace="ray",
+            registry=registry,
+        )
+
+    @functools.cache
+    def metrics_dashboard_mem_uss(registry: CollectorRegistry, module_name: str = ""):
+        return Gauge(
+            "component_uss",
+            "USS usage of all components on the node.",
+            tuple(COMPONENT_METRICS_TAG_KEYS),
+            unit="mb",
+            namespace="ray",
+            registry=registry,
+        )
+
+    @functools.cache
+    def metrics_dashboard_mem_rss(registry: CollectorRegistry, module_name: str = ""):
+        return Gauge(
+            "component_rss",
+            "RSS usage of all components on the node.",
+            tuple(COMPONENT_METRICS_TAG_KEYS),
+            unit="mb",
+            namespace="ray",
+            registry=registry,
+        )
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
@@ -91,30 +126,15 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
-            self.metrics_dashboard_cpu = Gauge(
-                "component_cpu",
-                "Dashboard CPU percentage usage.",
-                tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="percentage",
-                namespace="ray",
-                registry=self.registry,
-            )
-            self.metrics_dashboard_mem_uss = Gauge(
-                "component_uss",
-                "USS usage of all components on the node.",
-                tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="mb",
-                namespace="ray",
-                registry=self.registry,
-            )
-            self.metrics_dashboard_mem_rss = Gauge(
-                "component_rss",
-                "RSS usage of all components on the node.",
-                tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="mb",
-                namespace="ray",
-                registry=self.registry,
-            )
+
+        def metrics_dashboard_cpu(self, module_name: str = ""):
+            return metrics_dashboard_cpu(self.registry, module_name)
+
+        def metrics_dashboard_mem_uss(self, module_name: str = ""):
+            return metrics_dashboard_mem_uss(self.registry, module_name)
+
+        def metrics_dashboard_mem_rss(self, module_name: str = ""):
+            return metrics_dashboard_mem_rss(self.registry, module_name)
 
 except ImportError:
 
