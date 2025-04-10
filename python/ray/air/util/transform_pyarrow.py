@@ -34,7 +34,7 @@ def _concatenate_extension_column(
         # Create empty storage array.
         storage = pyarrow.array([], type=ca.type.storage_type)
     elif isinstance(ca.type, tensor_extension_types):
-        return ArrowTensorArray._concat_same_type(ca.chunks)
+        return ArrowTensorArray._concat_same_type(ca.chunks, copy=copy)
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
 
