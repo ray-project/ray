@@ -794,8 +794,6 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )[COMPONENT_LEARNER]
             if self.env_runner_group:
-                # if self.env_runner is not None:
-                # self.env_runner.set_state(rl_module_state)
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
@@ -806,13 +804,14 @@ class Algorithm(Checkpointable, Trainable):
                     module_to_env=self.module_to_env_connector,
                 )
             elif self.eval_env_runner_group:
-                self.eval_env_runner.set_state(rl_module_state)
                 self.eval_env_runner_group.sync_env_runner_states(
-                    config=self.config,
+                    config=self.evaluation_config,
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -1093,16 +1092,18 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )
 
+            # Merge (eval) EnvRunner states and broadcast the merged state back
+            # to the remote (eval) EnvRunner actors.
             if self.config.enable_env_runner_and_connector_v2:
-                if self.env_runner_group:
-                    # Synchronize EnvToModule and ModuleToEnv connector states
-                    # and broadcast new states back to all eval EnvRunners.
+                if self.evaluation_config.broadcast_env_runner_states:
                     with self.metrics.log_time(
                         (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
                     ):
                         self.eval_env_runner_group.sync_env_runner_states(
                             config=self.evaluation_config,
                             from_worker=self.env_runner,
+                            env_to_module=self.env_to_module_connector,
+                            module_to_env=self.module_to_env_connector,
                         )
             else:
                 self._sync_filters_if_needed(

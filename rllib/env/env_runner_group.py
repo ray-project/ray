@@ -405,6 +405,33 @@ class EnvRunnerGroup:
         """
         from_worker = from_worker or self.local_env_runner
 
+        merge = (
+            (
+                not config.enable_env_runner_and_connector_v2
+                and config.use_worker_filter_stats
+            )
+            or (
+                config.enable_env_runner_and_connector_v2
+                and (
+                    config.merge_env_runner_states is True
+                    or (
+                        config.merge_env_runner_states == "training_only"
+                        and not config.in_evaluation
+                    )
+                )
+            )
+        )
+        broadcast = (
+            (
+                not config.enable_env_runner_and_connector_v2
+                and config.update_worker_filter_stats
+            )
+            or (
+                config.enable_env_runner_and_connector_v2
+                and config.broadcast_env_runner_states
+            )
+        )
+
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
@@ -421,14 +448,12 @@ class EnvRunnerGroup:
             )
             return
 
-        # Also early out, if we a) don't use the remote states AND b) don't want to
-        # broadcast back from `from_worker` to all remote workers.
-        # TODO (sven): Rename these to proper "..env_runner_states.." containing names.
-        if not config.update_worker_filter_stats and not config.use_worker_filter_stats:
+        # Also early out, if we don't merge AND don't broadcast.
+        if not merge and not broadcast:
             return
 
         # Use states from all remote EnvRunners.
-        if config.use_worker_filter_stats:
+        if merge:
             if connector_states == []:
                 env_runner_states = {}
             else:
@@ -482,13 +507,18 @@ class EnvRunnerGroup:
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
-            assert from_worker is not None
-            env_runner_states = from_worker.get_state(
-                components=[
-                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                ]
-            )
+            if from_worker is None:
+                env_runner_states = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: env_to_module.get_state(),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: module_to_env.get_state(),
+                }
+            else:
+                env_runner_states = from_worker.get_state(
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
+                )
 
         # Update the global number of environment steps, if necessary.
         # Make sure to divide by the number of env runners (such that each EnvRunner
@@ -502,7 +532,7 @@ class EnvRunnerGroup:
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components, except the model
         # weights) and then remove the connector components.
-        if not config.update_worker_filter_stats:
+        if not broadcast:
             if self.local_env_runner is not None:
                 self.local_env_runner.set_state(env_runner_states)
             else:
@@ -521,7 +551,7 @@ class EnvRunnerGroup:
             # Update the local EnvRunner, but NOT with the weights. If used at all for
             # evaluation (through the user calling `self.evaluate`), RLlib would update
             # the weights up front either way.
-            if self.local_env_runner is not None and config.update_worker_filter_stats:
+            if self.local_env_runner is not None and broadcast:
                 self.local_env_runner.set_state(env_runner_states)
 
             # Send the model weights only to remote EnvRunners.

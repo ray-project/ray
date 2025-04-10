@@ -74,6 +74,7 @@ from ray.rllib.utils.typing import (
     PolicyID,
     RLModuleSpecType,
     SampleBatchType,
+    StateDict,
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
@@ -141,6 +142,13 @@ class AlgorithmConfig(_Config):
         # case if None is provided.
         # Map any agent ID to "default_policy".
         return DEFAULT_MODULE_ID
+
+    @staticmethod
+    def DEFAULT_MERGE_ENV_RUNNER_STATES(
+        env_runner_states: List[StateDict],
+        is_evaluation: bool = False,
+    ):
+        self.env_to_
 
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
@@ -337,6 +345,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
         self.add_default_connectors_to_module_to_env_pipeline = True
+        self.merge_env_runner_states = "training_only"
+        self.broadcast_env_runner_states = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -1780,14 +1790,16 @@ class AlgorithmConfig(_Config):
         add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
         add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
-        use_worker_filter_stats: Optional[bool] = NotProvided,
-        update_worker_filter_stats: Optional[bool] = NotProvided,
+        merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
+        broadcast_env_runner_states: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
         episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1891,6 +1903,13 @@ class AlgorithmConfig(_Config):
                 and compile RLModule input data from this information. For example, if
                 your custom env-to-module connector (and your custom RLModule) requires
                 the previous 10 rewards as inputs, you must set this to at least 10.
+            merge_env_runner_states: True, if remote EnvRunner actor states should be
+                merged into central connector pipelines. Use "training_only" (default)
+                for only doing this for the training EnvRunners, NOT for the evaluation
+                EnvRunners.
+            broadcast_env_runner_states: True, if merged EnvRunner states (from the
+                central connector pipelines) should be broadcast back to all remote
+                EnvRunner actors.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2048,6 +2067,10 @@ class AlgorithmConfig(_Config):
             )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
+        if merge_env_runner_states is not NotProvided:
+            self.merge_env_runner_states = merge_env_runner_states
+        if broadcast_env_runner_states is not NotProvided:
+            self.broadcast_env_runner_states = broadcast_env_runner_states
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
