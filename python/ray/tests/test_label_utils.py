@@ -5,6 +5,7 @@ from ray._private.label_utils import (
     parse_node_labels_string,
     parse_node_labels_from_yaml_file,
     validate_node_labels,
+    validate_node_label_syntax,
 )
 import sys
 import tempfile
@@ -118,27 +119,29 @@ def test_validate_node_labels():
         validate_node_labels(labels_dict)
     assert "This is reserved for Ray defined labels." in str(e)
 
+
+def test_validate_node_label_syntax():
     # Invalid key prefix syntax
     labels_dict = {"!invalidPrefix/accelerator-type": "A100"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key prefix" in str(e)
 
     # Invalid key name syntax
     labels_dict = {"!!accelerator-type?": "A100"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key name" in str(e)
 
     # Invalid key value syntax
     labels_dict = {"accelerator-type": "??"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key value" in str(e)
 
     # Valid node label
     labels_dict = {"accelerator-type": "A100"}
-    validate_node_labels(labels_dict)
+    validate_node_label_syntax(labels_dict)
 
 
 if __name__ == "__main__":

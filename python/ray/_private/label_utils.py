@@ -56,6 +56,9 @@ def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
         value = key_value[1].strip()
         labels[key] = value
 
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
+
     return labels
 
 
@@ -75,6 +78,9 @@ def parse_node_labels_from_yaml_file(path: str) -> Dict[str, str]:
             if not isinstance(value, str):
                 raise ValueError(f'The value of "{key}" is not string type.')
 
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
+
     return labels
 
 
@@ -88,6 +94,14 @@ def validate_node_labels(labels: Dict[str, str]):
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
+
+
+# TODO (ryanaoleary@): This function will replace `validate_node_labels` after
+# the migration from NodeLabelSchedulingPolicy to the Label Selector API is complete.
+def validate_node_label_syntax(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
         if "/" in key:
             prefix, name = key.rsplit("/")
             if len(prefix) > 253 or not re.match(LABEL_PREFIX_REGEX, prefix):
