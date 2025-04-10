@@ -1,11 +1,9 @@
 import logging
 from functools import partial
-
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional
 
 import numpy as np
 import pyarrow as pa
-from pyarrow.fs import FileSelector, FileType
 
 import ray
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
@@ -15,7 +13,7 @@ from ray.anyscale.data._internal.logical.operators.list_files_operator import (
 )
 from ray.anyscale.data._internal.readers import FileReader
 from ray.data import FileShuffleConfig
-from ray.data._internal.arrow_block import ArrowBlockBuilder, ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -27,11 +25,12 @@ from ray.data._internal.execution.operators.map_transformer import (
     RowMapTransformFn,
     RowToBlockMapTransformFn,
 )
-from ray.data._internal.util import RetryingPyFileSystem
-from ray.data.block import BlockAccessor, Block
-from ray.data.context import DataContext, DEFAULT_READ_OP_MIN_NUM_BLOCKS
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
-from ray.data.datasource.path_util import _has_file_extension
+from ray.data.block import Block, BlockAccessor
+from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, DataContext
+from ray.data.datasource.path_util import (
+    _has_file_extension,
+    _resolve_paths_and_filesystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,6 @@ def plan_list_files_op(
     #
     # NOTE: Avoid capturing operators in closures!
     #
-    ignore_missing_paths = op.ignore_missing_paths
     file_extensions = op.file_extensions
     partition_filter = op.partition_filter
 
@@ -88,14 +86,13 @@ def plan_list_files_op(
 
     fs = op.filesystem
     reader = op.reader
+    indexer = op.file_indexer
 
     def list_files(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
-            for file_path, file_size in _get_file_infos(
-                row[PATH_COLUMN_NAME],
-                fs,
-                ignore_missing_paths,
-            ):
+            resolved_paths, _ = _resolve_paths_and_filesystem(row[PATH_COLUMN_NAME], fs)
+            assert len(resolved_paths) == 1
+            for file_path, file_size in indexer.list_files(resolved_paths[0], fs):
                 if not _has_file_extension(file_path, file_extensions):
                     logger.debug(
                         f"Skipping file '{file_path}' because it does not have one "
@@ -200,61 +197,6 @@ def create_input_data_buffer(
         )
         input_data.append(ref_bundle)
     return InputDataBuffer(data_context, input_data=input_data)
-
-
-def _get_file_infos(
-    path: str, filesystem: "RetryingPyFileSystem", ignore_missing_path: bool
-) -> Iterable[Tuple[str, Optional[int]]]:
-    from pyarrow.fs import FileType
-
-    try:
-        file_info = filesystem.get_file_info(path)
-    except OSError as e:
-        _handle_read_os_error(e, path)
-
-    if file_info.type == FileType.Directory:
-        yield from _expand_directory(path, filesystem, ignore_missing_path)
-    elif file_info.type == FileType.File:
-        yield (path, file_info.size)
-    elif file_info.type == FileType.NotFound and ignore_missing_path:
-        pass
-    else:
-        raise FileNotFoundError(path)
-
-
-def _expand_directory(
-    base_path: str, filesystem: "RetryingPyFileSystem", ignore_missing_path: bool
-) -> Iterable[Tuple[str, Optional[int]]]:
-    exclude_prefixes = [".", "_"]
-    selector = FileSelector(
-        base_path, recursive=False, allow_not_found=ignore_missing_path
-    )
-    files = filesystem.get_file_info(selector)
-
-    # Lineage reconstruction doesn't work if tasks aren't deterministic, and
-    # `filesystem.get_file_info` might return files in a non-deterministic order. So, we
-    # sort the files.
-    assert isinstance(files, list), type(files)
-    files.sort(key=lambda file_: file_.path)
-
-    for file_ in files:
-        if not file_.path.startswith(base_path):
-            continue
-
-        relative = file_.path[len(base_path) :]
-        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
-            continue
-
-        if file_.type == FileType.File:
-            yield (file_.path, file_.size)
-        elif file_.type == FileType.Directory:
-            yield from _expand_directory(file_.path, filesystem, ignore_missing_path)
-        elif file_.type == FileType.UNKNOWN:
-            logger.warning(f"Discovered file with unknown type: '{file_.path}'")
-            continue
-        else:
-            assert file_.type == FileType.NotFound
-            raise FileNotFoundError(file_.path)
 
 
 def partition_files(
