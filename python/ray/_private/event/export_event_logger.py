@@ -16,6 +16,7 @@ from ray.core.generated.export_submission_job_event_pb2 import (
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
+    ExportDataMetadataEventData,
 )
 from ray._private.protobuf_compat import message_to_dict
 
@@ -27,6 +28,7 @@ ExportEventDataType = Union[
     ExportSubmissionJobEventData,
     ExportTrainRunEventData,
     ExportTrainRunAttemptEventData,
+    ExportDataMetadataEventData,
 ]
 
 
@@ -38,6 +40,7 @@ class EventLogType(Enum):
     Attributes:
         TRAIN_STATE: Export events related to training state, supporting train run and attempt events.
         SUBMISSION_JOB: Export events related to job submissions.
+        DATA_METADATA: Export events related to data metadata.
     """
 
     TRAIN_STATE = (
@@ -45,6 +48,11 @@ class EventLogType(Enum):
         {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
     )
     SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
+
+    DATA_METADATA = (
+        "EXPORT_DATA_METADATA",
+        {ExportDataMetadataEventData},
+    )
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
         """Initialize an EventLogType enum value.
