@@ -3267,7 +3267,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3448,7 +3448,7 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
-  RAY_LOG(INFO).WithField(task_spec.TaskId())
+  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
 
   std::ostringstream stream;
@@ -3837,7 +3837,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
