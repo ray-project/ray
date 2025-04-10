@@ -2497,8 +2497,9 @@ werkzeug==2.3.8
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.43.0
+wheel==0.45.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   astunparse
     #   lightgbm
 widgetsnbextension==4.0.11
