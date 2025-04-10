@@ -49,6 +49,7 @@ from ray.rllib.algorithms.utils import (
 )
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
     COMPONENT_EVAL_ENV_RUNNER,
@@ -65,6 +66,7 @@ from ray.rllib.core.rl_module.multi_rl_module import (
 )
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
@@ -597,6 +599,11 @@ class Algorithm(Checkpointable, Trainable):
         ] = defaultdict(set)
 
         self.env_runner_group: Optional[EnvRunnerGroup] = None
+        # In case there is no local EnvRunner anymore, we need to handle connector
+        # pipelines directly here.
+        self.spaces: Optional[Dict] = None
+        self.env_to_module_connector: Optional[ConnectorPipelineV2] = None
+        self.module_to_env_connector: Optional[ConnectorPipelineV2] = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
@@ -632,10 +639,24 @@ class Algorithm(Checkpointable, Trainable):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                local_env_runner=True,
+                # New API stack: User decides whether to create local env runner.
+                # Old API stack: Always create local EnvRunner.
+                local_env_runner=(
+                    True
+                    if not self.config.enable_env_runner_and_connector_v2
+                    else self.config.create_local_env_runner
+                ),
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
+            self.spaces = self.env_runner_group.get_spaces()
+            if self.env_runner is None:
+                self.env_to_module_connector = (
+                    self.config.build_env_to_module_connector(spaces=self.spaces)
+                )
+                self.module_to_env_connector = (
+                    self.config.build_module_to_env_connector(spaces=self.spaces)
+                )
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -661,6 +682,13 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.evaluation_config,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
+                # New API stack: User decides whether to create local env runner.
+                # Old API stack: Always create local EnvRunner.
+                local_env_runner=(
+                    True
+                    if not self.evaluation_config.enable_env_runner_and_connector_v2
+                    else self.evaluation_config.create_local_env_runner
+                ),
                 pg_offset=self.config.num_env_runners,
             )
 
@@ -718,8 +746,6 @@ class Algorithm(Checkpointable, Trainable):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
-            from ray.rllib.env import INPUT_ENV_SPACES
-
             spaces = {
                 INPUT_ENV_SPACES: (
                     self.config.observation_space,
@@ -727,7 +753,7 @@ class Algorithm(Checkpointable, Trainable):
                 )
             }
             if self.env_runner_group:
-                spaces.update(self.env_runner_group.get_spaces())
+                spaces.update(self.spaces)
             elif self.eval_env_runner_group:
                 spaces.update(self.eval_env_runner_group.get_spaces())
             else:
@@ -768,22 +794,24 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )[COMPONENT_LEARNER]
             if self.env_runner_group:
-                self.env_runner.set_state(rl_module_state)
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
             elif self.eval_env_runner_group:
-                self.eval_env_runner.set_state(rl_module_state)
                 self.eval_env_runner_group.sync_env_runner_states(
-                    config=self.config,
+                    config=self.evaluation_config,
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -822,7 +850,7 @@ class Algorithm(Checkpointable, Trainable):
             self.config.num_aggregator_actors_per_learner > 0
         ):
             rl_module_spec = self.config.get_multi_rl_module_spec(
-                spaces=self.env_runner_group.get_spaces(),
+                spaces=self.spaces,
                 inference_only=False,
             )
             agg_cls = ray.remote(
@@ -986,7 +1014,11 @@ class Algorithm(Checkpointable, Trainable):
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all EnvRunners.
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
-                    self.env_runner_group.sync_env_runner_states(config=self.config)
+                    self.env_runner_group.sync_env_runner_states(
+                        config=self.config,
+                        env_to_module=self.env_to_module_connector,
+                        module_to_env=self.module_to_env_connector,
+                    )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
             # in `train_results` and `eval_results`.
@@ -1060,16 +1092,18 @@ class Algorithm(Checkpointable, Trainable):
                 inference_only=True,
             )
 
+            # Merge (eval) EnvRunner states and broadcast the merged state back
+            # to the remote (eval) EnvRunner actors.
             if self.config.enable_env_runner_and_connector_v2:
-                if self.env_runner_group:
-                    # Synchronize EnvToModule and ModuleToEnv connector states
-                    # and broadcast new states back to all eval EnvRunners.
+                if self.evaluation_config.broadcast_env_runner_states:
                     with self.metrics.log_time(
                         (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
                     ):
                         self.eval_env_runner_group.sync_env_runner_states(
                             config=self.evaluation_config,
-                            from_worker=self.env_runner_group.local_env_runner,
+                            from_worker=self.env_runner,
+                            env_to_module=self.env_to_module_connector,
+                            module_to_env=self.module_to_env_connector,
                         )
             else:
                 self._sync_filters_if_needed(
@@ -1219,7 +1253,7 @@ class Algorithm(Checkpointable, Trainable):
                 "Can't evaluate on a local worker if this local worker does not have "
                 "an environment!\nTry one of the following:"
                 "\n1) Set `evaluation_interval` > 0 to force creating a separate "
-                "evaluation EnvRunnerGroup.\n2) Set `create_env_on_driver=True` to "
+                "evaluation EnvRunnerGroup.\n2) Set `create_local_env_runner=True` to "
                 "force the local (non-eval) EnvRunner to have an environment to "
                 "evaluate on."
             )
@@ -1829,7 +1863,15 @@ class Algorithm(Checkpointable, Trainable):
             The RLModule found under the ModuleID key inside the local EnvRunner's
             MultiRLModule. None if `module_id` doesn't exist.
         """
-        module = self.env_runner.module
+        if self.env_runner is not None:
+            module = self.env_runner.module
+        else:
+            module = self.env_runner_group.foreach_env_runner(
+                lambda er: er.module,
+                remote_worker_ids=[1],
+                local_env_runner=False,
+            )[0]
+
         if isinstance(module, MultiRLModule):
             return module.get(module_id)
         else:

@@ -607,6 +607,19 @@ class DQN(Algorithm):
             return DQNTFPolicy
 
     @override(Algorithm)
+    def setup(self, config: AlgorithmConfig) -> None:
+        super().setup(config)
+
+        if self.env_runner is None:
+            self._module_is_stateful = self.env_runner_group.foreach_env_runner(
+                lambda er: er.module.is_stateful(),
+                remote_worker_ids=[1],
+                local_env_runner=False,
+            )[0][1]
+        else:
+            self._module_is_stateful = self.env_runner.module.is_stateful()
+
+    @override(Algorithm)
     def training_step(self) -> None:
         """DQN training iteration function.
 
@@ -676,9 +689,11 @@ class DQN(Algorithm):
                         n_step=self.config.n_step,
                         # In case an `EpisodeReplayBuffer` is used we need to provide
                         # the sequence length.
-                        batch_length_T=self.env_runner.module.is_stateful()
-                        * self.config.model_config.get("max_seq_len", 0),
-                        lookback=int(self.env_runner.module.is_stateful()),
+                        batch_length_T=(
+                            self._module_is_stateful
+                            * self.config.model_config.get("max_seq_len", 0)
+                        ),
+                        lookback=int(self._module_is_stateful),
                         # TODO (simon): Implement `burn_in_len` in SAC and remove this
                         # if-else clause.
                         min_batch_length_T=self.config.burn_in_len

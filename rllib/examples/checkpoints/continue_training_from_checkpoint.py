@@ -153,7 +153,7 @@ if __name__ == "__main__":
             enable_env_runner_and_connector_v2=args.enable_new_api_stack,
         )
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
-        .env_runners(create_env_on_local_worker=True)
+        .env_runners(create_local_env_runner=True)
         .training(lr=0.0001)
         .callbacks(CrashAfterNIters)
     )

@@ -96,7 +96,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
-        const CActorID &GetRootDetachedActorID()
+        CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
@@ -209,10 +209,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
-        CPlacementGroupID GetCurrentPlacementGroupId()
+        CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
-        const CActorID &GetActorId()
+        CActorID GetActorId() const
         const c_string GetActorName()
         void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)

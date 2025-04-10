@@ -501,11 +501,11 @@ class TestAlgorithm(unittest.TestCase):
         )
         algo_wo_env_on_local_worker.stop()
 
-        # Try again using `create_env_on_driver=True`.
+        # Try again using `create_local_env_runner=True`.
         # This force-adds the env on the local-worker, so this Algorithm
         # can `evaluate` even though it doesn't have an evaluation-worker
         # set.
-        config.create_env_on_local_worker = True
+        config.create_local_env_runner = True
         algo_w_env_on_local_worker = config.build()
         results = algo_w_env_on_local_worker.evaluate()
         assert (
@@ -513,7 +513,7 @@ class TestAlgorithm(unittest.TestCase):
             and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
         )
         algo_w_env_on_local_worker.stop()
-        config.create_env_on_local_worker = False
+        config.create_local_env_runner = False
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""
