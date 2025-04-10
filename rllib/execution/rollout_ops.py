@@ -144,12 +144,7 @@ def synchronous_parallel_sample(
                 )
             else:
                 agent_or_env_steps += sum(
-                    int(
-                        stat_dict[NUM_ENV_STEPS_SAMPLED][0]
-                        if isinstance(stat_dict[NUM_ENV_STEPS_SAMPLED], list)
-                        else stat_dict[NUM_ENV_STEPS_SAMPLED]
-                    )
-                    for stat_dict in stats_dicts
+                    int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
                 )
             sample_batches_or_episodes.extend(sampled_data)
             all_stats_dicts.extend(stats_dicts)

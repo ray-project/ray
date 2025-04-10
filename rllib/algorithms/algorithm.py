@@ -1140,7 +1140,7 @@ class Algorithm(Checkpointable, Trainable):
 
         if self.config.enable_env_runner_and_connector_v2:
             eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
-            if not eval_results:
+            if log_once("no_eval_results"):
                 logger.warning(
                     "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
                 )
@@ -1526,21 +1526,11 @@ class Algorithm(Checkpointable, Trainable):
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.append(met)
-                    num_episodes = met.get(NUM_EPISODES, 0)
-                    num_episodes = (
-                        num_episodes[0]
-                        if isinstance(num_episodes, list)
-                        else num_episodes
-                    )
-                    num_units_done += int(
-                        (
-                            num_episodes
-                            if unit == "episodes"
-                            else (
-                                env_s
-                                if self.config.count_steps_by == "env_steps"
-                                else ag_s
-                            )
+                    num_units_done += (
+                        (met[NUM_EPISODES].peek() if NUM_EPISODES in met else 0)
+                        if unit == "episodes"
+                        else (
+                            env_s if self.config.count_steps_by == "env_steps" else ag_s
                         )
                     )
             # Old API stack -> RolloutWorkers return batches.

@@ -41,7 +41,7 @@ class TestLearner(unittest.TestCase):
             batch = learner._convert_batch_type(batch)
             results = learner.update(batch=batch)
 
-        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
+        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY].peek()
         min_loss = min(loss, min_loss)
         print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
         self.assertLess(min_loss, 0.58)
