@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 import traceback
+import sys
 from typing import Callable, List, Optional, Set
 
 from ray._raylet import GcsClient
@@ -16,6 +17,8 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
+from ray._raylet import StreamRedirector
+from ray._private.utils import open_log
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -516,7 +519,7 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is "
+        "log to stderr if set empty, default is "
         f'"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}"',
     )
     parser.add_argument(
@@ -533,30 +536,76 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+        help="Specify the max bytes for rotating log file.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+        help="Specify the backup count of rotated log file.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        default="",
+        type=str,
+        help="The filepath to dump log monitor stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        default="",
+        type=str,
+        help="The filepath to dump log monitor stderr.",
+    )
+
     args = parser.parse_args()
-    setup_component_logger(
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
+    logging_params = dict(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
     )
+    logger = setup_component_logger(**logging_params)
+
+    # Setup stdout/stderr redirect files if redirection enabled
+    if args.stdout_filepath:
+        StreamRedirector.redirect_stdout(
+            args.stdout_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+    if args.stderr_filepath:
+        StreamRedirector.redirect_stderr(
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+            False,
+            False,
+        )
+
+    # Setup stdout/stderr redirect files
+    stdout_fileno = sys.stdout.fileno()
+    stderr_fileno = sys.stderr.fileno()
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
+    sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
     node_ip = services.get_cached_node_ip_address(args.session_dir)
     log_monitor = LogMonitor(

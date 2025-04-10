@@ -630,12 +630,13 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         return {
-            "values": convert_to_numpy(self.values),
+            "values": self.values,
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
             "_hist": list(self._hist),
+            "_throughput": self._throughput,
         }
 
     @staticmethod
@@ -646,6 +647,7 @@ class Stats:
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
+            throughput=state.get("_throughput", False),
         )
         stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
         return stats

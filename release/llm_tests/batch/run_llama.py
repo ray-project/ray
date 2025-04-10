@@ -1,58 +1,6 @@
-import argparse
-
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--tp-size",
-        type=int,
-        default=1,
-        help="Tensor parallel size",
-    )
-    parser.add_argument(
-        "--pp-size",
-        type=int,
-        default=1,
-        help="Pipeline parallel size.",
-    )
-    parser.add_argument(
-        "--concurrency", type=int, default=1, help="Number of concurrency (replicas)."
-    )
-    parser.add_argument(
-        "--vllm-use-v1",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--model-source",
-        type=str,
-        default="unsloth/Llama-3.1-8B-Instruct",
-        help="Model source.",
-    )
-    parser.add_argument(
-        "--dynamic-lora-loading-path",
-        type=str,
-        default=None,
-        help="Path to the dynamic lora loading.",
-    )
-    parser.add_argument(
-        "--lora-name",
-        type=str,
-        default=None,
-        help="Name of the lora to load.",
-    )
-    parser.add_argument(
-        "--max-lora-rank",
-        type=int,
-        default=None,
-        help="Max lora rank.",
-    )
-
-    return parser.parse_args()
+from args_utils import get_parser
 
 
 def main(args):
@@ -85,6 +33,7 @@ def main(args):
             max_model_len=16384,
             enable_chunked_prefill=True,
             max_num_batched_tokens=2048,
+            trust_remote_code=True,
         ),
         runtime_env=runtime_env,
         tokenize=tokenize,
@@ -142,5 +91,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    parser = get_parser()
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    main(parser.parse_args())

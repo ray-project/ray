@@ -4,17 +4,22 @@ import aiohttp
 import inspect
 import logging
 import sys
+import os
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
 
 import ray
-from ray._private.gcs_utils import GcsAioClient
+from ray import ray_constants
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     get_socket_path,
+    get_named_pipe_path,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private import logging_utils
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,9 @@ class SubprocessModuleConfig:
 
     cluster_id_hex: str
     gcs_address: str
+    session_name: str
+    temp_dir: str
+    session_dir: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -59,19 +67,22 @@ class SubprocessModule(abc.ABC):
         self._config = config
         self._parent_process = multiprocessing.parent_process()
         # Lazy init
+        self._gcs_client = None
         self._gcs_aio_client = None
+        self._aiogrpc_gcs_channel = None
         self._parent_process_death_detection_task = None
+        self._http_session = None
 
     async def _detect_parent_process_death(self):
         """
-        Detect parent process liveness. If parent process dies, exit the subprocess.
+        Detect parent process liveness. Only returns when parent process is dead.
         """
         while True:
             if not self._parent_process.is_alive():
                 logger.warning(
                     f"Parent process {self._parent_process.pid} died. Exiting..."
                 )
-                sys.exit()
+                return
             await asyncio.sleep(1)
 
     @staticmethod
@@ -92,7 +103,9 @@ class SubprocessModule(abc.ABC):
         Start running the module.
         This method should be called first before the module starts receiving requests.
         """
-        app = aiohttp.web.Application()
+        app = aiohttp.web.Application(
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
+        )
         routes: list[aiohttp.web.RouteDef] = [
             aiohttp.web.get("/api/healthz", self._internal_module_health_check)
         ]
@@ -113,16 +126,19 @@ class SubprocessModule(abc.ABC):
                 )
             )
         app.add_routes(routes)
-        runner = aiohttp.web.AppRunner(app)
+        runner = aiohttp.web.AppRunner(app, access_log=None)
         await runner.setup()
 
-        socket_path = get_socket_path(self._config.socket_dir, self.__class__.__name__)
+        module_name = self.__class__.__name__
         if sys.platform == "win32":
-            site = aiohttp.web.NamedPipeSite(runner, socket_path)
+            named_pipe_path = get_named_pipe_path(module_name)
+            site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
+            logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:
+            socket_path = get_socket_path(self._config.socket_dir, module_name)
             site = aiohttp.web.UnixSite(runner, socket_path)
+            logger.info(f"Started aiohttp server over {socket_path}.")
         await site.start()
-        logger.info(f"Started aiohttp server over {socket_path}.")
 
     @property
     def gcs_aio_client(self):
@@ -132,6 +148,55 @@ class SubprocessModule(abc.ABC):
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_aio_client
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            if not ray.experimental.internal_kv._internal_kv_initialized():
+                gcs_client = GcsClient(
+                    address=self._config.gcs_address,
+                    cluster_id=self._config.cluster_id_hex,
+                )
+                ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+            self._gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        return self._gcs_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
+
+    @property
+    def session_name(self):
+        """
+        Return the Ray session name. It's not related to the aiohttp session.
+        """
+        return self._config.session_name
+
+    @property
+    def temp_dir(self):
+        return self._config.temp_dir
+
+    @property
+    def session_dir(self):
+        return self._config.session_dir
+
+    @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
+    def http_session(self):
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
 
     async def _internal_module_health_check(self, request):
         return aiohttp.web.Response(
@@ -157,6 +222,9 @@ async def run_module_inner(
         module = cls(config)
         module._parent_process_death_detection_task = asyncio.create_task(
             module._detect_parent_process_death()
+        )
+        module._parent_process_death_detection_task.add_done_callback(
+            lambda _: sys.exit()
         )
         await module.run()
         ready_event.set()
@@ -190,8 +258,22 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
+    if config.logging_filename:
+        stdout_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".out"
+        )
+        stderr_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".err"
+        )
+        logging_utils.redirect_stdout_stderr_if_needed(
+            os.path.join(config.log_dir, stdout_filename),
+            os.path.join(config.log_dir, stderr_filename),
+            config.logging_rotate_bytes,
+            config.logging_rotate_backup_count,
+        )
+
     loop = asyncio.new_event_loop()
-    loop.create_task(
+    task = loop.create_task(
         run_module_inner(
             cls,
             config,
@@ -210,4 +292,5 @@ def run_module(
 
     ray._private.utils.set_sigterm_handler(sigterm_handler)
 
+    loop.run_until_complete(task)
     loop.run_forever()

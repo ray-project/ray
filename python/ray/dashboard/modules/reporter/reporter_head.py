@@ -26,11 +26,12 @@ from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = (
@@ -54,9 +55,9 @@ RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 
-class ReportHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class ReportHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._ray_config = None
         # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
         # asynchronous and will lead to low performance. ray disconnect()
@@ -697,7 +698,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
         return reporter_pb2_grpc.ReporterServiceStub(channel)
 
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
             self.aiogrpc_gcs_channel, self.gcs_aio_client
         )
@@ -719,7 +721,3 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
-
-    @staticmethod
-    def is_minimal_module():
-        return False

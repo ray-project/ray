@@ -28,7 +28,7 @@ python/ray/train/train.py: lint ml train linux_wheels
 rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
 python/ray/serve/serve.py: lint serve linux_wheels java
-python/ray/dashboard/dashboard.py: lint dashboard linux_wheels
+python/ray/dashboard/dashboard.py: lint dashboard linux_wheels python
 python/core.py:
     - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
@@ -69,6 +69,7 @@ src/ray.cpp:
     - linux_wheels macos_wheels dashboard release_tests accelerated_dag
 
 .github/CODEOWNERS: lint
+README.rst: lint
 BUILD.bazel:
     - lint ml tune train data serve core_cpp cpp java
     - python doc linux_wheels macos_wheels dashboard tools
@@ -153,7 +154,7 @@ def test_conditional_testing_pull_request():
             )
             tags = output.split()
 
-            want = test_case.tags
+            want = set(list(test_case.tags) + ["always"])
             assert want == set(tags), f"file {test_case.file}, want {want}, got {tags}"
 
 

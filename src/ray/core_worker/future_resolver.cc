@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/future_resolver.h"
 
+#include <memory>
+
 namespace ray {
 namespace core {
 

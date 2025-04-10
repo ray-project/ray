@@ -18,8 +18,7 @@ from ray._private.gcs_utils import GcsAioClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import StreamRedirector
-from ray._private.utils import open_log
+from ray._private import logging_utils
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +47,7 @@ class DashboardAgent:
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        assert node_ip_address is not None
         self.ip = node_ip_address
         self.minimal = minimal
 
@@ -181,38 +181,43 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
+        launch_http_server = True
         if self.http_server:
             try:
                 await self.http_server.start(modules)
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
+            except Exception as e:
+                # TODO(kevin85421): We should fail the agent if the HTTP server
+                # fails to start to avoid hiding the root cause. However,
+                # agent processes are not cleaned up correctly after some tests
+                # finish. If we fail the agent, the CI will always fail until
+                # we fix the leak.
                 logger.exception(
-                    "Failed to start http server. Agent will stay alive but "
-                    "disable the http service."
+                    f"Failed to start HTTP server with exception: {e}. "
+                    "The agent will stay alive but the HTTP service will be disabled.",
                 )
+                launch_http_server = False
 
-        # Writes agent address to kv.
-        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
-        # -1 should indicate that http server is not started.
-        http_port = -1 if not self.http_server else self.http_server.http_port
-        grpc_port = -1 if not self.server else self.grpc_port
-        put_by_node_id = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-            json.dumps([self.ip, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-        put_by_ip = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-            json.dumps([self.node_id, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
+        if launch_http_server:
+            # Writes agent address to kv.
+            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+            # -1 should indicate that http server is not started.
+            http_port = -1 if not self.http_server else self.http_server.http_port
+            grpc_port = -1 if not self.server else self.grpc_port
+            put_by_node_id = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+                json.dumps([self.ip, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            put_by_ip = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+                json.dumps([self.node_id, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
-        await asyncio.gather(put_by_node_id, put_by_ip)
+            await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 
@@ -427,31 +432,12 @@ if __name__ == "__main__":
 
         # Setup stdout/stderr redirect files
         out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
-        StreamRedirector.redirect_stdout(
+        logging_utils.redirect_stdout_stderr_if_needed(
             out_filepath,
-            logging_rotation_bytes,
-            logging_rotation_backup_count,
-            False,
-            False,
-        )
-        StreamRedirector.redirect_stderr(
             err_filepath,
             logging_rotation_bytes,
             logging_rotation_backup_count,
-            False,
-            False,
         )
-
-        # Setup stdout/stderr redirect files
-        stdout_fileno = sys.stdout.fileno()
-        stderr_fileno = sys.stderr.fileno()
-        # We also manually set sys.stdout and sys.stderr because that seems to
-        # have an effect on the output buffering. Without doing this, stdout
-        # and stderr are heavily buffered resulting in seemingly lost logging
-        # statements. We never want to close the stdout file descriptor, dup2 will
-        # close it when necessary and we don't want python's GC to close it.
-        sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
-        sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
         agent = DashboardAgent(
             args.node_ip_address,

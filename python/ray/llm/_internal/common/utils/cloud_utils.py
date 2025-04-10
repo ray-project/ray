@@ -19,7 +19,7 @@ import asyncio
 # Use pyarrow for cloud storage access
 import pyarrow.fs as pa_fs
 
-from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
@@ -306,7 +306,7 @@ class CloudFileSystem:
                 )
             else:
                 f_hash = "0000000000000000000000000000000000000000"
-                logger.warning(
+                logger.info(
                     f"Hash file does not exist in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
                 )

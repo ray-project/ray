@@ -16,7 +16,6 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
 #include <deque>
 #include <memory>
 #include <string>
@@ -253,8 +252,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
-      auto &work_queue = shapes_it->second;
-      const auto &work = work_queue[0];
+      auto &cur_work_queue = shapes_it->second;
+      const auto &work = cur_work_queue[0];
       const RayTask task = work->task;
       if (announce_infeasible_task_) {
         announce_infeasible_task_(task);

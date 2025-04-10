@@ -775,6 +775,18 @@ def generate_system_config_map(**kwargs):
     return ray_kwargs
 
 
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self):
+        return self.items
+
+
 @ray.remote(num_cpus=0)
 class SignalActor:
     def __init__(self):
@@ -1981,7 +1993,7 @@ def external_ray_cluster_activity_hook1():
 
     class TestRayActivityResponse(BaseModel, extra=Extra.allow):
         """
-        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        Redefinition of dashboard.modules.api.api_head.RayActivityResponse
         used in test_component_activities_hook to mimic typical
         usage of redefining or extending response type.
         """

@@ -8,7 +8,7 @@ import uuid
 from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type, Union
 
 import numpy as np
 
@@ -17,11 +17,12 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import (
-    download_lora_adapter,
-    download_hf_model,
-)
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
+from ray.llm._internal.common.utils.download_utils import (
+    download_lora_adapter,
+    download_model_files,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -188,7 +189,9 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _maybe_convert_ndarray_to_list(
+        self, params: Union[np.ndarray, List[Any], Dict[str, Any]]
+    ) -> Union[List[Any], Dict[str, Any]]:
         """Convert all ndarray to list in the params. This is because Ray Data
         by default converts all lists to ndarrays when passing data around, but
         vLLM expects lists.
@@ -270,7 +273,9 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt").tolist()
+            tokenized_prompt = self._maybe_convert_ndarray_to_list(
+                row.pop("tokenized_prompt")
+            )
         else:
             tokenized_prompt = None
 
@@ -435,6 +440,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -446,6 +452,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
@@ -454,7 +461,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
         """
-        super().__init__(data_column)
+        super().__init__(data_column, expected_input_keys)
         self.model = model
 
         # Setup vLLM engine kwargs.
@@ -470,7 +477,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
         # Download the model if needed.
-        model_source = download_hf_model(self.model, tokenizer_only=False)
+        model_source = download_model_files(
+            model_id=self.model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.MODEL_AND_TOKENIZER,
+            download_extra_files=False,
+        )
 
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(
@@ -558,41 +570,48 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             time_taken,
         )
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-
-        ret = ["prompt"]
-        if self.task_type == vLLMTaskType.GENERATE:
-            ret.append("sampling_params")
-        return ret
-
     def __del__(self):
         if hasattr(self, "llm"):
             # Kill the engine processes.
             self.llm.shutdown()
 
 
-def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
-    """
-    Create a Ray scheduling strategy for vLLM engine.
+def _ray_scheduling_strategy_fn(
+    num_bundles_per_replica: int,
+    accelerator_type: Optional[str] = None,
+    resources_per_bundle: Optional[Dict[str, float]] = None,
+):
+    """Create a Ray scheduling strategy for the engine.
 
     Args:
-        num_gpus_per_instance: The number of GPUs per instance.
-        accelerator_type: The accelerator type.
+        num_bundles_per_replica: The number of device bundles per
+            engine replica.
+        accelerator_type: The accelerator type. If None, the
+            accelerator_type label will not be set.
+        resources_per_bundle: The custom resources per bundle.
+            If None, we default to 1xGPU + 1xCPU bundle.
 
     Returns:
         The Ray scheduling strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-        bundle: Dict[str, float] = {"GPU": 1, "CPU": 1}
+
+        bundle = {}
+        # Custom resources
+        if resources_per_bundle:
+            bundle = resources_per_bundle
+        else:
+            # GPU bundles
+            bundle = {"GPU": 1, "CPU": 1}
+
+        # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
     pg = ray.util.placement_group(
-        [_get_bundle()] * num_gpus_per_instance,
+        [_get_bundle()] * num_bundles_per_replica,
         strategy="STRICT_PACK",
     )
     return dict(
@@ -629,29 +648,62 @@ class vLLMEngineStage(StatefulStage):
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Setup num_gpus required per vLLM engine.
+        # Setup num_workers required per vLLM engine.
         tp_size = engine_kwargs.get("tensor_parallel_size", 1)
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
-        num_gpus = tp_size * pp_size
+        num_bundles_per_replica = tp_size * pp_size
 
         # Use the MP backend by default.
         engine_kwargs.setdefault("distributed_executor_backend", "mp")
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
-        # When Ray is used in the vLLM engine, we set num_gpus to 0 so that
+        # When Ray is used in the vLLM engine, we set num_devices to 0 so that
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        if executor_backend == "ray" and num_gpus > 1:
+        resources_per_bundle = map_batches_kwargs.pop("resources", None)
+        if executor_backend == "ray" and num_bundles_per_replica > 1:
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 _ray_scheduling_strategy_fn,
-                num_gpus,
+                num_bundles_per_replica,
                 accelerator_type,
+                resources_per_bundle,
             )
-            num_gpus = 0
+            ray_remote_args["num_gpus"] = 0
+        else:
+            if not resources_per_bundle:
+                # Default to GPUs per bundle if custom resources are not specified.
+                ray_remote_args["num_gpus"] = num_bundles_per_replica
+            else:
+                ray_remote_args["resources"] = {
+                    resource_key: resource_count * num_bundles_per_replica
+                    for resource_key, resource_count in resources_per_bundle.items()
+                }
 
-        map_batches_kwargs["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        ret = {"prompt": "The text prompt (str)."}
+        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
+        if task_type == vLLMTaskType.GENERATE:
+            ret["sampling_params"] = (
+                "The sampling parameters. See "
+                "https://docs.vllm.ai/en/latest/api/inference_params.html#sampling-parameters "
+                "for details."
+            )
+        return ret
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {
+            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be "
+            "tokenized by the vLLM engine.",
+            "images": "The images to generate text from. If provided, the prompt will be "
+            "a multimodal prompt.",
+            "model": "The model to use for this request. If the model is different from the "
+            "model set in the stage, then this is a LoRA request.",
+        }
