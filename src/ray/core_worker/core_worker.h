@@ -147,9 +147,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-
-  /// Updates the actor seqno if true.
-  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -305,7 +302,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -1009,7 +1006,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  ActorID GetActorId() const {
+    absl::MutexLock lock(&mutex_);
+    return actor_id_;
+  }
 
   std::string GetActorName() const;
 
