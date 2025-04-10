@@ -181,15 +181,28 @@ class ExecutionResources:
             ),
         )
 
-    def satisfies_limit(self, limit: "ExecutionResources") -> bool:
+    def satisfies_limit(
+        self,
+        limit: "ExecutionResources",
+        *,
+        exclude_object_store_memory=False,
+    ) -> bool:
         """Return if this resource struct meets the specified limits.
 
         Note that None for a field means no limit.
+
+        Args:
+            limit: The resource limits to check against.
+            exclude_object_store_memory: If True, ignore the object store memory
+                limit when checking if this resource struct meets the limits.
         """
         return (
             self.cpu <= limit.cpu
             and self.gpu <= limit.gpu
-            and self.object_store_memory <= limit.object_store_memory
+            and (
+                exclude_object_store_memory
+                or self.object_store_memory <= limit.object_store_memory
+            )
         )
 
     def scale(self, f: float) -> "ExecutionResources":

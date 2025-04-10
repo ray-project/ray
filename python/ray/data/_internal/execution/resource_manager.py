@@ -479,7 +479,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total resources we want to reserve for this operator.
             op_total_reserved = default_reserved.max(min_reserved)
-            if op_total_reserved.satisfies_limit(self._total_shared):
+            if op_total_reserved.satisfies_limit(
+                self._total_shared, exclude_object_store_memory=True
+            ):
                 # If the remaining resources are enough to reserve `op_total_reserved`,
                 # subtract it from `self._total_shared` and reserve it for this op.
                 self._reserved_min_resources[op] = True
