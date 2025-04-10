@@ -3054,6 +3054,7 @@ class Algorithm(Checkpointable, Trainable):
             )
 
         # Only here (at the end of the iteration), compile the results into a single result dict.
+        # Calling compile here reduces the metrics into single values and adds throughputs to the results where applicable.
         return self.metrics.compile(), train_iter_ctx
 
     def _run_one_evaluation(

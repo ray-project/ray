@@ -157,7 +157,8 @@ class MetricsLogger:
 
         Note that calling this method does NOT cause an actual underlying value list
         reduction, even though reduced values are being returned. It'll keep all
-        internal structures as-is.
+        internal structures as-is. By default, this returns a single reduced value or, if
+        the Stats object has no reduce method, a list of values.
 
         Args:
             key: The key to peek at.
@@ -254,7 +255,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
-        reduce: str = "mean",
+        reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
