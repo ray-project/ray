@@ -406,30 +406,24 @@ class EnvRunnerGroup:
         from_worker = from_worker or self.local_env_runner
 
         merge = (
-            (
-                not config.enable_env_runner_and_connector_v2
-                and config.use_worker_filter_stats
-            )
-            or (
-                config.enable_env_runner_and_connector_v2
-                and (
-                    config.merge_env_runner_states is True
-                    or (
-                        config.merge_env_runner_states == "training_only"
-                        and not config.in_evaluation
-                    )
+            not config.enable_env_runner_and_connector_v2
+            and config.use_worker_filter_stats
+        ) or (
+            config.enable_env_runner_and_connector_v2
+            and (
+                config.merge_env_runner_states is True
+                or (
+                    config.merge_env_runner_states == "training_only"
+                    and not config.in_evaluation
                 )
             )
         )
         broadcast = (
-            (
-                not config.enable_env_runner_and_connector_v2
-                and config.update_worker_filter_stats
-            )
-            or (
-                config.enable_env_runner_and_connector_v2
-                and config.broadcast_env_runner_states
-            )
+            not config.enable_env_runner_and_connector_v2
+            and config.update_worker_filter_stats
+        ) or (
+            config.enable_env_runner_and_connector_v2
+            and config.broadcast_env_runner_states
         )
 
         # Early out if the number of (healthy) remote workers is 0. In this case, the

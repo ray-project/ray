@@ -74,7 +74,6 @@ from ray.rllib.utils.typing import (
     PolicyID,
     RLModuleSpecType,
     SampleBatchType,
-    StateDict,
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
