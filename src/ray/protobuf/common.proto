@@ -596,7 +596,7 @@ message TaskSpec {
   // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string call_site = 42;
   // The key-value label constraints of the node to schedule this task or actor on.
-  map<string, string> label_selector = 43;
+  LabelSelector label_selector = 43;
 }
 
 message TaskInfoEntry {
