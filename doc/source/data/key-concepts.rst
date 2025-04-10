@@ -1,104 +1,50 @@
 .. _data_key_concepts:
 
-Key Concepts
-============
+Ray Data conceptual overview
+============================
 
+This page provides a conceptual overview of the architecture and execution model for Ray Data. Understanding these technical details can be useful when designing, debugging, and optimizing Ray applications.
 
-Datasets and blocks
--------------------
+This page assumes familiarity with the use cases and core functionality of Ray Data. If you are new to Ray Data, see :ref:`data_quickstart`.
 
-There are two main concepts in Ray Data:
+For specific recommendations on optimizing Ray Data workloads, see :ref:`data_performance_tips`.
 
-* Datasets
-* Blocks
+Ray Data key concepts
+---------------------
 
-`Dataset` is the main user-facing Python API. It represents a distributed data collection and define data loading and processing operations. Users typically use the API by:
+The following table provides descriptions for the key concepts of Ray Data:
 
-1. Create a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data.
-2. Apply transformations to the data.
-3. Write the outputs to external storage or feed the outputs to training workers.
-
-The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
-like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
-and execute operations in a pipelined streaming fashion.
-
-Each *Dataset* consists of *blocks*. A *block* is a contiguous subset of rows from a dataset,
-which are distributed across the cluster and processed independently in parallel.
-
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
-(which is usually the entrypoint of the program, referred to as the :term:`driver`)
-and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
-Pandas Dataframes or Arrow tables.
-
-.. image:: images/dataset-arch-with-blocks.svg
-..
-  https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
-
-Operators and Plans
--------------------
-
-Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program using the Dataset API, Ray Data first builds a *logical plan* - a high-level description of what operations to perform. When execution begins, it converts this into a *physical plan* that specifies exactly how to execute those operations.
-
-This diagram illustrates the complete planning process:
-
-.. https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit
-
-.. image:: images/get_execution_plan.svg
-   :width: 600
-   :align: center
-
-The building blocks of these plans are operators:
-
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, ``ReadOp`` specifies what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, ``TaskPoolMapOperator`` launches Ray tasks to actually read the data.
-
-Here is a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
-
-.. testcode::
-    import ray
-
-    dataset = ray.data.range(100)
-    dataset = dataset.add_column("test", lambda x: x["id"] + 1)
-    dataset = dataset.select_columns("test")
-
-You can inspect the resulting logical plan by printing the dataset:
-
-.. code-block::
-
-    Project
-    +- MapBatches(add_column)
-       +- Dataset(schema={...})
-
-When execution begins, Ray Data optimizes the logical plan, then translate it into a physical plan - a series of operators that implement the actual data transformations. During this translation:
-
-1. A single logical operator may become multiple physical operators. For example, ``ReadOp`` becomes both ``InputDataBuffer`` and ``TaskPoolMapOperator``.
-2. Both logical and physical plans go through optimization passes. For example, ``OperatorFusionRule`` combines map operators to reduce serialization overhead.
-
-Physical operators work by:
-
-* Taking in a stream of block references
-* Performing their operation (either transforming data with Ray Tasks/Actors or manipulating references)
-* Outputting another stream of block references
-
-For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-concepts>`.
-
-.. note:: A dataset's execution plan only runs when you materialize or consume the dataset through operations like :meth:`~ray.data.Dataset.show`.
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|          Concept          |                                                                                          Description                                                                                           |
++===========================+================================================================================================================================================================================================+
+| Dataset                   | The primary programming interface and data structure in Ray Data.                                                                                                                              |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Streaming execution model | An optimized data processing model that plans and runs transformations as concurrent stages, providing efficient processing for large datasets.                                                |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Block                     | A collection of rows in a dataset that is distributed during planning and processing.                                                                                                          |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Operator                  | An abstraction of Ray Core tasks, actors, and objects. Ray Data translates the operators you use to write your program into *logical operators* and then *physical operators* during planning. |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Logical plan              | The representation of the logic your Ray Data program contains. The logical plan maps user-facing APIs to logical operators.                                                                   |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Physical plan             | The final stage of planning in Ray Data, representing how the program runs. Physical operators manipulate references to data and map logic to tasks and actors.                                |
++---------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
 .. _streaming-execution:
 
-Streaming execution model
--------------------------
+How does Ray Data work?
+-----------------------
 
-Ray Data uses a *streaming execution model* to efficiently process large datasets.
+Ray Data uses the :class:`~ray.data.Dataset` abstraction to map common data operations to Ray Core tasks, actors, and objects. You write programs using Dataset operators and common Python code and libraries. Ray Data handles optimization, distribution, parallelization, and concurrency for your workloads.
 
-Rather than materializing the entire dataset in memory at once,
-Ray Data can process data in a streaming fashion through a pipeline of operations.
+The following is a high-level explanation of how Ray Data plans and executes workloads.
 
-This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
+1. Define the workload
+~~~~~~~~~~~~~~~~~~~~~~
 
-Here is an example of how the streaming execution model works. The below code creates a dataset with 1K rows, applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
+You define Ray Data logic using the Dataset API. 
+
+The following is a simple example that loads CSV data, applies a series of map and filter transformations, and then calls the ``show`` action to trigger the pipeline:
 
 .. testcode::
 
@@ -116,7 +62,14 @@ Here is an example of how the streaming execution model works. The below code cr
     # Data starts flowing when you call a method like show()
     ds.show(5)
 
-This creates a logical plan like the following:
+.. _plans:
+
+2. Translate the logical plan
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data translates the workload to a logical plan. The logical plan consists of *logical operators* that describe *what* operation to perform.
+
+The following is a simplified view of the resultant logical plan:
 
 .. code-block::
 
@@ -126,24 +79,79 @@ This creates a logical plan like the following:
           +- Map(<lambda>)
              +- Dataset(schema={...})
 
+3. Build the physical plan
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The streaming topology looks like the following:
+When you run your program, the planner translates the logical plan into a physical plan. The physical plans consists of *physical operators* that describe *how* to execute the operation.
+
+Because Ray Data uses a lazy execution model, the planner can optimize the logical and physical plans to reduce data movement and serialization costs.
+
+The following diagram illustrates the complete planning process:
+
+.. https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit
+
+.. image:: images/get_execution_plan.svg
+   :width: 600
+   :align: center
+
+Ray Data optimizes data processing for ML using a *streaming execution model*. With streaming execution, Ray processes data in a streaming fashion through a pipeline of operations rather than materializing the entire dataset in memory at once.
+
+Operators are connected as stages in a pipeline. In each stage, the operator outputs results as a queue. The output queue for one operator is the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
+
+The physical plan represents each operator as a stage in a pipeline.
+
+The following diagram is a simplified illustration of the physical plan:
 
 .. https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit
 
 .. image:: images/streaming-topology.svg
-   :width: 1000
+   :width: 600
    :align: center
 
-In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
 
-The streaming execution model provides significant advantages for data processing.
+4. Distribute data
+~~~~~~~~~~~~~~~~~~
 
-In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
+The physical plan contains the instructions for distributing blocks of data to workers for parallelization. 
 
-To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
+Ray Data holds the Dataset on the process that triggers execution (which is usually the entrypoint of the program, referred to as the :term:`driver`) and stores the blocks as objects in Ray's shared-memory :ref:`object store <objects-in-ray>`.
 
-.. note::
-   Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
+The following figure visualizes a Dataset with three blocks, each holding 1000 rows:
 
-You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.
+.. image:: images/dataset-arch-with-blocks.svg
+   :alt: Ray Dataset with three blocks
+..
+  https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
+
+
+5. Transform the data
+~~~~~~~~~~~~~~~~~~~~~
+
+Each stage in the physical plan processes blocks of data using the following behavior:
+
+* The stage receives an input queue of block references.
+* The operator transforms the block of data.
+* The result of the transformation is a block reference in an output queue.
+* Output queues become input queues for the next stage in the pipeline.
+
+The following diagram illustrates how data flows through a queue between stages:
+
+.. image:: images/queue.svg
+   :width: 600
+   :align: center
+
+6. Concurrent scheduling
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Each block of data is processed independently at each stage. Any stage with data present in its input queue is eligible for scheduling.
+
+The pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with a filter operator running on CPU resources, effectively utilizing the GPU through the entire duration of the pipeline.
+
+Ray Data and Ray Train
+----------------------
+
+The streaming execution model is particularly well-suited to workloads that use GPUs to process large datasets. When you use Ray Data to load and preprocess data for Ray Train, Ray can optimize streaming execution from your data source through training. See :ref:`Ray Train<train-docs>`.
+
+Offline batch inference also uses streaming execution, allowing for efficient model predictions on large datasets with reduced memory and compute requirements.
+
+.. note:: Models, frameworks, or algorithms that must materialize the entire dataset to calculate results are not optimized for streaming execution. See :ref:`remove_bottlenecks`.

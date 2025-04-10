@@ -1,7 +1,80 @@
 .. _data_performance_tips:
 
-Advanced: Performance Tips and Tuning
-=====================================
+Performance tips and tuning
+===========================
+
+This page describes considerations and recommendations related to performance and tuning Ray Data workloads.
+
+* For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
+* For technical implementation details of Ray Data, see :ref:`datasets_scheduling`.
+
+.. _remove_materialize:
+
+Remove unnecessary materialization
+----------------------------------
+
+Operations that consume data force your logic to materialize. For example, while operations to inspect your data might be informative while developing a new workload, these same operations can introduce bottlenecks when deploying your code to production.
+
+Some operations, such as :meth:`~ray.data.Dataset.take_all`, can also lead to out-of-memory errors when you scale the size of your data.
+
+.. _remove_bottlenecks:
+
+Remove logical bottlenecks
+--------------------------
+
+Operations that need to evaluate, compare, or aggregate the entire dataset create processing bottlenecks for streaming execution. Examples include :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>`.
+
+Ray must materialize the entire dataset to complete these operations, which interupts stream pipeline processing and might lead to significant spill or out-of-memory errors.
+
+Consider refactoring workloads to remove unnecessary operations that require full dataset materialization. For example, the distributed model used by Ray does not persist ordered results between stages or guarantee that sorting is preserved on write. For many workloads, removing a :meth:`ds.sort() <ray.data.Dataset.sort>` operation can eliminate significant overhead without impacting results in any way.
+
+
+.. _block_size:
+
+Block size and performance
+--------------------------
+
+Ray Data bounds block sizes to avoid excessive communication overhead and prevent out-of-memory errors. Block size relates to the following performance tuning considerations:
+
+* :ref:`Tuning output blocks for read<read_output_blocks>`
+* :ref:`Troubleshooting out-of-memory errors<data_out_of_memory>`
+* :ref:`Handling too-small blocks<small_blocks>`
+
+Smaller blocks are good for latency and more streamed execution, while larger blocks reduce scheduler and communication overhead. The default range attempts to make a good tradeoff for most jobs using the following rules:
+
+* A best-effort is made to bound block sizes between 1 MiB and 128 MiB.
+* Blocks are dynamically split if they exceed the target max block size by 50% or more (192 MiB by default).
+
+.. note::
+
+    Ray Data can't split rows. If your dataset contains large rows (for example, large images), then Ray Data can't bound the block size.
+
+Configure block size
+~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block size range, configure the ``target_min_block_size`` and  ``target_max_block_size`` attributes of :class:`~ray.data.context.DataContext`. The following syntax example sets these attributes using the default values:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_min_block_size = 1 * 1024 * 1024
+    ctx.target_max_block_size = 128 * 1024 * 1024
+
+Configure dynamic block splitting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data dynamically splits a block into smaller blocks when it exceeds a size threshold. This threshold is specified as a multiplier of the `target_max_block_size`. By default, the scaling fact is set to `1.5`, meaning a block is split if it is 50% larger than the target max size, or 192 MiB by default. 
+
+To change the size at which Ray Data splits blocks, configure the `MAX_SAFE_BLOCK_SIZE_FACTOR` attribute. The following syntax example sets this attribute using the default scaling factor:
+
+.. testcode::
+
+    import ray
+
+    ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
+
 
 Optimizing transforms
 ---------------------
@@ -216,6 +289,20 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
 
+.. _datasets_tune:
+
+Reserve cores for Ray Data when used with Ray Tune
+--------------------------------------------------
+
+When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it's important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune tries to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
+
+To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials with the ``max_concurrent_trials`` Tune option.
+
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __resource_allocation_1_begin__
+  :end-before: __resource_allocation_1_end__
+
 .. _data_memory:
 
 Reducing memory usage
@@ -332,6 +419,8 @@ Otherwise, it's best to tune your application to avoid spilling.
 The recommended strategy is to manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 .. note:: This is an active area of development. If your Dataset is causing spilling and you don't know why, `file a Ray Data issue on GitHub`_.
+
+.. _small_blocks:
 
 Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~

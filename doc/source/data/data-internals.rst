@@ -1,99 +1,43 @@
 .. _datasets_scheduling:
 
-==================
-Ray Data Internals
+Ray Data internals
 ==================
 
-This guide describes the implementation of Ray Data. The intended audience is advanced
-users and Ray Data developers.
+This page provides an overview of technical implementation details of Ray Data. The intended audience is advanced users, Ray contributors, and Ray Data developers.
 
-For a gentler introduction to Ray Data, see :ref:`Quickstart <data_quickstart>`.
+* For an overview of Ray Data, see :ref:`data_quickstart`.
+* For a conceptual overview of Ray Data, see :ref:`data_key_concepts`.
+* For recommendations on optimizing Ray Data workloads, see :ref:`Performance tips and tuning<data_performance_tips>`.
 
 .. _dataset_concept:
 
-Key concepts
-============
+What does a block represent in Ray?
+-----------------------------------
 
-Datasets and blocks
--------------------
+Ray Data uses *blocks* to represent subsets of data in a Dataset. Most users of Ray Data 
 
-Datasets
-~~~~~~~~
+Blocks have the following characteristics:
 
-:class:`Dataset <ray.data.Dataset>` is the main user-facing Python API. It represents a
-distributed data collection, and defines data loading and processing operations. You
-typically use the API in this way:
+* Each record or row in a Dataset is only present in one block.
+* Blocks are distributed across the cluster for independent processing.
+* Blocks are processed in parallel and sequentially, depending on the operations present in an application.
 
-1. Create a Ray Dataset from external storage or in-memory data.
-2. Apply transformations to the data.
-3. Write the outputs to external storage or feed the outputs to training workers.
+If you're troubleshooting or optimizing Ray Data workloads, consider the following details and special cases:
 
-Blocks
-~~~~~~
+* The number of row or records in a block varies base on the size of each record. Most blocks are between 1 MiB and 128 MiB.
+  
+  * Ray automatically splits blocks into smaller blocks if they exceed the max block size by 50% or more.
+  
+  * A block might only contain a single record if your data is very wide or contains a large record such as an image, vector, or tensor. Ray Data has built-in optimizations for handling large data efficiently, and you should test workloads with built-in defaults before trying to manually optimize your workload.
+  
+  * You can configure block size and splitting behaviors. See :ref:`block_size`.
 
-A *block* is the basic unit of data bulk that Ray Data stores in the object store and
-transfers over the network. Each block contains a disjoint subset of rows, and Ray Data
-loads and transforms these blocks in parallel.
+* Ray uses `Arrow tables <https://arrow.apache.org/docs/cpp/tables.html>`_ to internally represent blocks of data.
+  
+  * Ray Data falls back to pandas DataFrames for data that cannot be safely represented using Arrow tables. See `Arrow and pandas type differences <https://arrow.apache.org/docs/python/pandas.html#type-differences>`_.
+  
+  * Block format doesn't affect the of data type returned by APIs such as :meth:`~ray.data.Dataset.iter_batches`.
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
-(which is usually the driver) and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`.
-
-.. image:: images/dataset-arch.svg
-
-..
-  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
-
-Block formats
-~~~~~~~~~~~~~
-
-Blocks are Arrow tables or `pandas` DataFrames. Generally, blocks are Arrow tables
-unless Arrow can’t represent your data.
-
-The block format doesn’t affect the type of data returned by APIs like
-:meth:`~ray.data.Dataset.iter_batches`.
-
-Block size limiting
-~~~~~~~~~~~~~~~~~~~
-
-Ray Data bounds block sizes to avoid excessive communication overhead and prevent
-out-of-memory errors. Small blocks are good for latency and more streamed execution,
-while large blocks reduce scheduler and communication overhead. The default range
-attempts to make a good tradeoff for most jobs.
-
-Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block
-size range, configure the ``target_min_block_size`` and  ``target_max_block_size``
-attributes of :class:`~ray.data.context.DataContext`.
-
-.. testcode::
-
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.target_min_block_size = 1 * 1024 * 1024
-    ctx.target_max_block_size = 128 * 1024 * 1024
-
-Dynamic block splitting
-~~~~~~~~~~~~~~~~~~~~~~~
-
-If a block is larger than 192 MiB (50% more than the target max size), Ray Data
-dynamically splits the block into smaller blocks.
-
-To change the size at which Ray Data splits blocks, configure
-``MAX_SAFE_BLOCK_SIZE_FACTOR``. The default value is 1.5.
-
-.. testcode::
-
-    import ray
-
-    ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
-
-Ray Data can’t split rows. So, if your dataset contains large rows (for example, large
-images), then Ray Data can’t bound the block size.
-
-Operators, plans, and planning
-------------------------------
 
 Operators
 ~~~~~~~~~
@@ -211,7 +155,7 @@ If there are multiple viable operators, the executor chooses the operator with t
 smallest out queue.
 
 Scheduling
-==========
+----------
 
 Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling strategy <ray-scheduling-strategies>` for Ray Data:
 
@@ -224,7 +168,7 @@ Ray Data uses Ray Core for execution. Below is a summary of the :ref:`scheduling
 .. _datasets_pg:
 
 Ray Data and placement groups
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy (``"DEFAULT"``). You can inspect this configuration variable here:
 :class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
@@ -232,27 +176,13 @@ placement group. To use current placement group resources specifically for Ray D
 
 Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
-.. _datasets_tune:
-
-Ray Data and Tune
------------------
-
-When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it's important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune tries to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
-
-To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials with the ``max_concurrent_trials`` Tune option.
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_1_begin__
-  :end-before: __resource_allocation_1_end__
-
 Memory Management
-=================
+-----------------
 
 This section describes how Ray Data manages execution and object store memory.
 
 Execution Memory
-----------------
+~~~~~~~~~~~~~~~~
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
 Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory errors.
@@ -260,7 +190,7 @@ Ray caps object store memory usage by spilling to disk, but excessive worker hea
 For more information on tuning memory usage and preventing out-of-memory errors, see the :ref:`performance guide <data_memory>`.
 
 Object Store Memory
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 Ray Data uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
 

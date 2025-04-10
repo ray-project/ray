@@ -8,11 +8,13 @@ Ray Data: Scalable Datasets for ML
     :hidden:
 
     quickstart
-    key-concepts
+    Concepts <key-concepts>
+    get-started
     user-guide
     examples
     api/api
     comparisons
+    performance-tips
     data-internals
 
 Ray Data is a scalable data processing library for ML and AI workloads built on Ray.
