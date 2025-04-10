@@ -16,6 +16,7 @@ fastapi
 filelock
 gcsfs==2023.5.0
 gsutil
+imageio-ffmpeg
 ipywidgets
 jupytext
 lm_eval==0.4.0
@@ -24,19 +25,26 @@ matplotlib
 memray
 modin
 # mosaicml-streaming
+myst-nb
+myst-parser
 numpy
+opencv-python-headless
 openai-whisper
 openskill
 petastorm
+pillow
 protobuf
 pyarrow
+pycocotools
 pydantic>=2.5.0
 pytest
 pytorch-lightning
 pytorch_lightning
+requests
 scikit-learn
 semidbm
 sentencepiece
+smart-open
 statsforecast
 tblib
 tensorboardX
@@ -46,6 +54,7 @@ torch==2.3.0
 torchaudio
 torchmetrics
 torchtext
+torchvision
 tqdm
 transformers
 trueskill
@@ -57,3 +66,4 @@ uvicorn
 validators
 wandb
 xgboost
+xmltodict

@@ -377,14 +377,3 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
-ray_cc_test(
-    name = "filesystem_monitor_test",
-    size = "small",
-    srcs = ["filesystem_monitor_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/common:file_system_monitor",
-        "@com_google_googletest//:gtest_main",
-    ],
-)

@@ -1,0 +1,45 @@
+# Compute configuration for object detection tests on GCE
+# Hybrid cluster with both CPU and GPU nodes as specified in the notebooks
+
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-central1
+
+max_workers: 10
+
+# Head node - as specified in notebooks, CPU-only for coordination
+head_node_type:
+  name: head_node
+  instance_type: n2-standard-8  # 8 vCPUs, 32 GB memory
+  resources:
+    CPU: 8
+    memory: 32000
+
+worker_node_types:
+  # CPU worker nodes for general processing
+  - name: cpu_worker
+    instance_type: n2-standard-8  # 8 vCPUs, 32 GB memory
+    min_workers: 0
+    max_workers: 5
+    resources:
+      CPU: 8
+      memory: 32000
+
+  # GPU worker nodes for ML tasks
+  - name: gpu_worker
+    instance_type: n1-standard-4  # 4 vCPUs, 15 GB memory
+    min_workers: 1
+    max_workers: 5
+    resources:
+      CPU: 4
+      GPU: 1
+      memory: 15000
+    accelerator_types:
+      - gcloud_accelerator_type: nvidia-tesla-t4
+        gcloud_accelerator_count: 1
+
+advanced_configurations_json:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
