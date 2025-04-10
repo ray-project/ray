@@ -65,9 +65,7 @@ aioitertools==0.11.0
 aiorwlock==1.3.0
     # via -r python/requirements.txt
 aiosignal==1.3.1
-    # via
-    #   aiohttp
-    #   ray
+    # via aiohttp
 aiosqlite==0.19.0
     # via ypy-websocket
 alabaster==0.7.13
@@ -285,9 +283,7 @@ click==8.1.7
     #   jupyter-cache
     #   mlflow
     #   pyiceberg
-    #   ray
     #   semgrep
-    #   tensorflow-datasets
     #   typer
     #   uvicorn
     #   wandb
@@ -444,7 +440,9 @@ docker==6.1.3
 docker-pycreds==0.4.0
     # via wandb
 docstring-parser==0.15
-    # via yahp
+    # via
+    #   simple-parsing
+    #   yahp
 docutils==0.19
     # via
     #   -r python/requirements/lint-requirements.txt
@@ -457,6 +455,8 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
+einops==0.8.1
+    # via etils
 entrypoints==0.4
     # via
     #   jupyter-client
@@ -464,9 +464,8 @@ entrypoints==0.4
     #   nbconvert
 et-xmlfile==1.1.0
     # via openpyxl
-etils==1.5.2 ; python_version < "3.12"
+etils==1.12.2
     # via
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
     #   mujoco
     #   tensorflow-datasets
@@ -511,7 +510,6 @@ filelock==3.17.0
     #   aim
     #   datasets
     #   huggingface-hub
-    #   ray
     #   snowflake-connector-python
     #   torch
     #   transformers
@@ -532,7 +530,6 @@ flatbuffers==23.5.26
     # via
     #   onnxruntime
     #   tensorflow
-    #   tf2onnx
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -543,7 +540,6 @@ frozenlist==1.4.1
     # via
     #   aiohttp
     #   aiosignal
-    #   ray
 fs==2.4.16
     # via triad
 fsspec==2023.5.0
@@ -591,7 +587,7 @@ glfw==2.6.3
     #   mujoco
 glom==22.1.0
     # via semgrep
-google-api-core==1.34.0
+google-api-core==2.24.2
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   google-api-python-client
@@ -681,10 +677,12 @@ grpcio==1.66.2 ; sys_platform != "darwin"
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.48.2
+grpcio-status==1.63.0rc1
     # via google-api-core
-grpcio-tools==1.48.2
-    # via -r python/requirements/cloud-requirements.txt
+grpcio-tools==1.62.3
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -774,6 +772,8 @@ imageio-ffmpeg==0.4.5
     # via -r python/requirements/ml/rllib-requirements.txt
 imagesize==1.4.1
     # via sphinx
+immutabledict==4.2.1
+    # via tensorflow-datasets
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -890,7 +890,6 @@ jsonschema==4.23.0
     #   nbformat
     #   openapi-schema-validator
     #   openapi-spec-validator
-    #   ray
     #   semgrep
 jsonschema-path==0.3.4
     # via openapi-spec-validator
@@ -1085,7 +1084,6 @@ msgpack==1.0.7
     #   -r python/requirements/ml/rllib-requirements.txt
     #   distributed
     #   msgpack-numpy
-    #   ray
 msgpack-numpy==0.4.8
     # via -r python/requirements/ml/rllib-requirements.txt
 msrest==0.7.1
@@ -1158,9 +1156,7 @@ nest-asyncio==1.5.8
     #   nbclient
     #   notebook
 netifaces==0.11.0
-    # via
-    #   hpbandster
-    #   raydp
+    # via hpbandster
 networkx==3.2.1
     # via
     #   cfn-lint
@@ -1251,7 +1247,6 @@ numpy==1.26.4
     #   pymars
     #   pyro-ppl
     #   pytorch-lightning
-    #   raydp
     #   scikit-image
     #   scikit-learn
     #   scipy
@@ -1265,7 +1260,6 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
-    #   tf2onnx
     #   tifffile
     #   tinyscaler
     #   torch-geometric
@@ -1290,9 +1284,7 @@ oauthlib==3.2.2
     #   databricks-cli
     #   requests-oauthlib
 onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via
-    #   -r python/requirements/ml/rllib-requirements.txt
-    #   tf2onnx
+    # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 open-spiel==1.4
@@ -1390,7 +1382,6 @@ packaging==23.0
     #   pytest-rerunfailures
     #   pytest-sugar
     #   pytorch-lightning
-    #   ray
     #   scikit-image
     #   semgrep
     #   snowflake-connector-python
@@ -1418,7 +1409,6 @@ pandas==1.5.3 ; python_version < "3.12"
     #   prophet
     #   pymars
     #   qpd
-    #   raydp
     #   statsforecast
     #   statsmodels
     #   triad
@@ -1510,11 +1500,13 @@ prophet==1.1.5
     # via -r python/requirements/ml/tune-test-requirements.txt
 proto-plus==1.22.3
     # via
+    #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==3.20.3
+protobuf==4.25.6
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   dm-control
     #   google-api-core
     #   google-cloud-bigquery
@@ -1529,14 +1521,11 @@ protobuf==3.20.3
     #   opentelemetry-exporter-opencensus
     #   opentelemetry-proto
     #   proto-plus
-    #   ray
-    #   raydp
     #   tensorboard
     #   tensorboardx
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
-    #   tf2onnx
     #   wandb
 proxy-py==2.4.3
     # via -r python/requirements/test-requirements.txt
@@ -1551,7 +1540,6 @@ psutil==5.9.6
     #   ipykernel
     #   modin
     #   pymars
-    #   raydp
     #   tensorflow-datasets
     #   torch-geometric
     #   wandb
@@ -1582,7 +1570,7 @@ pyarrow==14.0.2
     #   hudi
     #   mlflow
     #   pylance
-    #   raydp
+    #   tensorflow-datasets
     #   triad
 pyarrow-hotfix==0.6
     # via
@@ -1686,9 +1674,7 @@ pyro4==4.82
 pysocks==1.7.1
     # via requests
 pyspark==3.4.1
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   raydp
+    # via -r python/requirements/test-requirements.txt
 pytest==7.4.4
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1816,7 +1802,6 @@ pyyaml==6.0.1
     #   pre-commit
     #   pymars
     #   pytorch-lightning
-    #   ray
     #   timm
     #   transformers
     #   wandb
@@ -1835,8 +1820,6 @@ qpd==0.4.4
     # via fugue
 querystring-parser==1.2.4
     # via mlflow
-raydp==1.7.0b20231020.dev0
-    # via -r python/requirements/ml/data-test-requirements.txt
 redis==4.4.2
     # via -r python/requirements/test-requirements.txt
 referencing==0.36.2
@@ -1879,7 +1862,6 @@ requests==2.31.0
     #   msal
     #   msrest
     #   pyiceberg
-    #   ray
     #   requests-oauthlib
     #   requests-toolbelt
     #   responses
@@ -1889,7 +1871,6 @@ requests==2.31.0
     #   sphinx
     #   tensorboard
     #   tensorflow-datasets
-    #   tf2onnx
     #   torch-geometric
     #   torchtext
     #   transformers
@@ -2030,6 +2011,8 @@ shimmy==2.0.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via -r python/requirements/ml/tune-test-requirements.txt
+simple-parsing==0.1.7
+    # via tensorflow-datasets
 simpleitk==2.3.1
     # via medpy
 simplejson==3.19.2
@@ -2073,7 +2056,6 @@ six==1.16.0
     #   tensorboard
     #   tensorflow
     #   tensorflow-probability
-    #   tf2onnx
     #   triad
     #   vapi-runtime
 smart-open==6.2.0
@@ -2186,7 +2168,7 @@ tensorboardx==2.6.2.2
     #   pytorch-lightning
 tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-datasets==4.9.3 ; python_version < "3.12"
+tensorflow-datasets==4.9.8 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2198,7 +2180,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
-tensorflow-metadata==1.14.0
+tensorflow-metadata==1.17.0
     # via tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2216,8 +2198,6 @@ terminado==0.18.1
     #   notebook
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
-tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -2394,6 +2374,7 @@ typing-extensions==4.12.2
     #   pytorch-lightning
     #   referencing
     #   semgrep
+    #   simple-parsing
     #   snowflake-connector-python
     #   sqlalchemy
     #   tensorflow
@@ -2554,5 +2535,4 @@ zstandard==0.23.0
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip
-# ray
 # setuptools

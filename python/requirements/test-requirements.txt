@@ -120,4 +120,7 @@ virtualenv>=20.29
 jsonschema>=4.23.0
 attrs>=22.2.0
 openapi-schema-validator>=0.6.3
-protobuf>=4.25.6
+protobuf>=4
+
+protobuf==4.25.6
+grpcio-tools==1.62.3

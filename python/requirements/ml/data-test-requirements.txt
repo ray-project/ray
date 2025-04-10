@@ -2,7 +2,7 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy
-tensorflow-datasets==4.9.3
+tensorflow-datasets==4.9.8
 datasets
 pytest-repeat
 soundfile
@@ -10,9 +10,8 @@ fastavro
 google-cloud-bigquery
 google-cloud-core
 google-cloud-bigquery-storage
-google-api-core
+google-api-core>=2.24.2
 webdataset
-raydp==1.7.0b20231020.dev0
 pylance==0.22
 delta-sharing
 deltalake
@@ -22,3 +21,5 @@ snowflake-connector-python
 pyiceberg[sql-sqlite]==0.7.0
 clickhouse-connect
 hudi==0.2.0
+
+# raydp==1.7.0b20231020.dev0
