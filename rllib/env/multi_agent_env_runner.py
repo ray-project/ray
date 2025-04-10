@@ -90,7 +90,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
-        self.spaces = kwargs.get("spaces")
+        self.spaces = kwargs.get("spaces", {})
 
         self._setup_metrics()
 
@@ -568,6 +568,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        if self.env is None:
+            return self.spaces
         # Return the already agent-to-module translated spaces from our connector
         # pipeline.
         return {
@@ -862,9 +864,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_module(self):
+        env = self.env.unwrapped if self.env is not None else None
         try:
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+                env=env, spaces=self.get_spaces(), inference_only=True
             )
             # Build the module from its spec.
             self.module = module_spec.build()
@@ -889,7 +892,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
-        self.env.close()
+        if self.env is not None:
+            self.env.close()
 
     def _setup_metrics(self):
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []

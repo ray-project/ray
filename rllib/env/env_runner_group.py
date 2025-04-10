@@ -280,7 +280,7 @@ class EnvRunnerGroup:
         if (
             local_env_runner
             and self._worker_manager.num_actors() > 0
-            and not config.enable_env_runner_and_connector_v2
+            and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
             spaces = self.get_spaces()

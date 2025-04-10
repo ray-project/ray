@@ -81,7 +81,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.worker_index: int = kwargs.get("worker_index")
         self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
-        self.spaces = kwargs.get("spaces")
+        self.spaces = kwargs.get("spaces", {})
 
         # Create our callbacks object.
         self._callbacks: List[RLlibCallback] = [
@@ -464,6 +464,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        if self.env is None:
+            return self.spaces
         return {
             INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
             INPUT_ENV_SINGLE_SPACES: (
@@ -699,9 +701,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_module(self):
+        env = self.env.unwrapped if self.env is not None else None
         try:
             module_spec: RLModuleSpec = self.config.get_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+                env=env, spaces=self.get_spaces(), inference_only=True
             )
             # Build the module from its spec.
             self.module = module_spec.build()
@@ -720,7 +723,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def stop(self):
         # Close our env object via gymnasium's API.
-        self.env.close()
+        if self.env is not None:
+            self.env.close()
 
     def _reset_envs(self, episodes, shared_data, explore):
         # Create n new episodes and make the `on_episode_created` callbacks.
