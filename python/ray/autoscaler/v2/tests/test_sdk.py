@@ -753,7 +753,7 @@ def test_get_cluster_status(ray_start_cluster):
     stub = _autoscaler_state_service_stub()
     state = autoscaler_pb2.AutoscalingState(
         last_seen_cluster_resource_state_version=0,
-        autoscaler_state_version=1,
+        autoscaler_state_version=10,  # use a large number to avoid flaky.
         pending_instance_requests=[
             autoscaler_pb2.PendingInstanceRequest(
                 instance_type_name="m5.large",
