@@ -1853,47 +1853,45 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status
-             << ", message: " << status.message();
+      stream << "Failed to write WaitReply to the client. Status " << status;
       DisconnectClient(
           client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
-  wait_manager_.Wait(object_ids,
-                     message->timeout(),
-                     num_required_objects,
-                     [this, resolve_objects, client, current_task_id](
-                         std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
-                       // Write the data.
-                       flatbuffers::FlatBufferBuilder fbb;
-                       flatbuffers::Offset<protocol::WaitReply> wait_reply =
-                           protocol::CreateWaitReply(
-                               fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
-                       fbb.Finish(wait_reply);
+  wait_manager_.Wait(
+      object_ids,
+      message->timeout(),
+      num_required_objects,
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
+        // Write the data.
+        flatbuffers::FlatBufferBuilder fbb;
+        flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+        fbb.Finish(wait_reply);
 
-                       auto status = client->WriteMessage(
-                           static_cast<int64_t>(protocol::MessageType::WaitReply),
-                           fbb.GetSize(),
-                           fbb.GetBufferPointer());
-                       if (status.ok()) {
-                         // The client is unblocked now because the wait call has
-                         // returned.
-                         if (resolve_objects) {
-                           AsyncResolveObjectsFinish(client, current_task_id);
-                         }
-                       } else {
-                         // We failed to write to the client, so disconnect the client.
-                         std::ostringstream stream;
-                         stream << "Failed to write WaitReply to the client. Status "
-                                << status << ", message: " << status.message();
-                         DisconnectClient(client,
-                                          /*graceful=*/false,
-                                          rpc::WorkerExitType::SYSTEM_ERROR,
-                                          stream.str());
-                       }
-                     });
+        auto status =
+            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                 fbb.GetSize(),
+                                 fbb.GetBufferPointer());
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has
+          // returned.
+          if (resolve_objects) {
+            AsyncResolveObjectsFinish(client, current_task_id);
+          }
+        } else {
+          // We failed to write to the client, so disconnect the client.
+          std::ostringstream stream;
+          stream << "Failed to write WaitReply to the client. Status " << status;
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           stream.str());
+        }
+      });
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
