@@ -84,8 +84,8 @@ const ObjectID kId2 = []() {
 
 class MockAllocator : public IAllocator {
  public:
-  MOCK_METHOD1(Allocate, absl::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(FallbackAllocate, absl::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(Allocate, std::optional<Allocation>(size_t bytes));
+  MOCK_METHOD1(FallbackAllocate, std::optional<Allocation>(size_t bytes));
   MOCK_METHOD1(Free, void(Allocation));
   MOCK_CONST_METHOD0(GetFootprintLimit, int64_t());
   MOCK_CONST_METHOD0(Allocated, int64_t());
@@ -102,7 +102,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
 
     EXPECT_CALL(allocator, Allocate(10)).Times(1).WillOnce(Invoke([&](size_t bytes) {
       EXPECT_EQ(bytes, 10);
-      return absl::optional<Allocation>(std::move(allocation));
+      return std::optional<Allocation>(std::move(allocation));
     }));
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ false);
     EXPECT_NE(entry, nullptr);
@@ -150,7 +150,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
     // allocation failure
     EXPECT_CALL(allocator, Allocate(12)).Times(1).WillOnce(Invoke([&](size_t bytes) {
       EXPECT_EQ(bytes, 12);
-      return absl::optional<Allocation>();
+      return std::optional<Allocation>();
     }));
 
     EXPECT_EQ(nullptr, store.CreateObject(info, {}, /*fallback_allocate*/ false));
@@ -163,7 +163,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
         .Times(1)
         .WillOnce(Invoke([&](size_t bytes) {
           EXPECT_EQ(bytes, 12);
-          return absl::optional<Allocation>(std::move(allocation));
+          return std::optional<Allocation>(std::move(allocation));
         }));
 
     auto entry = store.CreateObject(info, {}, /*fallback_allocate*/ true);
