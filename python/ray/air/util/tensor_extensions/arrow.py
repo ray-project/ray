@@ -35,6 +35,8 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+# Minimum version of Arrow that supports native tensor types
+MIN_PYARROW_VERSION_NATIVE_TENSOR = parse_version("7.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
@@ -84,6 +86,20 @@ def _arrow_extension_scalars_are_subclassable():
     )
 
 
+def _arrow_supports_native_tensors():
+    """
+    Whether Arrow native tensors are supported in the current pyarrow version.
+
+    This returns True if the pyarrow version is 7.0.0+, or if the pyarrow version is
+    unknown.
+    """
+    # Check if FixedShapeTensorType exists in the current Arrow version
+    return (
+        PYARROW_VERSION is None
+        or PYARROW_VERSION >= MIN_PYARROW_VERSION_NATIVE_TENSOR
+    ) and hasattr(pa, "fixed_shape_tensor")
+
+
 @DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
@@ -102,7 +118,8 @@ def pyarrow_table_from_pydict(
 
 @DeveloperAPI(stability="alpha")
 def convert_to_pyarrow_array(
-    column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
+    column_values: Union[List[Any], np.ndarray, ArrayLike], 
+    column_name: str,
 ) -> pa.Array:
     """Converts provided NumPy `ndarray` into PyArrow's `array` while utilizing
     both Arrow's natively supported types as well as custom extension types:
@@ -112,7 +129,7 @@ def convert_to_pyarrow_array(
         any python object that aren't represented by a corresponding Arrow's native
         scalar type)
     """
-
+    
     try:
         # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
@@ -125,7 +142,8 @@ def convert_to_pyarrow_array(
             # Convert to Numpy before creating instance of `ArrowTensorArray` to
             # align tensor shapes falling back to ragged ndarray only if necessary
             return ArrowTensorArray.from_numpy(
-                convert_to_numpy(column_values), column_name
+                convert_to_numpy(column_values), 
+                column_name, 
             )
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
@@ -695,6 +713,59 @@ class _ArrowTensorScalarIndexingMixin:
                 return self._to_numpy(key)
 
 
+@PublicAPI(stability="beta")
+class ArrowNativeTensorAdapter:
+    """Adapter class for working with Arrow's native FixedShapeTensorType."""
+    
+    @staticmethod
+    def is_native_tensor_array(arr):
+        """Check if an array is an Arrow native tensor array."""
+        if not _arrow_supports_native_tensors():
+            return False
+        try:
+            return isinstance(arr.type, pa.FixedShapeTensorType)
+        except (AttributeError, TypeError):
+            return False
+    
+    @staticmethod
+    def from_native_tensor_array(arr):
+        """Convert Arrow's native tensor array to Ray's ArrowTensorArray."""
+        if not ArrowNativeTensorAdapter.is_native_tensor_array(arr):
+            raise TypeError("Input must be an Arrow native tensor array")
+        
+        # Extract tensor data and convert to numpy
+        tensors = []
+        for i in range(len(arr)):
+            tensor = arr[i].as_tensor()
+            tensors.append(tensor.to_numpy())
+        
+        # Create Ray tensor array from numpy arrays
+        return ArrowTensorArray.from_numpy(np.stack(tensors))
+    
+    @staticmethod
+    def to_native_tensor_array(arr):
+        """Convert Ray's ArrowTensorArray to Arrow's native tensor array."""
+        if not isinstance(arr.type, get_arrow_extension_fixed_shape_tensor_types()):
+            raise TypeError("Input must be a Ray fixed-shape tensor array")
+        
+        if not _arrow_supports_native_tensors():
+            raise ValueError("Arrow native tensor type is not supported in this version")
+        
+        # Get the shape and dtype
+        shape = arr.type.shape
+        dtype = arr.type.scalar_type
+        
+        # Create Arrow tensors
+        tensors = []
+        for i in range(len(arr)):
+            numpy_tensor = arr[i]
+            arrow_tensor = pa.Tensor.from_numpy(numpy_tensor)
+            tensors.append(arrow_tensor)
+        
+        # Create Arrow tensor array
+        return pa.array(tensors, type=pa.fixed_shape_tensor(dtype, shape))
+
+
 # NOTE: We need to inherit from the mixin before pa.ExtensionArray to ensure that the
 # mixin's overriding methods appear first in the MRO.
 # TODO(Clark): Remove this mixin once we only support Arrow 9.0.0+.
@@ -714,7 +785,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         cls,
         arr: Union[np.ndarray, Iterable[np.ndarray]],
         column_name: Optional[str] = None,
-    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+        use_native_tensor: Optional[bool] = None,
+    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray", pa.Array]:
         """
         Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
         tensors. If given fixed-shape tensor elements, this will return an
@@ -725,6 +797,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             arr: An ndarray or an iterable of ndarrays.
             column_name: Optional. Used only in logging outputs to provide
                 additional details.
+            use_native_tensor: Whether to use Arrow's native tensor type if available.
+                If None, will use the setting from DataContext.
 
         Returns:
             - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
@@ -733,6 +807,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
               containing ``len(arr)`` tensors of variable shape.
             - If scalar elements, a ``pyarrow.Array``.
         """
+        # Get the use_native_tensor setting from DataContext if not specified
+        use_native_tensor=True
+
+        # Check if we can and should use Arrow's native tensor type
+        can_use_native = _arrow_supports_native_tensors()
+        should_use_native = use_native_tensor and can_use_native
+
         if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
             arr = list(arr)
 
@@ -767,13 +848,68 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                     arr, timestamp_dtype, column_name
                 )
 
-            return cls._from_numpy(arr)
+            # Check if we can use Arrow's native tensor type
+            is_fixed_shape = not _is_ndarray_variable_shaped_tensor(arr)
+            if should_use_native and is_fixed_shape and len(arr) > 0 and not np.isscalar(arr[0]):
+                # Create array using Arrow's native tensor type
+                return cls._from_numpy_native(arr)
+            else:
+                # Fall back to Ray's tensor representation
+                return cls._from_numpy(arr)
+                
         except Exception as e:
             data_str = ""
             if column_name:
                 data_str += f"column: '{column_name}', "
             data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-            raise ArrowConversionError(data_str) from e
+            try:
+                from ray.data.extensions.object_extension import ArrowPythonObjectArray
+                return ArrowPythonObjectArray.from_objects(arr)
+            except Exception:
+                data_str = ""
+                if column_name:
+                    data_str += f"column: '{column_name}', "
+                data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
+                raise ArrowConversionError(data_str) from e
+
+    @classmethod
+    def _from_numpy_native(cls, arr: np.ndarray) -> pa.Array:
+        """
+        Convert a numpy array to Arrow's native tensor array.
+        
+        Args:
+            arr: A numpy array of fixed-shape tensors.
+            
+        Returns:
+            An Arrow tensor array using the native FixedShapeTensorType.
+        """
+        if not _arrow_supports_native_tensors():
+            raise ValueError("Arrow native tensor type is not supported in this version")
+        
+        if len(arr) == 0:
+            # Empty array
+            return pa.array([])
+        
+        if np.isscalar(arr[0]):
+            # Elements are scalar so a plain Arrow Array will suffice
+            return pa.array(arr)
+            
+        # Get the shape and dtype
+        outer_len = arr.shape[0]
+        inner_shape = arr.shape[1:]
+        
+        # Create tensors
+        tensors = []
+        for i in range(outer_len):
+            # Extract the tensor
+            tensor_data = arr[i]
+            # Create Arrow tensor
+            arrow_tensor = pa.Tensor.from_numpy(tensor_data)
+            tensors.append(arrow_tensor)
+        
+        # Create Arrow tensor array
+        pa_dtype = pa.from_numpy_dtype(arr.dtype)
+        return pa.array(tensors, type=pa.fixed_shape_tensor(pa_dtype, inner_shape))
 
     @classmethod
     def _from_numpy(
@@ -787,6 +923,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+        if arr.dtype == object:
+            # Elements that are object dtype are converted to Arrow directly,
+            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
+            return pa.array(arr)
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
@@ -941,6 +1081,18 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
         return self._to_numpy(zero_copy_only=zero_copy_only)
+
+    def to_native_tensor_array(self) -> pa.Array:
+        """
+        Convert this tensor array to Arrow's native tensor array.
+        
+        Returns:
+            Arrow array with FixedShapeTensorType
+        
+        Raises:
+            ValueError: If Arrow native tensor type is not supported
+        """
+        return ArrowNativeTensorAdapter.to_native_tensor_array(self)
 
     @classmethod
     def _concat_same_type(
