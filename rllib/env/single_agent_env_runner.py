@@ -81,6 +81,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.worker_index: int = kwargs.get("worker_index")
         self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
+        self.spaces = kwargs.get("spaces")
 
         # Create our callbacks object.
         self._callbacks: List[RLlibCallback] = [
@@ -96,11 +97,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
         self.num_envs: int = 0
-        self.make_env()
+        if self.worker_index > 0 or self.config.create_env_on_local_worker:
+            self.make_env()
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(
-            self.env, device=self._device
+            env=self.env, spaces=self.spaces, device=self._device
         )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
@@ -117,7 +119,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.make_module()
 
         # Create the module-to-env connector pipeline.
-        self._module_to_env = self.config.build_module_to_env_connector(self.env)
+        self._module_to_env = self.config.build_module_to_env_connector(
+            env=self.env, spaces=self.spaces
+        )
 
         # This should be the default.
         self._needs_initial_reset: bool = True
@@ -170,6 +174,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         Returns:
             A list of `SingleAgentEpisode` instances, carrying the sampled data.
         """
+        if self.env is None:
+            raise ValueError(
+                f"{self} doesn't have an env! Can't call `sample()` on it."
+            )
+
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # Log time between `sample()` requests.

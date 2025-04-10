@@ -615,7 +615,7 @@ class DQN(Algorithm):
                 lambda er: er.module.is_stateful(),
                 remote_worker_ids=[1],
                 local_env_runner=False,
-            )[0][1]
+            )[0]
         else:
             self._module_is_stateful = self.env_runner.module.is_stateful()
 
