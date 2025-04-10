@@ -11,7 +11,7 @@ from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
     ListFiles,
 )
-from ray.anyscale.data._internal.readers import FileReader
+from ray.anyscale.data._internal.readers import InMemorySizeEstimator
 from ray.data import FileShuffleConfig
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
@@ -85,8 +85,8 @@ def plan_list_files_op(
     shuffle_config = op.shuffle_config_factory()
 
     fs = op.filesystem
-    reader = op.reader
     indexer = op.file_indexer
+    in_memory_size_estimator = op.in_memory_size_estimator
 
     def list_files(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
@@ -136,7 +136,7 @@ def plan_list_files_op(
                     # number of blocks produced by each task.
                     * NUM_BLOCKS_PER_READ_TASK
                 ),
-                reader=reader,
+                in_memory_size_estimator=in_memory_size_estimator,
                 filesystem=fs,
                 shuffle_config=shuffle_config,
             ),
@@ -206,7 +206,7 @@ def partition_files(
     num_buckets: int,
     min_bucket_size: int,
     max_bucket_size: int,
-    reader: FileReader,
+    in_memory_size_estimator: InMemorySizeEstimator,
     filesystem: pa.fs.FileSystem,
     shuffle_config: Optional[FileShuffleConfig],
 ) -> Iterable[Block]:
@@ -255,26 +255,19 @@ def partition_files(
     # to producing blocks larger than `target_min_block_size`.
     buckets = [Bucket() for _ in range(num_buckets)]
     current_bucket_index = 0
-    encoding_ratio = None  # Ratio of in-memory size to file size.
 
     for row in rows_iter:
         file_path, file_size = row[PATH_COLUMN_NAME], row[FILE_SIZE_COLUMN_NAME]
 
         current_bucket = buckets[current_bucket_index]
 
-        # Estimating the encoding ratio can be expensive (e.g., if the
-        # estimation requires reading the file). So, we only estimate the
-        # encoding ratio if we don't already have one.
-        if encoding_ratio is None:
-            encoding_ratio = _estimate_encoding_ratio(
-                file_path, file_size, reader, filesystem
-            )
-
-        # `HTTPFileSystem` returns `None` for `file_size`. In this case, we
-        # place all paths in the same block.
         if file_size is not None:
-            in_memory_size_estimate = file_size * encoding_ratio
+            in_memory_size_estimate = in_memory_size_estimator.estimate_in_memory_size(
+                file_path, file_size, filesystem=filesystem
+            )
         else:
+            # `HTTPFileSystem` returns `None` for `file_size`. In this case, we
+            # place all paths in the same block.
             in_memory_size_estimate = 0
 
         current_bucket.add(file_path, in_memory_size_estimate)
@@ -290,19 +283,3 @@ def partition_files(
         if bucket.paths:
             block = pa.Table.from_pydict({PATH_COLUMN_NAME: bucket.paths})
             yield block
-
-
-def _estimate_encoding_ratio(
-    path: str,
-    file_size: Optional[int],
-    reader: FileReader,
-    filesystem: pa.fs.FileSystem,
-) -> float:
-    if file_size is not None and file_size > 0:
-        in_memory_size = reader.estimate_in_memory_size(
-            path, file_size, filesystem=filesystem
-        )
-        encoding_ratio = in_memory_size / file_size
-    else:
-        encoding_ratio = 1.0
-    return encoding_ratio

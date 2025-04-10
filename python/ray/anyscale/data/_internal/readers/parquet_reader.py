@@ -28,9 +28,13 @@ from ray.data.datasource.path_util import _has_file_extension
 from ray.util.debug import log_once
 
 from .file_reader import FileReader
+from .in_memory_size_estimator import (
+    InMemorySizeEstimator,
+)
 
 # The number of rows to read per batch. This is the default we use in OSS.
 DEFAULT_BATCH_SIZE = 10_000
+
 
 logger = logging.getLogger(__name__)
 
@@ -326,3 +330,13 @@ class ParquetReader(FileReader):
 
     def supports_predicate_pushdown(self) -> bool:
         return True
+
+
+class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
+    def estimate_in_memory_size(
+        self, path: str, file_size: int, *, filesystem: "pyarrow.fs.FileSystem"
+    ) -> int:
+        # Reading a batch of Parquet data can be slow, even if you try to read a
+        # single row. To avoid slow startup times, just return a constant value. For
+        # more information, see https://github.com/anyscale/rayturbo/issues/924.
+        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size

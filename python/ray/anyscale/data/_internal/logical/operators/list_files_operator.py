@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
-from ray.anyscale.data._internal.readers import FileReader
+from ray.anyscale.data._internal.readers import InMemorySizeEstimator
 from ray.data import FileShuffleConfig
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.datasource import PathPartitionFilter
@@ -27,7 +27,7 @@ class ListFiles(LogicalOperator):
         *,
         paths: Union[str, List[str]],
         file_indexer: "FileIndexer",
-        reader: FileReader,
+        in_memory_size_estimator: InMemorySizeEstimator,
         filesystem,
         file_extensions: List[str],
         partition_filter: PathPartitionFilter,
@@ -42,7 +42,7 @@ class ListFiles(LogicalOperator):
 
         self.paths = paths
         self.file_indexer = file_indexer
-        self.reader = reader
+        self.in_memory_size_estimator = in_memory_size_estimator
         self.filesystem = filesystem
         self.file_extensions = file_extensions
         self.partition_filter = partition_filter
