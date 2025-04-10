@@ -1287,7 +1287,7 @@ def read_json(
         >>> ds.schema()
         Column  Type
         ------  ----
-        input   object
+        input   <class 'object'>
 
         Read multiple local files.
 
