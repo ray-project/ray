@@ -98,7 +98,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
         self.num_envs: int = 0
         if (
-            self.worker_index > 0
+            self.worker_index is None
+            or self.worker_index > 0
             or self.config.create_env_on_local_worker
             or self.config.num_env_runners == 0
         ):
