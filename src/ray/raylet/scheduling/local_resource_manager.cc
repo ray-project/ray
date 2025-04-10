@@ -289,7 +289,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::Now();
     } else {
       // Clear the idle info since we know it's being used.
-      RAY_LOG_EVERY_MS(INFO, 5000) << "Object store memory is not idle.";
+      RAY_LOG(DEBUG) << "Object store memory is not idle.";
       last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
 
