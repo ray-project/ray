@@ -3269,7 +3269,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
