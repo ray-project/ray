@@ -234,10 +234,11 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.4
     # via wcmatch
-cachetools==5.3.2
+cachetools==5.5.2
     # via
     #   aim
     #   google-auth
+    #   pyiceberg
 certifi==2025.1.31
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -1611,7 +1612,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.7.0
+pyiceberg==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
