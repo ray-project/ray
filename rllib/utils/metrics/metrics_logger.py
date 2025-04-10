@@ -123,8 +123,6 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
-        # Track which paths have been reduced already
-        self._reduced_paths = set()
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -740,59 +738,22 @@ class MetricsLogger:
             # Find a base Stats object first - we will use this to merge with incoming Stats objects
             base_stats = None
             own_stats = self._get_key(key, stats=self.stats, key_error=False)
-            all_stats = incoming_stats + [own_stats] if own_stats else incoming_stats
-
-            if isinstance(own_stats, Stats):
-                # Prioritize own stats object if it exists
-                base_stats = own_stats
-            else:
-                base_stats = next(
-                    (s for s in incoming_stats if isinstance(s, Stats)), None
-                )
-                if base_stats is None:
-                    raise ValueError(
-                        f"Found a non-Stats value under key {key} but no Stats "
-                        "object to get settings from. All values under the same key must "
-                        "be Stats objects or have at least one Stats object to copy "
-                        "settings from."
-                    )
-
-            # Turn all non-Stats objects into Stats objects
-            more_stats = []
-            for i, stats_or_values in enumerate(all_stats):
-                if not isinstance(stats_or_values, Stats):
-                    # Create a Stats object from the non-Stats value.
-                    self._check_tensor(key, stats_or_values)
-
-                    all_stats[i] = Stats(
-                        stats_or_values,
-                        reduce=base_stats._reduce_method,
-                        window=base_stats._window,
-                        ema_coeff=base_stats._ema_coeff,
-                        clear_on_reduce=base_stats._clear_on_reduce,
-                        throughput=base_stats.has_throughput,
-                        throughput_ema_coeff=base_stats._throughput_ema_coeff,
-                    )
-                    more_stats.append(all_stats[i])
-                elif stats_or_values is not base_stats:
-                    more_stats.append(stats_or_values)
 
             if not self._key_in_stats(key):
-                # In this case base_stats == own_stats
-
+                base_stats = incoming_stats[0]
                 # Note that we may take a mean of means here, which is not the same as a mean of all values
                 # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
-                if len(more_stats) > 0:
-                    base_stats.merge_in_parallel(*more_stats)
+                if len(incoming_stats) > 1:
+                    base_stats.merge_in_parallel(*incoming_stats[1:])
                 self._set_key(key, base_stats)
-            else:
-                if len(more_stats) > 0:
-                    if len(more_stats) > 1:
-                        # There are more than one incoming parallel others -> Merge all of them
-                        # in parallel (equal importance)
-                        more_stats[0].merge_in_parallel(*more_stats[1:])
-                    # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
-                    base_stats.merge_on_time_axis(more_stats[0])
+            elif len(incoming_stats) > 0:
+                base_stats = own_stats
+                if len(incoming_stats) > 1:
+                    # There are more than one incoming parallel others -> Merge all of them
+                    # in parallel (equal importance)
+                    incoming_stats[0].merge_in_parallel(*incoming_stats[1:])
+                # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
+                base_stats.merge_on_time_axis(incoming_stats[0])
 
                 self._set_key(key, base_stats)
 
@@ -969,31 +930,18 @@ class MetricsLogger:
             # We need to do this so that lifetime stats are accumulated only in the root logger
             if not self._is_root_logger:
                 if is_lifetime_stat:
-                    original_clear_on_reduce = stats._clear_on_reduce
-                    # Modify to clear lifetime stats in non-root loggers
+                    # Clear lifetime stats in non-root loggers
                     stats._clear_on_reduce = True
                     values = stats.reduce(compile=False)
-                    # Restore the original setting
-                    stats._clear_on_reduce = original_clear_on_reduce
+                    stats._clear_on_reduce = False
+                    return Stats.similar_to(stats, init_values=values)
                 else:
                     # For non-root logger or non-lifetime stats, reduce normally
                     values = stats.reduce(compile=False)
+                    return Stats.similar_to(stats, init_values=values)
             else:
-                values = stats.reduce(compile=True)
-
-            path_key = tuple(path)
-
-            if path_key not in self._reduced_paths:
-                # If this is the first reduction for this path, return a Stats object
-                # such that downstream MetricsLoggers can merge on it
-                self._reduced_paths.add(path_key)
-                new_stats = Stats.similar_to(stats, init_values=values)
-                if self._is_root_logger:
-                    return values
-                else:
-                    return new_stats
-
-            return values
+                # Only the root logger should return the actual values
+                return stats.reduce(compile=True)
 
         try:
             with self._threading_lock:
@@ -1352,7 +1300,7 @@ class MetricsLogger:
     def compile(self) -> Dict:
         """Compiles all current values and throughputs into a single dictionary.
 
-        This method combines the results of `peek()` and `throughputs()` into a single
+        This method combines the results of `reduce()` and `get_throughputs()` into a single
         dictionary, with throughput values having "_throughput" suffix. This is useful
         for getting a complete snapshot of all metrics and their throughputs in one call.
 
@@ -1362,7 +1310,7 @@ class MetricsLogger:
             "_throughput" suffix in their keys.
         """
         # Get all current values
-        values = self.peek()
+        values = self.reduce()
 
         # Get all throughputs
         throughputs = self.get_throughputs()

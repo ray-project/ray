@@ -3,7 +3,6 @@ import pytest
 import numpy as np
 import torch
 
-from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 
@@ -368,60 +367,6 @@ def test_edge_cases(logger):
     results = logger.reduce()
     check(results["clear_test"], 0.101)
     check(logger.peek("clear_test"), np.nan)  # Should be cleared
-
-
-def test_first_reduce_returns_stats_then_values():
-    """Test that reduce() returns Stats objects on first call, then values on subsequent calls."""
-    # We need to test this for non-root loggers because root loggers always return values
-    logger = MetricsLogger(root=False)
-
-    # Log a simple metric
-    logger.log_value("simple_metric", 5, reduce="max")
-
-    # First call to reduce() should return a Stats object
-    first_result = logger.reduce()
-
-    # Verify that the result is a Stats object
-    check(isinstance(first_result["simple_metric"], Stats), True)
-
-    # Verify that we can still access the value through the Stats object
-    check(first_result["simple_metric"].peek(), 5)
-
-    # Log some more values
-    logger.log_value(
-        "simple_metric", 10, reduce="max"
-    )  # Need to repeat the reduce parameter
-
-    # Second call to reduce() should return actual value, not a Stats object
-    second_result = logger.reduce()
-
-    # Verify that the result is now a primitive value, not a Stats object
-    check(isinstance(second_result["simple_metric"], Stats), False)
-
-    # Verify the actual value
-    check(
-        second_result["simple_metric"], [10]
-    )  # Since this is a root logger, the value is accumulated
-
-    # Create a second logger and test merging behavior
-    logger2 = MetricsLogger()
-    logger2.log_value("new_metric", 42, reduce="min")
-
-    # First reduce() for this logger should return a Stats object
-    result2 = logger2.reduce()
-    check(isinstance(result2["new_metric"], Stats), True)
-
-    # Merge this into our original logger
-    logger.merge_and_log_n_dicts([result2])
-
-    # The original logger now has a new metric path that hasn't been reduced yet
-    third_result = logger.reduce()
-
-    # The previous metric should still return a value
-    check(isinstance(third_result["simple_metric"], Stats), False)
-    # But the new metric from logger2 should now be a Stats, because it had not been reduced on this loggeryet
-    check(isinstance(third_result["new_metric"], Stats), True)
-    check(third_result["new_metric"], 42)
 
 
 def test_lifetime_stats_behavior():
