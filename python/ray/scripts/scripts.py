@@ -643,7 +643,7 @@ Windows powershell users need additional escaping:
     type=str,
     help="Accepts a string list of key-value pairs or a JSON serialized "
     "dictionary mapping label name to label value."
-    'Ex: --labels "key1=val1,key2=val2" or --labels {"key":"value"}',
+    'Ex: --labels "key1=val1,key2=val2"',
 )
 @click.option(
     "--labels-file",
