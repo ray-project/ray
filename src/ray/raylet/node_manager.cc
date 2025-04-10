@@ -3348,20 +3348,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     agent_command_line.push_back("--disable-metrics-collection");
   }
 
-  // Create a non-zero random agent_id to pass to the child process.
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();  // NOLINT
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  std::string agent_name = "dashboard_agent";
   // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
   // dashboard agent crash no longer lead to a raylet crash.
   auto options = AgentManager::Options({self_node_id,
