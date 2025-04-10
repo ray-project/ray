@@ -45,10 +45,11 @@ aiofiles==22.1.0
     #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.14
+aiohttp==3.11.16
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   datasets
