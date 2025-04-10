@@ -302,12 +302,6 @@ class ParquetReader(FileReader, SupportsRowCounting):
                 else:
                     yield table
 
-    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
-        # Reading a batch of Parquet data can be slow, even if you try to read a single
-        # row. To avoid slow startup times, just return a constant value. For more
-        # information, see https://github.com/anyscale/rayturbo/issues/924.
-        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size
-
     def count_rows(self, paths: List[str], *, filesystem: pyarrow.fs.FileSystem) -> int:
         num_rows = 0
 

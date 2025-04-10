@@ -14,9 +14,6 @@ class BinaryReader(NativeFileReader, SupportsRowCounting):
     def read_stream(self, file: "pyarrow.NativeFile", path: str) -> Iterable[DataBatch]:
         yield {"bytes": [file.readall()]}
 
-    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
-        return file_size
-
     def count_rows(self, paths: List[str], *, filesystem) -> int:
         return len(paths)
 
