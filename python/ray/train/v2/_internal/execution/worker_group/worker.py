@@ -1,4 +1,3 @@
-import logging
 import os
 import queue
 import socket
@@ -31,8 +30,6 @@ from ray.train.v2._internal.logging.logging import configure_worker_logger
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 
 T = TypeVar("T")
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -144,8 +141,6 @@ class RayTrainWorker:
             training_result = None
 
         error = execution_context.training_thread_runner.get_error()
-        if error:
-            logger.error(f"Error in training function:\n{error}")
 
         # TODO: The running state should not be conflated with queue flushing.
         # Running should only be true if the user code is still running.
