@@ -35,6 +35,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    StreamingRepartition,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
@@ -128,7 +129,7 @@ def plan_project_op(
 
 
 def plan_streaming_repartition_op(
-    op: Project,
+    op: StreamingRepartition,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:

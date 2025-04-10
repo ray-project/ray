@@ -32,6 +32,9 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/cgroup/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
@@ -368,17 +371,24 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
-      io_work_(io_service_),
+      io_work_(io_service_.get_executor()),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_),
+      task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  // Move worker process into cgroup on startup.
+  AppProcCgroupMetadata app_cgroup_metadata;
+  app_cgroup_metadata.pid = pid_;
+  app_cgroup_metadata.max_memory = kUnlimitedCgroupMemory;
+  GetCgroupSetup(options_.enable_resource_isolation)
+      .ApplyCgroupContext(app_cgroup_metadata);
+
   RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options_.debug_source;
 
   // Notify that core worker is initialized.
@@ -713,10 +723,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
       /* retry_task_callback= */
-      [this](TaskSpecification &spec,
-             bool object_recovery,
-             bool update_seqno,
-             uint32_t delay_ms) {
+      [this](TaskSpecification &spec, bool object_recovery, uint32_t delay_ms) {
         spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -724,14 +731,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
+          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
-            if (update_seqno) {
-              auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-              actor_handle->SetResubmittedActorTaskSpec(spec);
-            }
+            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            actor_handle->SetResubmittedActorTaskSpec(spec);
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK(spec.IsNormalTask());
@@ -809,7 +814,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                                                reference_counter_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
-    absl::optional<rpc::Address> addr;
+    std::optional<rpc::Address> addr;
     if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
       rpc::Address address;
       address.set_raylet_id(node_info->node_id());
@@ -870,12 +875,12 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                const ObjectLookupCallback &callback) {
     std::vector<rpc::Address> locations;
-    const absl::optional<absl::flat_hash_set<NodeID>> object_locations =
+    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
         reference_counter_->GetObjectLocations(object_id);
     if (object_locations.has_value()) {
       locations.reserve(object_locations.value().size());
       for (const auto &node_id : object_locations.value()) {
-        absl::optional<rpc::Address> addr = node_addr_factory(node_id);
+        std::optional<rpc::Address> addr = node_addr_factory(node_id);
         if (addr.has_value()) {
           locations.emplace_back(std::move(addr.value()));
           continue;
@@ -1376,10 +1381,8 @@ void CoreWorker::InternalHeartbeat() {
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
-      if (task_to_retry.update_seqno) {
-        auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-        actor_handle->SetResubmittedActorTaskSpec(spec);
-      }
+      auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+      actor_handle->SetResubmittedActorTaskSpec(spec);
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else if (spec.IsActorCreationTask()) {
       RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
@@ -3266,7 +3269,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3447,7 +3450,7 @@ Status CoreWorker::ExecuteTask(
   if (!options_.is_local_mode) {
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+  RAY_LOG(INFO).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status.ToString();
 
   std::ostringstream stream;
@@ -3836,7 +3839,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {

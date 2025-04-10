@@ -15,6 +15,7 @@ COPTS_WITHOUT_LOG = select({
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
     ],
 }) + select({
     "//:clang-cl": [
@@ -32,6 +33,7 @@ PYX_COPTS = select({
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
         "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
     "@platforms//os:windows": [
