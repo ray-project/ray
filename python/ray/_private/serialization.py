@@ -254,6 +254,13 @@ class SerializationContext:
                 )
 
     def _deserialize_pickle5_data(self, data):
+        # TODO(swang): self.get_outer_object_ref() is set to ObjectID::Nil.
+        worker = ray._private.worker.global_worker
+        from ray.experimental.channel import ChannelContext
+        ctx = ChannelContext.get_current().serialization_context
+        for obj_ref, tensors in worker.in_actor_object_store.items():
+            ctx.reset_out_of_band_tensors(tensors)
+
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
             if len(buffers) > 0:
@@ -263,6 +270,8 @@ class SerializationContext:
         # cloudpickle does not provide error types
         except pickle.pickle.PicklingError:
             raise DeserializationError()
+        finally:
+            ctx.reset_out_of_band_tensors([])
         return obj
 
     def _deserialize_msgpack_data(self, data, metadata_fields):
@@ -541,7 +550,7 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize(self, value):
+    def serialize(self, value, obj_id = None):
         """Serialize an object.
 
         Args:
@@ -553,4 +562,24 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
         else:
-            return self._serialize_to_msgpack(value)
+            from ray.experimental.channel import ChannelContext
+            ctx = ChannelContext.get_current().serialization_context
+            # TODO(swang): Only set the external transport flag if
+            # this is the output of an actor method that was
+            # decorated with tensor_transport.
+            prev_use_external_transport = ctx.use_external_transport
+            ctx.set_use_external_transport(True)
+
+            try:
+                val = self._serialize_to_msgpack(value)
+            finally:
+                ctx.set_use_external_transport(prev_use_external_transport)
+
+            tensors, _ = ctx.reset_out_of_band_tensors([])
+            if tensors:
+                assert obj_id is not None
+                obj_id = obj_id.decode('ascii')
+                worker = ray._private.worker.global_worker
+                worker.in_actor_object_store[obj_id] = tensors
+
+            return val
