@@ -10,10 +10,14 @@ import lightgbm as lgb
 
 import ray
 from ray import data
-from ray.train.lightgbm.v2 import LightGBMTrainer
-from ray.train.xgboost.v2 import XGBoostTrainer
-from ray.train.xgboost import RayTrainReportCallback as XGBoostReportCallback
-from ray.train.lightgbm import RayTrainReportCallback as LightGBMReportCallback
+from ray.train.lightgbm import (
+    LightGBMTrainer,
+    RayTrainReportCallback as LightGBMReportCallback,
+)
+from ray.train.xgboost import (
+    RayTrainReportCallback as XGBoostReportCallback,
+    XGBoostTrainer,
+)
 from ray.train import RunConfig, ScalingConfig
 
 _TRAINING_TIME_THRESHOLD = 600

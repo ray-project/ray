@@ -16,6 +16,6 @@ py_test_run_all_notebooks(
         "exclusive",
         "gpu",
         "ray_air",
-        "team:ml",
+        "team:llm",
     ],
 )

@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+
+#include "ray/core_worker/core_worker_options.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {

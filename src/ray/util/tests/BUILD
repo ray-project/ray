@@ -97,8 +97,8 @@ ray_cc_test(
     srcs = ["filesystem_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
-        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:string_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -132,7 +132,6 @@ ray_cc_test(
     srcs = ["sample_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_common",
         "//src/ray/util:sample",
         "@com_google_googletest//:gtest_main",
     ],
@@ -248,26 +247,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "stream_redirection_utils_test",
-    size = "small",
-    srcs = ["stream_redirection_utils_test.cc"],
-    tags = [
-        "team:core",
-        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
-        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
-        # properly. Disable the complete test suite here since it always contains exactly one test
-        # case.
-        "no_tsan",
-    ],
-    deps = [
-        "//src/ray/common/test:testing",
-        "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "stream_redirection_exit_test",
     size = "small",
     srcs = ["stream_redirection_exit_test.cc"],
@@ -282,7 +261,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
+        "//src/ray/util:stream_redirection",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -304,6 +283,7 @@ ray_cc_test(
     srcs = ["spdlog_fd_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
@@ -315,8 +295,11 @@ ray_cc_test(
     srcs = ["spdlog_newliner_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:filesystem",
         "//src/ray/util:spdlog_fd_sink",
         "//src/ray/util:spdlog_newliner_sink",
+        "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -340,6 +323,68 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "scoped_dup2_wrapper_test",
+    size = "small",
+    srcs = ["scoped_dup2_wrapper_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:compat",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:scoped_dup2_wrapper",
+        "//src/ray/util:temporary_directory",
+        "@boost//:iostreams",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "invoke_once_token_test",
+    size = "small",
+    srcs = ["invoke_once_token_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:invoke_once_token",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "concurrent_flat_map_test",
+    size = "small",
+    srcs = ["concurrent_flat_map_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:concurrent_flat_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "filesystem_monitor_test",
+    size = "small",
+    srcs = ["filesystem_monitor_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:file_system_monitor",
         "@com_google_googletest//:gtest_main",
     ],
 )

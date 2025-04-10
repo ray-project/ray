@@ -16,6 +16,9 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <memory>
+#include <string>
+
 #include "ray/common/runtime_env_common.h"
 
 namespace ray {
@@ -224,7 +227,7 @@ const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
   return GetThreadContext().GetCurrentInternalTaskId();
 }
 
-const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
+PlacementGroupID WorkerContext::GetCurrentPlacementGroupId() const {
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
@@ -295,6 +298,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
     current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_should_exit_ = false;
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
@@ -311,7 +315,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
     const bool is_first_time_assignment = runtime_env_info_ == nullptr;
 
-    // Only perform heavy-loaded assigment and parsing on first access.
+    // Only perform heavy-loaded assignment and parsing on first access.
     // All threads are requesting for the same parsed json result, so ok to place in
     // critical section.
     if (is_first_time_assignment) {
@@ -344,12 +348,24 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
+// TODO(dayshah): Fixing thread-safety-reference-return here causes Java test failures.
+// Fix in follow up.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wthread-safety-reference-return"
+#endif
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
 }
+#ifdef __clang__
+#pragma clang diagnostic pop
+#pragma clang diagnostic pop
+#endif
 
-const ActorID &WorkerContext::GetRootDetachedActorID() const {
+ActorID WorkerContext::GetRootDetachedActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return root_detached_actor_id_;
 }
@@ -392,6 +408,18 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 bool WorkerContext::CurrentActorIsAsync() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_is_asyncio_;
+}
+
+void WorkerContext::SetCurrentActorShouldExit() {
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(!current_actor_id_.IsNil())
+      << "SetCurrentActorShouldExit should only be used inside actors";
+  current_actor_should_exit_ = true;
+}
+
+bool WorkerContext::GetCurrentActorShouldExit() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_should_exit_;
 }
 
 bool WorkerContext::CurrentActorDetached() const {

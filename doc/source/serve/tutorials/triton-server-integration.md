@@ -11,7 +11,7 @@ It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which
 
 ### Build and export a model
 For this application, the encoder is exported to ONNX format and the stable diffusion model is exported to be TensorRT engine format which is being compatible with Triton Server.
-Here is the example to export models to be in ONNX format.([source](https://github.com/triton-inference-server/tutorials/blob/main/Triton_Inference_Server_Python_API/scripts/stable_diffusion/export.py))
+Here is the example to export models to be in ONNX format.
 
 ```python
 import torch

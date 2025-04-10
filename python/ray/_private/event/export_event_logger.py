@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import pathlib
 import json
@@ -12,13 +13,60 @@ from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
+from ray.core.generated.export_train_state_pb2 import (
+    ExportTrainRunEventData,
+    ExportTrainRunAttemptEventData,
+)
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
 # This contains the union of export event data types which emit events
 # using the python ExportEventLoggerAdapter
-ExportEventDataType = Union[ExportSubmissionJobEventData]
+ExportEventDataType = Union[
+    ExportSubmissionJobEventData,
+    ExportTrainRunEventData,
+    ExportTrainRunAttemptEventData,
+]
+
+
+class EventLogType(Enum):
+    """Enum class representing different types of export event logs.
+
+    Each enum value contains a log type name and a set of supported event data types.
+
+    Attributes:
+        TRAIN_STATE: Export events related to training state, supporting train run and attempt events.
+        SUBMISSION_JOB: Export events related to job submissions.
+    """
+
+    TRAIN_STATE = (
+        "EXPORT_TRAIN_STATE",
+        {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
+    )
+    SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
+
+    def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
+        """Initialize an EventLogType enum value.
+
+        Args:
+            log_type_name: String identifier for the log type. This name is used to construct the log file name.
+                See `_build_export_event_file_logger` for more details.
+            event_types: Set of event data types that this log type supports.
+        """
+        self.log_type_name = log_type_name
+        self.event_types = event_types
+
+    def supports_event_type(self, event_type: ExportEventDataType) -> bool:
+        """Check if this log type supports the given event data type.
+
+        Args:
+            event_type: The event data type to check for support.
+
+        Returns:
+            bool: True if the event type is supported, False otherwise.
+        """
+        return type(event_type) in self.event_types
 
 
 def generate_event_id():
@@ -26,10 +74,10 @@ def generate_event_id():
 
 
 class ExportEventLoggerAdapter:
-    def __init__(self, source: ExportEvent.SourceType, logger: logging.Logger):
+    def __init__(self, log_type: EventLogType, logger: logging.Logger):
         """Adapter for the Python logger that's used to emit export events."""
         self.logger = logger
-        self.source = source
+        self.log_type = log_type
 
     def send_event(self, event_data: ExportEventDataType):
         # NOTE: Python logger is thread-safe,
@@ -56,13 +104,19 @@ class ExportEventLoggerAdapter:
         if isinstance(event_data, ExportSubmissionJobEventData):
             event.submission_job_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        elif isinstance(event_data, ExportTrainRunEventData):
+            event.train_run_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN
+        elif isinstance(event_data, ExportTrainRunAttemptEventData):
+            event.train_run_attempt_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
-        if event.source_type != self.source:
+        if not self.log_type.supports_event_type(event_data):
             global_logger.error(
                 f"event_data has source type {event.source_type}, however "
-                f"the event was sent to a logger with source {self.source}. "
-                f"The event will still be written to the file of {self.source} "
+                f"the event was sent to a logger with log type {self.log_type.log_type_name}. "
+                f"The event will still be written to the file of {self.log_type.log_type_name} "
                 "but this indicates a bug in the code."
             )
             pass
@@ -98,12 +152,12 @@ class ExportEventLoggerAdapter:
 
 
 def _build_export_event_file_logger(
-    source: ExportEvent.SourceType, sink_dir: str
+    log_type_name: str, sink_dir: str
 ) -> logging.Logger:
-    logger = logging.getLogger("_ray_export_event_logger_" + source)
+    logger = logging.getLogger("_ray_export_event_logger_" + log_type_name)
     logger.setLevel(logging.INFO)
     dir_path = pathlib.Path(sink_dir) / "export_events"
-    filepath = dir_path / f"event_{source}.log"
+    filepath = dir_path / f"event_{log_type_name}.log"
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
     # Configure the logger.
@@ -123,25 +177,25 @@ _export_event_logger_lock = threading.Lock()
 _export_event_logger = {}
 
 
-def get_export_event_logger(
-    source: ExportEvent.SourceType, sink_dir: str
-) -> logging.Logger:
+def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Logger:
     """Get the export event logger of the current process.
 
     There's only one logger per export event source.
 
     Args:
-        source: The source of the export event.
+        log_type: The type of the export event.
         sink_dir: The directory to sink event logs.
     """
     with _export_event_logger_lock:
         global _export_event_logger
-        source_name = ExportEvent.SourceType.Name(source)
-        if source_name not in _export_event_logger:
-            logger = _build_export_event_file_logger(source_name, sink_dir)
-            _export_event_logger[source_name] = ExportEventLoggerAdapter(source, logger)
+        log_type_name = log_type.log_type_name
+        if log_type_name not in _export_event_logger:
+            logger = _build_export_event_file_logger(log_type.log_type_name, sink_dir)
+            _export_event_logger[log_type_name] = ExportEventLoggerAdapter(
+                log_type, logger
+            )
 
-        return _export_event_logger[source_name]
+        return _export_event_logger[log_type_name]
 
 
 def check_export_api_enabled(

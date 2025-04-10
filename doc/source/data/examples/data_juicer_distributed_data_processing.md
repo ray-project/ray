@@ -4,6 +4,11 @@ orphan: true
 
 # Distributed Data Processing in Data-Juicer
 
+<a id="try-anyscale-quickstart-data_juicer_distributed_data_processing" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=data_juicer_distributed_data_processing">
+    <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+</a>
+<br></br>
+
 Data-Juicer supports large-scale distributed data processing based on [Ray](https://github.com/ray-project/ray) and [Platform for AI](https://www.alibabacloud.com/en/product/machine-learning) of Alibaba Cloud.
 
 With a dedicated design, you can seamlessly execute almost all operators that Data-Juicer implements in standalone mode, in Ray distributed mode. The Data-Juicer team continuously conducts engine-specific optimizations for large-scale scenarios, such as data subset splitting strategies that balance the number of files and workers, and streaming I/O patches for JSON files to Ray and Apache Arrow.
@@ -18,7 +23,7 @@ See the [Data-Juicer 2.0: Cloud-Scale Adaptive Data Processing for Foundation Mo
 
 ### Ray mode in Data-Juicer
 
-- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_data.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main//data_juicer/core/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
+- For most implementations of Data-Juicer [operators](https://github.com/modelscope/data-juicer/blob/main/docs/Operators.md), the core processing functions are engine-agnostic. Operators manage interoperability is primarily in [RayDataset](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/data/ray_dataset.py) and [RayExecutor](https://github.com/modelscope/data-juicer/blob/main/data_juicer/core/executor/ray_executor.py), which are subclasses of the base `DJDataset` and `BaseExecutor`, respectively, and support both Ray [Tasks](ray-remote-functions) and [Actors](actor-guide).
 - The exception is the deduplication operators, which are challenging to scale in standalone mode. The names of these operators follow the pattern of [`ray_xx_deduplicator`](https://github.com/modelscope/data-juicer/blob/main//data_juicer/ops/deduplicator/).
 
 ### Subset splitting

@@ -20,7 +20,7 @@
 /src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ray-project/ray-core @hongchaodeng
+/python/ray/autoscaler/ @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -68,6 +68,10 @@
 
 # ==== Libraries and frameworks ====
 
+# Common directory shared by core and the libraries.
+# @edoakes is the czar for now because the pattern is new.
+/python/ray/_common/ @edoakes @aslonnie
+
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
 /doc/source/data/ @ray-project/ray-data
@@ -81,7 +85,7 @@
 /doc/source/rllib/ @sven1977 @maxpumperla @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+/doc/source/cluster/ @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
 /python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
@@ -106,8 +110,8 @@
 /src/ray/ray_exported_symbols.lds @aslonnie
 
 # Ray usage stats
-/python/ray/_private/usage/ @richardliaw @rkooo567 @jjyao
-/python/ray/dashboard/modules/usage_stats/ @richardliaw @rkooo567 @jjyao
+/python/ray/_private/usage/ @edoakes @richardliaw @jjyao
+/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
 
 
 # ==== Build and CI ====
@@ -125,6 +129,6 @@
 
 /release/ray_release @ray-project/ray-ci
 
-/.github/ISSUE_TEMPLATE/ @anyscalesam @aslonnie
+/.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci

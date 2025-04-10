@@ -13,7 +13,7 @@ os.environ["RAY_enable_export_api_write_config"] = "EXPORT_SUBMISSION_JOB"
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.test_utils import async_wait_for_condition_async_predicate
+from ray._private.test_utils import async_wait_for_condition
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
@@ -163,9 +163,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     """
 
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # Submit a job.
@@ -174,7 +172,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     )
 
     # Wait for the job to be finished.
-    await async_wait_for_condition_async_predicate(
+    await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=submission_id
     )
 

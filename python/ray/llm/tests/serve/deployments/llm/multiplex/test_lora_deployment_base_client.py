@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
@@ -20,7 +20,7 @@ VLLM_APP_DEF = """
 model_loading_config:
   model_id: meta-llama/Llama-2-7b-hf
 
-llm_engine: VLLM
+llm_engine: vLLM
 
 engine_kwargs:
   trust_remote_code: True
@@ -60,7 +60,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     for llm_config in llm_configs:
         model_id = llm_config.model_id
         deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
-        deployment = VLLMDeployment.options(**deployment_args)
+        deployment = LLMDeployment.options(**deployment_args)
         llm_deployments.append(
             deployment.bind(
                 llm_config=llm_config,
@@ -161,11 +161,12 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 1: test a path that exists in the cloud. The LoRA adapters
         # must be included.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-7b-chat-hf",
             "meta-llama/Llama-2-7b-chat-hf",
             [
                 "meta-llama/Llama-2-7b-chat-hf:gen-config-but-no-context-len:1234",
                 "meta-llama/Llama-2-7b-chat-hf:with-context-len-and-gen-config:1234",
+                "meta-llama/Llama-2-7b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-7b-chat-hf",
             ],
         ),
@@ -173,10 +174,9 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # case). But test a different model. Ensure that only this model's
         # LoRA adapters are returned.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-13b-chat-hf",
             "meta-llama/Llama-2-13b-chat-hf",
             [
-                "meta-llama/Llama-2-13b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf:pre-long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf",
             ],
@@ -184,7 +184,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 3: test a path that doesn't exist in the cloud. Only the
         # base model_id should be included.
         (
-            "s3://rayllm-ci/path-does-not-exist/",
+            "s3://anonymous@air-example-data/rayllm-ossci/path-does-not-exist/",
             "meta-llama/Llama-2-7b-chat-hf",
             ["meta-llama/Llama-2-7b-chat-hf"],
         ),
@@ -199,8 +199,8 @@ async def test_lora_include_adapters_in_list_models(
 ):
     """Check that LoRA adapters are included in the models list.
 
-    This test pulls real configs from an S3 bucket. It requires
-    `anyscale-dev-product` AWS credentials to run.
+    This test pulls real configs from an S3 bucket located in
+    `anyscale-legacy-work` account.
 
     This test is similar to test_lora_list_base_model. It checks that
     the LoRA adapters are included in the list of models.

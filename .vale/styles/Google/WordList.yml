@@ -81,4 +81,5 @@ swap:
   # touch: tap  # We rarely use touch in the sense of "tap" in our docs.
   url: URL
   vs\.: versus
+  walkthrough: walk-through
   World Wide Web: web

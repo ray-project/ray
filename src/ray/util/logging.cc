@@ -230,7 +230,7 @@ std::string json_escape_string(const std::string &s) noexcept {
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecycle.
 class DefaultStdErrLogger final {
  public:
   std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
@@ -315,17 +315,20 @@ void RayLog::InitLogFormat() {
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
-    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size)) {
       return max_size;
     }
   }
-  return std::numeric_limits<size_t>::max();
+#endif
+  return 0;
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
       ray_rotation_backup_count != nullptr) {
     size_t file_num = 0;
@@ -333,6 +336,7 @@ void RayLog::InitLogFormat() {
       return file_num;
     }
   }
+#endif
   return 1;
 }
 
@@ -378,7 +382,6 @@ void RayLog::InitLogFormat() {
   log_rotation_file_num_ = log_rotation_file_num;
 
   // All the logging sinks to add.
-  // One for file/stdout, another for stderr.
   std::array<spdlog::sink_ptr, 2> sinks;  // Intentionally no initialization.
 
   auto level = GetMappedSeverity(severity_threshold_);
@@ -393,7 +396,7 @@ void RayLog::InitLogFormat() {
     }
   }
 
-  // Set sink for stdout.
+  // Set sink for logs above the user defined level.
   if (!log_filepath.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
@@ -404,8 +407,13 @@ void RayLog::InitLogFormat() {
       spdlog::drop(RayLog::GetLoggerName());
     }
 
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr file_sink;
+    if (log_rotation_max_size_ == 0) {
+      file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
+    } else {
+      file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
@@ -415,10 +423,15 @@ void RayLog::InitLogFormat() {
     sinks[0] = std::move(console_sink);
   }
 
-  // Set sink for stderr.
+  // Set sink for error logs.
   if (!err_log_filepath.empty()) {
-    auto err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr err_sink;
+    if (log_rotation_max_size_ == 0) {
+      err_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(err_log_filepath);
+    } else {
+      err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     err_sink->set_level(spdlog::level::err);
     sinks[1] = std::move(err_sink);
   } else {

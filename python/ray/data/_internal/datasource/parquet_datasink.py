@@ -67,6 +67,10 @@ class ParquetDatasink(_FileDatasink):
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
             return
 
+        blocks = [
+            block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
+        ]
+
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
         )

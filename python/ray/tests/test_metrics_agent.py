@@ -3,7 +3,9 @@ import json
 import os
 import pathlib
 import sys
+import re
 import requests
+import warnings
 from collections import defaultdict
 
 from pprint import pformat
@@ -15,6 +17,7 @@ import pytest
 import ray
 from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+from ray._private.metrics_agent import Gauge as MetricsAgentGauge
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
     SignalActor,
@@ -26,7 +29,7 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -1037,6 +1040,36 @@ def test_metrics_disablement(_setup_cluster_for_test):
         import time
 
         time.sleep(1)
+
+
+_FAULTY_METRIC_REGEX = re.compile(".*Invalid metric name.*")
+
+
+def test_invalid_application_metric_names():
+    warnings.simplefilter("always")
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        Metric("")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name-cannot-have-dashes")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("1namecannotstartwithnumber")
+    with pytest.warns(UserWarning, match=_FAULTY_METRIC_REGEX):
+        Metric("name.cannot.have.dots")
+
+
+def test_invalid_system_metric_names(caplog):
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        MetricsAgentGauge("", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name-cannot-have-dashes", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("1namecannotstartwithnumber", "", "", [])
+    with pytest.raises(ValueError, match=_FAULTY_METRIC_REGEX):
+        MetricsAgentGauge("name.cannot.have.dots", "", "", [])
 
 
 if __name__ == "__main__":

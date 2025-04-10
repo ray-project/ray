@@ -6,7 +6,7 @@ model_loading_config:
   model_id: mistral-community/pixtral-12b
   model_source: "/home/ray/tests/rayllm/backend/server/configs/cached_model_processors/mistral-community--pixtral-12b"
 
-llm_engine: VLLM
+llm_engine: vLLM
 
 engine_kwargs:
   enable_chunked_prefill: true

@@ -20,6 +20,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -101,7 +102,9 @@ class ResourceManager:
             )
         )
 
-    def _estimate_object_store_memory(self, op, state) -> int:
+    def _estimate_object_store_memory(
+        self, op: "PhysicalOperator", state: "OpState"
+    ) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
@@ -247,7 +250,12 @@ class ResourceManager:
                 budget = self._op_resource_allocator._op_budgets[op]
                 usage_str += f", budget=(cpu={budget.cpu:.1f}"
                 usage_str += f",gpu={budget.gpu:.1f}"
-                usage_str += f",object store={budget.object_store_memory_str()})"
+                usage_str += f",obj_store={budget.object_store_memory_str()}"
+                # Remaining memory budget for producing new task outputs.
+                reserved_for_output = memory_string(
+                    self._op_resource_allocator._output_budgets.get(op, 0)
+                )
+                usage_str += f",out={reserved_for_output})"
         return usage_str
 
     def op_resource_allocator_enabled(self) -> bool:
@@ -402,6 +410,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Remaining memory budget for generating new task outputs, per operator.
+        self._output_budgets: Dict[PhysicalOperator, float] = {}
         # Whether each operator has reserved the minimum resources to run
         # at least one task.
         # This is used to avoid edge cases where the entire resource limits are not
@@ -550,12 +560,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         if math.isinf(res):
+            self._output_budgets[op] = res
             return None
 
         res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
             res = 1
+        self._output_budgets[op] = res
         return res
 
     def _get_downstream_ineligible_ops(

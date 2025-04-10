@@ -21,6 +21,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.env.vector.registration import make_vec
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
@@ -29,6 +30,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_TO_MODULE_CONNECTOR,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -36,6 +38,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    MODULE_TO_ENV_CONNECTOR,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -44,11 +47,11 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    RLMODULE_INFERENCE_TIMER,
     SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -87,8 +90,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.worker_index: int = kwargs.get("worker_index")
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
-        # Set up all metrics-related structures and counters.
-        self.metrics: Optional[MetricsLogger] = None
         self._setup_metrics()
 
         # Create our callbacks object.
@@ -283,22 +284,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            # Only act (randomly) for those agents that had an observation.
+                            # Only act (randomly) for those agents that had an
+                            # observation.
                             aid: self.env.envs[i]
                             .unwrapped.get_action_space(aid)
                             .sample()
-                            for aid in self._episodes[i].get_agents_to_act()
+                            for aid in episodes[i].get_agents_to_act()
                         }
                         for i in range(self.num_envs)
                     ]
                 }
-
-                # to_env = defaultdict(lambda: {Columns.ACTIONS: []})
-                # for i in range(self.num_envs):
-                #     for aid in self._episodes[i].get_agents_to_act():
-
-                #         to_env[aid][Columns.ACTIONS].append(self.env.envs[i].unwrapped.get_action_space(aid).sample())
-
             # Compute an action using the RLModule.
             else:
                 # Env-to-module connector (already cached).
@@ -315,11 +310,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                             + ts
                         ) * (self.config.num_env_runners or 1)
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_exploration(
+                                to_module, t=global_env_steps_lifetime
+                            )
                     else:
-                        to_env = self.module.forward_inference(to_module)
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_inference(to_module)
 
                     # Module-to-env connector.
                     to_env = self._module_to_env(
@@ -329,6 +326,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         explore=explore,
                         shared_data=shared_data,
                         metrics=self.metrics,
+                        metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                     )
                 # In case all environments had been terminated `to_module` will be
                 # empty and no actions are needed b/c we reset all environemnts.
@@ -455,27 +453,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
                 if done_episodes_to_run_env_to_module:
-                    # Run the env-to-module connector pipeline for all done episodes. Note,
-                    # this is needed to postprocess last-step data, e.g. if the user uses
-                    # a connector that one-hot encodes observations.
+                    # Run the env-to-module connector pipeline for all done episodes.
+                    # Note, this is needed to postprocess last-step data, e.g. if the
+                    # user uses a connector that one-hot encodes observations.
+                    # Note, this pipeline run is not timed as the number of episodes
+                    # can differ from `num_envs_per_env_runner` and would bias time
+                    # measurements.
                     self._env_to_module(
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
                         rl_module=self.module,
                         shared_data=shared_data,
-                        metrics=self.metrics,
+                        metrics=None,
                     )
-                # if any(any(terminated.values()) for terminated in terminateds):
-                # #if any(any(e.is_done for e in episode.agent_episodes.values()) for episode in episodes if len(episode) > 0):
-                #     print("At least one agent died")
-                #     if any(len(e.agent_episodes) == 0 for e in episodes) and any(any(e.is_done for e in episode.agent_episodes.values()) for episode in episodes if len(episode) > 0):
-                #         print("Start debugging.")
                 self._cached_to_module = self._env_to_module(
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
                     metrics=self.metrics,
+                    metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -530,9 +527,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         for env_index in range(self.num_envs):
             self._new_episode(env_index, episodes)
 
-        # Erase all cached ongoing episodes (these will never be completed and
-        # would this never be returned/cleaned by `get_metrics` and cause a memory
-        # leak).
+        # Erase all cached ongoing episodes. This EnvRunner never completes or returns
+        # these from `get_metrics`, causing a memory leak.
         self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
@@ -555,6 +551,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 explore=explore,
                 shared_data=shared_data,
                 metrics=self.metrics,
+                metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -815,12 +812,24 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     check_multiagent_environments(env.unwrapped)
             except Exception as e:
                 logger.exception(e.args[0])
-        # If not required, still check the type (must be `MultiAgentEnv``).
+        # If not required, still check the type (must be `VectorMultiAgentEnv``).
         else:
-            assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-                "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-                "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-            )
+            try:
+                assert isinstance(self.env, VectorMultiAgentEnv)
+                assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv)
+            except AssertionError:
+                logger.exception(
+                    "When using the `MultiAgentEnvRunner`, the environment must "
+                    f"inherit from `ray.rllib.env.vector.vector_multi_agent_env."
+                    f"VectorMultiAgentEnv` (but yours is {self.env}) and the individual"
+                    " envs must inherit from `MultiAgentEnv` (but yours is "
+                    f"{self.env.envs[0].unwrapped})!"
+                )
+            except TypeError:
+                logger.exception(
+                    "When using the `MultiAgentEnvRunner`, the env must "
+                    "have a subscriptable `self.envs` attribute!"
+                )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -870,8 +879,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.env.close()
 
     def _setup_metrics(self):
-        self.metrics = MetricsLogger()
-
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
             EpisodeID, List[MultiAgentEpisode]

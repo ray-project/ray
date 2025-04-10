@@ -16,7 +16,6 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
 #include <deque>
 #include <memory>
 #include <string>
@@ -135,23 +134,24 @@ bool ClusterTaskManager::CancelTasksWithResourceShapes(
     return this->IsWorkWithResourceShape(work, target_resource_shapes);
   };
 
-  std::stringstream resource_shapes_str;
-  resource_shapes_str << "[";
-  bool first = true;
-  for (const auto &resource_shape : target_resource_shapes) {
-    if (!first) {
-      resource_shapes_str << ",";
-    }
-    resource_shapes_str << resource_shape.DebugString();
-    first = false;
-  }
-  resource_shapes_str << "]";
+  const std::string resource_shapes_str =
+      ray::VectorToString(target_resource_shapes, &ResourceSet::DebugString);
+  RAY_LOG(WARNING) << "Cancelling infeasible tasks with resource shapes "
+                   << resource_shapes_str;
 
-  return CancelTasks(
+  bool task_cancelled = CancelTasks(
       predicate,
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-      "Canceling tasks with resource shapes " + resource_shapes_str.str() +
-          " because there are not enough resources for the tasks on the whole cluster.");
+      absl::StrCat(
+          "Tasks or actors with resource shapes ",
+          resource_shapes_str,
+          " failed to schedule because there are not enough resources for the tasks "
+          "or actors on the whole cluster."));
+
+  RAY_LOG(INFO) << "Infeasible tasks cancellation complete with result=" << task_cancelled
+                << ",resource shapes=" << resource_shapes_str;
+
+  return task_cancelled;
 }
 
 bool ClusterTaskManager::IsWorkWithResourceShape(
@@ -252,8 +252,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
-      auto &work_queue = shapes_it->second;
-      const auto &work = work_queue[0];
+      auto &cur_work_queue = shapes_it->second;
+      const auto &work = cur_work_queue[0];
       const RayTask task = work->task;
       if (announce_infeasible_task_) {
         announce_infeasible_task_(task);

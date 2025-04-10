@@ -66,3 +66,25 @@ RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 
 ENABLE_VERBOSE_TELEMETRY = bool(int(os.getenv("RAYLLM_ENABLE_VERBOSE_TELEMETRY", "0")))
 
 RAYLLM_VLLM_ENGINE_CLS_ENV = "RAYLLM_VLLM_ENGINE_CLS"
+
+# The ratio of number of router replicas to number of model replicas. Default to 2
+# meaning that there are 2 router replicas for every model replica.
+ROUTER_TO_MODEL_REPLICA_RATIO = float(
+    os.getenv("RAYLLM_ROUTER_TO_MODEL_REPLICA_RATIO", "2")
+)
+
+RAYLLM_ROUTER_MIN_REPLICAS = int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0))
+RAYLLM_ROUTER_INITIAL_REPLICAS = int(
+    os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)
+)
+RAYLLM_ROUTER_MAX_REPLICAS = int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16))
+RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS = int(
+    os.environ.get(
+        "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
+        DEFAULT_TARGET_ONGOING_REQUESTS,  # 16
+    )
+)
+
+
+# HOME DIR
+RAYLLM_HOME_DIR = os.environ.get("RAYLLM_HOME_DIR", os.path.expanduser("~/.ray/llm"))

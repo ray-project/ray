@@ -14,13 +14,15 @@
 
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 
+#include <memory>
+#include <string>
+
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 
-using namespace ray;
+using namespace ray;  // NOLINT
 
 class UsageStatsClientTest : public ::testing::Test {
  protected:

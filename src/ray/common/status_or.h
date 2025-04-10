@@ -151,6 +151,8 @@ class StatusOr {
 
   ABSL_MUST_USE_RESULT std::string message() const { return status_.message(); }
 
+  std::string StatusString() const { return status_.StatusString(); }
+
   // Returns a reference to the current `ray::Status` contained within the
   // `ray::StatusOr<T>`. If `ray::StatusOr<T>` contains a `T`, then this
   // function returns `ray::Ok()`.

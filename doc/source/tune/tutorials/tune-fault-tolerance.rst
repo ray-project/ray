@@ -134,7 +134,7 @@ Tune Experiment Restoration with Ray Object References (Advanced)
 Experiment restoration often happens in a different Ray session than the original run,
 in which case Ray object references are automatically garbage collected.
 If object references are saved along with experiment state (e.g., within each trial's config),
-then attempting to retrieve theses objects will not work properly after restoration:
+then attempting to retrieve these objects will not work properly after restoration:
 the objects these references point to no longer exist.
 
 To work around this, you must re-create these objects, put them in the Ray object store,

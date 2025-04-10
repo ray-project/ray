@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import (
@@ -128,7 +128,9 @@ def test_parquet_deserialize_fragments_with_retry(
 
     dataset_kwargs = {}
     pq_ds = pq.ParquetDataset(
-        data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
+        data_path,
+        **dataset_kwargs,
+        filesystem=fs,
     )
     serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
@@ -510,7 +512,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         root_path=_unwrap_protocol(data_path),
         partition_cols=["one"],
         filesystem=fs,
-        use_legacy_dataset=False,
     )
 
     ds = ray.data.read_parquet(data_path, filesystem=fs)
@@ -547,7 +548,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
 
     # 2 partitions, 1 empty partition, 1 block/read task
@@ -595,7 +598,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -645,7 +647,6 @@ def test_parquet_read_partitioned_with_partition_filter(
         table,
         root_path=_unwrap_protocol(data_path),
         filesystem=fs,
-        use_legacy_dataset=False,
         partition_cols=["x", "y"],
     )
 
@@ -680,7 +681,6 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         table,
         root_path=str(tmp_path),
         partition_cols=["one"],
-        use_legacy_dataset=False,
     )
 
     partitioning = Partitioning("hive", field_types={"one": int})
@@ -712,7 +712,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["two"], use_legacy_dataset=False
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["two"],
     )
 
     def _block_udf(block: pa.Table):
@@ -905,6 +907,26 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+    )
+    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
+    )
+
+    parquet_output_path = os.path.join(tmp_path, "parquet")
+    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
 
 
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):

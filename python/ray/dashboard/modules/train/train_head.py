@@ -5,11 +5,12 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.utils import get_http_session_to_module
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -27,16 +28,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-
-class TrainHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class TrainHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._train_stats_actor = None  # Train V1
         self._train_v2_state_actor = None  # Train V2
         self._job_info_client = None
         self._gcs_actor_info_stub = None
+
+        # Lazy initialized HTTP session to NodeHead
+        self._node_head_http_session = None
 
     # TODO: The next iteration of this should be "/api/train/v2/runs/v2".
     # This follows the naming convention of "/api/train/{train_version}/runs/{api_version}".
@@ -140,7 +142,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # Sort train runs in reverse chronological order
         decorated_train_runs = sorted(
             decorated_train_runs,
-            key=lambda run: run.start_time_ms,
+            key=lambda run: run.start_time_ns,
             reverse=True,
         )
         return decorated_train_runs
@@ -184,9 +186,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
         logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-        train_run_actors = await DataOrganizer.get_actor_infos(
-            actor_ids=actor_ids,
-        )
+        train_run_actors = await self._get_actor_infos(actor_ids)
 
         for train_worker in train_workers:
             actor = train_run_actors.get(train_worker.actor_id, None)
@@ -244,9 +244,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # train controller.
         # We need to detect this case and mark the train run as ABORTED.
 
-        actor_infos = await DataOrganizer.get_actor_infos(
-            actor_ids=[train_run.controller_actor_id],
-        )
+        actor_infos = await self._get_actor_infos([train_run.controller_actor_id])
         controller_actor_info = actor_infos[train_run.controller_actor_id]
 
         controller_actor_status = (
@@ -332,6 +330,18 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
+    async def _get_actor_infos(self, actor_ids: List[str]):
+        if self._node_head_http_session is None:
+            self._node_head_http_session = get_http_session_to_module(
+                "NodeHead", self._config.socket_dir
+            )
+        actor_ids_qs_str = ",".join(actor_ids)
+        url = f"http://localhost/logical/actors?ids={actor_ids_qs_str}&nocache=1"
+        async with self._node_head_http_session.get(url) as resp:
+            resp.raise_for_status()
+            resp_json = await resp.json()
+        return resp_json["data"]["actors"]
+
     async def _add_actor_status_and_update_run_status(self, train_runs):
         from ray.train._internal.state.schema import (
             ActorStatusEnum,
@@ -349,9 +359,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
             logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
 
-            train_run_actors = await DataOrganizer.get_actor_infos(
-                actor_ids=actor_ids,
-            )
+            train_run_actors = await self._get_actor_infos(actor_ids)
 
             for worker_info in train_run.workers:
                 actor = train_run_actors.get(worker_info.actor_id, None)
@@ -419,11 +427,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
         return train_runs_with_details
 
-    @staticmethod
-    def is_minimal_module():
-        return False
-
-    async def run(self, server):
+    async def run(self):
+        await super().run()
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
 

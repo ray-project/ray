@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import uuid
 
 import ray
@@ -201,7 +201,6 @@ class PhysicalOperator(Operator):
         self._started = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
-        self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_completed = False
@@ -210,6 +209,8 @@ class PhysicalOperator(Operator):
         self._logical_operators: List[LogicalOperator] = []
         self._data_context = data_context
         self._id = str(uuid.uuid4())
+        # Initialize metrics after data_context is set
+        self._metrics = OpRuntimeMetrics(self)
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -456,7 +457,7 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def shutdown(self) -> None:
+    def shutdown(self, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
@@ -563,8 +564,17 @@ class PhysicalOperator(Operator):
     def actor_info_progress_str(self) -> str:
         """Returns Actor progress strings for Alive, Restarting and Pending Actors.
 
-        This method will be called in summary_str API in OpState. Subcallses can
+        This method will be called in summary_str API in OpState. Subclasses can
         override it to return Actor progress strings for Alive, Restarting and Pending
         Actors.
         """
         return ""
+
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors.
+
+        This method will be called in add_output API in OpState. Subclasses can
+        override it to return counts for Alive, Restarting and Pending
+        Actors.
+        """
+        return 0, 0, 0

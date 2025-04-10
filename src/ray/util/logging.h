@@ -280,15 +280,14 @@ class RayLog {
   /// Example: if log_filepath is /my/path/raylet.out, the output can be
   /// /my/path/raylet.out, /my/path/raylet.out.1 and /my/path/raylet.out.2
   ///
-  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_max_size max bytes for of log rotation. 0 means no rotation.
   /// \param log_rotation_file_num max number of rotating log files.
-  static void StartRayLog(
-      const std::string &app_name,
-      RayLogLevel severity_threshold = RayLogLevel::INFO,
-      const std::string &log_filepath = "",
-      const std::string &err_log_filepath = "",
-      size_t log_rotation_max_size = std::numeric_limits<size_t>::max(),
-      size_t log_rotation_file_num = 1);
+  static void StartRayLog(const std::string &app_name,
+                          RayLogLevel severity_threshold = RayLogLevel::INFO,
+                          const std::string &log_filepath = "",
+                          const std::string &err_log_filepath = "",
+                          size_t log_rotation_max_size = 0,
+                          size_t log_rotation_file_num = 1);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
@@ -296,12 +295,16 @@ class RayLog {
 
   /// Get max bytes value from env variable.
   /// Return default value, which indicates no rotation, if env not set, parse failure or
-  /// value 0.
+  /// return value 0.
+  ///
+  /// Log rotation is disable on windows platform.
   static size_t GetRayLogRotationMaxBytesOrDefault();
 
   /// Get log rotation backup count.
   /// Return default value, which indicates no rotation, if env not set, parse failure or
-  /// value 0.
+  /// return value 1.
+  ///
+  /// Log rotation is disabled on windows platform.
   static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
@@ -421,7 +424,7 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  inline static size_t log_rotation_max_size_ = std::numeric_limits<size_t>::max();
+  inline static size_t log_rotation_max_size_ = 0;
   // Log rotation file number.
   inline static size_t log_rotation_file_num_ = 1;
   // Ray default logger name.

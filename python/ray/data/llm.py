@@ -19,6 +19,9 @@ class ProcessorConfig(_ProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
+        resources_per_bundle: The resource bundles for placement groups.
+            You can specify a custom device label e.g. {'NPU': 1}.
+            The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -81,7 +84,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
     Args:
-        model: The model to use for the vLLM engine.
+        model_source: The model source to use for the vLLM engine.
         batch_size: The batch size to send to the vLLM engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
@@ -120,7 +123,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
             config = vLLMEngineProcessorConfig(
-                model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
                 engine_kwargs=dict(
                     enable_prefix_caching=True,
                     enable_chunked_prefill=True,
@@ -146,6 +149,15 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
                     resp=row["generated_text"],
                 ),
             )
+
+            # The processor requires specific input columns, which depend on
+            # your processor config. You can use the following API to check
+            # the required input columns:
+            processor.log_input_column_names()
+            # Example log:
+            # The first stage of the processor is ChatTemplateStage.
+            # Required input columns:
+            #     messages: A list of messages in OpenAI chat format.
 
             ds = ray.data.range(300)
             ds = processor(ds)
@@ -187,7 +199,7 @@ def build_llm_processor(
             from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
             config = vLLMEngineProcessorConfig(
-                model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
                 engine_kwargs=dict(
                     enable_prefix_caching=True,
                     enable_chunked_prefill=True,

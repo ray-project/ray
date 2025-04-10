@@ -495,13 +495,9 @@ class EnvRunnerGroup:
                 config.num_env_runners or 1
             )
 
-        # Update the rl_module component of the EnvRunner states, if necessary:
-        if rl_module_state:
-            env_runner_states.update(rl_module_state)
-
         # If we do NOT want remote EnvRunners to get their Connector states updated,
-        # only update the local worker here (with all state components) and then remove
-        # the connector components.
+        # only update the local worker here (with all state components, except the model
+        # weights) and then remove the connector components.
         if not config.update_worker_filter_stats:
             self.local_env_runner.set_state(env_runner_states)
             env_runner_states.pop(COMPONENT_ENV_TO_MODULE_CONNECTOR, None)
@@ -510,18 +506,24 @@ class EnvRunnerGroup:
         # If there are components in the state left -> Update remote workers with these
         # state components (and maybe the local worker, if it hasn't been updated yet).
         if env_runner_states:
-            # Put the state dictionary into Ray's object store to avoid having to make n
-            # pickled copies of the state dict.
-            ref_env_runner_states = ray.put(env_runner_states)
+            # Update the local EnvRunner, but NOT with the weights. If used at all for
+            # evaluation (through the user calling `self.evaluate`), RLlib would update
+            # the weights up front either way.
+            if config.update_worker_filter_stats:
+                self.local_env_runner.set_state(env_runner_states)
 
-            def _update(_env_runner: EnvRunner) -> None:
-                _env_runner.set_state(ray.get(ref_env_runner_states))
+            # Send the model weights only to remote EnvRunners.
+            # In case the local EnvRunner is ever needed for evaluation,
+            # RLlib updates its weight right before such an eval step.
+            if rl_module_state:
+                env_runner_states.update(rl_module_state)
 
             # Broadcast updated states back to all workers.
             self.foreach_env_runner(
-                _update,
+                "set_state",  # Call the `set_state()` remote method.
+                kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
-                local_env_runner=config.update_worker_filter_stats,
+                local_env_runner=False,
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
 
@@ -568,7 +570,11 @@ class EnvRunnerGroup:
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         rl_module_state = None
         if self.num_remote_workers() or from_worker_or_learner_group is not None:
-            weights_src = from_worker_or_learner_group or self.local_env_runner
+            weights_src = (
+                from_worker_or_learner_group
+                if from_worker_or_learner_group is not None
+                else self.local_env_runner
+            )
 
             if weights_src is None:
                 raise ValueError(
@@ -581,18 +587,35 @@ class EnvRunnerGroup:
                 if policies is not None
                 else [COMPONENT_RL_MODULE]
             )
-            # LearnerGroup has-a Learner has-a RLModule.
+            # LearnerGroup has-a Learner, which has-a RLModule.
             if isinstance(weights_src, LearnerGroup):
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
                 )[COMPONENT_LEARNER]
-            # EnvRunner has-a RLModule.
+            # EnvRunner (new API stack).
             elif self._remote_config.enable_env_runner_and_connector_v2:
-                rl_module_state = weights_src.get_state(
-                    components=modules,
-                    inference_only=inference_only,
-                )
+                # EnvRunner (remote) has-a RLModule.
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult)
+                #  `weights_src` could be the ActorManager, then. Then RLlib would know
+                #   that it has to ping the manager to try all healthy actors until the
+                #   first returns something.
+                if isinstance(weights_src, ray.actor.ActorHandle):
+                    rl_module_state = ray.get(
+                        weights_src.get_state.remote(
+                            components=modules,
+                            inference_only=inference_only,
+                        )
+                    )
+                # EnvRunner (local) has-a RLModule.
+                else:
+                    rl_module_state = weights_src.get_state(
+                        components=modules,
+                        inference_only=inference_only,
+                    )
+            # RolloutWorker (old API stack).
             else:
                 rl_module_state = weights_src.get_weights(
                     policies=policies,
@@ -613,8 +636,14 @@ class EnvRunnerGroup:
                 # copies of the weights dict for each worker.
                 rl_module_state_ref = ray.put(rl_module_state)
 
-                def _set_weights(env_runner):
-                    env_runner.set_state(ray.get(rl_module_state_ref))
+                # Sync to specified remote workers in this EnvRunnerGroup.
+                self.foreach_env_runner(
+                    func="set_state",
+                    kwargs=dict(state=rl_module_state_ref),
+                    local_env_runner=False,  # Do not sync back to local worker.
+                    remote_worker_ids=to_worker_indices,
+                    timeout_seconds=timeout_seconds,
+                )
 
             else:
                 rl_module_state_ref = ray.put(rl_module_state)
@@ -622,13 +651,13 @@ class EnvRunnerGroup:
                 def _set_weights(env_runner):
                     env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
 
-            # Sync to specified remote workers in this EnvRunnerGroup.
-            self.foreach_env_runner(
-                func=_set_weights,
-                local_env_runner=False,  # Do not sync back to local worker.
-                remote_worker_ids=to_worker_indices,
-                timeout_seconds=timeout_seconds,
-            )
+                # Sync to specified remote workers in this EnvRunnerGroup.
+                self.foreach_env_runner(
+                    func=_set_weights,
+                    local_env_runner=False,  # Do not sync back to local worker.
+                    remote_worker_ids=to_worker_indices,
+                    timeout_seconds=timeout_seconds,
+                )
 
         # If `from_worker_or_learner_group` is provided, also sync to this
         # EnvRunnerGroup's local worker.
@@ -716,8 +745,11 @@ class EnvRunnerGroup:
 
     def foreach_env_runner(
         self,
-        func: Callable[[EnvRunner], T],
+        func: Union[
+            Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
+        ],
         *,
+        kwargs=None,
         local_env_runner: bool = True,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
@@ -759,13 +791,18 @@ class EnvRunnerGroup:
 
         local_result = []
         if local_env_runner and self.local_env_runner is not None:
-            local_result = [func(self.local_env_runner)]
+            assert kwargs is None
+            if isinstance(func, str):
+                local_result = [getattr(self.local_env_runner, func)]
+            else:
+                local_result = [func(self.local_env_runner)]
 
         if not self._worker_manager.actor_ids():
             return local_result
 
         remote_results = self._worker_manager.foreach_actor(
             func,
+            kwargs=kwargs,
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
@@ -782,9 +819,17 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
+    # TODO (sven): Deprecate this API. Users can lookup the "worker index" from the
+    #  EnvRunner object directly through `self.worker_index` (besides many other useful
+    #  properties, like `in_evaluation`, `num_env_runners`, etc..).
     def foreach_env_runner_with_id(
         self,
-        func: Callable[[int, EnvRunner], T],
+        func: Union[
+            Callable[[int, EnvRunner], T],
+            List[Callable[[int, EnvRunner], T]],
+            str,
+            List[str],
+        ],
         *,
         local_env_runner: bool = True,
         healthy_only: bool = True,
@@ -792,8 +837,6 @@ class EnvRunnerGroup:
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
-        # Deprecated args.
-        local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
 
@@ -850,7 +893,9 @@ class EnvRunnerGroup:
 
     def foreach_env_runner_async(
         self,
-        func: Union[Callable[[EnvRunner], T], str],
+        func: Union[
+            Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
+        ],
         *,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,

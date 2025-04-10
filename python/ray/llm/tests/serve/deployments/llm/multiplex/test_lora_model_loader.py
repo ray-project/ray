@@ -1,9 +1,9 @@
 import asyncio
-import subprocess
 from unittest.mock import AsyncMock, Mock, patch
 import sys
 
 import pytest
+
 
 from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
     LoraModelLoader,
@@ -12,281 +12,198 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
-    LoraMirrorConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 
 
-@pytest.mark.asyncio
-async def test_lora_model_loader():
-    model_loader = LoraModelLoader("/tmp/ray/lora/cache")
-    mock_sync_model = Mock()
+class TestLoRAModelLoader:
+    """Test suite for the LoraModelLoader class."""
 
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="llm_model_id",
-        ),
-        llm_engine=LLMEngine.VLLM,
-        accelerator_type="L4",
-        lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
-    )
-    lora_model_id = "base_model:lora_id"
-    with patch.multiple(
-        "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
-        sync_model=mock_sync_model,
-        get_lora_mirror_config=AsyncMock(
-            return_value=LoraMirrorConfig(
+    @pytest.fixture
+    def model_loader(self):
+        """Provides a LoraModelLoader instance for tests."""
+        return LoraModelLoader("/tmp/ray/lora/cache", max_tries=3)
+
+    @pytest.fixture
+    def llm_config(self):
+        """Common LLM config used across tests."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="llm_model_id"),
+            llm_engine=LLMEngine.vLLM,
+            accelerator_type="L4",
+            lora_config=LoraConfig(
+                dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"
+            ),
+        )
+
+    @pytest.fixture
+    def lora_model_id(self):
+        """Common LoRA model ID used across tests."""
+        return "base_model:lora_id"
+
+    @pytest.fixture
+    def lora_mirror_config(self, lora_model_id):
+        """Common LoRA mirror config used across tests."""
+        return LoraMirrorConfig(
+            lora_model_id=lora_model_id,
+            bucket_uri="s3://fake-bucket-uri-abcd",
+            max_total_tokens=4096,
+        )
+
+    @pytest.mark.asyncio
+    async def test_basic_loading(
+        self, model_loader, llm_config, lora_model_id, lora_mirror_config
+    ):
+        """Test basic model loading functionality."""
+        # Create a simple mock for sync_model
+        mock_sync_model = Mock()
+
+        with patch.multiple(
+            "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
+            sync_model=mock_sync_model,
+            get_lora_mirror_config=AsyncMock(return_value=lora_mirror_config),
+        ):
+            # First load should download the model
+            disk_multiplex_config = await model_loader.load_model(
                 lora_model_id=lora_model_id,
-                bucket_uri="s3://fake-bucket-uri-abcd",
-                max_total_tokens=4096,
+                llm_config=llm_config,
             )
-        ),
+
+            # Verify sync_model was called with correct parameters
+            mock_sync_model.assert_called_once_with(
+                "s3://fake-bucket-uri-abcd",
+                "/tmp/ray/lora/cache/lora_id",
+                timeout=model_loader.download_timeout_s,
+                sync_args=None,
+            )
+            mock_sync_model.reset_mock()
+
+            # Second time we don't load from S3 - should use cache
+            new_disk_config = await model_loader.load_model(
+                lora_model_id=lora_model_id,
+                llm_config=llm_config,
+            )
+            assert new_disk_config == disk_multiplex_config
+            mock_sync_model.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_retry_logic(
+        self, model_loader, llm_config, lora_model_id, lora_mirror_config
     ):
-        disk_multiplex_config = await model_loader.load_model(
-            lora_model_id=lora_model_id,
-            llm_config=llm_config,
-        )
+        """Test that the lora model load task is properly retried on failure."""
+        # Counter to track number of sync_model calls
+        attempt_count = 0
 
-        mock_sync_model.assert_called_once_with(
-            "s3://fake-bucket-uri-abcd",
-            "/tmp/ray/lora/cache/lora_id",
-            timeout=model_loader.download_timeout_s,
-            sync_args=None,
-        )
-        mock_sync_model.reset_mock()
+        # Create a mock for sync_model that tracks calls and fails initially
+        def mock_sync_model(bucket_uri, local_path, timeout=None, sync_args=None):
+            nonlocal attempt_count
+            attempt_count += 1
 
-        # Second time we don't load from s3
-        new_disk_config = await model_loader.load_model(
-            lora_model_id=lora_model_id,
-            llm_config=llm_config,
-        )
-        assert new_disk_config == disk_multiplex_config
-        mock_sync_model.assert_not_called()
+            # Fail on first attempt, succeed on second
+            if attempt_count == 1:
+                raise RuntimeError("Simulated download failure")
+            # Success on subsequent attempts
+            return None
 
-
-@pytest.mark.asyncio
-async def test_lora_model_loader_task():
-    model_id = "lora"
-
-    class MockLoraModelLoader(LoraModelLoader):
-        def __init__(self, *args, **kwargs):
-            self.task_call_counter = 0
-            super().__init__(*args, **kwargs)
-
-        def _load_model_sync(self, *args, **kwargs):
-            self.task_call_counter += 1
-            return super()._load_model_sync(*args, **kwargs)
-
-    model_loader = MockLoraModelLoader("/tmp/ray/lora/cache", download_timeout_s=1)
-    tasks = []
-
-    def _get_aws_sync_command(*args, **kwargs):
-        return ["sleep", "100000000"]
-
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="llm_model_id",
-        ),
-        llm_engine=LLMEngine.VLLM,
-        accelerator_type="L4",
-        lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
-    )
-    with patch(
-        "ray.llm._internal.serve.deployments.llm.multiplex.utils._get_aws_sync_command",
-        _get_aws_sync_command,
-    ), patch.multiple(
-        "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
-        get_lora_mirror_config=AsyncMock(
-            return_value=LoraMirrorConfig(
-                lora_model_id="lora",
-                bucket_uri="s3://fake-bucket-uri-abcd",
-                max_total_tokens=4096,
+        with patch.multiple(
+            "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
+            sync_model=Mock(side_effect=mock_sync_model),
+            get_lora_mirror_config=AsyncMock(return_value=lora_mirror_config),
+        ):
+            # First load should trigger a retry
+            disk_multiplex_config = await model_loader.load_model(
+                lora_model_id=lora_model_id,
+                llm_config=llm_config,
             )
-        ),
+
+            # Verify retry happened exactly once
+            assert attempt_count == 2
+
+            # Reset counter
+            attempt_count = 0
+
+            # Load again (should use cache, no download attempts)
+            new_disk_config = await model_loader.load_model(
+                lora_model_id=lora_model_id,
+                llm_config=llm_config,
+            )
+
+            # Verify no new download attempts
+            assert attempt_count == 0
+
+            # Verify cached config is returned
+            assert new_disk_config == disk_multiplex_config
+
+    @pytest.mark.asyncio
+    async def test_concurrent_loading(
+        self, model_loader, llm_config, lora_model_id, lora_mirror_config
     ):
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
+        """Test that concurrent loads only trigger one download process."""
+        # Counter to track number of sync_model calls
+        attempt_count = 0
+
+        # Create a mock for sync_model that tracks calls and fails initially
+        def mock_sync_model(bucket_uri, local_path, timeout=None, sync_args=None):
+            nonlocal attempt_count
+            attempt_count += 1
+
+            # Fail on first attempt, succeed on second
+            if attempt_count == 1:
+                raise RuntimeError("Simulated download failure")
+            # Success on subsequent attempts
+            return None
+
+        with patch.multiple(
+            "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
+            sync_model=Mock(side_effect=mock_sync_model),
+            get_lora_mirror_config=AsyncMock(return_value=lora_mirror_config),
+        ):
+            # Clear cache to force download
+            model_loader.disk_cache.clear()
+
+            # Create multiple concurrent tasks
+            tasks = [
+                asyncio.create_task(
+                    model_loader.load_model(
+                        lora_model_id=lora_model_id,
+                        llm_config=llm_config,
+                    )
                 )
-            )
-        )
-        await asyncio.sleep(0.1)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.sleep(0.7)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
+                for _ in range(3)
+            ]
 
-        # Ensure that the rest of the tasks finish even if the original one
-        # is cancelled
-        tasks.pop(0).cancel()
-        with pytest.raises(subprocess.TimeoutExpired):
-            await asyncio.gather(*tasks)
+            # Wait for all tasks to complete
+            results = await asyncio.gather(*tasks)
 
-        assert all(isinstance(t.exception(), subprocess.TimeoutExpired) for t in tasks)
-        # The download task should have been called only once across all requests
-        assert model_loader.task_call_counter == 1
+            # Verify retry happened exactly once across all tasks
+            assert attempt_count == 2
 
-    tasks.clear()
+            # All tasks should return the same result
+            assert all(result == results[0] for result in results)
 
-    def _get_aws_sync_command(*args, **kwargs):
-        return ["sleep", "0.001"]
-
-    with patch(
-        "ray.llm._internal.serve.deployments.llm.multiplex.utils._get_aws_sync_command",
-        _get_aws_sync_command,
-    ), patch.multiple(
-        "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
-        get_lora_mirror_config=AsyncMock(
-            return_value=LoraMirrorConfig(
-                lora_model_id="lora",
-                bucket_uri="s3://fake-bucket-uri-abcd",
-                max_total_tokens=4096,
-            )
-        ),
+    @pytest.mark.asyncio
+    async def test_max_retries_exhaustion(
+        self, model_loader, llm_config, lora_model_id, lora_mirror_config
     ):
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
+        """Test that an error is raised when max retries are exhausted."""
+        # Mock that always fails
+        def mock_sync_model_always_fails(*args, **kwargs):
+            raise RuntimeError("Simulated persistent failure")
+
+        with patch.multiple(
+            "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
+            sync_model=Mock(side_effect=mock_sync_model_always_fails),
+            get_lora_mirror_config=AsyncMock(return_value=lora_mirror_config),
+        ):
+            # Should fail after max_tries (3) attempts
+            with pytest.raises(RuntimeError) as excinfo:
+                await model_loader.load_model(
+                    lora_model_id=lora_model_id,
                     llm_config=llm_config,
                 )
-            )
-        )
-        await asyncio.sleep(0)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.gather(*tasks)
-        assert all(not t.exception() for t in tasks)
-        # The download task should have been called only once across all requests
-        assert model_loader.task_call_counter == 2
-        assert model_id in model_loader.disk_cache
-        assert not model_loader.active_syncing_tasks
 
-        tasks.clear()
-
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.sleep(0)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.gather(*tasks)
-        assert all(not t.exception() for t in tasks)
-        # We should have loaded from cache here
-        assert model_loader.task_call_counter == 2
-
-
-@pytest.mark.asyncio
-async def test_lora_model_loader_task_retry():
-    model_id = "lora"
-
-    class MockLoraModelLoader(LoraModelLoader):
-        def __init__(self, *args, **kwargs):
-            self.task_call_counter = 0
-            super().__init__(*args, **kwargs)
-
-        def _load_model_sync(self, *args, **kwargs):
-            self.task_call_counter += 1
-            return super()._load_model_sync(*args, **kwargs)
-
-    model_loader = MockLoraModelLoader(
-        "/tmp/ray/lora/cache", download_timeout_s=1, max_tries=3
-    )
-    tasks = []
-    tries = 0
-
-    def _get_aws_sync_command(*args, **kwargs):
-        nonlocal tries
-        tries += 1
-        if tries > 1:
-            return ["sleep", "0.1"]
-        return ["sleep", "100000000"]
-
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="llm_model_id",
-        ),
-        llm_engine=LLMEngine.VLLM,
-        accelerator_type="L4",
-        lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
-    )
-    with patch(
-        "ray.llm._internal.serve.deployments.llm.multiplex.utils._get_aws_sync_command",
-        _get_aws_sync_command,
-    ), patch.multiple(
-        "ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader",
-        get_lora_mirror_config=AsyncMock(
-            return_value=LoraMirrorConfig(
-                lora_model_id="lora",
-                bucket_uri="s3://fake-bucket-uri-abcd",
-                max_total_tokens=4096,
-            )
-        ),
-    ):
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.sleep(0.1)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.sleep(0.7)
-        tasks.append(
-            asyncio.create_task(
-                model_loader.load_model(
-                    lora_model_id=model_id,
-                    llm_config=llm_config,
-                )
-            )
-        )
-        await asyncio.gather(*tasks)
-
-        assert all(not t.exception() for t in tasks)
-        # The download task should have been called only once across all requests
-        assert model_loader.task_call_counter == 1
-        assert tries == 2
+            assert "Simulated persistent failure" in str(excinfo.value)
 
 
 if __name__ == "__main__":

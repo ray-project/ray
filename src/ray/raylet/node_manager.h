@@ -16,6 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
@@ -91,8 +96,6 @@ struct NodeManagerConfig {
   uint64_t report_resources_period_ms;
   /// The store socket name.
   std::string store_socket_name;
-  /// The path to the ray temp dir.
-  std::string temp_dir;
   /// The path of this ray log dir.
   std::string log_dir;
   /// The path of this ray session dir.
@@ -111,6 +114,9 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup.
+  bool enable_resource_isolation = false;
 
   void AddDefaultLabels(const std::string &self_node_id);
 };
@@ -132,11 +138,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
-  /// Process a new client connection.
+  /// Handle an unexpected error that occurred on a client connection.
+  /// The client will be disconnected and no more messages will be processed.
   ///
-  /// \param client The client to process.
-  /// \return Void.
-  void ProcessNewClient(ClientConnection &client);
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+                                   const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -656,6 +664,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Checks the local socket connection for all registered workers and drivers.
+  /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
+  /// we disconnect and kill the worker process.
+  ///
+  /// This is an optimization to avoid processing all messages sent by the worker
+  /// before detecing an EOF on the socket.
+  void CheckForUnexpectedWorkerDisconnects();
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
 
@@ -702,11 +718,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Disconnect a client.
   ///
   /// \param client The client that sent the message.
+  /// \param graceful Indicates if this was a graceful disconnect initiated by the
+  ///        worker or a non-graceful disconnect initiated by the raylet. On graceful
+  ///        disconnect, a DisconnectClientReply will be sent to the worker prior to
+  ///        closing the connection.
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                        bool graceful,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
                         const rpc::RayException *creation_task_exception = nullptr);
@@ -791,8 +812,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
-  /// The path to the ray temp dir.
-  std::string temp_dir_;
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
 
