@@ -1,6 +1,7 @@
 import functools
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pyarrow
@@ -16,7 +17,6 @@ from ray.data._internal.datasource.parquet_datasource import (
     get_parquet_dataset,
 )
 from ray.data._internal.util import (
-    RetryingPyFileSystem,
     call_with_retry,
     iterate_with_retry,
     make_async_gen,
@@ -31,6 +31,7 @@ from .file_reader import FileReader
 from .in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
+from .supports_row_counting import SupportsRowCounting
 
 # The number of rows to read per batch. This is the default we use in OSS.
 DEFAULT_BATCH_SIZE = 10_000
@@ -39,7 +40,7 @@ DEFAULT_BATCH_SIZE = 10_000
 logger = logging.getLogger(__name__)
 
 
-class ParquetReader(FileReader):
+class ParquetReader(FileReader, SupportsRowCounting):
     """Reads Parquet files.
 
     This file reader implementation leverages PyArrow's `ParquetDataset` and
@@ -49,6 +50,10 @@ class ParquetReader(FileReader):
     """
 
     _NUM_THREADS_PER_TASK = 16
+
+    # NOTE: This is a mostly arbitrary number. We might get better performance by tuning
+    # this value.
+    _COUNT_ROWS_BATCH_SIZE = 16
 
     def __init__(
         self,
@@ -303,14 +308,10 @@ class ParquetReader(FileReader):
         # information, see https://github.com/anyscale/rayturbo/issues/924.
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size
 
-    def count_rows(self, paths: List[str], *, filesystem: RetryingPyFileSystem) -> int:
+    def count_rows(self, paths: List[str], *, filesystem: pyarrow.fs.FileSystem) -> int:
         num_rows = 0
 
-        def open_file(path: str) -> ParquetFile:
-            stream = filesystem.open_input_file(path)
-            return ParquetFile(stream)
-
-        for path in paths:
+        def count_rows_in_file(path: str) -> int:
             file = call_with_retry(
                 lambda: open_file(path),
                 description="open Parquet file",
@@ -318,15 +319,28 @@ class ParquetReader(FileReader):
             )
             # Getting the metadata requires network calls, so it might fail with
             # transient errors.
-            num_rows += call_with_retry(
+            return call_with_retry(
                 lambda: file.metadata.num_rows,
                 description="get count from Parquet metadata",
                 match=self._retried_io_errors,
             )
+
+        def open_file(path: str) -> ParquetFile:
+            stream = filesystem.open_input_file(path)
+            return ParquetFile(stream)
+
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(count_rows_in_file, path) for path in paths]
+            for future in as_completed(futures):
+                num_rows += future.result()
+
         return num_rows
 
-    def supports_count_rows(self) -> bool:
+    def can_count_rows(self) -> bool:
         return "filter" not in self._to_batches_kwargs
+
+    def count_rows_batch_size(self) -> int:
+        return self._COUNT_ROWS_BATCH_SIZE
 
     def supports_predicate_pushdown(self) -> bool:
         return True

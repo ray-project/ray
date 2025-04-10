@@ -56,28 +56,6 @@ class FileReader(abc.ABC):
         """
         ...
 
-    def count_rows(self, paths: List[str], *, filesystem) -> int:
-        """Count the number of rows in the files at the given paths.
-
-        This method is used by the `PushdownCountFiles` rule to avoid reading the entire
-        file when only the number of rows is needed.
-
-        Overriding this method is optional. If you do override it, also override
-        `supports_count_rows` to return `True`.
-
-        Args:
-            path: A list of file paths to count rows from.
-            filesystem: The filesystem to read from.
-
-        Returns:
-            The number of rows in the files.
-        """
-        raise NotImplementedError
-
-    def supports_count_rows(self) -> bool:
-        """Return whether other objects can call `count_rows`."""
-        return False
-
     def supports_predicate_pushdown(self) -> bool:
         """Whether expressions can be handled upon reading"""
         return False

@@ -11,6 +11,7 @@ from .in_memory_size_estimator import (
 from .json_reader import JSONReader
 from .numpy_reader import NumpyReader
 from .parquet_reader import ParquetInMemorySizeEstimator, ParquetReader
+from .supports_row_counting import SupportsRowCounting
 from .text_reader import TextReader
 from .video_reader import VideoReader
 from .webdataset_reader import WebDatasetReader
@@ -20,6 +21,7 @@ __all__ = [
     "AvroReader",
     "BinaryInMemorySizeEstimator",
     "BinaryReader",
+    "SupportsRowCounting",
     "CSVReader",
     "FileReader",
     "ImageReader",

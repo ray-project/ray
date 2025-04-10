@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Iterable, List, Optional, Dict
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
@@ -19,7 +19,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFnDataType,
 )
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.block import Block, DataBatch, BlockType
+from ray.data.block import Block, BlockType, DataBatch
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
