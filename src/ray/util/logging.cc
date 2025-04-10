@@ -614,7 +614,7 @@ RayLog::~RayLog() {
                 msg_osstream_.str(),
                 context_osstream_.str());
   }
-  logger->flush();
+  // logger->flush();
 
   if (severity_ == RayLogLevel::FATAL) {
     std::_Exit(EXIT_FAILURE);
