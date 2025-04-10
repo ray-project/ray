@@ -94,7 +94,10 @@ class RpcFailureManager {
   absl::flat_hash_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
 
-RpcFailureManager rpc_failure_manager;
+auto &rpc_failure_manager = []() -> RpcFailureManager & {
+  static auto *manager = new RpcFailureManager();
+  return *manager;
+}();
 
 }  // namespace
 

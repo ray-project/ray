@@ -121,7 +121,11 @@ class DelayManager {
   std::pair<int64_t, int64_t> default_delay_range_us_ = {0, 0};
 };
 
-DelayManager delay_manager;
+auto &delay_manager = []() -> DelayManager & {
+  static auto *manager = new DelayManager();
+  return *manager;
+}();
+
 }  // namespace
 
 int64_t GetDelayUs(const std::string &name) {
