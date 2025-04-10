@@ -27,9 +27,9 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.logging import (
-    SessionFileHandler,
     get_log_directory,
-    get_default_formatter,
+    register_dataset_logger,
+    unregister_dataset_logger,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
@@ -87,13 +87,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
-        self._dataset_log_handler = SessionFileHandler(
-            filename=f"ray-data-{self._dataset_id}.log",
-        )
-        self._dataset_log_handler.setLevel(logging.DEBUG)
-        self._dataset_log_handler.setFormatter(get_default_formatter())
-        logger.addHandler(self._dataset_log_handler)
 
+        register_dataset_logger(self._dataset_id)
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
@@ -229,7 +224,10 @@ class StreamingExecutor(Executor, threading.Thread):
                         f"{self._final_stats.time_total_s:.2f} seconds"
                     )
                 else:
-                    prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
+                    prog_bar_msg = (
+                        f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
+                    )
+                logger.info(prog_bar_msg)
                 self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
@@ -242,7 +240,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 for callback in get_execution_callbacks(self._data_context):
                     callback.after_execution_fails(self, exception)
             self._autoscaler.on_executor_shutdown()
-            logger.removeHandler(self._dataset_log_handler)
+            unregister_dataset_logger(self._dataset_id)
 
     def run(self):
         """Run the control loop in a helper thread.

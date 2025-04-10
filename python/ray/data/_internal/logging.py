@@ -69,6 +69,9 @@ RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 # Env. variable to specify the logging config path use defaults if not set
 RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
+_DATASET_LOGGER_HANDLER = {}
+_ACTIVE_DATASET = None
+
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
 # level where logs aren't written by default.
@@ -212,9 +215,79 @@ def get_log_directory() -> Optional[str]:
     return os.path.join(session_dir, "logs", "ray-data")
 
 
-def get_default_formatter() -> logging.Formatter:
+def _get_default_formatter() -> logging.Formatter:
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
     if log_encoding is not None and log_encoding.upper() == "JSON":
         return DEFAULT_JSON_FORMATTER()
 
     return logging.Formatter(DEFAULT_TEXT_FORMATTER)
+
+
+def _create_dataset_log_handler(dataset_id: str) -> SessionFileHandler:
+    """Create a log handler for a dataset with the given ID.
+
+    Args:
+        dataset_id: The ID of the dataset.
+
+    Returns:
+        A log handler for the dataset.
+    """
+    handler = SessionFileHandler(filename=f"ray-data-{dataset_id}.log")
+    handler.setFormatter(_get_default_formatter())
+
+    return handler
+
+
+def register_dataset_logger(dataset_id: str) -> None:
+    """Create a log handler for a dataset with the given ID. Activate the handler if
+    this is the only active dataset. Otherwise, print a warning to that handler and
+    keep it inactive until it becomes the only active dataset.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    global _DATASET_LOGGER_HANDLER
+    global _ACTIVE_DATASET
+    logger = logging.getLogger("ray.data")
+    log_handler = _create_dataset_log_handler(dataset_id)
+
+    # The per-dataset log will always have the full context about its registration,
+    # regardless of whether it is active or inactive.
+    local_logger = logging.getLogger(__name__)
+    local_logger.addHandler(log_handler)
+    local_logger.info("Registered dataset logger for dataset %s", dataset_id)
+
+    _DATASET_LOGGER_HANDLER[dataset_id] = log_handler
+    if not _ACTIVE_DATASET:
+        _ACTIVE_DATASET = dataset_id
+        logger.addHandler(log_handler)
+    else:
+        local_logger.info(
+            f"{dataset_id} registers for logging while another dataset "
+            f"{_ACTIVE_DATASET} is also logging. For performance reasons, we will not "
+            f"log to the dataset {dataset_id} until it is the only active dataset."
+        )
+    local_logger.removeHandler(log_handler)
+
+
+def unregister_dataset_logger(dataset_id: str) -> None:
+    """Remove the logger for a dataset with the given ID.
+
+    Args:
+        dataset_id: The ID of the dataset.
+    """
+    global _DATASET_LOGGER_HANDLER
+    global _ACTIVE_DATASET
+    logger = logging.getLogger("ray.data")
+
+    log_handler = _DATASET_LOGGER_HANDLER.pop(dataset_id, None)
+
+    if _ACTIVE_DATASET == dataset_id:
+        _ACTIVE_DATASET = None
+        if _DATASET_LOGGER_HANDLER:
+            # If there are still active dataset loggers, activate the first one.
+            register_dataset_logger(next(iter(_DATASET_LOGGER_HANDLER.keys())))
+
+    if log_handler:
+        logger.removeHandler(log_handler)
+        log_handler.close()
