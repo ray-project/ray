@@ -347,8 +347,27 @@ def deploy(
         "\nSent deploy request successfully.\n "
         "* Use `serve status` to check applications' statuses.\n "
         "* Use `serve config` to see the current application config(s).\n"
+        "(only available if config was provided at startup).\n"
     )
 
+@cli.command(short_help="Get the current Serve application configurations")
+def config(address: str):
+    """Show the current Serve config (only available if config was provided at startup)."""
+    client = ServeSubmissionClient(address)
+    try:
+        config = client.get_serve_config()
+        if not config or not getattr(config, "applications", None):
+            cli_logger.warning(
+                "No configuration available. Note: `serve config` only displays "
+                "configurations that were explicitly provided at startup."
+            )
+            return
+            
+        cli_logger.print("Current Serve configurations:\n")
+        cli_logger.print(yaml.dump(config.dict(exclude_unset=True)))
+    except Exception as e:
+        cli_logger.error(f"Failed to get Serve config: {str(e)}")
+        
 
 @cli.command(
     short_help="Run an application or group of applications.",
