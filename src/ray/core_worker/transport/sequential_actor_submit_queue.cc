@@ -68,7 +68,7 @@ std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
   return task_ids;
 }
 
-absl::optional<std::pair<TaskSpecification, bool>>
+std::optional<std::pair<TaskSpecification, bool>>
 SequentialActorSubmitQueue::PopNextTaskToSend() {
   auto head = requests.begin();
   if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
@@ -91,14 +91,7 @@ SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   return result;
 }
 
-void SequentialActorSubmitQueue::OnClientConnected() {
-  // This assumes that all replies from the previous incarnation
-  // of the actor have been received. This assumption should be OK
-  // because we fail all inflight tasks in `DisconnectRpcClient`.
-  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                 << caller_starts_at << " to " << next_task_reply_position;
-  caller_starts_at = next_task_reply_position;
-}
+void SequentialActorSubmitQueue::OnClientConnected() {}
 
 uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {

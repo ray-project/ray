@@ -26,7 +26,6 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/util/counter_map.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "ray/common/test_util.h"
 // clang-format on
 
 using namespace ::testing;  // NOLINT

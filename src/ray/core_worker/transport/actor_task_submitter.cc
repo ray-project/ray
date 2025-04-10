@@ -600,7 +600,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
-  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
+  RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
