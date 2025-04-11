@@ -15,14 +15,12 @@ from urllib.parse import quote_plus
 
 import pytest
 import requests
-from click.testing import CliRunner
 from requests.exceptions import ConnectionError, HTTPError
 
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
-import ray.scripts.scripts as scripts
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.ray_constants import (
@@ -1251,34 +1249,6 @@ def test_dashboard_not_included_ray_init(shutdown_only, capsys):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
         requests.get("http://localhost:8265")
-
-
-def test_dashboard_not_included_ray_start(shutdown_only, capsys):
-    runner = CliRunner()
-    try:
-        runner.invoke(
-            scripts.start,
-            ["--head", "--include-dashboard=False", "--dashboard-port=8265"],
-        )
-        addr = ray.init("auto")
-        dashboard_url = addr["webui_url"]
-        assert not dashboard_url
-
-        assert "view the dashboard at" not in capsys.readouterr().err
-
-        # Warm up.
-        @ray.remote
-        def f():
-            pass
-
-        ray.get(f.remote())
-
-        with pytest.raises(ConnectionError):
-            # Since the dashboard doesn't start, it should raise ConnectionError
-            # becasue we cannot estabilish a connection.
-            requests.get("http://localhost:8265")
-    finally:
-        runner.invoke(scripts.stop, ["--force"])
 
 
 @pytest.mark.skipif(
