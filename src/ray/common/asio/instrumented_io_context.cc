@@ -98,7 +98,7 @@ void instrumented_io_context::post(std::function<void()> handler,
       EventTracker::RecordExecution(handler, stats_handle);
     };
   }
-  delay_us += ray::asio::testing::get_delay_us(name);
+  delay_us += ray::asio::testing::GetDelayUs(name);
   if (delay_us == 0) {
     boost::asio::io_context::post(std::move(handler));
   } else {
