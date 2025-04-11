@@ -118,3 +118,9 @@ def test_export_data_metadata_enabled_by_config(
 
 def test_export_data_metadata(enable_export_api_write, dummy_dataset_dag_structure):
     _test_data_metadata_export(dummy_dataset_dag_structure)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
