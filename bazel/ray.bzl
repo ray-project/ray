@@ -11,10 +11,6 @@ COPTS_WITHOUT_LOG = select({
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
-    "@platforms//os:osx": [
-        # TODO(dayshah): The fixes required to keep this on break Java tests. Fix ASAP!
-        "-Wno-thread-safety-reference-return",
-    ],
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
@@ -223,3 +219,10 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]
