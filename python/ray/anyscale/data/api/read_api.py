@@ -762,7 +762,8 @@ def read_files(
     )
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"ReadFiles": []}, parent=None)
+        DatasetStats(metadata={"ReadFiles": []}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(read_files_op, execution_plan._context)
     return Dataset(plan=execution_plan, logical_plan=logical_plan)
