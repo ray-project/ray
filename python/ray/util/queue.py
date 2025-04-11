@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 
 @PublicAPI(stability="beta")
@@ -256,6 +257,7 @@ class Queue:
         self.actor = None
 
 
+@_inject_tracing_into_class
 class _QueueActor:
     def __init__(self, maxsize):
         self.maxsize = maxsize
