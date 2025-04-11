@@ -4084,6 +4084,7 @@ class Dataset:
         overwrite_table: Optional[bool] = True,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        job_config: Optional[Any] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
 
@@ -4123,6 +4124,9 @@ class Dataset:
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+            job_config: A bigquery load job configuration object. See
+                https://cloud.google.com/python/docs/reference/bigquery/latest/google.cloud.bigquery.job.LoadJobConfig
+                for valid values.
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
@@ -4142,6 +4146,7 @@ class Dataset:
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
+            job_config=job_config,
         )
         self.write_datasink(
             datasink,
