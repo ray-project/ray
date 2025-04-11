@@ -218,6 +218,15 @@ class Preprocessor(abc.ABC):
             )
 
     def _transform(self, ds: "Dataset") -> "Dataset":
+        # Avoid direct import to avoid circular import
+        if ds.__class__.__name__ == "StreamSplitDataIterator":
+            raise ValueError(
+                "Cannot transform a StreamSplitDataIterator. This error typically occurs "
+                "when trying to apply a preprocessor to a dataset shard inside a train worker. "
+                "Instead, you should apply the transform to the Ray Dataset before sharding "
+                "it across workers."
+            )
+
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
         transform_type = self._determine_transform_to_use()
