@@ -467,18 +467,17 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   auto placement_group = std::make_shared<GcsPlacementGroup>(
       request, get_ray_namespace_(job_id), placement_group_state_counter_);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
-  RegisterPlacementGroup(placement_group,
-                         [reply, send_reply_callback, placement_group](Status status) {
-                           if (status.ok()) {
-                             RAY_LOG(INFO) << "Finished registering placement group, "
-                                           << placement_group->DebugString();
-                           } else {
-                             RAY_LOG(INFO) << "Failed to register placement group, "
-                                           << placement_group->DebugString()
-                                           << ", cause: " << status.message();
-                           }
-                           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-                         });
+  RegisterPlacementGroup(
+      placement_group, [reply, send_reply_callback, placement_group](Status status) {
+        if (status.ok()) {
+          RAY_LOG(INFO) << "Finished registering placement group, "
+                        << placement_group->DebugString();
+        } else {
+          RAY_LOG(INFO) << "Failed to register placement group, "
+                        << placement_group->DebugString() << ", cause: " << status;
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      });
   ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }
 
@@ -705,7 +704,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
         } else {
           RAY_LOG(WARNING) << "Failed to waiting for placement group until ready, "
                               "placement group id = "
-                           << placement_group_id << ", cause: " << status.message();
+                           << placement_group_id << ", cause: " << status;
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       });
@@ -867,7 +866,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
                       << " is successfully removed because the job died.";
       } else {
         RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
-                         << " upon a job died, status:" << status.ToString();
+                         << " upon a job died, status:" << status;
       }
     });
   }

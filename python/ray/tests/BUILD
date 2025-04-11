@@ -565,6 +565,22 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "autoscaler/test_providers.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
         "test_cli_logger.py",
