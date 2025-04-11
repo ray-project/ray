@@ -32,6 +32,7 @@ from ray._private.utils import (
     try_to_symlink,
     validate_socket_filepath,
 )
+from ray._private.utils import is_in_test
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -138,7 +139,6 @@ class Node:
         self._config = ray_params._system_config or {}
 
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
-        self._dashboard_grpc_port = ray_params.dashboard_grpc_port
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -243,8 +243,25 @@ class Node:
                 storage_uri = ray_params.storage
             storage._init_storage(storage_uri, is_head=False)
 
-        # If it is a head node, try validating if
-        # external storage is configurable.
+        self._object_spilling_config = self._get_object_spilling_config()
+        logger.debug(
+            f"Starting node with object spilling config: {self._object_spilling_config}"
+        )
+
+        # Obtain the fallback directoy from the object spilling config
+        # Currently, we set the fallback directory to be the same as the object spilling
+        # path when the object spills to file system
+        self._fallback_directory = None
+        if self._object_spilling_config:
+            config = json.loads(self._object_spilling_config)
+            if config.get("type") == "filesystem":
+                directory_path = config.get("params", {}).get("directory_path")
+                if isinstance(directory_path, list):
+                    self._fallback_directory = directory_path[0]
+                elif isinstance(directory_path, str):
+                    self._fallback_directory = directory_path
+
+        # If it is a head node, try validating if external storage is configurable.
         if head:
             self.validate_external_storage()
 
@@ -696,11 +713,6 @@ class Node:
         return self._dashboard_agent_listen_port
 
     @property
-    def dashboard_grpc_port(self):
-        """Get the dashboard head grpc port"""
-        return self._dashboard_grpc_port
-
-    @property
     def logging_config(self):
         """Get the logging config of the current node."""
         return {
@@ -1120,10 +1132,8 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        # Only redirect logs to .err. .err file is only useful when the
-        # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
-            "log_monitor", unique=True, create_out=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "log_monitor", unique=True, create_out=True, create_err=True
         )
         process_info = ray._private.services.start_log_monitor(
             self.get_session_dir_path(),
@@ -1132,9 +1142,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
         )
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
@@ -1154,10 +1163,8 @@ class Node:
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
         """
-        # Only redirect logs to .err. .err file is only useful when the
-        # component has an unexpected output to stdout/stderr.
-        _, stderr_file = self.get_log_file_handles(
-            "dashboard", unique=True, create_out=False
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "dashboard", unique=True, create_out=True, create_err=True
         )
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
@@ -1170,13 +1177,11 @@ class Node:
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
-            dashboard_grpc_port=self._ray_params.dashboard_grpc_port,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            redirect_logging=self.should_redirect_logs(),
-            stdout_file=stderr_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -1227,6 +1232,7 @@ class Node:
     def start_raylet(
         self,
         plasma_directory: str,
+        fallback_directory: str,
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
@@ -1240,8 +1246,29 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-            "raylet", unique=True, create_out=True, create_err=True
+        raylet_stdout_filepath, raylet_stderr_filepath = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_RAYLET,
+            unique=True,
+            create_out=True,
+            create_err=True,
+        )
+        (
+            dashboard_agent_stdout_filepath,
+            dashboard_agent_stderr_filepath,
+        ) = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
+            unique=True,
+            create_out=True,
+            create_err=True,
+        )
+        (
+            runtime_env_agent_stdout_filepath,
+            runtime_env_agent_stderr_filepath,
+        ) = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
+            unique=True,
+            create_out=True,
+            create_err=True,
         )
         process_info = ray._private.services.start_raylet(
             self.redis_address,
@@ -1261,6 +1288,7 @@ class Node:
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
+            fallback_directory,
             object_store_memory,
             self.session_name,
             is_head_node=self.is_head(),
@@ -1276,8 +1304,12 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            stdout_filepath=stdout_log_fname,
-            stderr_filepath=stderr_log_fname,
+            raylet_stdout_filepath=raylet_stdout_filepath,
+            raylet_stderr_filepath=raylet_stderr_filepath,
+            dashboard_agent_stdout_filepath=dashboard_agent_stdout_filepath,
+            dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
+            runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
+            runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,
@@ -1302,12 +1334,14 @@ class Node:
         """
         from ray.autoscaler.v2.utils import is_autoscaler_v2
 
-        stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "monitor", unique=True, create_out=True, create_err=True
+        )
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             autoscaling_config=self._ray_params.autoscaling_config,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
@@ -1457,13 +1491,16 @@ class Node:
         resource_spec = self.get_resource_spec()
         (
             plasma_directory,
+            fallback_directory,
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_spec.object_store_memory,
+            self._temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
+            fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory)
+        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
@@ -1777,26 +1814,15 @@ class Node:
             storage.destroy_external_storage()
 
     def validate_external_storage(self):
-        """Make sure we can setup the object spilling external storage.
-        This will also fill up the default setting for object spilling
-        if not specified.
-        """
-        object_spilling_config = self._config.get("object_spilling_config", {})
+        """Make sure we can setup the object spilling external storage."""
+
         automatic_spilling_enabled = self._config.get(
             "automatic_object_spilling_enabled", True
         )
         if not automatic_spilling_enabled:
             return
 
-        if not object_spilling_config:
-            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
-
-        # If the config is not specified, we fill up the default.
-        if not object_spilling_config:
-            object_spilling_config = json.dumps(
-                {"type": "filesystem", "params": {"directory_path": self._session_dir}}
-            )
-
+        object_spilling_config = self._object_spilling_config
         # Try setting up the storage.
         # Configure the proper system config.
         # We need to set both ray param's system config and self._config
@@ -1828,6 +1854,56 @@ class Node:
         )
         storage.destroy_external_storage()
         external_storage.reset_external_storage()
+
+    def _get_object_spilling_config(self):
+        """Consolidate the object spilling config from the ray params, environment
+        variable, and system config. The object spilling directory specified through
+        ray params will override the one specified through environment variable and
+        system config."""
+
+        object_spilling_directory = self._ray_params.object_spilling_directory
+        if not object_spilling_directory:
+            object_spilling_directory = self._config.get(
+                "object_spilling_directory", ""
+            )
+
+        if not object_spilling_directory:
+            object_spilling_directory = os.environ.get(
+                "RAY_object_spilling_directory", ""
+            )
+
+        if object_spilling_directory:
+            return json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {"directory_path": object_spilling_directory},
+                }
+            )
+
+        object_spilling_config = self._config.get("object_spilling_config", {})
+        if not object_spilling_config:
+            object_spilling_config = os.environ.get("RAY_object_spilling_config", "")
+
+        # If the config is not specified in ray params, system config or environment
+        # variable, we fill up the default.
+        if not object_spilling_config:
+            object_spilling_config = json.dumps(
+                {"type": "filesystem", "params": {"directory_path": self._session_dir}}
+            )
+        else:
+            if not is_in_test():
+                logger.warning(
+                    "The object spilling config is specified from an unstable "
+                    "API - system config or environment variable. This is "
+                    "subject to change in the future. You can use the stable "
+                    "API - --object-spilling-directory in ray start or "
+                    "object_spilling_directory in ray.init() to specify the "
+                    "object spilling directory instead. If you need more "
+                    "advanced settings, please open a github issue with the "
+                    "Ray team."
+                )
+
+        return object_spilling_config
 
     def _record_stats(self):
         # This is only called when a new node is started.

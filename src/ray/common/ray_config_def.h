@@ -633,6 +633,13 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
 
+/// The path to spill objects to. The same path will be used as the object store
+/// fallback directory as well. When both object_spilling_config and
+/// object_spilling_directory are set, object_spilling_directory will take
+/// precedence. When object_spilling_directory is set ray.init() or ray start as well,
+/// the directory set with ray.init() or ray start will take precedence.
+RAY_CONFIG(std::string, object_spilling_directory, "")
+
 /// Log an ERROR-level message about spilling every time this amount of bytes has been
 /// spilled, with exponential increase in interval. This can be set to zero to disable.
 RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
@@ -647,7 +654,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 
 /// Ray's object spilling fuses small objects into a single file before flushing them
 /// to optimize the performance.
-/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// Ray will try to spill at least this size or up to max_fused_object_count. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 

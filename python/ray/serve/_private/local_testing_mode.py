@@ -74,6 +74,7 @@ def make_local_deployment_handle(
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")
         user_callable_wrapper.initialize_callable().result()
+        user_callable_wrapper.call_reconfigure(deployment.user_config)
     except Exception:
         logger.exception(f"Failed to initialize deployment {deployment_id}.")
         raise

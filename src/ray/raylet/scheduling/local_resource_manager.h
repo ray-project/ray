@@ -16,14 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
@@ -214,7 +211,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
 
-  absl::optional<absl::Time> GetResourceIdleTime() const;
+  std::optional<absl::Time> GetResourceIdleTime() const;
 
   /// Get the draining deadline if node is in draining state.
   ///
@@ -228,7 +225,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   NodeResourceInstances local_resources_;
 
   /// A map storing when the resource was last idle.
-  absl::flat_hash_map<WorkArtifact, absl::optional<absl::Time>> last_idle_times_;
+  absl::flat_hash_map<WorkArtifact, std::optional<absl::Time>> last_idle_times_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.

@@ -88,8 +88,8 @@ void ActorSchedulingQueue::Add(
 
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   if (client_processed_up_to >= next_seq_no_) {
-    RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
-                   << client_processed_up_to;
+    RAY_LOG(INFO) << "client skipping requests " << next_seq_no_ << " to "
+                  << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;

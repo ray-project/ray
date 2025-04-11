@@ -30,7 +30,7 @@ class SpilledObjectReader : public IObjectReader {
   /// malformed url; corrupted/deleted file.
   ///
   /// \param object_url the object url in the form of {path}?offset={offset}&size={size}
-  static absl::optional<SpilledObjectReader> CreateSpilledObjectReader(
+  static std::optional<SpilledObjectReader> CreateSpilledObjectReader(
       const std::string &object_url);
 
   uint64_t GetDataSize() const override;
