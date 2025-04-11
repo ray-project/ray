@@ -374,7 +374,7 @@ class CloudFileSystem:
             bucket_uri: The bucket uri to upload the model to, must start with `s3://` or `gs://`.
         """
         try:
-            # If refs/main exists, upload as hash, and treat snapshot/<hash> as the model.
+            # If refs/main exists, upload as hash, and treat snapshots/<hash> as the model.
             # Otherwise, this is a custom model, we do not assume folder hierarchy.
             if (refs_main := Path(local_path, "refs", "main")).exists():
                 model_path = os.path.join(
