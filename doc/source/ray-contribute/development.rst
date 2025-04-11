@@ -354,7 +354,7 @@ you commit new code changes with git. To temporarily skip pre-commit checks, use
    git commit -n
 
 If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
-does, please report an issue on the Ray github page.
+does, please [report an issue here][ray-bug-report].
 
 Fast, Debug, and Optimized Builds
 ---------------------------------
@@ -447,3 +447,5 @@ Then you should run the following commands:
 
   rm -rf python/ray/thirdparty_files/
   python3 -m pip install setproctitle
+
+[ray-bug-report]: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
