@@ -294,15 +294,25 @@ class RouterMetricsManager:
         running_requests = dict()
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
-            running_requests = {
-                replica_id: self.metrics_store.window_average(
-                    replica_id, time.time() - look_back_period
-                )
-                # If data hasn't been recorded yet, return current
-                # number of queued and ongoing requests.
-                or num_requests
-                for replica_id, num_requests in self.num_requests_sent_to_replicas.items()  # noqa: E501
-            }
+            running_requests = {}
+            for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
+                if self.autoscaling_config.aggregation_function == "mean":
+                    running_requests[replica_id] = self.metrics_store.window_average(
+                        replica_id, time.time() - look_back_period
+                    )
+                elif self.autoscaling_config.aggregation_function == "max":
+                    running_requests[replica_id] = self.metrics_store.window_max(
+                        replica_id, time.time() - look_back_period
+                    )
+                elif self.autoscaling_config.aggregation_function == "min":
+                    running_requests[replica_id] = self.metrics_store.window_min(
+                        replica_id, time.time() - look_back_period
+                    )
+                else:
+                    raise ValueError(
+                        f"Unsupported aggregation function: "
+                        f"{self.autoscaling_config.aggregation_function}"
+                    )
 
         return {
             "queued_requests": self.num_queued_requests,
