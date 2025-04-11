@@ -12,17 +12,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# TODO(rliaw): Arbitrarily chosen. Make this configurable
+_JSONL_ROWS_PER_CHUNK = 10000
+
 
 class JSONReader(NativeFileReader):
     def __init__(
-        self, arrow_json_args: Optional[Dict[str, Any]] = None, **file_reader_kwargs
+        self,
+        arrow_json_args: Optional[Dict[str, Any]] = None,
+        is_jsonl: bool = False,
+        **file_reader_kwargs,
     ):
         super().__init__(**file_reader_kwargs)
-
         from pyarrow import json
 
         if arrow_json_args is None:
             arrow_json_args = {}
+
+        self.is_jsonl = is_jsonl
 
         self.read_options = arrow_json_args.pop(
             "read_options", json.ReadOptions(use_threads=False)
@@ -39,16 +46,18 @@ class JSONReader(NativeFileReader):
         if buffer.size == 0:
             return
 
-        try:
-            yield from self._read_with_pyarrow_read_json(buffer)
-        except pa.ArrowInvalid as e:
-            # If read with PyArrow fails, try falling back to native json.load().
-            logger.warning(
-                f"Error reading with pyarrow.json.read_json(). "
-                f"Falling back to native json.load(), which may be slower. "
-                f"PyArrow error was:\n{e}"
-            )
-            yield from self._read_with_python_json(buffer)
+        if self.is_jsonl:
+            yield from self._read_jsonlines_pandas(buffer)
+        else:
+            try:
+                yield from self._read_with_pyarrow_read_json(buffer)
+            except pa.ArrowInvalid as e:
+                logger.warning(
+                    f"Error reading with pyarrow.json.read_json(). "
+                    f"Falling back to native json.load(), which may be slower. "
+                    f"PyArrow error was:\n{e}"
+                )
+                yield from self._read_with_python_json(buffer)
 
     def _read_with_pyarrow_read_json(
         self, buffer: "pyarrow.lib.Buffer"
@@ -110,6 +119,24 @@ class JSONReader(NativeFileReader):
                 else:
                     # unrelated error, simply reraise
                     raise e
+
+    def _read_jsonlines_pandas(
+        self, buffer: "pyarrow.lib.Buffer"
+    ) -> Iterable[DataBatch]:
+        """Read JSONL files with pandas."""
+        import pandas as pd
+
+        reader = pd.read_json(
+            BytesIO(buffer),
+            chunksize=_JSONL_ROWS_PER_CHUNK,
+            lines=True,
+        )
+        for df in reader:
+            # Note: PandasBlockAccessor doesn't support RangeIndex, so we need to convert
+            # to string.
+            if isinstance(df.columns, pd.RangeIndex):
+                df.columns = df.columns.astype(str)
+            yield df
 
     def _read_with_python_json(
         self, buffer: "pyarrow.lib.Buffer"

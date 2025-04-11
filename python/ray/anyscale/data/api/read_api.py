@@ -484,6 +484,7 @@ def read_avro(
 def read_json(
     paths: Union[str, List[str]],
     *,
+    lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -496,8 +497,20 @@ def read_json(
     concurrency: Optional[int] = None,
     **arrow_json_args,
 ) -> Dataset:
+
+    if lines:
+        incompatible_params = {
+            "filesystem": filesystem,
+            "arrow_open_stream_args": arrow_open_stream_args,
+            "arrow_json_args": arrow_json_args,
+        }
+        for param, value in incompatible_params.items():
+            if value:
+                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+
     reader = JSONReader(
         arrow_json_args,
+        is_jsonl=lines,
         include_paths=include_paths,
         partitioning=partitioning,
         open_args=arrow_open_stream_args,
