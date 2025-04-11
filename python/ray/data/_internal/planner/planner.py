@@ -9,6 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
+
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 
 PlanLogicalOpFn = Callable[
@@ -52,6 +53,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.one_to_one_operator import Limit
     from ray.data._internal.logical.operators.read_operator import Read
     from ray.data._internal.logical.operators.write_operator import Write
+    from ray.data._internal.logical.operators.lazy_write_operator import LazyWrite
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
     from ray.data._internal.planner.plan_udf_map_op import (
@@ -61,6 +63,7 @@ def _register_default_plan_logical_op_fns():
         plan_udf_map_op,
     )
     from ray.data._internal.planner.plan_write_op import plan_write_op
+    from ray.data._internal.planner.plan_lazy_write_op import plan_lazy_write_op
 
     register_plan_logical_op_fn(Read, plan_read_op)
 
@@ -76,6 +79,7 @@ def _register_default_plan_logical_op_fns():
 
     register_plan_logical_op_fn(InputData, plan_input_data_op)
     register_plan_logical_op_fn(Write, plan_write_op)
+    register_plan_logical_op_fn(LazyWrite, plan_lazy_write_op)
 
     def plan_from_op(
         op: AbstractFrom,
