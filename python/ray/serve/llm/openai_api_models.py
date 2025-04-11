@@ -5,6 +5,8 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionResponse as _ChatCompletionResponse,
     CompletionStreamResponse as _CompletionStreamResponse,
     CompletionResponse as _CompletionResponse,
+    EmbeddingRequest as _EmbeddingRequest,
+    EmbeddingResponse as _EmbeddingResponse,
     ErrorResponse as _ErrorResponse,
 )
 
@@ -64,6 +66,26 @@ class CompletionStreamResponse(_CompletionStreamResponse):
 @PublicAPI(stability="alpha")
 class CompletionResponse(_CompletionResponse):
     """CompletionResponse is the response body for the completion API.
+
+    This model is compatible with vLLM's OpenAI API models.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class EmbeddingRequest(_EmbeddingRequest):
+    """EmbeddingRequest is the request body for the embedding API.
+
+    This model is compatible with vLLM's OpenAI API models.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class EmbeddingResponse(_EmbeddingResponse):
+    """EmbeddingResponse is the response body for the embedding API.
 
     This model is compatible with vLLM's OpenAI API models.
     """
