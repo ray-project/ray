@@ -370,13 +370,13 @@ class DashboardHead:
             "Component": "dashboard" if not module_name else "dashboard_" + module_name,
             "SessionName": self.session_name,
         }
-        self.metrics.metrics_dashboard_cpu().labels(**labels).set(
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
             float(proc.cpu_percent())
         )
-        self.metrics.metrics_dashboard_mem_uss().labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
             float(proc.memory_full_info().uss) / 1.0e6
         )
-        self.metrics.metrics_dashboard_mem_rss().labels(**labels).set(
+        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
             float(proc.memory_full_info().rss) / 1.0e6
         )
 
