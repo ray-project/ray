@@ -26,6 +26,7 @@ from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     open_log,
     try_to_create_directory,
@@ -88,6 +89,9 @@ class Node:
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support()
+        )
+        self.resource_isolation_config: ResourceIsolationConfig = (
+            ray_params.resource_isolation_config
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
@@ -1236,7 +1240,6 @@ class Node:
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
-        enable_physical_mode: bool = False,
     ):
         """Start the raylet.
 
@@ -1320,7 +1323,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             labels=self._get_node_labels(),
-            enable_physical_mode=enable_physical_mode,
+            resource_isolation_config=self.resource_isolation_config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1489,6 +1492,7 @@ class Node:
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
         resource_spec = self.get_resource_spec()
+
         (
             plasma_directory,
             fallback_directory,
@@ -1500,6 +1504,11 @@ class Node:
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
+
+        # add plasma store memory to the total system reserved memory
+        if self.resource_isolation_config.is_enabled():
+            self.resource_isolation_config.add_object_store_memory(object_store_memory)
+
         self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
