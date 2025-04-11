@@ -646,7 +646,9 @@ RAY_CONFIG(int64_t, verbose_spill_logs, 2L * 1024 * 1024 * 1024)
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
-/// memory.
+/// memory. When the "object-spilling-enabled" parameter is set in both ray.init() or
+/// ray start as well, the parameter set in ray.init() or ray start will take
+/// precedence.
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
 
 /// The maximum number of I/O worker that raylet starts.
