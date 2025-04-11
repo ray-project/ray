@@ -351,7 +351,7 @@ def deploy(
     )
 
 @cli.command(short_help="Get the current Serve application configurations")
-def config(address: str):
+def get_config(address: str):
     """Show the current Serve config (only available if config was provided at startup)."""
     client = ServeSubmissionClient(address)
     try:
