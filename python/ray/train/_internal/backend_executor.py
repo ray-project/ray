@@ -36,7 +36,11 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
-from ray.util.placement_group import get_current_placement_group, remove_placement_group
+from ray.util.placement_group import (
+    get_current_placement_group,
+    PlacementGroup,
+    remove_placement_group,
+)
 
 T = TypeVar("T")
 
@@ -86,6 +90,11 @@ class BackendExecutor:
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
+        placement_group: An optional placement group. If a
+            placement group is provided workers will be scheduled
+            in this placement group, otherwise a placement group
+            is created, if the global worker does not allow to
+            capture child tasks in the same placement group.
     """
 
     def __init__(
@@ -96,6 +105,7 @@ class BackendExecutor:
         num_workers: int = 1,
         resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
+        placement_group: Optional[PlacementGroup] = None,
     ):
         if resources_per_worker is None:
             self._resources_per_worker = {"CPU": 1}
@@ -111,7 +121,7 @@ class BackendExecutor:
         self._num_failures = 0
         self._last_failure = None
         self._initialization_hook = None
-        self._placement_group = None
+        self._placement_group = placement_group
 
         self._trial_info = trial_info
 
@@ -151,7 +161,8 @@ class BackendExecutor:
         train_cls_kwargs: Optional[Dict] = None,
     ):
         """Starts the worker group."""
-        self._create_placement_group()
+        if not self._placement_group:
+            self._create_placement_group()
         placement_group = self._placement_group or "default"
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
