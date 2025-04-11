@@ -641,8 +641,8 @@ Windows powershell users need additional escaping:
     hidden=True,
     default="",
     type=str,
-    help="Accepts a string list of key-value pairs or a JSON serialized "
-    "dictionary mapping label name to label value."
+    help="a string list of key-value pairs mapping label name to label value."
+    "These values take precedence over conflicting keys passed in from --labels-file."
     'Ex: --labels "key1=val1,key2=val2"',
 )
 @click.option(
