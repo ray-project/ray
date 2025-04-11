@@ -1,8 +1,6 @@
 import asyncio
 import os
 import time
-import base64
-import struct
 
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -33,6 +31,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEmbeddingRequest,
     VLLMSamplingParams,
 )
+from ray.llm._internal.serve.deployments.utils.server_utils import floats_to_base64
 from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
@@ -681,11 +680,6 @@ class VLLMEngine:
     async def embed(
         self, vllm_embedding_request: VLLMEmbeddingRequest
     ) -> Tuple[List[List[float]], int]:  # Return (embeddings, num_prompt_tokens)
-        def floats_to_base64(float_list):
-            binary = struct.pack(f"{len(float_list)}f", *float_list)
-            encoded = base64.b64encode(binary).decode("utf-8")
-            return encoded
-
         num_prompts = len(vllm_embedding_request.prompt)
         if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
             logger.info(
