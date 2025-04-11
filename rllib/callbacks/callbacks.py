@@ -330,7 +330,6 @@ class RLlibCallback(metaclass=_CallbackMeta):
         self,
         *,
         episode: Union[EpisodeType, EpisodeV2],
-        prev_episode_chunks: Optional[List[EpisodeType]] = None,
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -357,7 +356,6 @@ class RLlibCallback(metaclass=_CallbackMeta):
             episode: The just stepped SingleAgentEpisode or MultiAgentEpisode object
                 (after `env.step()` and after returned obs, rewards, etc.. have been
                 logged to the episode object).
-            prev_episode_chunks:
             env_runner: Reference to the EnvRunner running the env and episode.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.
@@ -375,6 +373,7 @@ class RLlibCallback(metaclass=_CallbackMeta):
         self,
         *,
         episode: Union[EpisodeType, EpisodeV2],
+        prev_episode_chunks: Optional[List[EpisodeType]] = None,
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -417,6 +416,11 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 object). Note that this method is still called before(!) the episode
                 object is numpy'ized, meaning all its timestep data is still present in
                 lists of individual timestep data.
+            prev_episode_chunks: A complete list of all previous episode chunks
+                with the same ID as `episode` that have been sampled on this EnvRunner.
+                In order to compile metrics across the complete episode, users should
+                loop through the list: `[episode] + previous_episode_chunks` and
+                accumulate the required information.
             env_runner: Reference to the EnvRunner running the env and episode.
             metrics_logger: The MetricsLogger object inside the `env_runner`. Can be
                 used to log custom metrics during env/episode stepping.
