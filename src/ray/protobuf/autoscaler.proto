@@ -87,6 +87,9 @@ message ResourceRequest {
   // fallback mechanism. When trying to find a node that satisfies the label
   // requirements, the first label selector should be tried first, if not found,
   // the second label selector should be tried, and so on.
+  // Note that When the ResourceRequest is used within a BundleSelector for
+  // GangResourceRequest, the fallback mechanism is done at the BundleSelector level.
+  // So in that case, the label_selectors will only contain a single LabelSelector.
   repeated LabelSelector label_selectors = 3;
 }
 
