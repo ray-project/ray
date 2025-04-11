@@ -212,6 +212,7 @@ py_test_module_list(
         "accelerators/test_amd_gpu.py",
         "accelerators/test_hpu.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_mlu.py",
         "accelerators/test_neuron.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
