@@ -1235,6 +1235,7 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
+            label_selector=actor_options.get("label_selector"),
         )
 
         if _actor_launch_hook:

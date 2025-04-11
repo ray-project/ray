@@ -72,7 +72,8 @@ struct TaskOptions {
               int64_t generator_backpressure_num_objects_p = -1,
               std::string serialized_runtime_env_info_p = "{}",
               bool enable_task_events_p = kDefaultTaskEventEnabled,
-              std::unordered_map<std::string, std::string> labels_p = {})
+              std::unordered_map<std::string, std::string> labels_p = {},
+              ray::rpc::LabelSelector label_selector_p = ray::rpc::LabelSelector())
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -80,7 +81,8 @@ struct TaskOptions {
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
-        labels(std::move(labels_p)) {}
+        labels(std::move(labels_p)),
+        label_selector(std::move(label_selector_p)) {}
 
   /// The name of this task.
   std::string name;
@@ -102,28 +104,32 @@ struct TaskOptions {
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
+  // The label constraints of the node to schedule this task.
+  ray::rpc::LabelSelector label_selector;
 };
 
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts_p,
-                       int64_t max_task_retries_p,
-                       int max_concurrency_p,
-                       std::unordered_map<std::string, double> resources_p,
-                       std::unordered_map<std::string, double> placement_resources_p,
-                       std::vector<std::string> dynamic_worker_options_p,
-                       std::optional<bool> is_detached_p,
-                       std::string name_p,
-                       std::string &ray_namespace_p,
-                       bool is_asyncio_p,
-                       rpc::SchedulingStrategy scheduling_strategy_p,
-                       std::string serialized_runtime_env_info_p = "{}",
-                       std::vector<ConcurrencyGroup> concurrency_groups_p = {},
-                       bool execute_out_of_order_p = false,
-                       int32_t max_pending_calls_p = -1,
-                       bool enable_task_events_p = kDefaultTaskEventEnabled,
-                       std::unordered_map<std::string, std::string> labels_p = {})
+  ActorCreationOptions(
+      int64_t max_restarts_p,
+      int64_t max_task_retries_p,
+      int max_concurrency_p,
+      std::unordered_map<std::string, double> resources_p,
+      std::unordered_map<std::string, double> placement_resources_p,
+      std::vector<std::string> dynamic_worker_options_p,
+      std::optional<bool> is_detached_p,
+      std::string name_p,
+      std::string &ray_namespace_p,
+      bool is_asyncio_p,
+      rpc::SchedulingStrategy scheduling_strategy_p,
+      std::string serialized_runtime_env_info_p = "{}",
+      std::vector<ConcurrencyGroup> concurrency_groups_p = {},
+      bool execute_out_of_order_p = false,
+      int32_t max_pending_calls_p = -1,
+      bool enable_task_events_p = kDefaultTaskEventEnabled,
+      std::unordered_map<std::string, std::string> labels_p = {},
+      ray::rpc::LabelSelector label_selector_p = ray::rpc::LabelSelector())
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -141,7 +147,8 @@ struct ActorCreationOptions {
         max_pending_calls(max_pending_calls_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
-        labels(std::move(labels_p)) {
+        labels(std::move(labels_p)),
+        label_selector(std::move(label_selector_p)) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -197,6 +204,8 @@ struct ActorCreationOptions {
   /// default to true.
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
+  // The label constraints of the node to schedule this actor.
+  ray::rpc::LabelSelector label_selector;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
