@@ -2,6 +2,7 @@ import os
 import sys
 import pytest
 import subprocess
+import tempfile
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
@@ -22,7 +23,20 @@ def add_default_labels(node_info, labels):
     ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
     indirect=True,
 )
-def test_ray_start_set_node_labels(call_ray_start):
+def test_ray_start_set_node_labels_from_json(call_ray_start):
+    ray.init(address=call_ray_start)
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(
+        node_info, {"gpu_type": "A100", "region": "us"}
+    )
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ['ray start --head --labels "gpu_type=A100,region=us"'],
+    indirect=True,
+)
+def test_ray_start_set_node_labels_from_string(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
     assert node_info["Labels"] == add_default_labels(
@@ -81,18 +95,16 @@ def test_ray_init_set_node_labels_value_error(ray_start_cluster):
 
 def test_ray_start_set_node_labels_value_error():
     out = check_cmd_stderr(["ray", "start", "--head", "--labels=xxx"])
-    assert "is not a valid JSON string, detail error" in out
+    assert "Label string is not a key-value pair." in out
 
     out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
-    assert 'The value of the "gpu_type" is not string type' in out
+    assert "Label string is not a key-value pair." in out
 
-    out = check_cmd_stderr(
-        ["ray", "start", "--head", '--labels={"ray.io/node_id":"111"}']
-    )
+    out = check_cmd_stderr(["ray", "start", "--head", "--labels", "ray.io/node_id=111"])
     assert "cannot start with the prefix `ray.io/`" in out
 
     out = check_cmd_stderr(
-        ["ray", "start", "--head", '--labels={"ray.io/other_key":"111"}']
+        ["ray", "start", "--head", "--labels", "ray.io/other_key=111"]
     )
     assert "cannot start with the prefix `ray.io/`" in out
 
@@ -140,6 +152,21 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
                 assert node["Labels"] == add_default_labels(node, {"region": "us"})
     finally:
         cluster.shutdown()
+
+
+def test_ray_start_set_node_labels_from_file():
+    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+        test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
+        test_file.flush()  # Ensure data is written
+
+        cmd = ["ray", "start", "--head", "--labels-file", test_file.name]
+        subprocess.check_call(cmd)
+        ray.init(address="auto")
+        node_info = ray.nodes()[0]
+        assert node_info["Labels"] == add_default_labels(
+            node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
+        )
+        subprocess.check_call(["ray", "stop", "--force"])
 
 
 if __name__ == "__main__":
