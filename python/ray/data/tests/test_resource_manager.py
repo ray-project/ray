@@ -575,7 +575,7 @@ class TestReservationOpResourceAllocator:
         assert o2 in allocator._op_budgets
         assert o3 not in allocator._op_budgets
 
-        o2.mark_execution_completed()
+        o2.mark_execution_finished()
         allocator.update_usages()
         assert o2 not in allocator._op_budgets
 

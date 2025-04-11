@@ -711,8 +711,8 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(DataContext.get_current(), refs)
         limit_op = LimitOperator(limit, input_op, DataContext.get_current())
-        limit_op.mark_execution_completed = MagicMock(
-            wraps=limit_op.mark_execution_completed
+        limit_op.mark_execution_finished = MagicMock(
+            wraps=limit_op.mark_execution_finished
         )
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
@@ -731,16 +731,16 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
-                assert limit_op.mark_execution_completed.call_count == 1, limit
+                assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
                 assert limit_op._execution_completed, limit
             else:
-                assert limit_op.mark_execution_completed.call_count == 0, limit
+                assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
                 assert not limit_op._execution_completed, limit
-        limit_op.mark_execution_completed()
+        limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit

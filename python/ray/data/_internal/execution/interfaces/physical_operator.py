@@ -203,7 +203,7 @@ class PhysicalOperator(Operator):
         self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
-        self._execution_completed = False
+        self._execution_finished = False
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
@@ -272,28 +272,29 @@ class PhysicalOperator(Operator):
         elif self._output_block_size_option is not None:
             self._output_block_size_option = None
 
-    def mark_execution_completed(self):
-        """Manually mark this operator has completed execution."""
-        self._execution_completed = True
+    def mark_execution_finished(self):
+        """Manually mark this operator has finished execution."""
+        self._execution_finished = True
 
-    def execution_completed(self) -> bool:
-        """Return True when this operator has completed execution.
+    def execution_finished(self) -> bool:
+        """Return True when this operator has finished execution.
+
         The outputs may or may not have been taken.
         """
-        return self._execution_completed
+        return self._execution_finished
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
-        An operator is completed the operator has stopped execution and all
-        outputs are taken.
+        An operator is completed if the operator has finished execution and all
+        outputs have been taken.
         """
-        if not self._execution_completed:
+        if not self._execution_finished:
             if self._inputs_complete and self.num_active_tasks() == 0:
                 # If all inputs are complete and there are no active tasks,
                 # then the operator has completed execution.
-                self._execution_completed = True
-        return self._execution_completed and not self.has_next()
+                self._execution_finished = True
+        return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""

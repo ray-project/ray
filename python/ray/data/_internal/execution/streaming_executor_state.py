@@ -536,7 +536,7 @@ def update_operator_states(topology: Topology) -> None:
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
-            op.mark_execution_completed()
+            op.mark_execution_finished()
 
 
 def select_operator_to_run(
