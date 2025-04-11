@@ -155,7 +155,7 @@ ray_cc_library(
     srcs = ["src/ray/rpc/server_call.cc"],
     hdrs = ["src/ray/rpc/server_call.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
@@ -508,7 +508,7 @@ ray_cc_library(
         ":plasma_eviction_policy",
         ":plasma_get_request_queue",
         ":plasma_malloc",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:file_system_monitor",
         "//src/ray/common:id",
@@ -561,7 +561,7 @@ ray_cc_library(
     hdrs = ["src/ray/object_manager/plasma/stats_collector.h"],
     deps = [
         ":object_manager_plasma_common",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
     ],
 )
@@ -762,7 +762,7 @@ cc_grpc_library(
 ray_cc_library(
     name = "ray_common",
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:asio",
         "//src/ray/common:constants",
         "//src/ray/common:event_stats",
@@ -810,284 +810,6 @@ ray_cc_library(
     ],
 )
 
-ray_cc_library(
-    name = "gcs_state_util",
-    srcs = ["src/ray/gcs/gcs_server/state_util.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/state_util.h"],
-    deps = [
-        "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_table_storage",
-    srcs = ["src/ray/gcs/gcs_server/gcs_table_storage.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_table_storage.h"],
-    deps = [
-        ":gcs_callback",
-        ":gcs_in_memory_store_client",
-        ":observable_store_client",
-        ":redis_store_client",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-        "//src/ray/protobuf:gcs_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_init_data",
-    srcs = ["src/ray/gcs/gcs_server/gcs_init_data.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_init_data.h"],
-    deps = [
-        ":gcs_callback",
-        ":gcs_table_storage",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_kv_manager",
-    srcs = ["src/ray/gcs/gcs_server/gcs_kv_manager.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_kv_manager.h"],
-    deps = [
-        ":gcs_service_rpc",
-        "//src/ray/common:asio",
-        "//src/ray/common:status",
-        "//src/ray/protobuf:gcs_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_function_manager",
-    hdrs = ["src/ray/gcs/gcs_server/gcs_function_manager.h"],
-    deps = [
-        ":gcs_kv_manager",
-        "//src/ray/common:asio",
-        "//src/ray/common:constants",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_usage_stats_client",
-    srcs = ["src/ray/gcs/gcs_server/usage_stats_client.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/usage_stats_client.h"],
-    deps = [
-        ":gcs_kv_manager",
-        "//src/ray/common:asio",
-        "//src/ray/protobuf:usage_cc_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_store_client_kv",
-    srcs = ["src/ray/gcs/gcs_server/store_client_kv.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/store_client_kv.h"],
-    deps = [
-        ":gcs_kv_manager",
-        ":gcs_store_client",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_pubsub_handler",
-    srcs = ["src/ray/gcs/gcs_server/pubsub_handler.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/pubsub_handler.h"],
-    deps = [
-        ":gcs_pub_sub_lib",
-        "//src/ray/protobuf:gcs_service_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_runtime_env_handler",
-    srcs = ["src/ray/gcs/gcs_server/runtime_env_handler.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/runtime_env_handler.h"],
-    deps = [
-        ":gcs_service_rpc",
-        ":node_manager_rpc",
-        "//src/ray/common:runtime_env",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util:thread_checker",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_redis_failure_detector",
-    srcs = ["src/ray/gcs/gcs_server/gcs_redis_failure_detector.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_redis_failure_detector.h"],
-    deps = [
-        ":redis_client",
-        "//src/ray/common:asio",
-        "//src/ray/common:ray_config",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_worker_manager",
-    srcs = ["src/ray/gcs/gcs_server/gcs_worker_manager.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_worker_manager.h"],
-    deps = [
-        ":gcs_kv_manager",
-        ":gcs_pub_sub_lib",
-        ":gcs_service_rpc",
-        ":gcs_table_storage",
-        ":gcs_usage_stats_client",
-        ":stats_metric",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_health_check_manager",
-    srcs = ["src/ray/gcs/gcs_server/gcs_health_check_manager.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_health_check_manager.h"],
-    deps = [
-        ":stats_metric",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_github_grpc_grpc//:grpc++",
-        "//src/ray/common:id",
-        "//src/ray/common:asio",
-        "//src/ray/common:ray_config",
-        "//src/ray/util:thread_checker",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_task_manager",
-    hdrs = ["src/ray/gcs/gcs_server/gcs_task_manager.h"],
-    srcs = ["src/ray/gcs/gcs_server/gcs_task_manager.cc"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-        ":gcs_pb_util",
-        "//src/ray/common:ray_config",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
-        "//src/ray/protobuf:gcs_cc_proto",
-        ":gcs_usage_stats_client",
-        "//src/ray/util:counter_map",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_server_io_context_policy",
-    hdrs = ["src/ray/gcs/gcs_server/gcs_server_io_context_policy.h"],
-    deps = [
-        "//src/ray/common:ray_syncer",
-        ":gcs_task_manager",
-        ":gcs_pub_sub_lib",
-        "//src/ray/util:array",
-        "//src/ray/util:type_traits",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_job_manager",
-    hdrs = ["src/ray/gcs/gcs_server/gcs_job_manager.h"],
-    srcs = ["src/ray/gcs/gcs_server/gcs_job_manager.cc"],
-    deps = [
-        ":gcs_pb_util",
-        ":stats_metric",
-        "//src/ray/util:event",
-        "//src/ray/util:thread_checker",
-        ":worker_rpc",
-        ":gcs_service_rpc",
-        ":gcs_pub_sub_lib",
-        ":gcs_table_storage",
-        ":gcs_init_data",
-        ":gcs_function_manager",
-        "//src/ray/common:runtime_env",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_server_lib",
-    srcs = [
-        "src/ray/gcs/gcs_server/gcs_actor_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_actor_scheduler.cc",
-        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_node_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_placement_group_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
-        "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_server.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/gcs_server/gcs_actor_manager.h",
-        "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
-        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
-        "src/ray/gcs/gcs_server/gcs_node_manager.h",
-        "src/ray/gcs/gcs_server/gcs_placement_group_manager.h",
-        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.h",
-        "src/ray/gcs/gcs_server/gcs_resource_manager.h",
-        "src/ray/gcs/gcs_server/gcs_server.h",
-    ],
-    deps = [
-        ":autoscaler_rpc",
-        ":gcs",
-        ":gcs_function_manager",
-        ":gcs_health_check_manager",
-        ":gcs_init_data",
-        ":gcs_job_manager",
-        ":gcs_kv_manager",
-        ":gcs_pub_sub_lib",
-        ":gcs_pubsub_handler",
-        ":gcs_redis_failure_detector",
-        ":gcs_runtime_env_handler",
-        ":gcs_server_io_context_policy",
-        ":gcs_service_cc_grpc",
-        ":gcs_service_rpc",
-        ":gcs_state_util",
-        ":gcs_store_client_kv",
-        ":gcs_table_storage",
-        ":gcs_table_storage_lib",
-        ":gcs_task_manager",
-        ":gcs_usage_stats_client",
-        ":gcs_worker_manager",
-        ":node_manager_rpc",
-        ":observable_store_client",
-        ":pubsub_lib",
-        ":raylet_client_lib",
-        ":worker_rpc",
-        "//src/ray/protobuf:agent_manager_cc_proto",
-        "//src/ray/raylet/scheduling:scheduler",
-        "//src/ray/util:counter_map",
-        "//src/ray/util:thread_checker",
-        "//src/ray/util:throttler",
-        "//src/ray/util:type_traits",
-        "@boost//:bimap",
-        "@com_google_absl//absl/container:btree",
-    ],
-)
-
-ray_cc_binary(
-    name = "gcs_server",
-    srcs = [
-        "src/ray/gcs/gcs_server/gcs_server_main.cc",
-    ],
-    visibility = ["//java:__subpackages__"],
-    deps = [
-        ":gcs_server_lib",
-        ":stats_lib",
-        "//src/ray/util:stream_redirection",
-        "//src/ray/util:stream_redirection_options",
-        "@com_github_gflags_gflags//:gflags",
-    ],
-)
-
 # Ray native pubsub module.
 ray_cc_library(
     name = "publisher_lib",
@@ -1129,68 +851,6 @@ ray_cc_library(
     deps = [
         ":publisher_lib",
         ":subscriber_lib",
-    ],
-)
-
-ray_cc_library(
-    name = "stats_opentelemetry",
-    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
-    deps = [
-        "@io_opentelemetry_cpp//sdk/src/logs",
-        "@io_opentelemetry_cpp//sdk/src/trace",
-    ],
-)
-
-ray_cc_library(
-    name = "stats_metric",
-    srcs = [
-        "src/ray/stats/metric.cc",
-        "src/ray/stats/metric_defs.cc",
-        "src/ray/stats/tag_defs.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric.h",
-        "src/ray/stats/metric_defs.h",
-        "src/ray/stats/tag_defs.h",
-    ],
-    deps = [
-        "//src/ray/util",
-        "//src/ray/util:logging",
-        "//src/ray/util:size_literals",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_prod",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
-    ],
-)
-
-ray_cc_library(
-    name = "stats_lib",
-    srcs = [
-        "src/ray/stats/metric_exporter.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric.h",
-        "src/ray/stats/metric_exporter.h",
-        "src/ray/stats/stats.h",
-        "src/ray/stats/tag_defs.h",
-    ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
-    deps = [
-        ":reporter_rpc",
-        ":stats_metric",
-        "//src/ray/util:size_literals",
-        "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
 
@@ -1336,7 +996,7 @@ ray_cc_library(
         ":pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",
-        ":stats_lib",
+        "//src/ray/stats:stats_lib",
         ":wait_manager",
         ":worker",
         ":worker_pool",
@@ -1838,17 +1498,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_function_manager_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_function_manager_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "dependency_resolver_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
@@ -2251,21 +1900,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_placement_group_manager_mock_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_mock_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
     name = "placement_group_resource_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
@@ -2420,37 +2054,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "stats_test",
-    size = "small",
-    srcs = ["src/ray/stats/stats_test.cc"],
-    tags = [
-        "no_tsan",
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_grpc_test",
-    size = "small",
-    srcs = [
-        "src/ray/stats/metric_exporter_grpc_test.cc",
-    ],
-    tags = [
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
@@ -2499,346 +2102,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":worker_rpc",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_server_rpc_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
-    ],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-    ],
-    data = [
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = [
-        "no_tsan",
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_kv_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_kv_manager_test.cc",
-    ],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-    ],
-    data = [
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_server_test_util",
-    hdrs = [
-        "src/ray/gcs/gcs_server/test/gcs_server_test_util.h",
-    ],
-    deps = [
-        ":gcs_client_lib",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_health_check_manager_test",
-    size = "medium",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_node_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_job_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_job_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_task_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_task_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_placement_group_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
-    ],
-    tags = [
-        "no_tsan",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_placement_group_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
-    ],
-    tags = [
-        "no_tsan",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_actor_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_actor_scheduler_mock_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_mock_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-        "//src/ray/common:test_util",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_actor_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
-    ],
-    tags = [
-        "no_tsan",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_worker_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_worker_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "//src/ray/util:process",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_table_storage_lib",
-    srcs = ["src/ray/gcs/gcs_server/gcs_table_storage.cc"],
-    hdrs = ["src/ray/gcs/gcs_server/gcs_table_storage.h"],
-    deps = [
-        ":gcs",
-        ":gcs_in_memory_store_client",
-        ":observable_store_client",
-        ":pubsub_lib",
-        ":redis_store_client",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:status",
-    ],
-)
-
-ray_cc_library(
-    name = "gcs_table_storage_test_lib",
-    hdrs = [
-        "src/ray/gcs/gcs_server/test/gcs_table_storage_test_base.h",
-    ],
-    deps = [
-        "redis_store_client",
-    ],
-)
-
-ray_cc_test(
-    name = "redis_gcs_table_storage_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
-    ],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-    ],
-    data = [
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_table_storage_lib",
-        ":gcs_table_storage_test_lib",
-        ":gcs_test_util_lib",
-        ":store_client_test_lib",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_test(
-    name = "in_memory_gcs_table_storage_test",
-    size = "small",
-    srcs = ["src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_table_storage_lib",
-        ":gcs_table_storage_test_lib",
-        ":gcs_test_util_lib",
-        ":store_client_test_lib",
-        "//src/ray/common:test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_autoscaler_state_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_autoscaler_state_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_resource_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_resource_manager_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "usage_stats_client_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/usage_stats_client_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2907,9 +2170,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
-        ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":global_state_accessor_lib",
+        "//src/ray/gcs/gcs_server:gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2935,8 +2198,8 @@ ray_cc_test(
     ],
     deps = [
         ":gcs_client_lib",
-        ":gcs_server_lib",
         ":gcs_test_util_lib",
+        "//src/ray/gcs/gcs_server:gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2960,8 +2223,8 @@ ray_cc_test(
     ],
     deps = [
         ":gcs_client_lib",
-        ":gcs_server_lib",
         ":gcs_test_util_lib",
+        "//src/ray/gcs/gcs_server:gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2999,7 +2262,7 @@ ray_cc_library(
     srcs = ["src/ray/object_manager/push_manager.cc"],
     hdrs = ["src/ray/object_manager/push_manager.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
@@ -3016,7 +2279,7 @@ ray_cc_library(
     deps = [
         ":object_manager_rpc",
         ":ownership_based_object_directory",
-        ":stats_metric",
+        "//src/ray/stats:stats_metric",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
@@ -3243,7 +2506,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:status",
         "//src/ray/common:ray_config",
-        ":stats_lib",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util",
         "//src/ray/util:exponential_backoff",
         "@boost//:asio",
@@ -3447,57 +2710,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "gcs_job_manager_export_event_test",
-    size = "small",
-    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_job_manager_export_event_test.cc"],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_actor_manager_export_event_test",
-    size = "small",
-    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_actor_manager_export_event_test.cc"],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_node_manager_export_event_test",
-    size = "small",
-    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_node_manager_export_event_test.cc"],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
@@ -3544,14 +2756,14 @@ pyx_library(
         ":python_callbacks",
         "//:core_worker_lib",
         "//:exported_internal",
-        "//:gcs_server_lib",
         "//:global_state_accessor_lib",
         "//:raylet_lib",
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//:stats_lib",
+        "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
@@ -3584,7 +2796,7 @@ ray_cc_binary(
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//:stats_lib",
+        "//src/ray/stats:stats_lib",
         "@bazel_tools//tools/jdk:jni",
     ],
 )
@@ -3704,7 +2916,7 @@ copy_to_workspace(
 
 copy_to_workspace(
     name = "cp_gcs_server",
-    srcs = [":gcs_server"],
+    srcs = ["//src/ray/gcs/gcs_server:gcs_server"],
     dstdir = "python/ray/core/src/ray/gcs",
 )
 
