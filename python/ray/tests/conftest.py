@@ -525,16 +525,18 @@ def class_ray_instance():
 
 @contextmanager
 def _ray_start(**kwargs):
-    init_kwargs = get_default_fixture_ray_kwargs()
-    init_kwargs.update(kwargs)
-    # Start the Ray processes.
-    address_info = ray.init("local", **init_kwargs)
+    try:
+        init_kwargs = get_default_fixture_ray_kwargs()
+        init_kwargs.update(kwargs)
+        # Start the Ray processes.
+        address_info = ray.init("local", **init_kwargs)
 
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+        yield address_info
+    finally:
+        # The code after the yield will run as teardown code.
+        ray.shutdown()
+        # Delete the cluster address just in case.
+        ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -630,37 +632,41 @@ def ray_start_10_cpus(request, maybe_external_redis):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
-        pytest.skip("Cluster not supported")
-    init_kwargs = get_default_fixture_ray_kwargs()
-    num_nodes = 0
-    do_init = False
-    # num_nodes & do_init are not arguments for ray.init, so delete them.
-    if "num_nodes" in kwargs:
-        num_nodes = kwargs["num_nodes"]
-        del kwargs["num_nodes"]
-    if "do_init" in kwargs:
-        do_init = kwargs["do_init"]
-        del kwargs["do_init"]
-    elif num_nodes > 0:
-        do_init = True
-    init_kwargs.update(kwargs)
-    namespace = init_kwargs.pop("namespace")
-    cluster = Cluster()
-    remote_nodes = []
-    for i in range(num_nodes):
-        if i > 0 and "_system_config" in init_kwargs:
-            del init_kwargs["_system_config"]
-        remote_nodes.append(cluster.add_node(**init_kwargs))
-        # We assume driver will connect to the head (first node),
-        # so ray init will be invoked if do_init is true
-        if len(remote_nodes) == 1 and do_init:
-            ray.init(address=cluster.address, namespace=namespace)
-    yield cluster
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    cluster.shutdown()
+    cluster = None
+    try:
+        cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+        if cluster_not_supported_:
+            pytest.skip("Cluster not supported")
+        init_kwargs = get_default_fixture_ray_kwargs()
+        num_nodes = 0
+        do_init = False
+        # num_nodes & do_init are not arguments for ray.init, so delete them.
+        if "num_nodes" in kwargs:
+            num_nodes = kwargs["num_nodes"]
+            del kwargs["num_nodes"]
+        if "do_init" in kwargs:
+            do_init = kwargs["do_init"]
+            del kwargs["do_init"]
+        elif num_nodes > 0:
+            do_init = True
+        init_kwargs.update(kwargs)
+        namespace = init_kwargs.pop("namespace")
+        cluster = Cluster()
+        remote_nodes = []
+        for i in range(num_nodes):
+            if i > 0 and "_system_config" in init_kwargs:
+                del init_kwargs["_system_config"]
+            remote_nodes.append(cluster.add_node(**init_kwargs))
+            # We assume driver will connect to the head (first node),
+            # so ray init will be invoked if do_init is true
+            if len(remote_nodes) == 1 and do_init:
+                ray.init(address=cluster.address, namespace=namespace)
+        yield cluster
+    finally:
+        # The code after the yield will run as teardown code.
+        ray.shutdown()
+        if cluster:
+            cluster.shutdown()
 
 
 # This fixture will start a cluster with empty nodes.
@@ -753,47 +759,48 @@ def call_ray_start(request):
 
 @contextmanager
 def call_ray_start_context(request):
-    default_cmd = (
-        "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0"
-    )
-    parameter = getattr(request, "param", default_cmd)
     env = None
-
-    if isinstance(parameter, dict):
-        if "env" in parameter:
-            env = {**os.environ, **parameter.get("env")}
-
-        parameter = parameter.get("cmd", default_cmd)
-
-    command_args = parameter.split(" ")
-
     try:
-        out = ray._private.utils.decode(
-            subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
+        default_cmd = (
+            "ray start --head --num-cpus=1 --min-worker-port=0 "
+            "--max-worker-port=0 --port 0"
         )
-    except Exception as e:
-        print(type(e), e)
-        raise
+        parameter = getattr(request, "param", default_cmd)
 
-    # Get the redis address from the output.
-    redis_substring_prefix = "--address='"
-    idx = out.find(redis_substring_prefix)
-    if idx >= 0:
-        address_location = idx + len(redis_substring_prefix)
-        address = out[address_location:]
-        address = address.split("'")[0]
-    else:
-        address = None
+        if isinstance(parameter, dict):
+            if "env" in parameter:
+                env = {**os.environ, **parameter.get("env")}
 
-    yield address
+            parameter = parameter.get("cmd", default_cmd)
 
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"], env=env)
-    # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+        command_args = parameter.split(" ")
+
+        try:
+            out = ray._private.utils.decode(
+                subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
+            )
+        except Exception as e:
+            print(type(e), e)
+            raise
+
+        # Get the redis address from the output.
+        redis_substring_prefix = "--address='"
+        idx = out.find(redis_substring_prefix)
+        if idx >= 0:
+            address_location = idx + len(redis_substring_prefix)
+            address = out[address_location:]
+            address = address.split("'")[0]
+        else:
+            address = None
+
+        yield address
+    finally:
+        # Disconnect from the Ray cluster.
+        ray.shutdown()
+        # Kill the Ray cluster.
+        subprocess.check_call(["ray", "stop"], env=env)
+        # Delete the cluster address just in case.
+        ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture

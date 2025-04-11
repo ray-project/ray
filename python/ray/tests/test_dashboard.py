@@ -55,6 +55,8 @@ def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
     except subprocess.CalledProcessError as e:
         assert b"already occupied" in e.stderr
         error_raised = True
+    finally:
+        subprocess.check_call(["ray", "stop", "--force"])
 
     assert error_raised, "ray start should cause a conflict error"
 
