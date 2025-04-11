@@ -10,7 +10,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
 
 import tempfile
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 
 import pyarrow.fs as pa_fs
 from pytest import raises
@@ -436,6 +436,46 @@ class TestCloudFileSystem:
                 )
                 assert call_args["bucket_uri"] == "gs://bucket/model"
                 assert call_args["substrings_to_include"] == []
+
+    @patch("pyarrow.fs.copy_files")
+    def test_upload_files(self, mock_copy_files):
+        """Test uploading files to cloud storage."""
+        # Create temp directory for testing
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Test uploading files
+            CloudFileSystem.upload_files(tempdir, "s3://bucket/dir")
+
+            # Check that the files are copied
+            assert mock_copy_files.call_count == 1
+            assert mock_copy_files.called_with(tempdir, "bucket/dir/", ANY, ANY)
+
+    @patch("pyarrow.fs.copy_files")
+    def test_upload_model(self, mock_copy_files):
+        """Test uploading a model to cloud storage."""
+        # Create temp directory for testing
+        with tempfile.TemporaryDirectory() as tempdir:
+            hash = "abcdef1234567890"
+            # Create refs/main file
+            os.makedirs(os.path.join(tempdir, "refs"), exist_ok=True)
+            model_rev_path = os.path.join(tempdir, "refs", "main")
+            with open(model_rev_path, "w") as f:
+                f.write(hash)
+
+            # Create snapshots/<hash> folder
+            model_asset_path = os.path.join(tempdir, "snapshots", hash)
+            os.makedirs(model_asset_path)
+
+            # Test uploading model
+            CloudFileSystem.upload_model(tempdir, "gs://bucket/model")
+
+            # Check that the files are copied
+            assert mock_copy_files.call_count == 2
+            assert mock_copy_files.called_with(
+                model_rev_path, "bucket/model/hash", ANY, ANY
+            )
+            assert mock_copy_files.called_with(
+                model_asset_path, "bucket/model/", ANY, ANY
+            )
 
 
 if __name__ == "__main__":
