@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 
 if TYPE_CHECKING:
@@ -35,7 +35,8 @@ class DataIteratorImpl(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name, self._base_dataset._uuid
-        )
+        return self._base_dataset.get_dataset_id()

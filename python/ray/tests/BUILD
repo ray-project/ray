@@ -312,7 +312,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_basic.py",
         "test_basic_2.py",
         "test_basic_4.py",
         "test_basic_5.py",
@@ -332,6 +331,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_basic.py",
         "test_basic_3.py",
     ],
     tags = [
@@ -549,6 +549,22 @@ py_test_module_list(
         "test_autoscaler_drain_node_api.py",
         "test_autoscaler_gcp.py",
         "test_autoscaler_util.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "autoscaler/test_providers.py",
     ],
     tags = [
         "exclusive",
@@ -962,6 +978,38 @@ py_test(
     name = "test_gcp_tpu_command_runner",
     size = "small",
     srcs = ["gcp/test_gcp_tpu_command_runner.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_cluster_operator",
+    size = "small",
+    srcs = ["vsphere/test_cluster_operator.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_vmray_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vmray_node_provider.py"],
     tags = [
         "exclusive",
         "no_windows",
