@@ -723,7 +723,7 @@ def test_limit_operator(ray_start_regular_shared):
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
             assert not limit_op.completed(), limit
-            assert not limit_op._execution_completed, limit
+            assert not limit_op._execution_finished, limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -734,12 +734,12 @@ def test_limit_operator(ray_start_regular_shared):
                 assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert limit_op._execution_completed, limit
+                assert limit_op._execution_finished, limit
             else:
                 assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert not limit_op._execution_completed, limit
+                assert not limit_op._execution_finished, limit
         limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.

@@ -430,7 +430,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_completed()
+            and not op.execution_finished()
         )
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
