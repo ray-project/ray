@@ -630,6 +630,7 @@ class ProxyStateManager:
             port = self._grpc_options.port
         else:
             raise ValueError(f"Invalid protocol: {protocol}")
+
         targets = [
             Target(ip=state.actor_details.node_ip, port=port)
             for _, state in self._proxy_states.items()
