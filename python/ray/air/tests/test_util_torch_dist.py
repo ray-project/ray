@@ -37,7 +37,7 @@ def test_torch_process_group_gloo():
 
 
 def test_torch_process_group_nccl():
-    @ray.remote(num_gpus=2)
+    @ray.remote(num_gpus=1)
     class TestWorker(TorchDistributedWorker):
         def __init__(self):
             super().__init__()
@@ -59,7 +59,7 @@ def test_torch_process_group_nccl():
     for r in reduced:
         assert len(r) == 1
         assert r.dtype == np.float32
-        # All-reduce. Each tensor contributed 1.0. 5 tensors in total.
+        # All-reduce. Each tensor contributed 1.0. 2 tensors in total.
         assert r[0] == 2.0
 
     shutdown_torch_dist_process_group(workers)
