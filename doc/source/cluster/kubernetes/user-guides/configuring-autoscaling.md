@@ -368,17 +368,19 @@ workerGroupSpecs:
             memory: "1G"
 ```
 
-### 5. autoscaler environment configuration
+### 5. Autoscaler environment configuration
 
 You can configure the Ray autoscaler using environment variables specified in the `env` or `envFrom` fields under the `autoscalerOptions` section of your RayCluster custom resource. These variables provide fine-grained control over how the autoscaler behaves internally.
 
 For example, `AUTOSCALER_UPDATE_INTERVAL_S` determines how frequently the autoscaler checks the cluster status and decides whether to scale up or down.
 
+For complete examples, see [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml#L28-L33) and [ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml#L16-L21).
+
 ```yaml
 autoscalerOptions:
   env:
     - name: AUTOSCALER_UPDATE_INTERVAL_S
-      value: "30"
+      value: "5"
 ```
 
 ## Next steps
