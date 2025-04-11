@@ -680,16 +680,18 @@ class EmbeddingRequest(BaseModel):
     user: Optional[str] = None
 
 
-class EmbeddingData(BaseModel):
-    embedding: Union[List[float], str]
+class EmbeddingResponseData(BaseModel):
     index: int
     object: str = "embedding"
+    embedding: Union[List[float], str]
 
 
 class EmbeddingResponse(BaseModel):
-    data: List[EmbeddingData]
-    model: str
+    id: str = Field(default_factory=lambda: f"embd-{generate_request_id()}")
     object: str = "list"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str
+    data: list[EmbeddingResponseData]
     usage: UsageInfo
 
 

@@ -34,9 +34,9 @@ from ray.llm._internal.serve.configs.openai_api_models import (
     CompletionResponseStreamChoice,
     CompletionStreamResponse,
     DeltaMessage,
-    EmbeddingData,
     EmbeddingRequest,
     EmbeddingResponse,
+    EmbeddingResponseData,
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
@@ -635,7 +635,9 @@ class LLMServer(_LLMServerBase):
             embedding_data, total_tokens = await self.engine.embed(vllm_request)
 
             data = [
-                EmbeddingData(object="embedding", index=index, embedding=embedding)
+                EmbeddingResponseData(
+                    object="embedding", index=index, embedding=embedding
+                )
                 for index, embedding in enumerate(embedding_data)
             ]
 
