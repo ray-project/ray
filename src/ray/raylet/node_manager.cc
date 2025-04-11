@@ -2657,11 +2657,6 @@ std::string NodeManager::DebugString() const {
            << async_plasma_objects_notification_.size();
   }
 
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
-  }
-
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
