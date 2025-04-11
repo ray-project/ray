@@ -471,9 +471,12 @@ class Stats:
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
         if self._throughput_stats is not None:
-            for other in others:
-                if other._throughput_stats is not None:
-                    self._throughput_stats.merge_in_parallel(other._throughput_stats)
+            other_throughput_stats = [
+                other._throughput_stats
+                for other in others
+                if other._throughput_stats is not None
+            ]
+            self._throughput_stats.merge_in_parallel(other_throughput_stats)
 
         # Mark that we have new values since we modified the values list
         self._has_new_values = True

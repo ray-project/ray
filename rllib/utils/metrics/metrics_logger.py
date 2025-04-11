@@ -546,9 +546,6 @@ class MetricsLogger:
 
         prefix_key = force_tuple(key)
 
-        if with_throughput and throughput_ema_coeff is None:
-            throughput_ema_coeff = 0.05
-
         def _map(path, stat_or_value):
             extended_key = prefix_key + force_tuple(tree.flatten(path))
 
