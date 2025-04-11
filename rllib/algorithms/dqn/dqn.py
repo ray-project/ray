@@ -610,7 +610,7 @@ class DQN(Algorithm):
     def setup(self, config: AlgorithmConfig) -> None:
         super().setup(config)
 
-        if self.env_runner_group:
+        if self.config.enable_env_runner_and_connector_v2 and self.env_runner_group:
             if self.env_runner is None:
                 self._module_is_stateful = self.env_runner_group.foreach_env_runner(
                     lambda er: er.module.is_stateful(),
@@ -619,7 +619,7 @@ class DQN(Algorithm):
                 )[0]
             else:
                 self._module_is_stateful = self.env_runner.module.is_stateful()
-                
+
     @override(Algorithm)
     def training_step(self) -> None:
         """DQN training iteration function.

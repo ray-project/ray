@@ -691,7 +691,7 @@ class Algorithm(Checkpointable, Trainable):
         elif self.eval_env_runner_group:
             self.spaces = self.eval_env_runner_group.get_spaces()
 
-        if self.env_runner is None:
+        if self.env_runner is None and self.spaces is not None:
             self.env_to_module_connector = self.config.build_env_to_module_connector(
                 spaces=self.spaces
             )

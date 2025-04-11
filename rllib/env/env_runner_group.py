@@ -475,7 +475,11 @@ class EnvRunnerGroup:
                     if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
                 ]
 
-                if self.local_env_runner is not None:
+                if (
+                    self.local_env_runner is not None
+                    and hasattr(self.local_env_runner, "_env_to_module")
+                    and hasattr(self.local_env_runner, "_module_to_env")
+                ):
                     assert env_to_module is None
                     env_to_module = self.local_env_runner._env_to_module
                     assert module_to_env is None
