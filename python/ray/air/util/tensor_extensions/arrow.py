@@ -787,6 +787,10 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
+        if arr.dtype == object:
+            # Elements that are object dtype are converted to Arrow directly,
+            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
+            return pa.array(arr)
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
