@@ -29,7 +29,7 @@ logger = ContextLoggerAdapter(logging.getLogger(__name__))
 class RecsysMockDataLoaderFactory(BaseDataLoaderFactory):
     def get_train_dataloader(self):
         return mock_dataloader(
-            1024, self.benchmark_config.dataloader_config.train_batch_size
+            2048, self.benchmark_config.dataloader_config.train_batch_size
         )
 
     def get_val_dataloader(self):
