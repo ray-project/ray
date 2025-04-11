@@ -770,6 +770,7 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
+
         # Check if we're on Kubernetes
         if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
             # Check if we're using KubeRay >= 0.4.0.
@@ -778,6 +779,46 @@ def get_cluster_config_to_report(
             # Else, we're on Kubernetes but not in either of the above categories.
             else:
                 result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
+
+        import requests
+
+        def cloud_metadata_request(
+            url: str, headers: Optional[Dict[str, str]], cloud_provider: str
+        ) -> bool:
+            try:
+                res = requests.get(url, headers=headers, timeout=1)
+                # The requests may be rejected based on pod configuration but if
+                # it's a machine on the cloud provider it should at least be reachable.s
+                if res.status_code != 404:
+                    if result.cloud_provider is None:
+                        result.cloud_provider = cloud_provider
+                    else:
+                        result.cloud_provider += f"_{cloud_provider}"
+                    return True
+            except requests.exceptions.ConnectionError:
+                pass
+            return False
+
+        # Make internal metadata requests to all 3 clouds
+        if cloud_metadata_request(
+            "http://metadata.google.internal/computeMetadata/v1",
+            {"Metadata-Flavor": "Google"},
+            "gcp",
+        ):
+            pass
+        elif cloud_metadata_request(
+            "http://169.254.169.254/latest/meta-data/", None, "aws"
+        ):
+            pass
+        elif cloud_metadata_request(
+            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+            {"Metadata": "true"},
+            "azure",
+        ):
+            pass
+        elif result.cloud_provider is not None:
+            result.cloud_provider += "_unknown"
+
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")
