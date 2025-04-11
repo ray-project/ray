@@ -639,7 +639,6 @@ ray_cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
-        ":plasma_client",
         ":placement_group_resource_manager",
         ":pubsub_lib",
         ":raylet_agent_manager",
