@@ -16,9 +16,9 @@
 
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 
@@ -61,50 +61,54 @@ class RpcFailureManager {
   RpcFailure GetRpcFailure(const std::string &name) {
     absl::MutexLock lock(&mu_);
 
-    if (failable_methods_.find(name) == failable_methods_.end()) {
+    auto iter = failable_methods_.find(name);
+    if (iter == failable_methods_.end()) {
       return RpcFailure::None;
     }
 
-    uint64_t &num_remaining_failures = failable_methods_.at(name);
+    uint64_t &num_remaining_failures = iter->second;
     if (num_remaining_failures == 0) {
       return RpcFailure::None;
     }
 
     std::uniform_int_distribution<int> dist(0, 3);
-    int rand = dist(gen_);
-    if (rand == 0) {
+    const int random_number = dist(gen_);
+    if (random_number == 0) {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Request;
-    } else if (rand == 1) {
+    }
+    if (random_number == 1) {
       // 25% chance
       num_remaining_failures--;
       return RpcFailure::Response;
-    } else {
-      // 50% chance
-      return RpcFailure::None;
     }
+    // 50% chance
+    return RpcFailure::None;
   }
 
  private:
   absl::Mutex mu_;
   std::mt19937 gen_;
   // call name -> # remaining failures
-  std::unordered_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
+  absl::flat_hash_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
 
-static RpcFailureManager _rpc_failure_manager;
+auto &rpc_failure_manager = []() -> RpcFailureManager & {
+  static auto *manager = new RpcFailureManager();
+  return *manager;
+}();
 
 }  // namespace
 
-RpcFailure get_rpc_failure(const std::string &name) {
+RpcFailure GetRpcFailure(const std::string &name) {
   if (RayConfig::instance().testing_rpc_failure().empty()) {
     return RpcFailure::None;
   }
-  return _rpc_failure_manager.GetRpcFailure(name);
+  return rpc_failure_manager.GetRpcFailure(name);
 }
 
-void init() { _rpc_failure_manager.Init(); }
+void Init() { rpc_failure_manager.Init(); }
 
 }  // namespace testing
 }  // namespace rpc

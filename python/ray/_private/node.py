@@ -1246,8 +1246,29 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-            "raylet", unique=True, create_out=True, create_err=True
+        raylet_stdout_filepath, raylet_stderr_filepath = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_RAYLET,
+            unique=True,
+            create_out=True,
+            create_err=True,
+        )
+        (
+            dashboard_agent_stdout_filepath,
+            dashboard_agent_stderr_filepath,
+        ) = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
+            unique=True,
+            create_out=True,
+            create_err=True,
+        )
+        (
+            runtime_env_agent_stdout_filepath,
+            runtime_env_agent_stderr_filepath,
+        ) = self.get_log_file_names(
+            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT,
+            unique=True,
+            create_out=True,
+            create_err=True,
         )
         process_info = ray._private.services.start_raylet(
             self.redis_address,
@@ -1283,8 +1304,12 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            stdout_filepath=stdout_log_fname,
-            stderr_filepath=stderr_log_fname,
+            raylet_stdout_filepath=raylet_stdout_filepath,
+            raylet_stderr_filepath=raylet_stderr_filepath,
+            dashboard_agent_stdout_filepath=dashboard_agent_stdout_filepath,
+            dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
+            runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
+            runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,

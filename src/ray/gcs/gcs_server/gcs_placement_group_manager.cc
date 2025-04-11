@@ -467,18 +467,17 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   auto placement_group = std::make_shared<GcsPlacementGroup>(
       request, get_ray_namespace_(job_id), placement_group_state_counter_);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
-  RegisterPlacementGroup(placement_group,
-                         [reply, send_reply_callback, placement_group](Status status) {
-                           if (status.ok()) {
-                             RAY_LOG(INFO) << "Finished registering placement group, "
-                                           << placement_group->DebugString();
-                           } else {
-                             RAY_LOG(INFO) << "Failed to register placement group, "
-                                           << placement_group->DebugString()
-                                           << ", cause: " << status.message();
-                           }
-                           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-                         });
+  RegisterPlacementGroup(
+      placement_group, [reply, send_reply_callback, placement_group](Status status) {
+        if (status.ok()) {
+          RAY_LOG(INFO) << "Finished registering placement group, "
+                        << placement_group->DebugString();
+        } else {
+          RAY_LOG(INFO) << "Failed to register placement group, "
+                        << placement_group->DebugString() << ", cause: " << status;
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      });
   ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }
 
@@ -705,7 +704,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
         } else {
           RAY_LOG(WARNING) << "Failed to waiting for placement group until ready, "
                               "placement group id = "
-                           << placement_group_id << ", cause: " << status.message();
+                           << placement_group_id << ", cause: " << status;
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       });
@@ -815,7 +814,26 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
       // (for example gpu resource when there's only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
-      if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
+
+      // check to make sure the placement group shouldn't be in PENDING or REMOVED state
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::PENDING)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "PENDING placement group should have no scheduled bundles on the dead node.";
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::REMOVED)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "REMOVED placement group should have no scheduled bundles on the dead node.";
+
+      if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
+        // Only update the placement group state to RESCHEDULING if it is in CREATED
+        // state. We don't need to update the placement group state or add to the
+        // pending queue for other states (RESCHEDULING, PREPARED). This is because
+        // RESCHEDULING and PREPARED state indicate that the placement group is in
+        // scheduling process and when completing the scheduling, we will check
+        // whether all bundles in the placement group has been successfully scheduled.
+        // If not, the unplaced bundles will be rescheduled and thus the unplaced
+        // bundles due to the node death will be handled there.
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         iter->second->GetMutableStats()->set_scheduling_state(
             rpc::PlacementGroupStats::QUEUED);
@@ -867,7 +885,7 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
                       << " is successfully removed because the job died.";
       } else {
         RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
-                         << " upon a job died, status:" << status.ToString();
+                         << " upon a job died, status:" << status;
       }
     });
   }

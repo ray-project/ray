@@ -92,19 +92,20 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
             "https://github.com/ray-project/ray/issues."
         )
 
-    result = None
+    result = conda
     if isinstance(conda, str):
-        yaml_file = Path(conda)
-        if yaml_file.suffix in (".yaml", ".yml"):
-            if not yaml_file.is_file():
-                raise ValueError(f"Can't find conda YAML file {yaml_file}.")
+        file_path = Path(conda)
+        if file_path.suffix in (".yaml", ".yml"):
+            if not file_path.is_file():
+                raise ValueError(f"Can't find conda YAML file {file_path}.")
             try:
-                result = yaml.safe_load(yaml_file.read_text())
+                result = yaml.safe_load(file_path.read_text())
             except Exception as e:
-                raise ValueError(f"Failed to read conda file {yaml_file}: {e}.")
-        else:
-            # Assume it's a pre-existing conda environment name.
-            result = conda
+                raise ValueError(f"Failed to read conda file {file_path}: {e}.")
+        elif file_path.is_absolute():
+            if not file_path.is_dir():
+                raise ValueError(f"Can't find conda env directory {file_path}.")
+            result = str(file_path)
     elif isinstance(conda, dict):
         result = conda
     else:

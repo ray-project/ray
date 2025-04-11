@@ -260,9 +260,7 @@ class FileBasedDatasource(Datasource):
                             block = _add_partitions(block, partitions)
                         if self._include_paths:
                             block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.append_column(
-                                "path", [read_path] * block_accessor.num_rows()
-                            )
+                            block = block_accessor.fill_column("path", read_path)
                         yield block
 
         def create_read_task_fn(read_paths, num_threads):

@@ -384,8 +384,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   // We should actually detect if the actor for this task is dead, but let's just assume
   // it's not for now.
-  retry_task_callback_(
-      spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
+  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return true;
 }
@@ -1021,8 +1020,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(
-        spec, /*object_recovery*/ false, /*update_seqno*/ true, delay_ms);
+    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()

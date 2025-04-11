@@ -1,3 +1,4 @@
+import copy
 import enum
 import logging
 import os
@@ -547,6 +548,10 @@ class DataContext:
             key: The key of the config.
         """
         self._kv_configs.pop(key, None)
+
+    def copy(self) -> "DataContext":
+        """Create a copy of the current DataContext."""
+        return copy.deepcopy(self)
 
 
 # Backwards compatibility alias.

@@ -13,6 +13,7 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+from ray.serve.config import gRPCOptions
 import requests
 
 import ray
@@ -618,3 +619,7 @@ def wait_for_interrupt() -> None:
         # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
         # from the main script.
         raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0

@@ -44,6 +44,9 @@ def test_handle_backpressure(serve_instance):
     assert first_response.result() == "hi-1"
     assert second_response.result() == "hi-2"
 
+    ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
 
 def test_http_backpressure(serve_instance):
     """Requests should return a 503 once the limit is reached."""
@@ -84,6 +87,9 @@ def test_http_backpressure(serve_instance):
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (200, "hi-1")
     assert ray.get(second_ref) == (200, "hi-2")
+
+    ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
 def test_grpc_backpressure(serve_instance):
@@ -132,6 +138,9 @@ def test_grpc_backpressure(serve_instance):
     assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
     assert ray.get(second_ref) == (grpc.StatusCode.OK, "hi-2")
 
+    ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
 
 def test_model_composition_backpressure(serve_instance):
     signal_actor = SignalActor.remote()
@@ -178,6 +187,9 @@ def test_model_composition_backpressure(serve_instance):
         assert executing_fut.result().text == "ok"
         assert queued_fut.result().status_code == 200
         assert queued_fut.result().text == "ok"
+
+    ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
 if __name__ == "__main__":

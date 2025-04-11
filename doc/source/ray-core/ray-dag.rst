@@ -137,4 +137,4 @@ You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
 |  `Ray Serve Compositions of Models <https://docs.ray.io/en/master/serve/model_composition.html>`_
-|  `Visualization of Ray Compiled Graph <https://docs.ray.io/en/master/ray-core/compiled-graph/visualization.html>`_
+|  `Visualization of Ray Compiled Graph <https://docs.ray.io/en/latest/ray-core/compiled-graph/profiling.html#visualization>`_

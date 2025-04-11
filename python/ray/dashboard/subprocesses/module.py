@@ -42,7 +42,7 @@ class SubprocessModuleConfig:
     log_dir: str
     # Name of the "base" log file. Its stem is appended with the Module.__name__.
     # e.g. when logging_filename = "dashboard.log", and Module is JobHead,
-    # we will set up logger with name "dashboard-JobHead.log". This name will again be
+    # we will set up logger with name "dashboard_JobHead.log". This name will again be
     # appended with .1 and .2 for rotation.
     logging_filename: str
     logging_rotate_bytes: int

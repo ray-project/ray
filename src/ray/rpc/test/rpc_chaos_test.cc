@@ -21,14 +21,14 @@
 
 TEST(RpcChaosTest, Basic) {
   RayConfig::instance().testing_rpc_failure() = "method1=0,method2=1";
-  ray::rpc::testing::init();
-  ASSERT_EQ(ray::rpc::testing::get_rpc_failure("unknown"),
+  ray::rpc::testing::Init();
+  ASSERT_EQ(ray::rpc::testing::GetRpcFailure("unknown"),
             ray::rpc::testing::RpcFailure::None);
-  ASSERT_EQ(ray::rpc::testing::get_rpc_failure("method1"),
+  ASSERT_EQ(ray::rpc::testing::GetRpcFailure("method1"),
             ray::rpc::testing::RpcFailure::None);
   // At most one failure.
-  ASSERT_FALSE(ray::rpc::testing::get_rpc_failure("method2") !=
+  ASSERT_FALSE(ray::rpc::testing::GetRpcFailure("method2") !=
                    ray::rpc::testing::RpcFailure::None &&
-               ray::rpc::testing::get_rpc_failure("method2") !=
+               ray::rpc::testing::GetRpcFailure("method2") !=
                    ray::rpc::testing::RpcFailure::None);
 }

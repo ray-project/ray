@@ -9,12 +9,11 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray._private.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.exceptions import RayTaskError
-
-routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -44,9 +43,9 @@ def validate_endpoint():
 # NOTE (shrekris-anyscale): This class uses delayed imports for all
 # Ray Serve-related modules. That way, users can use the Ray dashboard agent for
 # non-Serve purposes without downloading Serve dependencies.
-class ServeHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class ServeHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._controller = None
         self._controller_lock = asyncio.Lock()
 
@@ -55,6 +54,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         # If the lock is already acquired by another async task, the async task
         # will asynchronously wait for the lock.
         self._controller_start_lock = asyncio.Lock()
+
+        # To init gcs_client in internal_kv for record_extra_usage_tag.
+        assert self.gcs_client is not None
+        assert ray.experimental.internal_kv._internal_kv_initialized()
 
     # TODO: It's better to use `/api/version`.
     # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -216,10 +219,3 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
                 )
 
             return self._controller
-
-    async def run(self):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False

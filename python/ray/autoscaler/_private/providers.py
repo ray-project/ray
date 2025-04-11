@@ -204,11 +204,11 @@ _PROVIDER_PRETTY_NAMES = {
     "aws": "AWS",
     "gcp": "GCP",
     "azure": "Azure",
-    "kubernetes": "Kubernetes",
     "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
     "vsphere": "vSphere",
+    "spark": "Spark",
 }
 
 _DEFAULT_CONFIGS = {

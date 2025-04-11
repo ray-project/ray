@@ -241,7 +241,7 @@ class ServerCallImpl : public ServerCall {
                        call_name_ + ".HandleRequestImpl",
                        // Implement the delay of the rpc server call as the
                        // delay of HandleRequestImpl().
-                       ray::asio::testing::get_delay_us(call_name_));
+                       ray::asio::testing::GetDelayUs(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq

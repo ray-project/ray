@@ -328,7 +328,7 @@ class ClientCallManager {
               stats_handle->event_name + ".OnReplyReceived",
               // Implement the delay of the rpc client call as the
               // delay of OnReplyReceived().
-              ray::asio::testing::get_delay_us(stats_handle->event_name));
+              ray::asio::testing::GetDelayUs(stats_handle->event_name));
           EventTracker::RecordEnd(std::move(stats_handle));
         } else {
           delete tag;
