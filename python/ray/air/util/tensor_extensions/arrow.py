@@ -705,8 +705,6 @@ class ArrowNativeTensorAdapter:
     @staticmethod
     def is_native_tensor_array(arr):
         """Check if an array is an Arrow native tensor array."""
-        if not _arrow_supports_native_tensors():
-            return False
         try:
             return isinstance(arr.type, pa.FixedShapeTensorType)
         except (AttributeError, TypeError):
@@ -733,10 +731,6 @@ class ArrowNativeTensorAdapter:
         if not isinstance(arr.type, get_arrow_extension_fixed_shape_tensor_types()):
             raise TypeError("Input must be a Ray fixed-shape tensor array")
 
-        if not _arrow_supports_native_tensors():
-            raise ValueError(
-                "Arrow native tensor type is not supported in this version"
-            )
 
         # Get the shape and dtype
         shape = arr.type.shape
@@ -798,8 +792,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         use_native_tensor = True
 
         # Check if we can and should use Arrow's native tensor type
-        can_use_native = _arrow_supports_native_tensors()
-        should_use_native = use_native_tensor and can_use_native
+        should_use_native = use_native_tensor
 
         if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
             arr = list(arr)
@@ -876,10 +869,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         Returns:
             An Arrow tensor array using the native FixedShapeTensorType.
         """
-        if not _arrow_supports_native_tensors():
-            raise ValueError(
-                "Arrow native tensor type is not supported in this version"
-            )
 
         if len(arr) == 0:
             # Empty array
