@@ -185,6 +185,14 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         title: "Node Memory by Component",
         pathParams: "orgId=1&theme=light&panelId=34",
       },
+      {
+        title: "Node GPU by Component",
+        pathParams: "orgId=1&theme=light&panelId=45",
+      },
+      {
+        title: "Node GPU Memory by Component",
+        pathParams: "orgId=1&theme=light&panelId=46",
+      },
     ],
   },
 ];
