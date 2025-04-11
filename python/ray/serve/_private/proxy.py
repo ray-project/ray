@@ -81,6 +81,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -1235,10 +1236,7 @@ class ProxyActor:
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
 
-        grpc_enabled = (
-            self._grpc_options.port > 0
-            and len(self._grpc_options.grpc_servicer_functions) > 0
-        )
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(

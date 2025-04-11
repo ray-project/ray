@@ -74,8 +74,6 @@ class IActorSubmitQueue {
   /// On client connect/reconnect, find all the tasks that's known to be
   /// executed out of order. This is specific to SequentialActorSubmitQueue.
   virtual std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() = 0;
-  /// On client connected.
-  virtual void OnClientConnected() = 0;
   /// Get the sequence number of the task to send according to the protocol.
   virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
   /// Mark a task has been executed on the receiver side.
