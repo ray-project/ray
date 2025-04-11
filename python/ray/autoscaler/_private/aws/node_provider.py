@@ -604,7 +604,7 @@ class AWSNodeProvider(NodeProvider):
             if len(matches) == 1:
                 return matches[0]
             cli_logger.warning(
-                "Unable to find the id {} from {} EC2 instances. Will retry after {} seconds ({}/{}).",
+                "Attempt to fetch EC2 instances that have instance ID {}. Got {} matching EC2 instances. Will retry after {} second. This is retry number {}, and the maximum number of retries is {}.",
                 node_id,
                 len(matches),
                 LIST_RETRY_DELAY_SEC,
