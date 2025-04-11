@@ -911,9 +911,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             env_index=idx,
         )
         if which == "on_episode_end":
-            kwargs["prev_episode_chunks"] = (
-                self._ongoing_episodes_for_metrics[episodes[idx].id_]
-            )
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
 
         make_callback(
             which,
