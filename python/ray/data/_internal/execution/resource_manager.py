@@ -525,7 +525,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
-            remaining = self._total_shared.max(ExecutionResources.zero())
+            remaining = remaining.max(ExecutionResources.zero())
         self._total_shared = remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
