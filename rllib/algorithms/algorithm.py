@@ -1077,23 +1077,24 @@ class Algorithm(Checkpointable, Trainable):
         if self.evaluation_dataset is not None:
             return self._run_offline_evaluation()
 
+        if self.config.enable_env_runner_and_connector_v2:
+            if (
+                self.env_runner_group is not None
+                and self.env_runner_group.healthy_env_runner_ids()
+            ):
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult)
+                weights_src = self.env_runner_group._worker_manager._actors[
+                    self.env_runner_group.healthy_env_runner_ids()[0]
+                ]
+            else:
+                weights_src = self.learner_group
+        else:
+            weights_src = self.env_runner
+
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
-            if self.config.enable_env_runner_and_connector_v2:
-                if (
-                    self.env_runner_group is not None
-                    and self.env_runner_group.healthy_env_runner_ids()
-                ):
-                    # TODO (sven): Replace this with a new ActorManager API:
-                    #  try_remote_request_till_success("get_state") -> tuple(int,
-                    #  remoteresult)
-                    weights_src = self.env_runner_group._worker_manager._actors[
-                        self.env_runner_group.healthy_env_runner_ids()[0]
-                    ]
-                else:
-                    weights_src = self.learner_group
-            else:
-                weights_src = self.env_runner_group.local_env_runner
             self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=weights_src,
                 inference_only=True,
@@ -1118,6 +1119,12 @@ class Algorithm(Checkpointable, Trainable):
                     workers=self.eval_env_runner_group,
                     config=self.evaluation_config,
                 )
+        # Sync weights to the local EnvRunner (if no eval EnvRunnerGroup).
+        elif self.config.enable_env_runner_and_connector_v2:
+            self.env_runner_group.sync_weights(
+                from_worker_or_learner_group=weights_src,
+                inference_only=True,
+            )
 
         make_callback(
             "on_evaluate_start",
@@ -1146,9 +1153,7 @@ class Algorithm(Checkpointable, Trainable):
                 env_steps,
                 agent_steps,
                 batches,
-            ) = self._evaluate_on_local_env_runner(
-                self.env_runner_group.local_env_runner
-            )
+            ) = self._evaluate_on_local_env_runner(self.env_runner)
         # There is only a local eval EnvRunner -> Run on that.
         elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
             (
