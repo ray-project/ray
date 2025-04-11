@@ -604,9 +604,10 @@ class AWSNodeProvider(NodeProvider):
             if len(matches) == 1:
                 return matches[0]
             cli_logger.warning(
-                "get_node({}): Attempt failed with len(matches) == {}, retrying ({}/{}).",
+                "Unable to find {} from {} EC2 instances. Will retry after {} seconds ({}/{}).",
                 node_id,
                 len(matches),
+                LIST_RETRY_DELAY_SEC,
                 attempts + 1,
                 BOTO_MAX_RETRIES,
             )
