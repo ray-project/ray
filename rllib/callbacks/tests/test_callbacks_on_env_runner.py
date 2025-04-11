@@ -17,27 +17,60 @@ class EpisodeAndSampleCallbacks(RLlibCallback):
     def __init__(self):
         super().__init__()
         self.counts = Counter()
+        self.episode_lens = {}
 
     def on_environment_created(self, *args, env_runner, metrics_logger, env, **kwargs):
 
         self.counts.update({"env_created": 1})
 
-    def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
+    def on_episode_start(
+        self,
+        *args,
+        env_runner,
+        metrics_logger,
+        env,
+        episode,
+        **kwargs,
+    ):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
         assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
         self.counts.update({"start": 1})
+        self.episode_lens[episode.id_] = 0
 
-    def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
+    def on_episode_step(
+        self,
+        *args,
+        env_runner,
+        metrics_logger,
+        env,
+        episode,
+        **kwargs,
+    ):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
         assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
         self.counts.update({"step": 1})
+        self.episode_lens[episode.id_] += 1
 
-    def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
+    def on_episode_end(
+        self,
+        *args,
+        env_runner,
+        metrics_logger,
+        env,
+        episode,
+        prev_episode_chunks,
+        **kwargs,
+    ):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
         assert isinstance(env, (gym.Env, gym.vector.VectorEnv, VectorMultiAgentEnv))
+        assert isinstance(prev_episode_chunks, list)
+        assert (
+            sum(map(len, [episode] + prev_episode_chunks))
+            == self.episode_lens[episode.id_]
+        )
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
