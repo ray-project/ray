@@ -10,13 +10,6 @@ on:
         required: false
         type: string
         default: 'main'
-  # pull_request:
-  # push:
-  #   branches:
-  #     - main
-  release:
-    types:
-      - published
 
 jobs:
   build_linux_wheels_aarch64:
@@ -25,7 +18,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04-arm]
-        python-version: [39, 310, 311]
+        python-version: [39, 310, 311, 312]
         arch: [aarch64]
 
     steps:
@@ -56,7 +49,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: [39, 310, 311]
+        python-version: [39, 310, 311, 312]
         arch: [x86_64]
 
     steps:
@@ -85,7 +78,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-13]
-        python-version: [39, 310, 311]
+        python-version: [39, 310, 311, 312]
 
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +107,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-14]
-        python-version: [39, 310, 311]
+        python-version: [39, 310, 311, 312]
 
     steps:
       - uses: actions/checkout@v4
