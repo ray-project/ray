@@ -528,7 +528,7 @@ def update_operator_states(topology: Topology) -> None:
 
     # Traverse the topology in reverse topological order.
     # For each op, if all of its downstream operators have completed.
-    # call mark_execution_completed() to also complete this op.
+    # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
         if op.completed():
             continue
