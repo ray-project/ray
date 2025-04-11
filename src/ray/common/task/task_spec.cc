@@ -415,6 +415,11 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+const std::string TaskSpecification::ActorName() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().name();
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }
