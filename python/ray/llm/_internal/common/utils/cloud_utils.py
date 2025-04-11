@@ -550,8 +550,8 @@ class CloudModelAccessor:
         ).expanduser()
 
     def _get_model_path(self) -> Path:
-        if (path := Path(self.model_id)).exists():
-            return path
+        if Path(self.model_id).exists():
+            return Path(self.model_id)
         # Delayed import to avoid circular dependencies
         from transformers.utils.hub import TRANSFORMERS_CACHE
 

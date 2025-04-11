@@ -1,6 +1,8 @@
 from pathlib import Path
-
 from filelock import FileLock
+from typing_extensions import Annotated
+
+import typer
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
@@ -81,10 +83,8 @@ def upload_model_files(model_id: str, bucket_uri: str) -> str:
     """
     assert not is_remote_path(
         model_id
-    ), "model_id must NOT be a remote path: {}".format(model_id)
-    assert is_remote_path(bucket_uri), "bucket_uri must be a remote path: {}".format(
-        bucket_uri
-    )
+    ), f"model_id must NOT be a remote path: {model_id}"
+    assert is_remote_path(bucket_uri), f"bucket_uri must be a remote path: {bucket_uri}"
 
     if not Path(model_id).exists():
         maybe_downloaded_model_path = get_model_entrypoint(model_id)
@@ -92,34 +92,35 @@ def upload_model_files(model_id: str, bucket_uri: str) -> str:
             logger.info(
                 "Assuming %s is huggingface model id, and downloading it.", model_id
             )
-            try:
-                # It's non-trivial to use transformer library to load the model, as it requires
-                # knowing the model architecture ahead to use the proper model class. It's
-                # also concerning to bring in a new dependency for this, so we try and provide
-                # workarounds.
-                from curated_transformers.models import FromHF as model_FromHF
-                from curated_transformers.tokenizers import FromHF as tokenizer_FromHF
+            import huggingface_hub
 
-                model_FromHF.from_hf_hub_to_cache(name=model_id)
-                tokenizer_FromHF.from_hf_hub_to_cache(name=model_id)
-            except ImportError:
-                raise ImportError(
-                    "curated_transformers is missing, which can be helpful for downloading "
-                    "models + tokenizer from huggingface. Try to: \n\t1. install it with "
-                    "`pip install curated-transformers`, or \n\t2. use transformer library "
-                    "to load the model + tokenizer such that the assets will be downloaded, "
-                    "or \n\t3. mannually download the model + tokenizer and then provide the "
-                    "local path to `model_id`."
-                )
+            huggingface_hub.snapshot_download(repo_id=model_id)
+            # Try to get the model path again after downloading.
             maybe_downloaded_model_path = get_model_entrypoint(model_id)
             assert Path(
                 maybe_downloaded_model_path
-            ).exists(), "Failed to download the model {} to {}".format(
-                model_id, maybe_downloaded_model_path
-            )
+            ).exists(), f"Failed to download the model {model_id} to {maybe_downloaded_model_path}"
             return upload_model_files(maybe_downloaded_model_path, bucket_uri)
         else:
             return upload_model_files(maybe_downloaded_model_path, bucket_uri)
 
     uploader = CloudModelUploader(model_id, CloudMirrorConfig(bucket_uri=bucket_uri))
     return uploader.upload_model()
+
+
+def upload_model_cli(
+    model_source: Annotated[
+        str,
+        typer.Option(
+            help="HuggingFace model ID to download, or local model path to upload",
+        ),
+    ],
+    bucket_uri: Annotated[
+        str,
+        typer.Option(
+            help="The bucket uri to upload the model to, must start with `s3://` or `gs://`",
+        ),
+    ],
+):
+    """Upload the model files to cloud storage (s3 or gcs)."""
+    upload_model_files(model_source, bucket_uri)
