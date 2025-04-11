@@ -463,7 +463,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         default_reserved = global_limits.scale(
             self._reservation_ratio / (len(eligible_ops))
         )
-        for op in eligible_ops:
+        for index, op in enumerate(eligible_ops):
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
@@ -484,8 +484,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total resources we want to reserve for this operator.
             op_total_reserved = default_reserved.max(min_reserved)
+
+            # Check if the remaining resources are enough for op_total_reserved.
+            # Note, we only consider CPU and GPU, but not object_store_memory,
+            # because object_store_memory can be oversubscribed, but CPU/GPU cannot.
             if op_total_reserved.satisfies_limit(
-                self._total_shared, exclude_object_store_memory=True
+                self._total_shared, ignore_object_store_memory=True
             ):
                 # If the remaining resources are enough to reserve `op_total_reserved`,
                 # subtract it from `self._total_shared` and reserve it for this op.
@@ -500,9 +504,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
                 # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # Note, we reserve minimum resources first for the upstream
-                # ops. Downstream ops need to wait for upstream ops to finish
-                # and release resources.
+                # NOTE: we prioritize upstream operators for minimum resource reservation.
+                # ops. It's fine that downstream ops don't get the minimum reservation,
+                # because they can wait for upstream ops to finish and release resources.
                 self._reserved_min_resources[op] = False
                 self._op_reserved[op] = ExecutionResources(
                     0,
@@ -513,6 +517,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._total_shared = self._total_shared.subtract(
                     ExecutionResources(0, 0, min_reserved.object_store_memory)
                 )
+                if index == 0:
+                    # Log a warning if even the first operator cannot reserve
+                    # the minimum resources.
+                    logger.warning(
+                        f"Cluster resource are not engough to run any task from {op}."
+                        " The job may hang forever unless the cluster scales up."
+                    )
 
             self._total_shared = self._total_shared.max(ExecutionResources.zero())
 

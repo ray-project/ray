@@ -185,7 +185,7 @@ class ExecutionResources:
         self,
         limit: "ExecutionResources",
         *,
-        exclude_object_store_memory=False,
+        ignore_object_store_memory=False,
     ) -> bool:
         """Return if this resource struct meets the specified limits.
 
@@ -200,7 +200,7 @@ class ExecutionResources:
             self.cpu <= limit.cpu
             and self.gpu <= limit.gpu
             and (
-                exclude_object_store_memory
+                ignore_object_store_memory
                 or self.object_store_memory <= limit.object_store_memory
             )
         )
