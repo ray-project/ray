@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List
+import os
+from typing import Dict, List, Tuple
 
 import boto3
 import json
@@ -9,7 +10,6 @@ import pyarrow.csv
 import ray.data
 from ray.data import DataContext
 from ray.data.context import ShuffleStrategy
-
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,12 @@ CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
     104,
     35,
 ]
+
+DATASET_PATHS = {
+    "train": f"{CRITEO_S3_URI}/train",
+    "valid": f"{CRITEO_S3_URI}/valid",
+    "test": f"{CRITEO_S3_URI}/test",
+}
 
 
 def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -170,20 +176,8 @@ def read_json_from_s3(bucket_name, key):
     return data
 
 
-def get_ray_dataset(stage: str = "train"):
-    ctx = DataContext.get_current()
-    # Enable hash-shuffling
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-
-    stage_to_path = {
-        # TODO: The preprocessor fitting (groupby().count()) takes too long
-        # on the full training dataset, so just run with the valid dataset for now.
-        "train": "s3://ray-benchmark-data-internal/criteo/tsv.gz/valid",
-        # "train": "s3://ray-benchmark-data-internal/criteo/tsv.gz/train/",
-        "valid": "s3://ray-benchmark-data-internal/criteo/tsv.gz/valid/",
-        "test": "s3://ray-benchmark-data-internal/criteo/tsv.gz/test/",
-    }
-    ds_path = stage_to_path[stage]
+def _get_base_dataset(stage: str = "train"):
+    ds_path = DATASET_PATHS[stage]
 
     ds = ray.data.read_csv(
         ds_path,
@@ -191,6 +185,15 @@ def get_ray_dataset(stage: str = "train"):
         parse_options=pyarrow.csv.ParseOptions(delimiter="\t"),
         shuffle=("files" if stage == "train" else None),  # coarse file-level shuffle
     )
+    return ds
+
+
+def get_ray_dataset(stage: str = "train"):
+    # Enable hash-shuffling
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    ds = _get_base_dataset(stage)
 
     # Convert categorical features to integers.
 
@@ -202,19 +205,7 @@ def get_ray_dataset(stage: str = "train"):
     categorical_value_to_index = {}
     for cat_feature in DEFAULT_CAT_NAMES:
         if COMPUTE_VALUE_COUNTS_FROM_SCRATCH:
-            logger.info(f"Computing value counts for: {cat_feature}")
-
-            # TODO: This needs to be optimized in order to run on the full dataset.
-            # Need to fill missing values with empty string.
-            value_counts = [
-                (group[cat_feature], group["count()"])
-                for group in (
-                    ds.select_columns(cat_feature)
-                    .groupby(key=cat_feature)
-                    .count()
-                    .take_all()
-                )
-            ]
+            value_counts = _compute_value_counts(ds, cat_feature)
         else:
             json_filepath = CAT_FEATURE_VALUE_COUNT_JSON_PATH_PATTERN.format(
                 cat_feature
@@ -261,16 +252,42 @@ def get_ray_dataset(stage: str = "train"):
     return ds
 
 
+def _compute_value_counts(ds, feature_name) -> List[Tuple]:
+    logger.info(f"Computing value counts for: {feature_name}")
+
+    # TODO: This needs to be optimized in order to run on the full dataset.
+    # Need to fill missing values with empty string.
+    value_counts = [
+        (group[feature_name] if group[feature_name] is not None else "", group["count()"])
+        for group in (
+            ds.select_columns(feature_name)
+            .groupby(key=feature_name)
+            .count()
+            .take_all()
+        )
+    ]
+
+    return value_counts
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    ds = get_ray_dataset()
+    # Enable hash-shuffling
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-    data_iterator = ds.iter_torch_batches(
-        batch_size=32,
-        drop_last=True,
-        collate_fn=convert_to_torchrec_batch_format,
-    )
-    # TODO: Augment data with synthetic multi-hot data.
+    ds = _get_base_dataset(stage="train")
 
-    batch = next(iter(data_iterator))
+    # Create a directory for the value counts files.
+    save_dir = "/mnt/cluster_storage/criteo"
+    os.makedirs(save_dir, exist_ok=True)
+
+    for cat_feature in DEFAULT_CAT_NAMES:
+        value_counts = _compute_value_counts(ds, cat_feature)
+
+        json_filepath = os.path.join(save_dir, f"{cat_feature}-value_counts.json")
+        logger.info(f"Writing value counts to: {json_filepath}")
+
+        with open(json_filepath, "w") as f:
+            json.dump(value_counts, f)
