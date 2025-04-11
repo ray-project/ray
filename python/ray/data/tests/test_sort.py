@@ -678,9 +678,7 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == parallelism
 
-    DataContext.get_current().set_config(
-        "debug_limit_shuffle_execution_to_num_blocks", 1
-    )
+    ds.context.set_config("debug_limit_shuffle_execution_to_num_blocks", 1)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == 1

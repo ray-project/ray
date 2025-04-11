@@ -46,8 +46,7 @@ class ExecutionPlan:
     def __init__(
         self,
         stats: DatasetStats,
-        *,
-        data_context: Optional[DataContext] = None,
+        data_context: DataContext,
     ):
         """Create a plan with no transformation operators.
 
@@ -84,12 +83,7 @@ class ExecutionPlan:
 
         self._has_started_execution = False
 
-        if data_context is None:
-            # Snapshot the current context, so that the config of Datasets is always
-            # determined by the config at the time it was created.
-            self._context = copy.deepcopy(DataContext.get_current())
-        else:
-            self._context = data_context
+        self._context = data_context
 
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
@@ -187,7 +181,10 @@ class ExecutionPlan:
                     count = None
                 else:
                     assert dag.is_read() or not dag.input_dependencies, dag
-                    plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
+                    plan = ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None),
+                        self._context,
+                    )
                     plan.link_logical_plan(LogicalPlan(dag, plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
@@ -333,7 +330,10 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(copy.copy(self._in_stats))
+        plan_copy = ExecutionPlan(
+            copy.copy(self._in_stats),
+            data_context=self._context.copy(),
+        )
         if self._snapshot_bundle:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)

@@ -270,7 +270,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   auto status = gcs_client_->Connect(io_service_);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
-                   << status.ToString() << "].";
+                   << status << "].";
 
     enabled_ = false;
     io_service_.stop();
@@ -557,7 +557,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                        << " tasks attempts, and report "
                        << num_dropped_task_attempts_to_send
                        << " task attempts lost on worker to GCS."
-                       << "[status=" << status.ToString() << "]";
+                       << "[status=" << status << "]";
 
       stats_counter_.Increment(TaskEventBufferCounter::kTotalNumFailedToReport);
     } else {
