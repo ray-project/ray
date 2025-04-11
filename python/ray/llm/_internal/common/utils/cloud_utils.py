@@ -376,7 +376,8 @@ class CloudFileSystem:
         try:
             # If refs/main exists, upload as hash, and treat snapshots/<hash> as the model.
             # Otherwise, this is a custom model, we do not assume folder hierarchy.
-            if (refs_main := Path(local_path, "refs", "main")).exists():
+            refs_main = Path(local_path, "refs", "main")
+            if refs_main.exists():
                 model_path = os.path.join(
                     local_path, "snapshots", refs_main.read_text().strip()
                 )
