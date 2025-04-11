@@ -564,7 +564,11 @@ class ReplicaConfig:
 
         # Set Serve replica defaults
         if self.ray_actor_options.get("num_cpus") is None:
-            self.ray_actor_options["num_cpus"] = 1
+            resources = self.ray_actor_options.get("resources")
+            if not isinstance(resources, dict) or not resources:
+                self.ray_actor_options["num_cpus"] = 1
+            else:
+                self.ray_actor_options["num_cpus"] = 0
 
     def _validate_max_replicas_per_node(self) -> None:
         if self.max_replicas_per_node is None:
