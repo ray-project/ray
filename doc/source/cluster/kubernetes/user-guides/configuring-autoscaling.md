@@ -374,7 +374,7 @@ You can configure the Ray autoscaler using environment variables specified in th
 
 For example, `AUTOSCALER_UPDATE_INTERVAL_S` determines how frequently the autoscaler checks the cluster status and decides whether to scale up or down.
 
-For complete examples, see [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml#L28-L33) and [ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml#L16-L21).
+For complete examples, see [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/099bf616c012975031ea9e5bbf7843af03e5f05b/ray-operator/config/samples/ray-cluster.autoscaler.yaml#L28-L33) and [ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/099bf616c012975031ea9e5bbf7843af03e5f05b/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml#L16_L21).
 
 ```yaml
 autoscalerOptions:
