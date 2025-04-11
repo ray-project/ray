@@ -453,7 +453,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        self._total_shared = global_limits.copy()
+        remaining = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -489,12 +489,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Note, we only consider CPU and GPU, but not object_store_memory,
             # because object_store_memory can be oversubscribed, but CPU/GPU cannot.
             if op_total_reserved.satisfies_limit(
-                self._total_shared, ignore_object_store_memory=True
+                remaining, ignore_object_store_memory=True
             ):
                 # If the remaining resources are enough to reserve `op_total_reserved`,
-                # subtract it from `self._total_shared` and reserve it for this op.
+                # subtract it from the remaining and reserve it for this op.
                 self._reserved_min_resources[op] = True
-                self._total_shared = self._total_shared.subtract(op_total_reserved)
+                remaining = remaining.subtract(op_total_reserved)
                 self._op_reserved[op] = op_total_reserved
                 self._op_reserved[
                     op
@@ -514,7 +514,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     min_reserved.object_store_memory
                     - self._reserved_for_op_outputs[op],
                 )
-                self._total_shared = self._total_shared.subtract(
+                remaining = remaining.subtract(
                     ExecutionResources(0, 0, min_reserved.object_store_memory)
                 )
                 if index == 0:
@@ -525,7 +525,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
-            self._total_shared = self._total_shared.max(ExecutionResources.zero())
+            remaining = self._total_shared.max(ExecutionResources.zero())
+        self._total_shared = remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         if op not in self._op_budgets:
