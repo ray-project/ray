@@ -22,7 +22,7 @@ steps:
     tags:
       - linux_wheels
       - oss
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
