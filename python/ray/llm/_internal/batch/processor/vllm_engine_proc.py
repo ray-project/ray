@@ -134,7 +134,7 @@ def build_vllm_engine_processor(
 
     stages = []
     if isinstance(config.concurrency, int):
-        processor_concurrency = (1, config.concurrency) # copied from previous logic 
+        processor_concurrency = (1, config.concurrency)  # copied from previous logic
     elif isinstance(config.concurrency, tuple):
         processor_concurrency = config.concurrency
     else:
@@ -197,7 +197,7 @@ def build_vllm_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas.                 
+                # The number of running replicas.
                 concurrency=config.concurrency,
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
