@@ -324,7 +324,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-    queue->second.actor_submit_queue->OnClientConnected();
 
     ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
