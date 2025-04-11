@@ -436,8 +436,8 @@ inline void JavaStringListToNativeStringVector(JNIEnv *env,
                                                jobject java_list,
                                                std::vector<std::string> *native_vector) {
   JavaListToNativeVector<std::string>(
-      env, java_list, native_vector, [](JNIEnv *env, jobject jstr) {
-        return JavaStringToNativeString(env, static_cast<jstring>(jstr));
+      env, java_list, native_vector, [](JNIEnv *env_arg, jobject jstr) {
+        return JavaStringToNativeString(env_arg, static_cast<jstring>(jstr));
       });
 }
 
@@ -488,17 +488,18 @@ inline jobject NativeVectorToJavaList(
 inline jobject NativeStringVectorToJavaStringList(
     JNIEnv *env, const std::vector<std::string> &native_vector) {
   return NativeVectorToJavaList<std::string>(
-      env, native_vector, [](JNIEnv *env, const std::string &str) {
-        return env->NewStringUTF(str.c_str());
+      env, native_vector, [](JNIEnv *env_arg, const std::string &str) {
+        return env_arg->NewStringUTF(str.c_str());
       });
 }
 
 template <typename ID>
 inline jobject NativeIdVectorToJavaByteArrayList(JNIEnv *env,
                                                  const std::vector<ID> &native_vector) {
-  return NativeVectorToJavaList<ID>(env, native_vector, [](JNIEnv *env, const ID &id) {
-    return IdToJavaByteArray<ID>(env, id);
-  });
+  return NativeVectorToJavaList<ID>(
+      env, native_vector, [](JNIEnv *env_arg, const ID &id) {
+        return IdToJavaByteArray<ID>(env_arg, id);
+      });
 }
 
 /// Convert a Java Map<?, ?> to a C++ std::unordered_map<?, ?>
@@ -608,8 +609,8 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
       env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
   std::vector<ObjectID> contained_object_ids;
   JavaListToNativeVector<ObjectID>(
-      env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
+      env, java_contained_ids, &contained_object_ids, [](JNIEnv *env_arg, jobject id) {
+        return JavaByteArrayToId<ObjectID>(env_arg, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
   auto contained_object_refs =

@@ -19,7 +19,6 @@
 
 // clang-format off
 #include "gtest/gtest.h"
-#include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -38,8 +37,8 @@ class GcsJobManagerTest : public ::testing::Test {
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
     std::promise<bool> promise;
     thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
       promise.set_value(true);
       io_service_.run();
     });

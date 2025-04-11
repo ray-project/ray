@@ -176,7 +176,7 @@ class ActorPoolMapOperator(MapOperator):
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
-        res_ref = actor.get_location.remote()
+        res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -227,7 +227,7 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
-                name=self.name,
+                name=f"{self.name}.submit",
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,

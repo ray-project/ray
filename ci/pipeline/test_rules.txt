@@ -16,6 +16,7 @@ python/ray/air/
 ;
 
 python/ray/llm/
+doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 python/requirements_compiled_*.txt
@@ -70,7 +71,7 @@ ci/docker/serve.build.Dockerfile
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels
+@ dashboard linux_wheels python
 ;
 
 python/setup.py
@@ -176,6 +177,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
@@ -191,6 +193,7 @@ ci/docker/ray.cuda.base.wanda.yaml
 ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
+build-docker.sh
 @ docker linux_wheels tools
 ;
 
@@ -217,6 +220,5 @@ setup_hooks.sh
 .isort.cfg
 .prettierrc.toml
 build.sh
-build-docker.sh
 # pass
 ;
