@@ -15,13 +15,13 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         self._ray_ds_iterators = {}
 
         dataloader_config = self.get_dataloader_config()
-        assert isinstance(dataloader_config, RayDataConfig), type(
-            dataloader_config
-        )
+        assert isinstance(dataloader_config, RayDataConfig), type(dataloader_config)
 
         # Configure Ray Data settings.
         data_context = ray.data.DataContext.get_current()
-        data_context.enable_operator_progress_bars = dataloader_config.enable_operator_progress_bars
+        data_context.enable_operator_progress_bars = (
+            dataloader_config.enable_operator_progress_bars
+        )
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -61,7 +61,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         )
 
     def get_val_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["valid"] = ray.train.get_dataset_shard("valid")
+        ds_iterator = self._ray_ds_iterators["valid"] = ray.train.get_dataset_shard(
+            "valid"
+        )
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(

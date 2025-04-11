@@ -258,12 +258,12 @@ def _compute_value_counts(ds, feature_name) -> List[Tuple]:
     # TODO: This needs to be optimized in order to run on the full dataset.
     # Need to fill missing values with empty string.
     value_counts = [
-        (group[feature_name] if group[feature_name] is not None else "", group["count()"])
+        (
+            group[feature_name] if group[feature_name] is not None else "",
+            group["count()"],
+        )
         for group in (
-            ds.select_columns(feature_name)
-            .groupby(key=feature_name)
-            .count()
-            .take_all()
+            ds.select_columns(feature_name).groupby(key=feature_name).count().take_all()
         )
     ]
 
