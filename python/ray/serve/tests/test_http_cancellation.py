@@ -139,13 +139,10 @@ async def test_request_cancelled_error_on_http_client_disconnect_during_executio
     except httpx.ReadTimeout:
         pass
 
-    def check_result():
-        result = ray.get(collector.get.remote())
-        return set(result) == {"Child_CancelledError", "Parent_CancelledError",} or set(
-            result
-        ) == {"Parent_RequestCancelledError", "Child_CancelledError"}
-
-    wait_for_condition(check_result, timeout=10)
+    wait_for_condition(
+        lambda: ray.get(collector.get.remote())
+        == ["Child_CancelledError", "Parent_CancelledError"]
+    )
 
 
 @pytest.mark.asyncio
