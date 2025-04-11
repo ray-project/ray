@@ -363,7 +363,9 @@ class Stats:
                 self._has_new_values = True
             else:
                 self._has_new_values = False
-                self._set_values(new_values_list)
+                if self._inf_window:
+                    # If we we use a window, we don't want to replace the internal values list
+                    self._set_values(new_values_list)
 
             # Shift historic reduced valued by one in our reduce_history.
             if self._reduce_method is not None or not self._inf_window:
@@ -476,7 +478,7 @@ class Stats:
                 for other in others
                 if other._throughput_stats is not None
             ]
-            self._throughput_stats.merge_in_parallel(other_throughput_stats)
+            self._throughput_stats.merge_in_parallel(*other_throughput_stats)
 
         # Mark that we have new values since we modified the values list
         self._has_new_values = True
