@@ -10,6 +10,7 @@ from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -105,6 +106,9 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
@@ -131,11 +135,9 @@ class SplitCoordinator:
         # Set current DataContext.
         self._data_context = dataset.context
         ray.data.DataContext._set_current(self._data_context)
-        # Automatically set locality with output to the specified location hints.
-        if locality_hints:
+        if self._data_context.execution_options.locality_with_output is True:
             self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
-
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
