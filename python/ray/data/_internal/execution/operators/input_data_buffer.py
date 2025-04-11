@@ -79,8 +79,17 @@ class InputDataBuffer(PhysicalOperator):
         self._estimated_num_output_bundles = len(self._input_data)
 
         block_metadata = []
+        total_rows = 0
         for bundle in self._input_data:
             block_metadata.extend(bundle.metadata)
+            bundle_num_rows = bundle.num_rows()
+            if total_rows is not None and bundle_num_rows is not None:
+                total_rows += bundle_num_rows
+            else:
+                # total row is unknown
+                total_rows = None
+        if total_rows:
+            self._estimated_num_output_rows = total_rows
         self._stats = {
             "input": block_metadata,
         }
