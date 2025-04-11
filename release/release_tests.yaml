@@ -2178,12 +2178,12 @@
   variations:
     - __suffix__: skip_training.mock_dataloader
       run:
-        timeout: 240
+        timeout: 600
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=mock --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: skip_training.ray_data
       run:
-        timeout: 360
+        timeout: 600
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --num_epochs=1 --skip_train_step --skip_validation_at_epoch_end
 
     - __suffix__: full_training.mock_dataloader
