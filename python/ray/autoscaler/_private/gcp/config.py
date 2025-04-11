@@ -769,7 +769,13 @@ def _add_iam_policy_binding(service_account, roles, crm):
     email = service_account["email"]
     member_id = "serviceAccount:" + email
 
-    policy = crm.projects().getIamPolicy(resource=project_id, body={}).execute()
+    policy = (
+        crm.projects()
+        .getIamPolicy(
+            resource=project_id, body={"options": {"requestedPolicyVersion": 3}}
+        )
+        .execute()
+    )
 
     already_configured = True
     for role in roles:

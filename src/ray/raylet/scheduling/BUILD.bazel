@@ -87,7 +87,7 @@ ray_cc_library(
         ":local_task_manager_interface",
         ":scheduler_internal",
         ":scheduler_resource_reporter",
-        "//:stats_lib",
+        "//src/ray/stats:stats_lib",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
