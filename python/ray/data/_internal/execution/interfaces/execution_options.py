@@ -193,7 +193,7 @@ class ExecutionResources:
 
         Args:
             limit: The resource limits to check against.
-            exclude_object_store_memory: If True, ignore the object store memory
+            ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
         """
         return (
