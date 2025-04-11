@@ -3401,7 +3401,8 @@ Status CoreWorker::ExecuteTask(
       /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
-      task_spec.GeneratorBackpressureNumObjects());
+      task_spec.GeneratorBackpressureNumObjects(),
+      /*accelerator_cpu_mask=*/options_.accelerator_cpu_mask);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
