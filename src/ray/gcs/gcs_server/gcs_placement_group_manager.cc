@@ -817,14 +817,14 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // creating until a node with the resources is added. we will solve it in next pr.
 
       // check to make sure the placement group shouldn't be in PENDING or REMOVED state
-      RAY_CHECK_NE(iter->second->GetState(), rpc::PlacementGroupTableData::PENDING)
-          << "Placement group that is pending rescheduling shouldn't be in PENDING "
-             "state. placement_group_id="
-          << iter->second->GetPlacementGroupID();
-      RAY_CHECK_NE(iter->second->GetState(), rpc::PlacementGroupTableData::REMOVED)
-          << "Placement group that is pending rescheduling shouldn't be in REMOVED "
-             "state. placement_group_id="
-          << iter->second->GetPlacementGroupID();
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::PENDING)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "PENDING placement group should have no scheduled bundles on the dead node.";
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::REMOVED)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "REMOVED placement group should have no scheduled bundles on the dead node.";
 
       if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
         // Only update the placement group state to RESCHEDULING if it is in CREATED
