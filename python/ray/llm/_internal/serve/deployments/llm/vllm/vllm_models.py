@@ -17,7 +17,6 @@ from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     GenerationRequest,
-    EmbeddingRequest,
     GPUType,
     LLMConfig,
     SamplingParams,
@@ -243,7 +242,7 @@ class VLLMGenerationRequest(GenerationRequest):
             )
 
 
-class VLLMEmbeddingRequest(EmbeddingRequest):
+class VLLMEmbeddingRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     encoding_format: Optional[Literal["float", "base64"]] = "float"
     dimensions: Optional[int] = None
