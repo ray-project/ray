@@ -586,27 +586,6 @@ ray_cc_library(
 
 ray_cc_library(
     name = "raylet_lib",
-    srcs = [
-        "src/ray/raylet/dependency_manager.cc",
-        "src/ray/raylet/local_task_manager.cc",
-        "src/ray/raylet/node_manager.cc",
-        "src/ray/raylet/placement_group_resource_manager.cc",
-        "src/ray/raylet/raylet.cc",
-        "src/ray/raylet/worker_killing_policy.cc",
-        "src/ray/raylet/worker_killing_policy_group_by_owner.cc",
-        "src/ray/raylet/worker_killing_policy_retriable_fifo.cc",
-    ],
-    hdrs = [
-        "src/ray/raylet/dependency_manager.h",
-        "src/ray/raylet/local_task_manager.h",
-        "src/ray/raylet/node_manager.h",
-        "src/ray/raylet/placement_group_resource_manager.h",
-        "src/ray/raylet/raylet.h",
-        "src/ray/raylet/test/util.h",
-        "src/ray/raylet/worker_killing_policy.h",
-        "src/ray/raylet/worker_killing_policy_group_by_owner.h",
-        "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
-    ],
     linkopts = select({
         "@platforms//os:windows": [
         ],
@@ -615,17 +594,27 @@ ray_cc_library(
         ],
     }),
     deps = [
+        # ":core_worker_lib",
+        # ":dependency_manager",
         ":gcs",
         ":gcs_client_lib",
         ":local_object_manager",
+        ":local_task_manager",
+        ":node_manager",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
         "//src/ray/pubsub:pubsub_lib",
+        # ":plasma_client",
+        # ":placement_group_resource_manager",
+        # ":pubsub_lib",
         ":raylet_agent_manager",
+        ":raylet_server",
+        ":raylet_test_util",
         ":runtime_env_agent_client",
         ":wait_manager",
         ":worker",
+        ":worker_killing_policy_lib",
         ":worker_pool",
         ":worker_rpc",
         "//src/ray/common:memory_monitor",
@@ -651,6 +640,143 @@ ray_cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+ray_cc_library(
+    name = "dependency_manager",
+    srcs = ["src/ray/raylet/dependency_manager.cc"],
+    hdrs = ["src/ray/raylet/dependency_manager.h"],
+    deps = [
+        ":object_manager",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/util:counter_map",
+    ],
+)
+
+ray_cc_library(
+    name = "local_task_manager",
+    srcs = ["src/ray/raylet/local_task_manager.cc"],
+    hdrs = ["src/ray/raylet/local_task_manager.h"],
+    deps = [
+        ":dependency_manager",
+        ":worker",
+        ":worker_pool",
+        ":grpc_common_lib",
+        ":node_manager_rpc",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+        "//src/ray/raylet/scheduling:scheduler",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "node_manager",
+    srcs = ["src/ray/raylet/node_manager.cc"],
+    hdrs = ["src/ray/raylet/node_manager.h"],
+    deps = [
+        ":core_worker_lib",
+        ":dependency_manager",
+        ":gcs_pb_util",
+        ":local_object_manager",
+        ":local_task_manager",
+        ":node_manager_rpc",
+        ":object_manager",
+        ":placement_group_resource_manager",
+        ":raylet_agent_manager",
+        ":raylet_client_lib",
+        ":runtime_env_agent_client",
+        ":subscriber_lib",
+        ":wait_manager",
+        ":worker_killing_policy_lib",
+        ":worker_pool",
+        ":worker_rpc",
+        "//src/ray/common:asio",
+        "//src/ray/common:network",
+        "//src/ray/common:constants",
+        "//src/ray/common:id",
+        "//src/ray/common:memory_monitor",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:ray_syncer",
+        "//src/ray/common:status",
+        "//src/ray/common:task_common",
+        "//src/ray/raylet/scheduling:scheduler",
+        "//src/ray/stats:stats_metric",
+        "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:event",
+        "//src/ray/util:event_label",
+        "//src/ray/util:util",
+        "//src/ray/util:throttler",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time:time",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group_resource_manager",
+    srcs = ["src/ray/raylet/placement_group_resource_manager.cc"],
+    hdrs = ["src/ray/raylet/placement_group_resource_manager.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/raylet/scheduling:scheduler",
+        "//src/ray/util:util",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_server",
+    srcs = ["src/ray/raylet/raylet.cc"],
+    hdrs = ["src/ray/raylet/raylet.h"],
+    deps = [
+        ":node_manager",
+        ":object_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:network",
+        "//src/ray/common:task_common",
+        "//src/ray/common:status",
+        "//src/ray/util:util",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@boost//:date_time",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_test_util",
+    hdrs = ["src/ray/raylet/test/util.h"],
+    deps = [
+        ":worker",
+    ],
+)
+
+ray_cc_library(
+    name = "worker_killing_policy_lib",
+    srcs = [
+        "src/ray/raylet/worker_killing_policy.cc",
+        "src/ray/raylet/worker_killing_policy_group_by_owner.cc",
+        "src/ray/raylet/worker_killing_policy_retriable_fifo.cc",
+    ],
+    hdrs = [
+        "src/ray/raylet/worker_killing_policy.h",
+        "src/ray/raylet/worker_killing_policy_group_by_owner.h",
+        "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
+    ],
+    deps = [
+        ":worker",
+        ":worker_pool",
+        "//src/ray/common:asio",
+        "//src/ray/common:memory_monitor",
+        "@boost//:container_hash",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
     ],
 )
 
