@@ -20,8 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/random/random.h"
-#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 

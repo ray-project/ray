@@ -1370,8 +1370,8 @@ void CoreWorker::InternalHeartbeat() {
   std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
-    while (!to_resubmit_.empty() &&
-           current_time_ms() > to_resubmit_.top().execution_time_ms) {
+    const auto current_time = current_time_ms();
+    while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
       tasks_to_resubmit.emplace_back(to_resubmit_.top());
       to_resubmit_.pop();
     }
