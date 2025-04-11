@@ -85,19 +85,6 @@ def _arrow_extension_scalars_are_subclassable():
     )
 
 
-def _arrow_supports_native_tensors():
-    """
-    Whether Arrow native tensors are supported in the current pyarrow version.
-
-    This returns True if the pyarrow version is 7.0.0+, or if the pyarrow version is
-    unknown.
-    """
-    # Check if FixedShapeTensorType exists in the current Arrow version
-    return (
-        PYARROW_VERSION is None or PYARROW_VERSION >= MIN_PYARROW_VERSION_NATIVE_TENSOR
-    ) and hasattr(pa, "fixed_shape_tensor")
-
-
 @DeveloperAPI
 def pyarrow_table_from_pydict(
     pydict: Dict[str, Union[List[Any], pa.Array]],
