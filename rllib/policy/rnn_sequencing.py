@@ -379,6 +379,9 @@ def chop_into_sequences(
             if not isinstance(f, np.ndarray):
                 f = np.array(f)
 
+            # Compute the shape of the padded array.
+            f_pad_shape = (length,) + np.shape(f)[1:]
+
             # New stack behavior (temporarily until we move to ConnectorV2 API, where
             # this (admitedly convoluted) function will no longer be used at all).
             if (
@@ -386,20 +389,22 @@ def chop_into_sequences(
                 and pad_infos_with_empty_dicts
                 and isinstance(f[0], dict)
             ):
-                f_pad = [{} for _ in range(length)]
+                f_pad = np.full(f_pad_shape, {}, dtype=f.dtype)
             # Old stack behavior: Pad INFOs with None.
-            elif f.dtype == object or f.dtype.type is np.str_:
-                f_pad = [None] * length
+            elif f.dtype == object:
+                f_pad = np.full(f_pad_shape, None, dtype=f.dtype)
+            # Pad strings with empty strings.
+            elif f.dtype.type is np.str_:
+                f_pad = np.full(f_pad_shape, "", dtype=f.dtype)
             # Pad everything else with zeros.
             else:
-                # Make sure type doesn't change.
-                f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)
+                f_pad = np.zeros(f_pad_shape, dtype=f.dtype)
+
             seq_base = 0
             i = 0
             for len_ in seq_lens:
-                for seq_offset in range(len_):
-                    f_pad[seq_base + seq_offset] = f[i]
-                    i += 1
+                f_pad[seq_base : seq_base + len_] = f[i : i + len_]
+                i += len_
 
                 if padding == "last":
                     for seq_offset in range(len_, max_seq_len):
