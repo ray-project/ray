@@ -273,7 +273,7 @@ class PhysicalOperator(Operator):
             self._output_block_size_option = None
 
     def mark_execution_finished(self):
-        """Manually mark this operator has finished execution."""
+        """Manually mark that this operator has finished execution."""
         self._execution_finished = True
 
     def execution_finished(self) -> bool:
@@ -286,8 +286,9 @@ class PhysicalOperator(Operator):
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
-        An operator is completed if the operator has finished execution and all
-        outputs have been taken.
+        An operator is completed when all these conditions hold true:
+        * The operator has finished execution (i.e., `execution_finished()` is True).
+        * All outputs have been taken (i.e., `has_next()` is False).
         """
         if not self._execution_finished:
             if self._inputs_complete and self.num_active_tasks() == 0:
