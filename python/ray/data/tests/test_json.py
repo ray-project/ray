@@ -466,28 +466,6 @@ def test_json_read_partitioned_with_filter(
     assert_base_partitioned_ds(ds)
 
 
-def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
-    """Test JSONL with mixed types and schemas."""
-    data = [
-        {"a": 1, "b": {"c": 2}},  # Nested dict
-        {"a": 1, "b": {"c": 3}},  # Nested dict
-        {"a": 1, "b": {"c": {"hello": "world"}}},  # Mixed Schema
-    ]
-
-    path = os.path.join(tmp_path, "test.jsonl")
-    with open(path, "w") as f:
-        for record in data:
-            json.dump(record, f)
-            f.write("\n")
-
-    ds = ray.data.read_json(path, lines=True)
-    result = ds.take_all()
-
-    assert result[0] == data[0]  # Dict stays as is
-    assert result[1] == data[1]
-    assert result[2] == data[2]
-
-
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
 def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
     """Test JSONL with mixed types and schemas."""
@@ -531,29 +509,6 @@ def test_jsonl_mixed_types(ray_start_regular_shared, tmp_path):
     assert result[0] == data[0]  # Dict stays as is
     assert result[1] == data[1]
     assert result[2] == data[2]
-
-
-@pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
-def test_jsonl_lists(ray_start_regular_shared, tmp_path, override_num_blocks):
-    """Test JSONL with mixed types and schemas."""
-    data = [
-        ["ray", "rocks", "hello"],
-        ["oh", "no"],
-        ["rocking", "with", "ray"],
-    ]
-
-    path = os.path.join(tmp_path, "test.jsonl")
-    with open(path, "w") as f:
-        for record in data:
-            json.dump(record, f)
-            f.write("\n")
-
-    ds = ray.data.read_json(path, lines=True, override_num_blocks=override_num_blocks)
-    result = ds.take_all()
-
-    assert result[0] == {"0": "ray", "1": "rocks", "2": "hello"}
-    assert result[1] == {"0": "oh", "1": "no", "2": None}
-    assert result[2] == {"0": "rocking", "1": "with", "2": "ray"}
 
 
 @pytest.mark.parametrize(
