@@ -2327,8 +2327,6 @@ pyx_library(
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
-        "python/ray/cython_components/*.pyx",
-        "python/ray/cython_components/*.pxd",
     ]),
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
