@@ -32,7 +32,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
+from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -321,6 +321,7 @@ class AlgorithmConfig(_Config):
         # `self.env_runners()`
         self.env_runner_cls = None
         self.num_env_runners = 0
+        self.create_local_env_runner = True
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, reaplce the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
@@ -337,6 +338,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
         self.add_default_connectors_to_module_to_env_pipeline = True
+        self.merge_env_runner_states = "training_only"
+        self.broadcast_env_runner_states = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -968,7 +971,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env, device=None):
+    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1001,7 +1004,11 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
-        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if env is not None:
+            obs_space = getattr(env, "single_observation_space", env.observation_space)
+        else:
+            assert spaces is not None
+            obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1009,7 +1016,11 @@ class AlgorithmConfig(_Config):
                     for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
-        act_space = getattr(env, "single_action_space", env.action_space)
+        if env is not None:
+            act_space = getattr(env, "single_action_space", env.action_space)
+        else:
+            assert spaces is not None
+            act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1049,7 +1060,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env):
+    def build_module_to_env_connector(self, env=None, spaces=None):
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1083,7 +1094,11 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
-        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if env is not None:
+            obs_space = getattr(env, "single_observation_space", env.observation_space)
+        else:
+            assert spaces is not None
+            obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
@@ -1091,7 +1106,11 @@ class AlgorithmConfig(_Config):
                     for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
-        act_space = getattr(env, "single_action_space", env.action_space)
+        if env is not None:
+            act_space = getattr(env, "single_action_space", env.action_space)
+        else:
+            assert spaces is not None
+            act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
@@ -1746,6 +1765,8 @@ class AlgorithmConfig(_Config):
         *,
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
+        create_local_env_runner: Optional[bool] = NotProvided,
+        create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
         gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
@@ -1763,16 +1784,17 @@ class AlgorithmConfig(_Config):
         add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
         add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
-        use_worker_filter_stats: Optional[bool] = NotProvided,
-        update_worker_filter_stats: Optional[bool] = NotProvided,
+        merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
+        broadcast_env_runner_states: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
         episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
-        create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_env_batch_wait_ms: Optional[float] = NotProvided,  # @OldAPIStack
@@ -1841,6 +1863,10 @@ class AlgorithmConfig(_Config):
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
+            create_local_env_runner: If True, create a local EnvRunner instance, besides
+                the `num_env_runners` remote EnvRunner actors. If `num_env_runners` is
+                0, this setting is ignored and one local EnvRunner is created
+                regardless.
             create_env_on_local_worker: When `num_env_runners` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
@@ -1875,6 +1901,13 @@ class AlgorithmConfig(_Config):
                 and compile RLModule input data from this information. For example, if
                 your custom env-to-module connector (and your custom RLModule) requires
                 the previous 10 rewards as inputs, you must set this to at least 10.
+            merge_env_runner_states: True, if remote EnvRunner actor states should be
+                merged into central connector pipelines. Use "training_only" (default)
+                for only doing this for the training EnvRunners, NOT for the evaluation
+                EnvRunners.
+            broadcast_env_runner_states: True, if merged EnvRunner states (from the
+                central connector pipelines) should be broadcast back to all remote
+                EnvRunner actors.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2011,6 +2044,8 @@ class AlgorithmConfig(_Config):
             )
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
+        if create_local_env_runner is not NotProvided:
+            self.create_local_env_runner = create_local_env_runner
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
         if env_to_module_connector is not NotProvided:
@@ -2027,6 +2062,10 @@ class AlgorithmConfig(_Config):
             )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
+        if merge_env_runner_states is not NotProvided:
+            self.merge_env_runner_states = merge_env_runner_states
+        if broadcast_env_runner_states is not NotProvided:
+            self.broadcast_env_runner_states = broadcast_env_runner_states
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -3838,17 +3877,6 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
-
-    @property
-    def train_batch_size_per_learner(self):
-        # If not set explicitly, try to infer the value.
-        if self._train_batch_size_per_learner is None:
-            return self.train_batch_size // (self.num_learners or 1)
-        return self._train_batch_size_per_learner
-
-    @train_batch_size_per_learner.setter
-    def train_batch_size_per_learner(self, value):
-        self._train_batch_size_per_learner = value
 
     @property
     def train_batch_size_per_learner(self) -> int:

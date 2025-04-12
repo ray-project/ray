@@ -427,7 +427,7 @@ def test_dataset_stats_basic(
         ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N ReadRange->MapBatches(dummy_map_batches): "
@@ -453,7 +453,7 @@ def test_dataset_stats_basic(
 
         ds = ds.map(dummy_map_batches).materialize()
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"

@@ -15,7 +15,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	echo "--- Compile dependencies for ${PYTHON_CODE}_${CUDA_CODE}"
 
 	UV_PIP_COMPILE=(
-		uv pip compile -v --generate-hashes --strip-extras
+		uv pip compile --generate-hashes --strip-extras
 		--unsafe-package ray
 		# The version we use on python 3.9 is not installable on python 3.11
 		--unsafe-package grpcio-tools
