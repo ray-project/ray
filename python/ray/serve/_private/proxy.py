@@ -1198,13 +1198,27 @@ class ProxyActor:
             proxy_router=self.proxy_router,
             request_timeout_s=self._http_options.request_timeout_s,
         )
+
+        if (
+            RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S is not None
+            and self._grpc_options.request_timeout_s is None
+        ):
+            self._grpc_options.request_timeout_s = (
+                RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            )
+            logger.warning(
+                "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable will be deprecated "
+                "in the future release. Please set `request_timeout_s` in your Serve config's `grpc_options` "
+                "field instead."
+            )
+
         self.grpc_proxy = (
             gRPCProxy(
                 node_id=self._node_id,
                 node_ip_address=self._node_ip_address,
                 is_head=is_head,
                 proxy_router=self.proxy_router,
-                request_timeout_s=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
+                request_timeout_s=self._grpc_options.request_timeout_s,
             )
             if grpc_enabled
             else None
