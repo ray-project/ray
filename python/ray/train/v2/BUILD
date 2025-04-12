@@ -231,7 +231,7 @@ py_test(
 
 py_test(
     name = "test_state",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -295,7 +295,7 @@ py_test(
 
 py_test(
     name = "test_telemetry",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_telemetry.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
