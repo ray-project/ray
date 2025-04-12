@@ -267,9 +267,6 @@ py_test_module_list(
         "test_streaming_generator_backpressure.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
-        "test_task_events.py",
-        "test_task_events_2.py",
-        "test_task_events_3.py",
         "test_task_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_tempfile.py",
@@ -564,6 +561,22 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "autoscaler/test_providers.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
         "test_cli_logger.py",
@@ -675,6 +688,9 @@ py_test_module_list(
         "test_state_api_2.py",
         "test_storage.py",
         "test_stress_failure.py",
+        "test_task_events.py",
+        "test_task_events_2.py",
+        "test_task_events_3.py",
         "test_unavailable_actors.py",
     ],
     tags = [
@@ -962,6 +978,38 @@ py_test(
     name = "test_gcp_tpu_command_runner",
     size = "small",
     srcs = ["gcp/test_gcp_tpu_command_runner.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_cluster_operator",
+    size = "small",
+    srcs = ["vsphere/test_cluster_operator.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:serverless",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_vmray_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vmray_node_provider.py"],
     tags = [
         "exclusive",
         "no_windows",

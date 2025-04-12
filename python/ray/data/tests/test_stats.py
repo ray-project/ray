@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -30,7 +30,6 @@ from ray.data._internal.stats import (
     _get_or_create_stats_actor,
     _StatsActor,
 )
-from ray.data._internal.util import create_dataset_tag
 from ray.data.block import BlockMetadata
 from ray.data._internal.util import MemoryProfiler
 from ray.data.context import DataContext
@@ -428,7 +427,7 @@ def test_dataset_stats_basic(
         ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N ReadRange->MapBatches(dummy_map_batches): "
@@ -454,7 +453,7 @@ def test_dataset_stats_basic(
 
         ds = ds.map(dummy_map_batches).materialize()
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
@@ -1681,7 +1680,7 @@ def test_stats_actor_metrics():
     # There should be nothing in object store at the end of execution.
 
     args = update_fn.call_args_list[-1].args
-    assert args[0] == f"dataset_{ds._uuid}"
+    assert args[0] == f"dataset_{ds._uuid}_0"
     assert args[2][0] == "Input_0"
     assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
 
@@ -1707,11 +1706,11 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert f"dataset_{ds._uuid}" == update_fn.call_args_list[-1].args[1]
+    assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
 
 
-def test_dataset_name():
-    # Test deprecated APIs
+def test_dataset_name_and_id():
+    # Test deprecated APIs: _set_name and _name
     ds = ray.data.range(1)
     ds._set_name("test_ds")
     assert ds._name == "test_ds"
@@ -1723,34 +1722,36 @@ def test_dataset_name():
         "MapBatches(<lambda>)\n"
         "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
     )
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
 
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+    def _run_dataset(ds, expected_name, expected_run_index):
+        with patch_update_stats_actor() as update_fn:
+            for _ in ds.iter_batches():
+                pass
+
+        assert (
+            update_fn.call_args_list[-1].args[0]
+            == f"{expected_name}_{ds._uuid}_{expected_run_index}"
+        )
+
+    _run_dataset(ds, "test_ds", 0)
+
+    # Run the dataset again, the execution index should be incremented
+    _run_dataset(ds, "test_ds", 1)
 
     # Names persist after an execution
     ds = ds.random_shuffle()
     assert ds.name == "test_ds"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
+    _run_dataset(ds, "test_ds", 0)
 
     ds.set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
     assert ds.name == "test_ds_two"
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
+    _run_dataset(ds, "test_ds_two", 0)
 
     ds.set_name(None)
     ds = ds.map_batches(lambda x: x)
     assert ds.name is None
-    with patch_update_stats_actor() as update_fn:
-        mds = ds.materialize()
-
-    assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
+    _run_dataset(ds, "dataset", 0)
 
     ds = ray.data.range(100, override_num_blocks=20)
     ds.set_name("very_loooooooong_name")
@@ -1758,6 +1759,30 @@ def test_dataset_name():
         str(ds)
         == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
     )
+
+
+def test_dataset_id_train_ingest():
+    """Test that the dataset ID is properly set for training ingestion jobs."""
+    num_epochs = 3
+    driver_script = f"""
+import ray
+
+ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
+ds.set_name("train")
+ds._set_uuid("1234")
+
+split = ds.streaming_split(1)[0]
+
+for epoch in range({num_epochs}):
+    for _ in split.iter_batches():
+        pass
+    """
+    # Need to run the code as s sub process, because the executor
+    # runs on the SplitCoordinator actor.
+    out = run_string_as_driver(driver_script)
+    for i in range(num_epochs):
+        dataset_id = f"train_1234_{i}"
+        assert f"Starting execution of Dataset {dataset_id}" in out
 
 
 def test_op_metrics_logging():
@@ -1855,7 +1880,7 @@ def test_stats_manager(shutdown_only):
 
     # Clear dataset tags manually.
     for dataset in datasets:
-        dataset_tag = create_dataset_tag(dataset.name, dataset._uuid)
+        dataset_tag = dataset.get_dataset_id()
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
         StatsManager.clear_last_execution_stats(dataset_tag)
