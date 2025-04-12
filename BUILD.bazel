@@ -488,6 +488,13 @@ ray_cc_library(
     name = "raylet_agent_manager",
     hdrs = ["src/ray/raylet/agent_manager.h"],
     srcs = ["src/ray/raylet/agent_manager.cc"],
+    linkopts = select({
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -588,13 +595,6 @@ ray_cc_library(
     name = "raylet_lib",
     srcs = ["src/ray/raylet/raylet.cc"],
     hdrs = ["src/ray/raylet/raylet.h"],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
     deps = [
         # ":core_worker_lib",
         # ":dependency_manager",
