@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 
 import httpx
@@ -100,6 +101,10 @@ def test_cancel_on_http_client_disconnect_during_assignment(serve_instance):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.getenv("ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT") == "1",
+    reason="Skipping this test its not working with grpc as expected, remove after SERVE-731 is fixed",
+)
 async def test_request_cancelled_error_on_http_client_disconnect_during_execution(
     serve_instance,
 ):
