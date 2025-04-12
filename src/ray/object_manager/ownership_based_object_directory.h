@@ -15,9 +15,7 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -31,7 +29,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/sequencer.h"
 
 namespace ray {
 
