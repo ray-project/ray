@@ -659,18 +659,18 @@ ray_cc_library(
         ":pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",
-        "//src/ray/stats:stats_lib",
         ":wait_manager",
         ":worker",
         ":worker_pool",
         ":worker_rpc",
-        "//src/ray/object_manager/plasma:plasma_client",
-        "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/common:memory_monitor",
+        "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet/scheduling:scheduler",
+        "//src/ray/stats:stats_lib",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
@@ -736,17 +736,6 @@ ray_cc_library(
         "//src/ray/core_worker:core_worker_lib",
     ],
     alwayslink = 1,
-)
-
-ray_cc_test(
-    name = "gcs_function_manager_test",
-    srcs = ["src/ray/gcs/gcs_server/test/gcs_function_manager_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
 )
 
 ray_cc_test(
@@ -1745,11 +1734,9 @@ pyx_library(
         "//:redis_client",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
-        "//src/ray/gcs/gcs_server:gcs_server_lib",
-        "//src/ray/stats:stats_lib",
         "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs/gcs_server:gcs_server_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-        "//src/ray/stats:stats_lib",
         "//src/ray/util",
         "//src/ray/util:memory",
         "//src/ray/util:stream_redirection",
@@ -1872,7 +1859,7 @@ copy_to_workspace(
 
 copy_to_workspace(
     name = "cp_gcs_server",
-    srcs = ["//src/ray/gcs/gcs_server:gcs_server"],
+    srcs = ["//src/ray/gcs/gcs_server"],
     dstdir = "python/ray/core/src/ray/gcs",
 )
 

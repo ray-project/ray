@@ -335,10 +335,10 @@ ray_cc_test(
     }),
     deps = [
         "//:object_manager_common",
-        "//:plasma_client",
-        "//:plasma_store_server_lib",
         "//:ray_mock",
         "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/object_manager/plasma:plasma_client",
+        "//src/ray/object_manager/plasma:plasma_store_server_lib",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
