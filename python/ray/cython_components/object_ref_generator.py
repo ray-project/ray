@@ -1,5 +1,6 @@
 from ray.util.annotations import DeveloperAPI
 
+
 @DeveloperAPI
 class DynamicObjectRefGenerator:
     def __init__(self, refs):
