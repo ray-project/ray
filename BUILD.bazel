@@ -1570,37 +1570,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "stats_test",
-    size = "small",
-    srcs = ["src/ray/stats/stats_test.cc"],
-    tags = [
-        "no_tsan",
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "metric_exporter_grpc_test",
-    size = "small",
-    srcs = [
-        "src/ray/stats/metric_exporter_grpc_test.cc",
-    ],
-    tags = [
-        "stats",
-        "team:core",
-    ],
-    deps = [
-        ":stats_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
