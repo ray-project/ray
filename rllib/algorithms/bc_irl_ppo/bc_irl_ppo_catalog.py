@@ -20,6 +20,7 @@ class BCIRLPPOCatalog(PPOCatalog):
             model_config_dict=model_config_dict,
         )
 
+        self.reward_type = self._model_config_dict["reward_type"]
         # Define the head for the reward-function here. Note, the encoder
         # needs to be defined later because at initialization
         self.rf_head_config = MLPHeadConfig(
@@ -32,14 +33,17 @@ class BCIRLPPOCatalog(PPOCatalog):
 
     def build_rf_encoder(self, framework: str) -> Encoder:
 
-        # The input dimension reserved for the actions is either the number of
-        # actions for discrete spaces (one-hot encoded) or the first shape dimension
-        # for 1-dimensional Box spaces.
-        required_action_dim = (
-            self.action_space.shape[0]
-            if isinstance(self.action_space, gym.spaces.Box)
-            else self.action_space.n
-        )
+        if self.reward_type == "action":
+            # The input dimension reserved for the actions is either the number of
+            # actions for discrete spaces (one-hot encoded) or the first shape dimension
+            # for 1-dimensional Box spaces.
+            required_action_dim = (
+                self.action_space.shape[0]
+                if isinstance(self.action_space, gym.spaces.Box)
+                else self.action_space.n
+            )
+        else:
+            required_action_dim = 0
 
         # Encoder input for the reward model contains state, action, and next state. We
         # need to infer the shape for the input from the state and action spaces.
@@ -50,7 +54,11 @@ class BCIRLPPOCatalog(PPOCatalog):
             input_space = gym.spaces.Box(
                 -np.inf,
                 np.inf,
-                (self.observation_space.shape[0] * 2 + required_action_dim,),
+                (
+                    self.observation_space.shape[0]
+                    * (1 + int(self.reward_type == "curr_next_obs"))
+                    + required_action_dim,
+                ),
                 dtype=np.float32,
             )
         # Other observations spaces are at this moment not implemented.

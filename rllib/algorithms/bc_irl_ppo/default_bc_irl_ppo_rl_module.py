@@ -7,6 +7,8 @@ from ray.rllib.utils.annotations import override
 class DefaultBCIRLRewardRLModule(RLModule):
     @override(RLModule)
     def setup(self):
+        # If an action reward model should be used or a state-only one.
+        self.reward_type = self.model_config["reward_type"]
         # Configure the reward-function encoder.
         self.rf_encoder = self.catalog.build_rf_encoder(framework=self.framework)
         # Configure the reward-function head.
@@ -21,11 +23,16 @@ class DefaultBCIRLRewardRLModule(RLModule):
     def input_specs_train(self) -> SpecType:
         """Defines the input specs for the train forward pass."""
         # Note, the reward function inputs actual state, action and, next state.
-        return [
-            Columns.OBS,
-            Columns.ACTIONS,
-            Columns.NEXT_OBS,
-        ]
+        if self.reward_type == "action":
+            return [
+                Columns.OBS,
+                Columns.ACTIONS,
+                Columns.NEXT_OBS,
+            ]
+        elif self.reward_type == "curr_next_obs":
+            return [Columns.OBS, Columns.NEXT_OBS]
+        elif self.reward_type == "next_obs":
+            return [Columns.OBS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:

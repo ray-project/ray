@@ -118,6 +118,18 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         fwd_out = self._make_functional_call(params, batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
         # Compute gradients for the provided parameters.
+        import os
+
+        if not os.path.isfile("bc_irl_inner_graph.gv"):
+            from torchviz import make_dot
+
+            dot = make_dot(
+                loss_per_module["default_policy"],
+                params["default_policy"],
+                show_saved=True,
+            )
+            dot.save("bc_irl_inner_graph.gv")
+
         gradients = self.compute_gradients(loss_per_module, params)
 
         with contextlib.ExitStack() as stack:

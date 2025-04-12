@@ -21,7 +21,7 @@ class BCIRLPPODifferentiableLearner(DifferentiableLearner):
         ] = LambdaDefaultDict(
             lambda module_id: Scheduler(
                 fixed_value_or_schedule=(
-                    self.config.get_config_for_module(module_id).entropy_coeff
+                    self.config.get_config_for_module(module_id).ppo_entropy_coeff
                 ),
                 framework=self.framework,
                 # TODO (simon): Add device for GPU training.
@@ -34,7 +34,7 @@ class BCIRLPPODifferentiableLearner(DifferentiableLearner):
         # to stay close to a given kl_target value.
         self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
-                self.config.get_config_for_module(module_id).kl_coeff
+                self.config.get_config_for_module(module_id).ppo_kl_coeff
             )
         )
 

@@ -93,7 +93,7 @@ class BCIRLPPOTorchDifferentiableLearner(
             )
 
             # Only calculate kl loss if necessary (kl-coeff > 0.0).
-            if config.use_kl_loss:
+            if config.ppo_use_kl_loss:
                 action_kl = prev_action_dist.kl(curr_action_dist)
                 mean_kl_loss = possibly_masked_mean(action_kl)
             else:
@@ -105,16 +105,20 @@ class BCIRLPPOTorchDifferentiableLearner(
             surrogate_loss = torch.min(
                 batch[Columns.ADVANTAGES] * logp_ratio,
                 batch[Columns.ADVANTAGES]
-                * torch.clamp(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
+                * torch.clamp(
+                    logp_ratio, 1 - config.ppo_clip_param, 1 + config.ppo_clip_param
+                ),
             )
 
             # Compute a value function loss.
-            if config.use_critic:
+            if config.ppo_use_critic:
                 value_fn_out = fwd_out[
                     Columns.VF_PREDS
                 ]  # self._compute_values_functional_call(params, batch, fwd_out, module_id)
-                vf_loss = torch.pow(value_fn_out - batch[Columns.VALUE_TARGETS], 2.0)
-                vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
+                vf_loss = torch.pow(
+                    value_fn_out - batch[Columns.VALUE_TARGETS].detach(), 2.0
+                )
+                vf_loss_clipped = torch.clamp(vf_loss, 0, config.ppo_vf_clip_param)
                 mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
                 mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
             # Ignore the value function -> Set all to 0.0.
@@ -126,7 +130,7 @@ class BCIRLPPOTorchDifferentiableLearner(
 
             total_loss = possibly_masked_mean(
                 -surrogate_loss
-                + config.vf_loss_coeff * vf_loss_clipped
+                + config.ppo_vf_loss_coeff * vf_loss_clipped
                 - (
                     self.entropy_coeff_schedulers_per_module[
                         module_id
@@ -137,7 +141,7 @@ class BCIRLPPOTorchDifferentiableLearner(
 
             # Add mean_kl_loss (already processed through `possibly_masked_mean`),
             # if necessary.
-            if config.use_kl_loss:
+            if config.ppo_use_kl_loss:
                 total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
             # Log important loss stats.
@@ -208,33 +212,33 @@ class BCIRLPPOTorchDifferentiableLearner(
 
         return functional_policy_calls
 
-    def _compute_values_functional_call(self, params, batch, fwd_out, module_id):
+    # def _compute_values_functional_call(self, params, batch, fwd_out, module_id):
 
-        embeddings = fwd_out.get(Columns.EMBEDDINGS)
-        if embeddings is None:
-            # Separate vf-encoder.
-            if hasattr(self.encoder, "critic_encoder"):
-                batch_ = batch
-                if self.is_stateful():
-                    # The recurrent encoders expect a `(state_in, h)`  key in the
-                    # input dict while the key returned is `(state_in, critic, h)`.
-                    batch_ = batch.copy()
-                    batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-                embeddings = torch.func.functional_call(
-                    self._module[module_id].encoder.critic_encoder, params, batch
-                )[ENCODER_OUT]
-            # Shared encoder.
-            else:
-                embeddings = torch.func.functional_call(
-                    self._module[module_id].encoder, params, batch
-                )[ENCODER_OUT][CRITIC]
+    #     embeddings = fwd_out.get(Columns.EMBEDDINGS)
+    #     if embeddings is None:
+    #         # Separate vf-encoder.
+    #         if hasattr(self.encoder, "critic_encoder"):
+    #             batch_ = batch
+    #             if self.is_stateful():
+    #                 # The recurrent encoders expect a `(state_in, h)`  key in the
+    #                 # input dict while the key returned is `(state_in, critic, h)`.
+    #                 batch_ = batch.copy()
+    #                 batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
+    #             embeddings = torch.func.functional_call(
+    #                 self._module[module_id].encoder.critic_encoder, params, batch
+    #             )[ENCODER_OUT]
+    #         # Shared encoder.
+    #         else:
+    #             embeddings = torch.func.functional_call(
+    #                 self._module[module_id].encoder, params, batch
+    #             )[ENCODER_OUT][CRITIC]
 
-        # Value head.
-        vf_out = torch.func.functional_call(
-            self._module[module_id].vf, params, embeddings
-        )
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)
+    #     # Value head.
+    #     vf_out = torch.func.functional_call(
+    #         self._module[module_id].vf, params, embeddings
+    #     )
+    #     # Squeeze out last dimension (single node value head).
+    #     return vf_out.squeeze(-1)
 
     @override(BCIRLPPODifferentiableLearner)
     def _update_module_kl_coeff(
@@ -258,10 +262,10 @@ class BCIRLPPOTorchDifferentiableLearner(
 
         # Update the KL coefficient.
         curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if kl_loss > 2.0 * config.kl_target:
+        if kl_loss > 2.0 * config.ppo_kl_target:
             # TODO (Kourosh) why not 2?
             curr_var.data *= 1.5
-        elif kl_loss < 0.5 * config.kl_target:
+        elif kl_loss < 0.5 * config.ppo_kl_target:
             curr_var.data *= 0.5
 
         # Log the updated KL-coeff value.
@@ -292,8 +296,8 @@ class BCIRLPPOTorchDifferentiableLearner(
             truncateds=self._unpad_data_if_necessary(
                 episode_lens, batch[Columns.TRUNCATEDS].float()
             ),
-            gamma=config.gamma,
-            lambda_=config.lambda_,
+            gamma=config.ppo_gamma,
+            lambda_=config.ppo_lambda_,
         )
         # assert module_value_targets.shape[0] == episode_lens.sum()
 

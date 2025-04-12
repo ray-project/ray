@@ -60,11 +60,11 @@ config = (
         # iteration. For single-learner mode, 1 is the only option.
         dataset_num_iters_per_learner=1,
     )
-    .training(
-        train_batch_size_per_learner=256,
-        # To increase learning speed with multiple learners,
-        # increase the learning rate correspondingly.
-        lr=0.001 * (args.num_learners or 1) ** 0.5,
+    .evaluation(
+        evaluation_interval=3,
+        evaluation_num_env_runners=1,
+        evaluation_duration=5,
+        evaluation_parallel_to_training=True,
     )
 )
 
@@ -81,11 +81,11 @@ stop = {
     # TRAINING_ITERATION: 350,
 }
 
-algo = config.build()
-for _ in range(10):
-    results = algo.train()
-    print(results)
+# algo = config.build()
+# for _ in range(10):
+#     results = algo.train()
+#     print(results)
 
 
-# if __name__ == "__main__":
-#     run_rllib_example_script_experiment(config, args, stop=stop)
+if __name__ == "__main__":
+    run_rllib_example_script_experiment(config, args, stop=stop)

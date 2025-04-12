@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from typing import Callable, List, Optional, Union
 
@@ -9,7 +9,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.utils.typing import ModuleID
 
 
-@dataclass
+@dataclass(slots=True)
 class DifferentiableLearnerConfig:
     """Configures a `DifferentiableLearner`."""
 
@@ -137,3 +137,11 @@ class DifferentiableLearnerConfig:
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
+
+    def update_from_kwargs(self, **kwargs):
+        """Sets all slots with values defined in `kwargs`."""
+        # Get all field names (i.e., slot names).
+        field_names = {f.name for f in fields(self)}
+        for key, value in kwargs.items():
+            if key in field_names:
+                setattr(self, key, value)

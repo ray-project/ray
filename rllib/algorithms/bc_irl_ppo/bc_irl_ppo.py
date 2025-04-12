@@ -55,55 +55,53 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         # self.moving_average_sqd_adv_norm_start = 100.0
         # self.bc_vf_coeff = 1.0
         # self.model["vf_shared_layers"] = False
+        
+        # Update the reward model in each training iteration.
+        
+        self.materialize_data = True
+        self.materialize_mapped_data = True
+
+        # ----------------------------
+        # PPO configurations
+        # Multi-agent.
+        self.policies ={DEFAULT_POLICY_ID: PolicySpec()}
+
+        # training()
         self.grad_clip = None
         self.lr = 1e-4
         self.train_batch_size_per_learner = 256
         self.minibatch_size = 256
-        # Update the reward model in each training iteration.
         self.reward_update_freq = 1
-        self.materialize_data = True
-        self.materialize_mapped_data = False
+        self.ppo_lr = 1e-4        
+        self.ppo_train_batch_size_per_learner = 1280
+        self.ppo_num_epochs = 2
+        self.ppo_minibatch_size = 320
+        self.ppo_shuffle_batch_per_epoch = True
+        self.ppo_use_critic = True
+        self.ppo_use_gae = True
+        self.ppo_lambda_ = 0.95
+        self.ppo_gamma = 0.99
+        self.ppo_use_kl_loss = False
+        self.ppo_kl_coeff = 0.01
+        self.ppo_kl_target = 0.01
+        self.ppo_vf_loss_coeff = 0.5
+        self.ppo_entropy_coeff = 1e-3
+        self.ppo_clip_param = 0.2
+        self.ppo_vf_clip_param = 10.0
 
-        # ----------------------------
-        # PPO configurations
 
-        self.policies ={DEFAULT_POLICY_ID: PolicySpec()}
-        self.ppo_lr = 1e-3
-        self.rollout_fragment_length = "auto"
-        self.ppo_train_batch_size_per_learner = 256
-
-        # PPO specific settings:
-        from ray.rllib.core.learner.differentiable_learner_config import DifferentiableLearnerConfig
         from ray.rllib.algorithms.bc_irl_ppo.torch.bc_irl_ppo_torch_differentiable_learner import BCIRLPPOTorchDifferentiableLearner
         # TODO (simon): Make a new method `get_differentiable_learner_class`.
         self.differentiable_learner_configs = [
             BCIRLPPODifferentiableLearnerConfig(
                 learner_class=BCIRLPPOTorchDifferentiableLearner,    
-                is_multi_agent=False,
-                policies_to_update=[DEFAULT_MODULE_ID],
+                is_multi_agent=self.is_multi_agent,
+                policies_to_update=self.policies,
                 lr=self.ppo_lr,
-                num_epochs=2,
-                num_total_minibatches=4,
+                num_epochs=self.ppo_num_epochs,
+                minibatch_size=self.ppo_minibatch_size,
             )
         ]
-        self.use_critic = True
-        self.use_gae = True
-        self.ppo_num_epochs = 2
-        self.ppo_minibatch_size = 128
-        self.ppo_shuffle_batch_per_epoch = True
-        self.lambda_ = 1.0
-        self.use_kl_loss = True
-        self.kl_coeff = 0.0
-        self.kl_target = 0.01
-        self.vf_loss_coeff = 0.5
-        self.entropy_coeff = 0.001
-        self.clip_param = 0.2
-        self.vf_clip_param = 10.0
-
-        # Override some of AlgorithmConfig's default values with PPO-specific values.
-        self.num_env_runners = 2
-
-        self.reward_update_freq = 1
 
         # __sphinx_doc_end__
         # fmt: on
@@ -171,13 +169,10 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         pipeline = super().build_learner_connector(
             input_observation_space, input_action_space, device
         )
-
+        # TODO (simon): Set up for different learner configurations (i.e. local,
+        # remote, multi).
         pipeline.remove("TensorToNumpy")
-        # pipeline.remove("GeneralAdvantageEstimation")
-        # pipeline.insert_after(
-        #     "AddNextObservationsFromEpisodesToTrainBatch",
-        #     AddEpisodeLengthsToTrainBatch(),
-        # )
+
         return pipeline
 
     @override(AlgorithmConfig)
@@ -185,27 +180,44 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         self,
         *,
         reward_update_freq: Optional[int] = NotProvided,
-        use_critic: Optional[bool] = NotProvided,
-        use_gae: Optional[bool] = NotProvided,
-        lambda_: Optional[float] = NotProvided,
-        use_kl_loss: Optional[bool] = NotProvided,
-        kl_coeff: Optional[float] = NotProvided,
-        kl_target: Optional[float] = NotProvided,
-        vf_loss_coeff: Optional[float] = NotProvided,
-        entropy_coeff: Optional[float] = NotProvided,
-        clip_param: Optional[float] = NotProvided,
-        vf_clip_param: Optional[float] = NotProvided,
-        grad_clip: Optional[float] = NotProvided,
+        ppo_lr: Optional[float] = NotProvided,
+        ppo_train_batch_size_per_learner: Optional[int] = NotProvided,
+        ppo_minibatch_size: Optional[int] = NotProvided,
+        ppo_num_epochs: Optional[int] = NotProvided,
+        ppo_shuffle_batch_per_epoch: Optional[bool] = NotProvided,
+        ppo_use_critic: Optional[bool] = NotProvided,
+        ppo_use_gae: Optional[bool] = NotProvided,
+        ppo_lambda_: Optional[float] = NotProvided,
+        ppo_gamma: Optional[float] = NotProvided,
+        ppo_use_kl_loss: Optional[bool] = NotProvided,
+        ppo_kl_coeff: Optional[float] = NotProvided,
+        ppo_kl_target: Optional[float] = NotProvided,
+        ppo_vf_loss_coeff: Optional[float] = NotProvided,
+        ppo_entropy_coeff: Optional[float] = NotProvided,
+        ppo_clip_param: Optional[float] = NotProvided,
+        ppo_vf_clip_param: Optional[float] = NotProvided,
+        ppo_grad_clip: Optional[float] = NotProvided,
         **kwargs,
     ) -> "BCIRLPPOConfig":
         """Sets the training related configuration.
 
         Args:
-            use_critic: Should use a critic as a baseline (otherwise don't use value
+            reward_update_freq: The update frequency for the reward model. The default
+                updates the reward model in each iteration.
+            ppo_lr: The learning rate for the differentiable PPO learner. This learning rate
+                defines the step size of the differentiable update.
+            ppo_train_batch_size_per_learner: The training batch size for each differentiable
+                PPO learner.
+            ppo_minibatch_size: The minibatch size to be used in minibatch SGD by the
+                differentiable PPO learner.
+            ppo_num_epochs: The number of epochs to be run per training batch size in each
+                differentiable PPO learner.
+            ppo_shuffle_batch_per_epoch: If the training batch should be shuffled between epochs.
+            ppo_use_critic: Should use a critic as a baseline (otherwise don't use value
                 baseline; required for using GAE).
-            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+            ppo_use_gae: If true, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-            lambda_: The lambda parameter for General Advantage Estimation (GAE).
+            ppo_lambda_: The lambda parameter for General Advantage Estimation (GAE).
                 Defines the exponential weight used between actually measured rewards
                 vs value function estimates over multiple time steps. Specifically,
                 `lambda_` balances short-term, low-variance estimates against long-term,
@@ -214,62 +226,84 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
                 but increasing bias), while a `lambda_` of 1.0 only incorporates vf
                 predictions at the truncation points of the given episodes or episode
                 chunks (reducing bias but increasing variance).
-            use_kl_loss: Whether to use the KL-term in the loss function.
-            kl_coeff: Initial coefficient for KL divergence.
-            kl_target: Target value for KL divergence.
-            vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
+            ppo_use_kl_loss: Whether to use the KL-term in the loss function.
+            ppo_kl_coeff: Initial coefficient for KL divergence.
+            ppo_kl_target: Target value for KL divergence.
+            ppo_vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
                 tune this if you set vf_share_layers=True inside your model's config.
-            entropy_coeff: The entropy coefficient (float) or entropy coefficient
+            ppo_entropy_coeff: The entropy coefficient (float) or entropy coefficient
                 schedule in the format of
                 [[timestep, coeff-value], [timestep, coeff-value], ...]
                 In case of a schedule, intermediary timesteps will be assigned to
                 linearly interpolated coefficient values. A schedule config's first
                 entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
-            clip_param: The PPO clip parameter.
-            vf_clip_param: Clip param for the value function. Note that this is
+            ppo_clip_param: The PPO clip parameter.
+            ppo_vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.
-            grad_clip: If specified, clip the global norm of gradients by this amount.
+            ppo_grad_clip: If specified, clip the global norm of gradients by this amount.
 
         Returns:
-            This updated AlgorithmConfig object.
+            This updated DifferentiableAlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
         if reward_update_freq is not NotProvided:
             self.reward_update_freq = reward_update_freq
-        if use_critic is not NotProvided:
-            self.use_critic = use_critic
-            # TODO (Kourosh) This is experimental.
+        if ppo_lr is not NotProvided:
+            self.ppo_lr = ppo_lr
+            self.differentiable_learner_configs[0].lr = ppo_lr
+        if ppo_train_batch_size_per_learner is not NotProvided:
+            self.ppo_train_batch_size_per_learner = ppo_train_batch_size_per_learner
+        if ppo_minibatch_size is not NotProvided:
+            self.ppo_minibatch_size = ppo_minibatch_size
+            self.differentiable_learner_configs[0].minibatch_size = ppo_minibatch_size
+        if ppo_num_epochs is not NotProvided:
+            self.ppo_num_epochs = ppo_num_epochs
+            self.differentiable_learner_configs[0].num_epochs = ppo_num_epochs
+        if ppo_shuffle_batch_per_epoch is not NotProvided:
+            self.ppo_shuffle_batch_per_epoch = ppo_shuffle_batch_per_epoch
+            self.differentiable_learner_configs[
+                0
+            ].shuffle_batch_per_epoch = ppo_shuffle_batch_per_epoch
+        if ppo_use_critic is not NotProvided:
+            self.ppo_use_critic = ppo_use_critic
+            # TODO (simon) This is experimental.
             #  Don't forget to remove .use_critic from algorithm config.
-        if use_gae is not NotProvided:
-            self.use_gae = use_gae
-        if lambda_ is not NotProvided:
-            self.lambda_ = lambda_
-        if use_kl_loss is not NotProvided:
-            self.use_kl_loss = use_kl_loss
-        if kl_coeff is not NotProvided:
-            self.kl_coeff = kl_coeff
-        if kl_target is not NotProvided:
-            self.kl_target = kl_target
-        if vf_loss_coeff is not NotProvided:
-            self.vf_loss_coeff = vf_loss_coeff
-        if entropy_coeff is not NotProvided:
-            self.entropy_coeff = entropy_coeff
-        if clip_param is not NotProvided:
-            self.clip_param = clip_param
-        if vf_clip_param is not NotProvided:
-            self.vf_clip_param = vf_clip_param
-        if grad_clip is not NotProvided:
-            self.grad_clip = grad_clip
+        if ppo_use_gae is not NotProvided:
+            self.ppo_use_gae = ppo_use_gae
+        if ppo_gamma is not NotProvided:
+            self.ppo_gamma = ppo_gamma
+        if ppo_lambda_ is not NotProvided:
+            self.ppo_lambda_ = ppo_lambda_
+        if ppo_use_kl_loss is not NotProvided:
+            self.ppo_use_kl_loss = ppo_use_kl_loss
+        if ppo_kl_coeff is not NotProvided:
+            self.ppo_kl_coeff = ppo_kl_coeff
+        if ppo_kl_target is not NotProvided:
+            self.ppo_kl_target = ppo_kl_target
+        if ppo_vf_loss_coeff is not NotProvided:
+            self.ppo_vf_loss_coeff = ppo_vf_loss_coeff
+        if ppo_entropy_coeff is not NotProvided:
+            self.ppo_entropy_coeff = ppo_entropy_coeff
+        if ppo_clip_param is not NotProvided:
+            self.ppo_clip_param = ppo_clip_param
+        if ppo_vf_clip_param is not NotProvided:
+            self.ppo_vf_clip_param = ppo_vf_clip_param
+        if ppo_grad_clip is not NotProvided:
+            self.grad_clip = ppo_grad_clip
 
+        # TODO (simon): Decide, if these parameters should go into the LearnerConfig.
         return self
 
     @property
     @override(AlgorithmConfig)
     def _model_config_auto_includes(self) -> Dict[str, Any]:
-        return super()._model_config_auto_includes | {"vf_share_layers": False}
+        return super()._model_config_auto_includes | {
+            "vf_share_layers": False,
+            "reward_type": "next_obs",
+        }
 
     @property
     @override(AlgorithmConfig)
@@ -424,7 +458,7 @@ class BCIRLPPO(MARWIL):
             if self.config.count_steps_by == "agent_steps":
                 episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
-                    max_agent_steps=self.config.total_train_batch_size,
+                    max_agent_steps=self.config.ppo_train_batch_size_per_learner,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
                         self.config.enable_env_runner_and_connector_v2
@@ -434,7 +468,7 @@ class BCIRLPPO(MARWIL):
             else:
                 episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
-                    max_env_steps=self.config.total_train_batch_size,
+                    max_env_steps=self.config.ppo_train_batch_size_per_learner,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
                         self.config.enable_env_runner_and_connector_v2
