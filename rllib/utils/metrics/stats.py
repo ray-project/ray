@@ -363,9 +363,8 @@ class Stats:
                 self._has_new_values = True
             else:
                 self._has_new_values = False
-                if self._inf_window:
-                    # If we we use a window, we don't want to replace the internal values list
-                    self._set_values(new_values_list)
+                # If we we use a window, we don't want to replace the internal values list
+                self._set_values(new_values_list)
 
             # Shift historic reduced valued by one in our reduce_history.
             if self._reduce_method is not None or not self._inf_window:

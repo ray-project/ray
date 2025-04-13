@@ -1140,7 +1140,7 @@ class Algorithm(Checkpointable, Trainable):
 
         if self.config.enable_env_runner_and_connector_v2:
             eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
-            if log_once("no_eval_results"):
+            if log_once("no_eval_results") and not eval_results:
                 logger.warning(
                     "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
                 )
