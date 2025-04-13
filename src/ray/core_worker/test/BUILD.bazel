@@ -34,7 +34,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:task_common",
@@ -72,7 +72,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -90,7 +90,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -126,7 +126,7 @@ ray_cc_test(
     deps = [
         "//:object_manager_common",
         "//:ray_mock",
-        "//:raylet_client_lib",
+        "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:memory_store",
