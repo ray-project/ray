@@ -1414,12 +1414,16 @@ filegroup(
     srcs = ["ci/run/iwyu.sh"],
 )
 
+# TODO(Ziy1-Tan): action_listener are deprecated(https://bazel.build/versions/6.5.0/reference/be/extra-actions),
+# Remove it in feature release.
 action_listener(
     name = "iwyu_cpp",
     extra_actions = [":iwyu_action"],
     mnemonics = ["CppCompile"],
 )
 
+# TODO(Ziy1-Tan): extra_action are deprecated(https://bazel.build/versions/6.5.0/reference/be/extra-actions),
+# Remove it in feature release.
 extra_action(
     name = "iwyu_action",
     cmd = "$(location :iwyu_sh) postbuild $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE) > $(output $(ACTION_ID).iwyu.txt)",
