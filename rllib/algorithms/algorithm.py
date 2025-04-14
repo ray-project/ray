@@ -651,14 +651,6 @@ class Algorithm(Checkpointable, Trainable):
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
-            self.spaces = self.env_runner_group.get_spaces()
-            if self.env_runner is None:
-                self.env_to_module_connector = (
-                    self.config.build_env_to_module_connector(spaces=self.spaces)
-                )
-                self.module_to_env_connector = (
-                    self.config.build_module_to_env_connector(spaces=self.spaces)
-                )
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
