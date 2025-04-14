@@ -1,6 +1,6 @@
 import os
 import tempfile
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import patch, ANY
 
 from ray.llm._internal.common.utils.upload_utils import upload_model_files
 
