@@ -9,7 +9,6 @@ import socket
 from contextlib import contextmanager
 from ray.experimental import internal_kv
 import ray.dashboard.consts as dashboard_consts
-from collections import deque
 import json
 
 insight_monitor_address = None
@@ -95,7 +94,7 @@ class _ray_internal_insight_monitor:
         self.actor_counter = defaultdict(int)
         self.method_counter = defaultdict(int)
         self.function_counter = defaultdict(int)
-        self.flow_record = defaultdict(list)
+        self.flow_record = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
         self.start_time_record = defaultdict(lambda: defaultdict(dict))
 
         # Data flow tracking
@@ -210,25 +209,16 @@ class _ray_internal_insight_monitor:
         callee_func = call_record["callee_func"]
         call_times = call_record.get("call_times", 1)
         # Create caller and callee identifiers for parent-child relationship
-        caller_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
-        callee_id = f"{callee_class}.{callee_func}" if callee_class else callee_func
-        current_task_id = call_record["current_task_id"]
+        caller_id = (caller_class, caller_func)
+        callee_id = (callee_class, callee_func)
         start_time = call_record["start_time"]
         if caller_id not in self.start_time_record[job_id][callee_id]:
             self.start_time_record[job_id][callee_id][caller_id] = start_time
 
-        self.flow_record[job_id].append(
-            {
-                "type": "enter",
-                "caller_id": caller_id,
-                "callee_id": callee_id,
-                "caller_task_id": current_task_id,
-            }
-        )
-
+        self.flow_record[job_id][callee_id][caller_id] += call_times
         # Update call graph
-        self.call_graph[job_id][f"{caller_id}->{callee_id}"]["count"] += call_times
-        self.call_graph[job_id][f"{caller_id}->{callee_id}"]["start_time"] = start_time
+        self.call_graph[job_id][(caller_id, callee_id)]["count"] += call_times
+        self.call_graph[job_id][(caller_id, callee_id)]["start_time"] = start_time
 
         # Track actors and methods
         if caller_class:
@@ -299,7 +289,7 @@ class _ray_internal_insight_monitor:
             ) = self.filter_call_graph_data(job_id, self.call_graph[job_id])
         # Add actors
         for actor_class, actor_id in self.actor_id_map.get(job_id, {}).items():
-            if stack_mode == "1" and actor_class not in reachable_actors:
+            if stack_mode == "1" and actor_id not in reachable_actors:
                 continue
             graph_data["actors"].append(
                 {
@@ -313,8 +303,8 @@ class _ray_internal_insight_monitor:
         for method_info in self.methods.get(job_id, {}).values():
             if stack_mode == "1":
                 if (
-                    method_info["actorId"] + "." + method_info["name"]
-                    not in reachable_methods
+                    method_info["actorId"] not in reachable_actors
+                    or method_info["name"] not in reachable_methods
                 ):
                     continue
             graph_data["methods"].append(
@@ -337,20 +327,19 @@ class _ray_internal_insight_monitor:
 
         # Add call flows
         for call_edge, info in call_graph.items():
-            caller, callee = call_edge.split("->")
-            # Get source ID
+            caller, callee = call_edge
+
             source_id = None
             if caller in self.methods.get(job_id, {}):
                 source_id = self.methods[job_id][caller]["id"]
-            elif caller in self.function_id_map.get(job_id, {}):
-                source_id = self.function_id_map[job_id][caller]
+            elif caller[1] in self.function_id_map.get(job_id, {}):
+                source_id = self.function_id_map[job_id][caller[1]]
 
-            # Get target ID
             target_id = None
             if callee in self.methods.get(job_id, {}):
                 target_id = self.methods[job_id][callee]["id"]
-            elif callee in self.function_id_map.get(job_id, {}):
-                target_id = self.function_id_map[job_id][callee]
+            elif callee[1] in self.function_id_map.get(job_id, {}):
+                target_id = self.function_id_map[job_id][callee[1]]
 
             if source_id and target_id:
                 graph_data["callFlows"].append(
@@ -365,40 +354,38 @@ class _ray_internal_insight_monitor:
         # Add data flows with merged statistics
         for flow_key, entry in self.data_flows.get(job_id, {}).items():
             for argpos, flow_stats in entry.items():
-                source, target = flow_key.split("->")
+                source, target = flow_key
                 if stack_mode == "1":
-                    if "." in source:
-                        actor_class = source.split(".")[0]
-                        if source.split(":")[1] not in reachable_methods:
+                    if source[0] is not None:
+                        if source[1] not in reachable_methods:
                             continue
-                        if actor_class not in reachable_actors:
-                            continue
-                    else:
-                        if source not in reachable_funcs:
-                            continue
-                    if "." in target:
-                        actor_class = target.split(".")[0]
-                        if target.split(":")[1] not in reachable_methods:
-                            continue
-                        if actor_class not in reachable_actors:
+                        if source[0].split(":")[-1] not in reachable_actors:
                             continue
                     else:
-                        if target not in reachable_funcs:
+                        if source[1] not in reachable_funcs:
+                            continue
+                    if target[0] is not None:
+                        if target[1] not in reachable_methods:
+                            continue
+                        if target[0].split(":")[-1] not in reachable_actors:
+                            continue
+                    else:
+                        if target[1] not in reachable_funcs:
                             continue
 
                 # Get source ID
                 source_id = None
                 if source in self.methods.get(job_id, {}):
                     source_id = self.methods[job_id][source]["id"]
-                elif source in self.function_id_map.get(job_id, {}):
-                    source_id = self.function_id_map[job_id][source]
+                elif source[1] in self.function_id_map.get(job_id, {}):
+                    source_id = self.function_id_map[job_id][source[1]]
 
                 # Get target ID
                 target_id = None
                 if target in self.methods.get(job_id, {}):
                     target_id = self.methods[job_id][target]["id"]
-                elif target in self.function_id_map.get(job_id, {}):
-                    target_id = self.function_id_map[job_id][target]
+                elif target[1] in self.function_id_map.get(job_id, {}):
+                    target_id = self.function_id_map[job_id][target[1]]
 
                 if source_id and target_id:
                     total_size_mb = flow_stats["size"] / (1024 * 1024)
@@ -424,84 +411,33 @@ class _ray_internal_insight_monitor:
         return graph_data
 
     def filter_call_graph_data(self, job_id, call_graph):
-        """Filter the call graph data to keep only edges that are part of paths leading to target edges.
-
-        A target edge is defined as caller_id->callee_id where caller_id and callee_id come from
-        the flow_record and caller_info mappings. The algorithm uses reverse graph traversal
-        to efficiently identify all edges that can reach these target edges.
-        """
-        # First identify all target edges we want to reach
-        target_edges = {}
-        reachable_nodes = set()
+        target_edges = defaultdict(set)
         reachable_methods = set()
         reachable_actors = set()
         reachable_funcs = set()
 
         # Build target edges from flow records
-        for flow_record in self.flow_record[job_id]:
-            if flow_record["type"] == "enter":
-                target_edges[flow_record["caller_task_id"]] = (
-                    flow_record["caller_id"],
-                    flow_record["callee_id"],
-                )
-                reachable_nodes.add(flow_record["caller_id"])
-                reachable_nodes.add(flow_record["callee_id"])
-            if flow_record["type"] == "exit":
-                caller_infos = self.caller_info[job_id][flow_record["callee_task_id"]]
-                for caller_info in caller_infos:
-                    caller_task_id = caller_info["task_id"]
-                    caller_id = (
-                        f"{caller_info['class']}.{caller_info['func']}"
-                        if caller_info["class"]
-                        else caller_info["func"]
-                    )
-                    callee_id = flow_record["callee_id"]
-                    if caller_task_id in target_edges:
-                        del target_edges[caller_task_id]
-                    if caller_id in reachable_nodes:
-                        reachable_nodes.remove(caller_id)
-                    if callee_id in reachable_nodes:
-                        reachable_nodes.remove(callee_id)
+        for callee_id, caller_ids in self.flow_record[job_id].items():
+            for caller_id, call_times in caller_ids.items():
+                if call_times > 0:
+                    target_edges[callee_id].add((caller_id, callee_id))
 
-        target_edges = set(target_edges.values())
-
-        # Build reverse adjacency list for efficient backwards traversal
-        reverse_adj = defaultdict(set)
-        for edge, _ in call_graph.items():
-            src, dst = edge.split("->")
-            reverse_adj[dst].add(src)
-
-        # Do reverse BFS from all nodes in target edges to find reachable edges
-        queue = deque(reachable_nodes)
-        visited = reachable_nodes.copy()
-
-        while queue:
-            node = queue.popleft()
-            # Add all incoming nodes to queue if not visited
-            for prev_node in reverse_adj[node]:
-                if prev_node not in visited:
-                    visited.add(prev_node)
-                    queue.append(prev_node)
-                    reachable_nodes.add(prev_node)
-
-        # Filter call_graph to only keep edges between reachable nodes that lead to target edges
+        # Filter call_graph to only keep edges between reachable nodes
         filtered_graph = {}
-        for edge, info_dict in call_graph.items():
-            src, dst = edge.split("->")
-            if src in reachable_nodes and dst in reachable_nodes:
-                if "." in src:
-                    info = src.split(".")
-                    reachable_methods.add(src.split(":")[1])
-                    reachable_actors.add(info[0])
-                if "." not in src:
-                    reachable_funcs.add(src)
-                if "." in dst:
-                    info = dst.split(".")
-                    reachable_methods.add(dst.split(":")[1])
-                    reachable_actors.add(info[0])
-                if "." not in dst:
-                    reachable_funcs.add(dst)
-                filtered_graph[edge] = info_dict
+        for edges in target_edges.values():
+            for edge in edges:
+                filtered_graph[edge] = call_graph[edge]
+                src, dst = edge
+                if src[0] is not None:
+                    reachable_methods.add(src[1])
+                    reachable_actors.add(src[0].split(":")[-1])
+                else:
+                    reachable_funcs.add(src[1])
+                if dst[0] is not None:
+                    reachable_methods.add(dst[1])
+                    reachable_actors.add(dst[0].split(":")[-1])
+                else:
+                    reachable_funcs.add(dst[1])
 
         return filtered_graph, reachable_methods, reachable_actors, reachable_funcs
 
@@ -524,11 +460,11 @@ class _ray_internal_insight_monitor:
             del self.object_events[job_id][object_id]
 
         # Create source and target identifiers
-        source = f"{caller_class}.{caller_func}" if caller_class else caller_func
-        target = f"{callee_class}.{callee_func}" if callee_class else callee_func
+        source = (caller_class, caller_func)
+        target = (callee_class, callee_func)
 
         # Update data flow tracking with accumulated values
-        flow_key = f"{source}->{target}"
+        flow_key = (source, target)
         duration = timestamp - object_event["timestamp"]
         self.data_flows[job_id][flow_key][argpos]["size"] = size
         self.data_flows[job_id][flow_key][argpos]["duration"] = duration
@@ -614,6 +550,9 @@ class _ray_internal_insight_monitor:
                     for k, v in start_times.items()
                     if v > 0
                 ]
+                callee_id = (
+                    f"{callee_id[0]}.{callee_id[1]}" if callee_id[0] else callee_id[1]
+                )
                 parent_start_times.append(
                     {"callee_id": callee_id, "start_times": start_times}
                 )
@@ -628,18 +567,17 @@ class _ray_internal_insight_monitor:
         caller_class = task_record["caller_class"]
         caller_func = task_record["caller_func"]
         current_task_id = task_record["current_task_id"]
-        # Create node_id from caller class and function for parent tracking
-        node_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
+        node_id = (caller_class, caller_func)
 
-        self.flow_record[job_id].append(
-            {
-                "type": "exit",
-                "callee_id": node_id,
-                "callee_task_id": current_task_id,
-            }
-        )
+        caller_infos = self.caller_info[job_id][current_task_id]
+        for caller_info in caller_infos:
+            self.flow_record[job_id][node_id][
+                (caller_info["class"], caller_info["func"])
+            ] -= 1
 
         duration = task_record["duration"]
+
+        node_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
 
         # Update aggregated data using node_id
         self.flame_graph_aggregated[job_id][node_id]["total_time"] += duration
