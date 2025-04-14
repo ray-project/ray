@@ -407,8 +407,12 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
-      // TODO(scv119): fail the request.
-      // Call CancelTask
+      for (const auto &work : dispatch_queue) {
+        CancelTask(work->task.GetTaskSpecification().TaskId(),
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
+                   "Scheduling failed due to unexpected conditions on the node the task "
+                   "was scheduled for.");
+      }
       tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
       tasks_to_dispatch_.erase(shapes_it++);
