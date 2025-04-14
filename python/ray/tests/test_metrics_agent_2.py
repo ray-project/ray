@@ -456,6 +456,38 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test2 gauge") == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_agent_record_and_export_performance(get_agent):
+    # export one record.
+    agent, agent_port = get_agent
+
+    # Record a new gauge.
+    metric_name = "test"
+    test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
+
+    import time
+    t1 = time.time()
+    record_a = Record(
+        gauge=test_gauge,
+        value=3,
+        tags={"tag": "a"},
+    )
+    agent.record_and_export([record_a])
+    t2 = time.time()
+    print(f"\nexport 1 record costs {t2 - t1} seconds")
+
+    # export 10000 records, this should be finished quickly.
+    for i in range(10**3):
+        record_a = Record(
+            gauge=test_gauge,
+            value=i,
+            tags={"tag": str(i)},
+        )
+        agent.record_and_export([record_a])
+    t3 = time.time()
+    print(f"export 1000 record costs {t3 - t2} seconds")
+
+
 if __name__ == "__main__":
     import sys
 
