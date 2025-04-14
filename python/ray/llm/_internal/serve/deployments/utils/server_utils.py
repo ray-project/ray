@@ -17,7 +17,7 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
 from ray.llm._internal.serve.observability.logging import get_logger
 import asyncio
 from functools import partial
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar, List
 
 logger = get_logger(__name__)
 
@@ -139,7 +139,7 @@ def replace_prefix(model: str) -> str:
     return model.replace("--", "/")
 
 
-def floats_to_base64(float_list) -> str:
+def floats_to_base64(float_list: List[float]) -> str:
     """Encode a list of floats as base64 as needed for the embedding API response."""
     binary = struct.pack(f"{len(float_list)}f", *float_list)
     encoded = base64.b64encode(binary).decode("utf-8")
