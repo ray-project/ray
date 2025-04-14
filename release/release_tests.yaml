@@ -4227,3 +4227,24 @@
       python run_vision_language_model.py
       --model-source mistral-community/pixtral-12b
       --tp-size 2 --concurrency 2 --vllm-use-v1
+
+
+#######################
+# Ray examples tests
+#######################
+
+- name: entity-recognition-for-llms
+  frequency: nightly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: ray_examples/entity-recognition-with-llms
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+    cluster_compute: configs/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash tests.sh
