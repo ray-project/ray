@@ -61,7 +61,6 @@ config = (
         num_batch_dispatchers=args.num_batch_dispatchers,
         num_env_runner_state_aggregators=args.num_env_runner_state_aggregators,
         pipeline_sync_freq=args.sync_freq,
-
         vf_loss_coeff=0.005,
         entropy_coeff=0.0,
         broadcast_interval=1,
@@ -72,6 +71,13 @@ config = (
     .multi_agent(
         policy_mapping_fn=(lambda agent_id, episode, **kwargs: f"p{agent_id}"),
         policies={f"p{i}" for i in range(args.num_agents)},
+    )
+    .evaluation(
+        evaluation_interval=1,
+        evaluation_num_env_runners=1,
+        evaluation_duration="auto",
+        evaluation_parallel_to_training=True,
+        evaluation_config=InfiniteAPPOConfig.overrides(explore=False),
     )
 )
 

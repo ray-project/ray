@@ -179,8 +179,6 @@ class InfiniteAPPO(APPO):
 
     @override(APPO)
     def training_step(self):
-        t0 = time.time()
-
         # Kick of sampling, aggregating, and training, if not done yet.
         if not self._env_runners_started:
             self.env_runner_group.foreach_env_runner(
@@ -199,13 +197,13 @@ class InfiniteAPPO(APPO):
             max(self.config.num_env_runners // 10, 1),
             replace=False,
         )))
-        self.env_runner_group.foreach_env_runner_async(
-            func="ping",
-            remote_worker_ids=list(
-                env_runner_ids_to_check - self._env_runners_pending_failure_checks
-            ),
-        )
-        self._env_runners_pending_failure_checks.update(env_runner_ids_to_check)
+        check = env_runner_ids_to_check - self._env_runners_pending_failure_checks
+        if check:
+            self.env_runner_group.foreach_env_runner_async(
+                func="ping",
+                remote_worker_ids=list(check),
+            )
+            self._env_runners_pending_failure_checks.update(env_runner_ids_to_check)
 
         # Update all global timestep counters on all batch dispatchers.
         timesteps = {
@@ -225,5 +223,9 @@ class InfiniteAPPO(APPO):
         metrics = ray.get(self.metrics_actor.get.remote())
         self.metrics.merge_and_log_n_dicts([metrics])
 
-        # Wait until iteration is done.
-        time.sleep(max(0, self.config.min_time_s_per_iteration - (time.time() - t0)))
+        # Get env runner states to update the local env runner, if necessary.
+        if self.env_runner:
+            env_runner_states = ray.get(
+                self.env_runner_state_aggregators[0].get_connector_states.remote()
+            )
+            self.env_runner.set_state(env_runner_states)
