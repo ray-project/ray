@@ -6,7 +6,7 @@ from typing import List, Optional
 import logging
 
 import torch
-import torch_npu
+import torch_npu  # noqa F401
 import ray
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.const import get_store_name
@@ -23,7 +23,7 @@ from ray.util.collective.types import (
     RecvOptions,
 )
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 libhccl = None
 try:
@@ -152,7 +152,7 @@ class HCCLGroup(BaseGroup):
     def backend(cls):
         return Backend.HCCL
 
-    def broadcast(self, tensors, broadcast_options=BroadcastOptions):
+    def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
         """Broadcast tensors to all other npus following options.
 
         Args:
@@ -171,14 +171,12 @@ class HCCLGroup(BaseGroup):
         ):
             with torch.npu.device(input_tensor.device):
                 exec_result = self.libhccl.HcclBroadcast(
-                    buffer_type=self.libhccl.HcclBroadcast(
-                        buffer_type(input_tensor.data_ptr()),
-                        input_tensor.numel,
-                        hcclDataTypeEnum.from_torch(input_tensor.dtype),
-                        root_rank,
-                        comm,
-                        npuStream_t(stream.npu_stream),
-                    )
+                    buffer_type(input_tensor.data_ptr()),
+                    input_tensor.numel(),
+                    hcclDataTypeEnum.from_torch(input_tensor.dtype),
+                    root_rank,
+                    comm,
+                    npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
             logger.debug(f"HcclBroadcast execute result: {exec_result}")
@@ -189,7 +187,7 @@ class HCCLGroup(BaseGroup):
         """Allgather tensors across npus into a list of tensors.
 
         Args:
-            tensor_lists(List[List[Tensor]]): allgathered tensors.
+            tensor_lists (List[List[Tensor]]): allgathered tensors.
             tensors: the list of tensors to allgather across the group.
                      Each tensor must locate on a NPU of the process.
             allgather_options: allgather options.
@@ -202,7 +200,7 @@ class HCCLGroup(BaseGroup):
             input_tensor: torch.Tensor, output_tensor: torch.Tensor, comm, stream
         ):
             with torch.npu.device(input_tensor.device):
-                exec_result = self.libhccl.HclAllGather(
+                exec_result = self.libhccl.HcclAllGather(
                     buffer_type(input_tensor.data_ptr()),
                     buffer_type(output_tensor.data_ptr()),
                     input_tensor.numel(),
@@ -210,6 +208,7 @@ class HCCLGroup(BaseGroup):
                     comm,
                     npuStream_t(stream.npu_stream),
                 )
+                stream.synchronize()
             logger.debug(f"HcclAllGather execute result: {exec_result}")
 
         output_flattened = [
@@ -220,8 +219,8 @@ class HCCLGroup(BaseGroup):
         self._collective(tensors, output_flattened, collective_fn)
 
         for i, tensor_list in enumerate(tensor_lists):
-            for j, tensor in enumerate(tensor_lists):
-                tensors.copy_(output_flattened[i][j])
+            for j, tensor in enumerate(tensor_list):
+                tensor.copy_(output_flattened[i][j])
 
     def allreduce(self, tensors, allreduce_options=AllReduceOptions()):
         """AllReduce tensors across the collective group following options.
@@ -248,6 +247,7 @@ class HCCLGroup(BaseGroup):
                     comm,
                     npuStream_t(stream.npu_stream),
                 )
+                stream.synchronize()
             logger.debug(f"HcclAllReduce execute result: {exec_result}")
 
         self._collective(tensors, tensors, collective_fn)
@@ -287,17 +287,18 @@ class HCCLGroup(BaseGroup):
         def collective_fn(
             input_tensor: torch.Tensor, output_tensor: torch.Tensor, comm, stream
         ):
-            exec_result = self.libhccl.HcclReduce(
-                buffer_type(input_tensor.data_ptr()),
-                buffer_type(output_tensor.data_ptr()),
-                input_tensor.numel(),
-                hcclDataTypeEnum.from_torch(input_tensor.dtype),
-                hcclRedOpTypeEnum.from_ray(reduce_options.reduceOp),
-                root_rank,
-                comm,
-                npuStream_t(stream.npu_stream),
-            )
-            stream.synchronize()
+            with torch.npu.device(input_tensor.device):
+                exec_result = self.libhccl.HcclReduce(
+                    buffer_type(input_tensor.data_ptr()),
+                    buffer_type(output_tensor.data_ptr()),
+                    input_tensor.numel(),
+                    hcclDataTypeEnum.from_torch(input_tensor.dtype),
+                    hcclRedOpTypeEnum.from_ray(reduce_options.reduceOp),
+                    root_rank,
+                    comm,
+                    npuStream_t(stream.npu_stream),
+                )
+                stream.synchronize()
             logger.debug(f"HcclReduce execute result: {exec_result}")
 
         self._collective(tensors, tensors, collective_fn)
@@ -333,16 +334,16 @@ class HCCLGroup(BaseGroup):
                 stream.synchronize()
                 logger.info(f"HcclReduceScatter execute result: {exec_result}")
 
-        input_flattend = [
+        input_flattened = [
             _flatten_for_scatter_gather(tensor_list, copy=False)
             for tensor_list in tensor_lists
         ]
 
         for i, tensor_list in enumerate(tensor_lists):
             for j, tensor in enumerate(tensor_list):
-                input_flattend[i][j].copy_(tensor)
+                input_flattened[i][j].copy_(tensor)
 
-        self._collective(input_flattend, tensors)
+        self._collective(input_flattened, tensors, collective_fn)
 
     def send(self, tensors, send_options=SendOptions()):
         """Send a tensor to a destination npu in the group.
@@ -372,7 +373,7 @@ class HCCLGroup(BaseGroup):
             tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
         )
 
-    def recv(self, tensors, recv_options=RecvOptions):
+    def recv(self, tensors, recv_options=RecvOptions()):
         """Receive a tensor from a source npu in the group.
 
         Args:
@@ -429,7 +430,7 @@ class HCCLGroup(BaseGroup):
         """
         if timeout_s <= 0:
             raise ValueError(
-                f"The 'timeout' argument must be positive. Got '{timeout_s}'"
+                f"The `timeout` argument must be positive. Got: {timeout_s}"
             )
         store_ref = None
         timeout_delta = datetime.timedelta(seconds=timeout_s)
@@ -441,10 +442,8 @@ class HCCLGroup(BaseGroup):
                 store_ref = ray.get_actor(store_name)
             except ValueError:
                 logger.debug(
-                    f"Failed to meet at the store {store_name}. " "Trying again..."
+                    f"Failed to meet at the store {store_name}. Trying again..."
                 )
-                time.sleep(1)
-                elapsed = datetime.datetime.now() - start_time
                 time.sleep(1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
@@ -452,7 +451,7 @@ class HCCLGroup(BaseGroup):
             break
         if not store_ref:
             raise RuntimeError(
-                "UNable to meet other processes "
+                "Unable to meet other processes "
                 "at the rendezvous store. If you are using "
                 "P2P communication, please check if tensors "
                 "are put in the correct NPU."
@@ -489,7 +488,7 @@ class HCCLGroup(BaseGroup):
             raise RuntimeError("Unable to get the HcclRootInfo from the store.")
         return hcclRootInfo.from_buffer_copy(bytearray(root_info_bytes))
 
-    def _get_hccl_collective_comunicator(self, comm_key, device_list):
+    def _get_hccl_collective_communicator(self, comm_key, device_list):
         if not comm_key:
             raise RuntimeError("Got empty communicator key.")
         for d in device_list:
@@ -596,7 +595,7 @@ class HCCLGroup(BaseGroup):
     def _collective(self, input_tensors, output_tensors, collective_func):
         devices = get_tensor_device_list(input_tensors)
         key = _get_comm_key_from_devices(devices)
-        comms = self._get_hccl_collective_comunicator(key, devices)
+        comms = self._get_hccl_collective_communicator(key, devices)
         streams = self._dev_streams_map[key]
 
         tasks: List[Optional[threading.Thread]] = [None] * len(input_tensors)
@@ -636,7 +635,7 @@ def _get_comm_key_send_recv(my_rank, my_npu_idx, peer_rank, peer_npu_idx):
         my_rank: the rank of the source process.
         my_gpu_idx: the source gpu index on the process.
         peer_rank: the rank of the destination process.
-        peer_gpu_idx: the destintation npu index on the process.
+        peer_npu_idx: the destination npu index on the process.
 
     Returns:
         comm_key: a string key to query the communication cache.
@@ -658,16 +657,16 @@ def _get_comm_key_send_recv(my_rank, my_npu_idx, peer_rank, peer_npu_idx):
 
 
 def _get_comm_key_from_devices(devices):
-    """ "Return a key from a list of devices for collective calls.
+    """Return a key from a list of devices for collective calls.
 
     For example, if the tensors are on npus 0, 1, 2, 3,
-    the the key would be "0,1,2,3".
+    then the key would be "0,1,2,3".
 
-    Args
+    Args:
         devices: a list of GPU device indices
 
     Returns:
-        str: a string represens the key to query the communicator cache.
+        str: a string represents the key to query the communicator cache.
 
     """
     return ",".join([str(d) for d in devices])
@@ -690,13 +689,13 @@ def get_tensor_device_list(tensors):
     Args:
         tensors: a list of tensors, each locates on a NPU.
 
-    Return:
+    Returns:
         list: the list of NPU devices.
     """
     if not isinstance(tensors, list):
         raise RuntimeError(
             "Expect ta list of tensors eeach locates on a NPU device. "
-            f"Got: {type(tensors)}'"
+            f"Got: {type(tensors)}"
         )
     devices = [get_tensor_device(t) for t in tensors]
     return devices
@@ -710,13 +709,13 @@ def get_tensor_ptr(tensor):
             )
         return tensor.data_ptr()
     raise ValueError(
-        f"Unsupported tensor type. Got: {type(tensor)}. Only torhc.Tensor "
+        f"Unsupported tensor type. Got: {type(tensor)}. Only torch.Tensor "
         "supported for NPU so far."
     )
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
-    """Flatten the tensor for gahter/scatter operations.
+    """Flatten the tensor for gather/scatter operations.
 
     Args:
         tensor_list: the list of tensors to be scattered/gathered.
@@ -726,7 +725,7 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
         The flattened tensor buffer.
     """
     if not tensor_list:
-        raise RuntimeError("received an empty list.")
+        raise RuntimeError("Received an empty list.")
     t: torch.Tensor = tensor_list[0]
     buffer_shape = [len(tensor_list)] + list(t.shape)
 
