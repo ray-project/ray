@@ -103,7 +103,7 @@ class ReduceScatterOptions:
 @dataclass
 class SendOptions:
     dst_rank = 0
-    dst_gpu_index = 0
+    dst_device_index = 0
     n_elements = 0
     timeout_ms = unset_timeout_ms
 
@@ -111,6 +111,6 @@ class SendOptions:
 @dataclass
 class RecvOptions:
     src_rank = 0
-    src_gpu_index = 0
+    src_device_index = 0
     n_elements = 0
     unset_timeout_ms = unset_timeout_ms

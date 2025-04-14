@@ -380,7 +380,7 @@ class HCCLGroup(BaseGroup):
             ), f"Failed to execute `HcclSend`. Error code: {exec_result}."
 
         self._point2point(
-            tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
+            tensors, p2p_fn, send_options.dst_rank, send_options.dst_device_index
         )
 
     def recv(self, tensors, recv_options=RecvOptions()):
@@ -410,7 +410,7 @@ class HCCLGroup(BaseGroup):
             ), f"Failed to execute `HcclRecv`. Error code: {exec_result}."
 
         self._point2point(
-            tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
+            tensors, p2p_fn, recv_options.src_rank, recv_options.src_device_index
         )
 
     def _generate_group_key(self, comm_key):
@@ -670,19 +670,20 @@ def _get_comm_key_send_recv(my_rank, my_npu_idx, peer_rank, peer_npu_idx):
     return comm_key
 
 
-def _get_comm_key_from_devices(devices):
+def _get_comm_key_from_devices(devices: List[int]):
     """Return a key from a list of devices for collective calls.
 
     For example, if the tensors are on npus 0, 1, 2, 3,
     then the key would be "0,1,2,3".
 
     Args:
-        devices: a list of GPU device indices
+        devices: a list of NPU device indices
 
     Returns:
         str: a string represents the key to query the communicator cache.
 
     """
+    devices.sort()
     return ",".join([str(d) for d in devices])
 
 

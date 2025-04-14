@@ -370,7 +370,7 @@ class NCCLGroup(BaseGroup):
             )
 
         self._point2point(
-            tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
+            tensors, p2p_fn, send_options.dst_rank, send_options.dst_device_index
         )
 
     def recv(self, tensors, recv_options=RecvOptions()):
@@ -396,7 +396,7 @@ class NCCLGroup(BaseGroup):
             )
 
         self._point2point(
-            tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
+            tensors, p2p_fn, recv_options.src_rank, recv_options.src_device_index
         )
 
     def _get_nccl_collective_communicator(self, comm_key, device_list):
