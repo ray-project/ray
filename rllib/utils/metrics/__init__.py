@@ -110,6 +110,7 @@ NUM_ENV_STEPS_TRAINED_LIFETIME = "num_env_steps_trained_lifetime"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPIStack
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
+MODULE_SAMPLE_BATCH_SIZE_MEAN = "module_sample_batch_size_mean"
 MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN = "learner_connector_sum_episodes_length_in"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT = "learner_connector_sum_episodes_length_out"

@@ -1,0 +1,125 @@
+from typing import Any, Callable, Dict, List, Optional
+
+from ray.data.iterator import DataIterator
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.offline.offline_data import OfflineData
+from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.runners.runner_group import RunnerGroup
+
+
+class OfflineEvaluationRunnerGroup(RunnerGroup):
+    def __init__(
+        self,
+        config: AlgorithmConfig,
+        local_runner: Optional[bool] = False,
+        module_state: Dict[str, Any] = None,
+        logdir: Optional[str] = None,
+        tune_trial_id: Optional[str] = None,
+        pg_offset: int = 0,
+        _setup: bool = True,
+        **kwargs: Dict[str, Any],
+    ) -> None:
+
+        # TODO (simon): Check, if this should happen later when the dataset
+        # is created. Maybe just overriding _setup.
+        # First initialize the super class.
+        super().__init__(
+            config=config,
+            local_runner=local_runner,
+            logdir=logdir,
+            tune_trial_id=tune_trial_id,
+            pg_offset=pg_offset,
+            _setup=_setup,
+            module_state=module_state,
+        )
+
+    @override(RunnerGroup)
+    def _setup(
+        self,
+        *,
+        config: Optional["AlgorithmConfig"] = None,
+        num_runners: int = 0,
+        module_state: Dict[str, Any] = None,
+        **kwargs: Dict[str, Any],
+    ) -> None:
+
+        # Create all workers.
+        super()._setup(
+            config=config,
+            num_runners=num_runners,
+        )
+
+        # Setup the evaluation offline dataset and return an iterator.
+        self._offline_data: OfflineData = OfflineData(config=config)
+        spaces = (config.observation_space, config.action_space)
+        self._offline_data.spaces = {"__env__": spaces}
+        module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+            spaces={DEFAULT_MODULE_ID: spaces},
+            inference_only=False,
+        )
+        self._offline_data.module_spec = module_spec
+        # Return a data iterator for each `Runner`.
+        self._offline_data_iterators: List[DataIterator] = self._offline_data.sample(
+            num_samples=self.config.offline_eval_batch_size_per_runner,
+            return_iterator=True,
+            num_shards=num_runners,
+            module_state=module_state,
+        )
+        # Provide each `Runner` with a `DataIterator`.
+        self.foreach_runner(
+            func="set_dataset_iterator",
+            local_runner=False,
+            kwargs=[
+                {"iterator": iterator} for iterator in self._offline_data_iterators
+            ],
+        )
+
+    @property
+    def runner_health_probe_timeout_s(self):
+        """Number of seconds to wait for health probe calls to `Runner`s."""
+        self.config.offline_eval_runner_health_probe_timeout_s
+
+    @property
+    def runner_cls(self) -> Callable:
+        """Class for each runner."""
+        return OfflineEvaluationRunner
+
+    @property
+    def num_runners(self) -> int:
+        """Number of runners to schedule and manage."""
+        return self.config.num_offline_eval_runners
+
+    @property
+    def _remote_args(self):
+        """Remote arguments for each runner."""
+        return {
+            "num_cpus": self._remote_config.num_cpus_per_offline_eval_runner,
+            "num_gpus": self._remote_config.num_gpus_per_offline_eval_runner,
+            "resources": self._remote_config.custom_resources_per_offline_eval_runner,
+            "max_restarts": (
+                self.config.max_num_offline_eval_runner_restarts
+                if self.config.restart_failed_offline_eval_runners
+                else 0
+            ),
+        }
+
+    @property
+    def _ignore_ray_errors_on_runners(self):
+        """If errors in runners should be ignored."""
+        return (
+            self.config.ignore_offline_eval_runner_failures
+            or self.config.restart_failed_offline_eval_runners
+        )
+
+    @property
+    def _max_requests_in_flight_per_runner(self):
+        """Maximum requests in flight per runner."""
+        return self.config.max_requests_in_flight_per_offline_eval_runner
+
+    @property
+    def _validate_runners_after_construction(self):
+        """If runners should validated after constructed."""
+        self.config.validate_offline_eval_runners_after_construction
