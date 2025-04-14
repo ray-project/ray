@@ -24,7 +24,7 @@ py_test(
     tags = [
         "client",
         "exclusive",
-        "team:serverless",
+        "team:core",
     ],
     deps = [":dask_lib"],
 )
@@ -48,7 +48,7 @@ py_test(
     tags = [
         "client",
         "exclusive",
-        "team:serverless",
+        "team:core",
     ],
     deps = [":dask_lib"],
 )
@@ -72,7 +72,7 @@ py_test(
     tags = [
         "client",
         "exclusive",
-        "team:serverless",
+        "team:core",
     ],
     deps = [":dask_lib"],
 )

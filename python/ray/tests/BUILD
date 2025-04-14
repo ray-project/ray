@@ -20,7 +20,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "manual",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -590,7 +590,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -609,7 +609,7 @@ py_test_module_list(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -951,7 +951,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -966,7 +966,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -982,7 +982,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -998,7 +998,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -1014,7 +1014,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -1230,7 +1230,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "spark_plugin_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",

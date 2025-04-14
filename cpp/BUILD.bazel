@@ -361,7 +361,7 @@ cc_test(
         "metric_example.so",
     ],
     linkstatic = True,
-    tags = ["team:serverless"],
+    tags = ["team:core"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
