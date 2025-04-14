@@ -39,9 +39,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "object_lifecycle_manager_test",
+    name = "object_lcycle_mgr_test",
     srcs = [
-        "object_lifecycle_manager_test.cc",
+        "object_lcycle_mgr_test.cc",
         "stats_collector_test.cc",
     ],
     tags = ["team:core"],
