@@ -44,6 +44,7 @@ py_test(
     name = "test_dask_optimization_client_mode",
     size = "small",
     srcs = ["test_dask_optimization.py"],
+    main = "test_dask_optimization.py",
     tags = [
         "client",
         "exclusive",
