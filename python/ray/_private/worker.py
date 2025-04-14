@@ -949,7 +949,6 @@ class Worker:
         """Prints log messages from workers on all nodes in the same job."""
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
-        exception_type = ray.exceptions.RpcError
         localhost = services.get_node_ip_address()
         try:
             # Number of messages received from the last polling. When the batch
@@ -964,7 +963,7 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                data = subscriber.poll()
+                data = subscriber.poll(timeout=5)
                 # GCS subscriber only returns None on unavailability.
                 if data is None:
                     last_polling_batch_size = 0
@@ -992,7 +991,7 @@ class Worker:
 
                 last_polling_batch_size = subscriber.last_batch_size
 
-        except (OSError, exception_type) as e:
+        except (OSError, ray.exceptions.RpcError) as e:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
@@ -2215,7 +2214,7 @@ def restore_tqdm():
     tqdm_ray.instance().unhide_bars()
 
 
-def listen_error_messages(worker, threads_stopped):
+def listen_error_messages(worker, threads_stopped: threading.Event):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
@@ -2242,7 +2241,7 @@ def listen_error_messages(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            _, error_data = worker.gcs_error_subscriber.poll()
+            _, error_data = worker.gcs_error_subscriber.poll(timeout=5)
             if error_data is None:
                 continue
             if error_data["job_id"] is not None and error_data["job_id"] not in [
