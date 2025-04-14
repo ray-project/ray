@@ -31,13 +31,13 @@ filelock_logger.setLevel(logging.WARNING)
 
 class ClusterState:
     def __init__(self, lock_path, save_path, provider_config):
-        self.lock = RLock()
+        self._lock = RLock()
         os.makedirs(os.path.dirname(lock_path), exist_ok=True)
-        self.file_lock = FileLock(lock_path)
+        self._file_lock = FileLock(lock_path)
         self.save_path = save_path
 
-        with self.lock:
-            with self.file_lock:
+        with self._lock:
+            with self._file_lock:
                 if os.path.exists(self.save_path):
                     workers = json.loads(open(self.save_path).read())
                     head_config = workers.get(provider_config["head_ip"])
@@ -98,16 +98,16 @@ class ClusterState:
                     f.write(json.dumps(workers))
 
     def get(self):
-        with self.lock:
-            with self.file_lock:
+        with self._lock:
+            with self._file_lock:
                 workers = json.loads(open(self.save_path).read())
                 return workers
 
     def put(self, worker_id, info):
         assert "tags" in info
         assert "state" in info
-        with self.lock:
-            with self.file_lock:
+        with self._lock:
+            with self._file_lock:
                 workers = self.get()
                 workers[worker_id] = info
                 with open(self.save_path, "w") as f:
@@ -116,6 +116,30 @@ class ClusterState:
                         "Writing cluster state: {}".format(list(workers))
                     )
                     f.write(json.dumps(workers))
+
+    def get_for_update(self, worker_update_fn):
+        """Execute a function with the state locks held.
+
+        Args:
+            worker_update_fn: A function that takes the current workers
+                 state as argument and returns the modified state.
+
+        Returns:
+            The result of worker_update_fn.
+        """
+        with self._lock:
+            with self._file_lock:
+                workers = json.loads(open(self.save_path).read())
+                result = worker_update_fn(workers)
+                if result is not None:
+                    # Only write if the state was modified
+                    with open(self.save_path, "w") as f:
+                        logger.info(
+                            "ClusterState: "
+                            "Writing cluster state: {}".format(list(result))
+                        )
+                        f.write(json.dumps(result))
+                return result
 
 
 class OnPremCoordinatorState(ClusterState):
@@ -128,12 +152,12 @@ class OnPremCoordinatorState(ClusterState):
     """
 
     def __init__(self, lock_path, save_path, list_of_node_ips):
-        self.lock = RLock()
-        self.file_lock = FileLock(lock_path)
+        self._lock = RLock()
+        self._file_lock = FileLock(lock_path)
         self.save_path = save_path
 
-        with self.lock:
-            with self.file_lock:
+        with self._lock:
+            with self._file_lock:
                 if os.path.exists(self.save_path):
                     nodes = json.loads(open(self.save_path).read())
                 else:
@@ -246,35 +270,42 @@ class LocalNodeProvider(NodeProvider):
         return socket.gethostbyname(node_id)
 
     def set_node_tags(self, node_id, tags):
-        with self.state.lock:
-            with self.state.file_lock:
-                info = self.state.get()[node_id]
-                info["tags"].update(tags)
-                self.state.put(node_id, info)
+        def update_tags(workers):
+            info = workers[node_id]
+            info["tags"].update(tags)
+            workers[node_id] = info
+            return workers
+
+        self.state.get_for_update(update_tags)
 
     def create_node(self, node_config, tags, count):
         """Creates min(count, currently available) nodes."""
         node_type = tags[TAG_RAY_NODE_KIND]
-        with self.state.lock:
-            with self.state.file_lock:
-                workers = self.state.get()
-                for node_id, info in workers.items():
-                    if info["state"] == "terminated" and (
-                        self.use_coordinator
-                        or info["tags"][TAG_RAY_NODE_KIND] == node_type
-                    ):
-                        info["tags"] = tags
-                        info["state"] = "running"
-                        self.state.put(node_id, info)
-                        count = count - 1
-                        if count == 0:
-                            return
+
+        def create_nodes(workers):
+            created = 0
+            for node_id, info in workers.items():
+                if info["state"] == "terminated" and (
+                    self.use_coordinator or info["tags"][TAG_RAY_NODE_KIND] == node_type
+                ):
+                    info["tags"] = tags
+                    info["state"] = "running"
+                    workers[node_id] = info
+                    created += 1
+                    if created == count:
+                        break
+            return workers
+
+        self.state.get_for_update(create_nodes)
 
     def terminate_node(self, node_id):
-        workers = self.state.get()
-        info = workers[node_id]
-        info["state"] = "terminated"
-        self.state.put(node_id, info)
+        def terminate(workers):
+            info = workers[node_id]
+            info["state"] = "terminated"
+            workers[node_id] = info
+            return workers
+
+        self.state.get_for_update(terminate)
 
     @staticmethod
     def bootstrap_config(cluster_config):
