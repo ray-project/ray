@@ -31,6 +31,8 @@ from opencensus.stats.view import View
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
+from opencensus.common import utils
+from opencensus.tags import TagContext
 
 import ray
 from ray._raylet import GcsClient
@@ -564,7 +566,107 @@ class MetricsAgent:
             tag_map.insert(tag_key, tag_value)
         measurement_map.measure_float_put(gauge.measure, value)
         # NOTE: When we record this metric, timestamp will be renewed.
-        measurement_map.record(tag_map)
+        self.measurement_map_record(measurement_map, tag_map)
+
+    def measurement_map_record(self, opencensus_measurement_map, tags):
+        """Rewrite the `record` method of `opencensus.stats.measurement_map.MeasurementMap`
+         to fix the performance issue[1].
+        [1] https://github.com/issues/mentioned?issue=ray-project%7Cray%7C35202
+
+        Args:
+            opencensus_measurement_map: MeasurementMap to record stats
+            tags: TagMap of tags from key to value
+        """
+        if tags is None:
+            tags = TagContext.get()
+        for measure, value in opencensus_measurement_map.measurement_map.items():
+            if value < 0:
+                logger.warning(
+                    "Dropping values, value to record must be " "non-negative"
+                )
+                logger.info(
+                    "Measure '{}' has negative value ({}), refusing "
+                    "to record measurements from {}".format(
+                        measure.name, value, opencensus_measurement_map
+                    )
+                )
+                return
+        # Use the rewritten `measure_to_view_map_record` method to improve performance.
+        self.measure_to_view_map_record(
+            opencensus_measurement_map.measure_to_view_map,
+            tags,
+            opencensus_measurement_map.measurement_map,
+            utils.to_iso_str(),
+            opencensus_measurement_map.attachments,
+        )
+
+    def measure_to_view_map_record(
+        self,
+        opencensus_measure_to_view_map,
+        tags,
+        opencensus_measurement_map,
+        timestamp,
+        attachments=None,
+    ):
+        """Rewrite the `record` method of `opencensus.stats.measure_to_view_map.
+        MeasureToViewMap`.
+
+        Args:
+            opencensus_measure_to_view_map: MeasureToViewMap that stores a map
+                from names of Measures to View Datas.
+            tags: TagMap of tags from key to value.
+            opencensus_measurement_map: MeasurementMap to record stats.
+            timestamp: The timestamp at the time of recording.
+            attachments: Contextual information about the attachment value.
+        """
+        assert all(vv >= 0 for vv in opencensus_measurement_map.values())
+
+        for measure, value in opencensus_measurement_map.items():
+            if measure != opencensus_measure_to_view_map._registered_measures.get(
+                measure.name
+            ):
+                return
+            view_datas = []
+            for (
+                measure_name,
+                view_data_list,
+            ) in opencensus_measure_to_view_map._measure_to_view_data_list_map.items():
+                if measure_name == measure.name:
+                    view_datas.extend(view_data_list)
+            for view_data in view_datas:
+                view_data.record(
+                    context=tags,
+                    value=value,
+                    timestamp=timestamp,
+                    attachments=attachments,
+                )
+            # Use the rewritten `measure_to_view_map_export` method
+            # to improve performance.
+            self.measure_to_view_map_export(opencensus_measure_to_view_map, view_datas)
+
+    def measure_to_view_map_export(self, opencensus_measure_to_view_map, view_datas):
+        """Rewrite the `record` method of `opencensus.stats.measure_to_view_map.
+        MeasureToViewMap`.
+
+        In order to ensure `view_datas` immutable during `e.export(view_datas)`,
+        the original implementation used deepcopy to create a copy of view_datas.
+        Since the state within view_datas grows continuously during runtime,
+        the deepcopy process resulted in severe performance degradation.
+        However, the `stats_exporter` used by Ray (located in python.ray._private.
+        prometheus_exporter.py) does not modify the values of view_datas, thus the
+        deepcopy process can be safely removed.
+
+        Args:
+            opencensus_measure_to_view_map: MeasureToViewMap that stores a map
+                from names of Measures to View Datas.
+            view_datas: View Datas that to be exported.
+        """
+        if len(opencensus_measure_to_view_map.exporters) > 0:
+            for e in opencensus_measure_to_view_map.exporters:
+                try:
+                    e.export(view_datas)
+                except AttributeError:
+                    pass
 
     def proxy_export_metrics(self, metrics: List[Metric], worker_id_hex: str = None):
         """Proxy export metrics specified by a Opencensus Protobuf.
