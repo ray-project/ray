@@ -285,7 +285,7 @@ ray_cc_library(
         ":autoscaler_cc_grpc",
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         "//src/ray/common:asio",
         "//src/ray/common:id",
         "@boost//:asio",
@@ -342,7 +342,7 @@ ray_cc_library(
     ],
     deps = [
         ":grpc_common_lib",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         ":worker_cc_grpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -469,35 +469,9 @@ ray_cc_library(
     deps = [
         ":gcs",
         ":gcs_service_rpc",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         ":redis_client",
         "//src/ray/common:ray_config",
-    ],
-)
-
-# Ray native pubsub module.
-ray_cc_library(
-    name = "publisher_lib",
-    srcs = ["src/ray/pubsub/publisher.cc"],
-    hdrs = ["src/ray/pubsub/publisher.h"],
-    deps = [
-        ":pubsub_rpc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-# Subscriber module
-ray_cc_library(
-    name = "subscriber_lib",
-    srcs = ["src/ray/pubsub/subscriber.cc"],
-    hdrs = ["src/ray/pubsub/subscriber.h"],
-    deps = [
-        ":pubsub_rpc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -507,15 +481,6 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",  # This is a large dependency, should be refined in the future.
         ":pubsub_cc_grpc",
-    ],
-)
-
-# Combined PubSub Library
-ray_cc_library(
-    name = "pubsub_lib",
-    deps = [
-        ":publisher_lib",
-        ":subscriber_lib",
     ],
 )
 
@@ -612,7 +577,7 @@ ray_cc_library(
         ":gcs_client_lib",
         ":object_manager_common",
         ":object_directory",
-        ":subscriber_lib",
+        "//src/ray/pubsub:subscriber_lib",
         ":worker_pool",
         ":worker_rpc",
         "//src/ray/protobuf:node_manager_cc_proto",
@@ -656,7 +621,7 @@ ray_cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",
         ":wait_manager",
@@ -956,45 +921,6 @@ ray_cc_test(
     ],
 )
 
-ray_cc_test(
-    name = "pubsub_integration_test",
-    size = "small",
-    srcs = ["src/ray/pubsub/test/integration_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_cc_grpc",
-        ":pubsub_lib",
-        "//src/ray/protobuf:pubsub_cc_proto",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "publisher_test",
-    size = "small",
-    srcs = ["src/ray/pubsub/test/publisher_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "subscriber_test",
-    size = "small",
-    srcs = [
-        "src/ray/pubsub/test/subscriber_test.cc",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":pubsub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 ray_cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
@@ -1047,6 +973,7 @@ ray_cc_test(
     ],
 )
 
+
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
@@ -1061,7 +988,7 @@ ray_cc_library(
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
-        ":pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         ":redis_store_client",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -1242,7 +1169,7 @@ ray_cc_library(
     deps = [
         ":gcs_client_lib",
         ":object_directory",
-        ":subscriber_lib",
+        "//src/ray/pubsub:subscriber_lib",
         ":worker_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",

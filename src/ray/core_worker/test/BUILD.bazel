@@ -107,7 +107,7 @@ ray_cc_test(
     srcs = ["reference_count_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:ray_object",
