@@ -9,4 +9,3 @@ head_node_type:
 auto_select_worker_config: true
 flags:
   allow-cross-zone-autoscaling: true
-  
