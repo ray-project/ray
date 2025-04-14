@@ -170,15 +170,42 @@ class _MLflowLoggerUtil:
         """
         new_dict = {}
         for key, value in dict_to_log.items():
-            try:
-                value = float(value)
-                new_dict[key] = value
-            except (ValueError, TypeError):
-                logger.debug(
-                    "Cannot log key {} with value {} since the "
-                    "value cannot be converted to float.".format(key, value)
-                )
-                continue
+            if key == "evaluation":
+                for key_eval, value_eval in dict_to_log[key].items():
+                    try:
+                        value_eval = float(value_eval)
+                        new_dict[f"evaluation_{key_eval}"] = value_eval
+                    except (ValueError, TypeError):
+                        logger.debug(
+                            "Cannot log key {} with value {} since the "
+                            "value cannot be converted to float.".format(
+                                key_eval, value_eval
+                            )
+                        )
+                        continue
+            elif key == "custom_metrics":
+                for key_cm, value_cm in dict_to_log[key].items():
+                    try:
+                        value_cm = float(value_cm)
+                        new_dict[f"custom_metrics_{key_cm}"] = value_cm
+                    except (ValueError, TypeError):
+                        logger.debug(
+                            "Cannot log key {} with value {} since the "
+                            "value cannot be converted to float.".format(
+                                key_cm, value_cm
+                            )
+                        )
+                        continue
+            else:
+                try:
+                    value = float(value)
+                    new_dict[key] = value
+                except (ValueError, TypeError):
+                    logger.debug(
+                        "Cannot log key {} with value {} since the "
+                        "value cannot be converted to float.".format(key, value)
+                    )
+                    continue
 
         return new_dict
 
