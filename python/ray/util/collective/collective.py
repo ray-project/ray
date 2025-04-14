@@ -597,8 +597,8 @@ def send_multigpu(
     Returns:
         None
     """
-    if not types.cupy_available():
-        raise RuntimeError("send_multigpu call requires NCCL.")
+    if not types.cupy_available() and not hccl_available():
+        raise RuntimeError("send_multigpu call requires NCCL or HCCL.")
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
@@ -658,8 +658,8 @@ def recv_multigpu(
     Returns:
         None
     """
-    if not types.cupy_available():
-        raise RuntimeError("recv_multigpu call requires NCCL.")
+    if not types.cupy_available() and not hccl_available():
+        raise RuntimeError("recv_multigpu call requires NCCL or HCCL.")
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
