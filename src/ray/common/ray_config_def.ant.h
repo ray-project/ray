@@ -28,3 +28,7 @@ RAY_CONFIG(uint64_t, expired_job_clusters_gc_interval_ms, 30000)
 // of the virtual cluster, the cleanup function can be delayed. It allows other handlers
 // executed first, and leaves some time for tasks to finish (before force killing them).
 RAY_CONFIG(uint64_t, local_node_cleanup_delay_interval_ms, 30000)
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)

@@ -357,6 +357,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
+        std::string serialized_allocated_instances = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          serialized_allocated_instances = allocated_instances->SerializeAsJson();
+        }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -387,7 +391,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                                          is_detached_actor,
                                          owner_address,
                                          runtime_env_setup_error_message);
-            });
+            },
+            serialized_allocated_instances);
         work_it++;
       }
     }

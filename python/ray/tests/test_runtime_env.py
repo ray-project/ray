@@ -961,6 +961,32 @@ def test_runtime_env_interface():
     assert runtime_env.to_dict() == {}
 
 
+def test_runtime_env_interface_with_allocated_instances():
+    # Test the interface with allocated instances
+    working_dir = "s3://bucket/key.zip"
+    runtime_env = RuntimeEnv(working_dir=working_dir)
+    allocated_instances = {"CPU": 1, "GPU": 2}
+    serialized_allocated_instances = json.dumps(allocated_instances)
+    runtime_env.set_serialized_allocated_instances(serialized_allocated_instances)
+    assert (
+        runtime_env.get_serialized_allocated_instances()
+        == serialized_allocated_instances
+    )
+    serialize_env_combined = RuntimeEnv.serialize_combined(
+        runtime_env.serialize(), serialized_allocated_instances
+    )
+    assert (
+        serialize_env_combined
+        == f"{runtime_env.serialize()}&&{serialized_allocated_instances}"
+    )
+    new_runtime_env = RuntimeEnv.deserialize(serialize_env_combined)
+    assert new_runtime_env.working_dir() == "s3://bucket/key.zip"
+    assert (
+        new_runtime_env.get_serialized_allocated_instances()
+        == serialized_allocated_instances
+    )
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

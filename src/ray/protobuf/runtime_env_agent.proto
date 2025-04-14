@@ -31,6 +31,7 @@ message GetOrCreateRuntimeEnvRequest {
   bytes job_id = 3;
   string source_process = 4;
   bytes worker_id = 5;
+  string serialized_allocated_instances = 6;
 }
 
 message GetOrCreateRuntimeEnvReply {
@@ -47,6 +48,7 @@ message DeleteRuntimeEnvIfPossibleRequest {
   string source_process = 2;
   bytes worker_id = 3;
   bytes job_id = 4;
+  string serialized_allocated_instances = 5;
 }
 
 message DeleteRuntimeEnvIfPossibleReply {

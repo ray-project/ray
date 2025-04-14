@@ -358,7 +358,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback,
-                             const WorkerID &worker_id) override {
+                             const WorkerID &worker_id,
+                             const std::string &serialized_allocated_instances) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {
@@ -367,7 +368,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                           runtime_env_config,
                                           succ_callback,
                                           fail_callback,
-                                          worker_id);
+                                          worker_id,
+                                          serialized_allocated_instances);
         },
         /*succ_callback=*/
         [=](rpc::GetOrCreateRuntimeEnvReply reply) {
@@ -413,7 +415,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const rpc::RuntimeEnvConfig &runtime_env_config,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback,
-      const WorkerID &worker_id) {
+      const WorkerID &worker_id,
+      const std::string &serialized_allocated_instances) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
@@ -421,6 +424,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     if (!worker_id.IsNil()) {
       request.set_worker_id(worker_id.Hex());
     }
+    request.set_serialized_allocated_instances(serialized_allocated_instances);
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(
@@ -446,10 +450,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // Making HTTP call.
   // POST /delete_runtime_env_if_possible
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback,
-                                  const WorkerID &worker_id,
-                                  const JobID &job_id) override {
+  void DeleteRuntimeEnvIfPossible(
+      const std::string &serialized_runtime_env,
+      DeleteRuntimeEnvIfPossibleCallback callback,
+      const WorkerID &worker_id,
+      const JobID &job_id,
+      const std::string &serialized_allocated_instances) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
@@ -457,7 +463,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                                std::move(succ_callback),
                                                std::move(fail_callback),
                                                worker_id,
-                                               job_id);
+                                               job_id,
+                                               serialized_allocated_instances);
         },
         /*succ_callback=*/
         [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
@@ -491,7 +498,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback,
       const WorkerID &worker_id,
-      const JobID &job_id) {
+      const JobID &job_id,
+      const std::string &serialized_allocated_instances) {
     rpc::DeleteRuntimeEnvIfPossibleRequest request;
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.set_source_process("raylet");
@@ -499,6 +507,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       request.set_worker_id(worker_id.Hex());
     }
     request.set_job_id(job_id.Hex());
+    request.set_serialized_allocated_instances(serialized_allocated_instances);
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(

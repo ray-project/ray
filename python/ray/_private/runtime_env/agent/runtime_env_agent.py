@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import traceback
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple, Optional, Union
@@ -315,7 +316,11 @@ class RuntimeEnvAgent:
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
             runtime_env_config: RuntimeEnvConfig,
+            serialized_allocated_instances: str,
         ):
+            allocated_resource: dict = json.loads(
+                serialized_allocated_instances or "{}"
+            )
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
@@ -388,7 +393,9 @@ class RuntimeEnvAgent:
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
-                        runtime_env, runtime_env_config
+                        runtime_env,
+                        runtime_env_config,
+                        request.serialized_allocated_instances,
                     )
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
@@ -433,8 +440,15 @@ class RuntimeEnvAgent:
                 return True, runtime_env_context, None
 
         try:
-            serialized_env = request.serialized_runtime_env
-            runtime_env = RuntimeEnv.deserialize(serialized_env)
+            runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
+            runtime_env.set_serialized_allocated_instances(
+                request.serialized_allocated_instances,
+            )
+            serialized_env = RuntimeEnv.serialize_combined(
+                request.serialized_runtime_env,
+                request.serialized_allocated_instances,
+            )
+
         except Exception as e:
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
@@ -566,8 +580,15 @@ class RuntimeEnvAgent:
             )
 
         try:
+            runtime_env.set_serialized_allocated_instances(
+                request.serialized_allocated_instances,
+            )
+            serialized_env = RuntimeEnv.serialize_combined(
+                request.serialized_runtime_env,
+                request.serialized_allocated_instances,
+            )
             self._reference_table.decrease_reference(
-                runtime_env, request.serialized_runtime_env, request.source_process
+                runtime_env, serialized_env, request.source_process
             )
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(

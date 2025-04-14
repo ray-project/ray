@@ -301,6 +301,7 @@ class RuntimeEnv(dict):
         "_nsight",
         "mpi",
         "image_uri",
+        "serialized_allocated_instances",
     }
 
     extensions_fields: Set[str] = {
@@ -464,9 +465,32 @@ class RuntimeEnv(dict):
         else:
             return from_dict(data_class=data_class, data=self.__getitem__(name))
 
+    # NOTE(Jcaky): Set the serialized allocated instances (resources) as part of the RuntimeEnv.
+    # This method stores resource information, which will be used to enforce resource constraints
+    # for workers in container scenarios based on actor and task resources.
+    def set_serialized_allocated_instances(self, value: Any) -> None:
+        self.__setitem__("serialized_allocated_instances", value)
+
+    # NOTE(Jacky): Retrieve the serialized allocated instances (resources) stored in the RuntimeEnv.
+    # Returns the resource information if it exists; otherwise, returns None. This method provides
+    # access to the resource-related portion of the RuntimeEnv.
+    def get_serialized_allocated_instances(self) -> Optional[str]:
+        return self.get("serialized_allocated_instances", None)
+
+    # NOTE(Jacky): Deserialize a combined string of serialized RuntimeEnv and resource information into a RuntimeEnv object.
+    # The method separates the actual serialized RuntimeEnv from the resource information and integrates
+    # the resources as part of the RuntimeEnv. This design supports enforcing resource constraints for
+    # workers in container scenarios based on actor and task resources.
     @classmethod
     def deserialize(cls, serialized_runtime_env: str) -> "RuntimeEnv":  # noqa: F821
-        return cls(_validate=False, **json.loads(serialized_runtime_env))
+        last_brace_pos = serialized_runtime_env.rfind("&&")
+        if last_brace_pos == -1:
+            return cls(_validate=False, **json.loads(serialized_runtime_env))
+        serialized_env = serialized_runtime_env[:last_brace_pos]
+        serialized_allocated_instances = serialized_runtime_env[last_brace_pos + 2 :]
+        runtime_env = cls(_validate=False, **json.loads(serialized_env))
+        runtime_env.set_serialized_allocated_instances(serialized_allocated_instances)
+        return runtime_env
 
     def serialize(self) -> str:
         # To ensure the accuracy of Proto, `__setitem__` can only guarantee the
@@ -476,6 +500,21 @@ class RuntimeEnv(dict):
             runtime_env,
             sort_keys=True,
         )
+
+    @classmethod
+    def serialize_combined(
+        cls, serialized_runtime_env: str, serialized_allocated_instances
+    ) -> str:
+        """Combines two serialized strings into a single serialized representation.
+
+        Args:
+            serialized_runtime_env (str): The serialized representation of the runtime environment.
+            serialized_allocated_instances (str): The serialized representation of the allocated instances.
+
+        Returns:
+            str: A combined serialized string, with the two inputs concatenated using "&&" as a separator.
+        """
+        return serialized_runtime_env + "&&" + serialized_allocated_instances
 
     def to_dict(self) -> Dict:
         runtime_env_dict = dict(deepcopy(self))
