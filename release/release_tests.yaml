@@ -2173,6 +2173,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_torchrec.sh
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
   variations:
