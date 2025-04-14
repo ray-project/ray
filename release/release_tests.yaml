@@ -4236,7 +4236,7 @@
 - name: entity-recognition-for-llms
   frequency: weekly
   python: "3.11"
-  group: ray-examples
+  group: Ray Examples
   team: ml
   working_dir: ray_examples/entity-recognition-with-llms
 
