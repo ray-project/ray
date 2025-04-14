@@ -4,12 +4,17 @@ set -euo pipefail
 
 CHAOS_FAULT="${1:-no_fault}"
 CHAOS_WORKLOAD="${2:-test_potato_passer}"
+FT_ENABLED="${3:-false}"
 
 bazel run //ci/ray_ci:build_in_docker -- docker \
     --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
-bash python/ray/tests/chaos/prepare_env.sh
+if [ "$FT_ENABLED" = true ]; then
+    bash python/ray/tests/chaos/prepare_env_ft.sh
+else
+    bash python/ray/tests/chaos/prepare_env.sh
+fi
 
 if [[ "${CHAOS_FAULT}" != "no_fault" ]]; then
     kubectl apply -f "python/ray/tests/chaos/${CHAOS_FAULT}.yaml"
