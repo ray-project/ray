@@ -34,7 +34,6 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
-        "test_actor_replica_wrapper.py",
         "test_advanced.py",
         "test_backpressure.py",
         "test_batching.py",
@@ -66,6 +65,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_replica_wrapper.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller_recovery.py",
