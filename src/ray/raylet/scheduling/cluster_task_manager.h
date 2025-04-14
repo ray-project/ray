@@ -192,8 +192,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
-  /// Function to announce infeasible task to GCS.
-  std::function<void(const RayTask &)> announce_infeasible_task_;
 
   ILocalTaskManager &local_task_manager_;
 
