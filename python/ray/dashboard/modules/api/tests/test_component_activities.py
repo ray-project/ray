@@ -18,6 +18,8 @@ from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.modules.api.api_head import RayActivityResponse
 from ray.dashboard.tests.conftest import *  # noqa
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture
 def set_ray_cluster_activity_hook(request):

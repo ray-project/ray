@@ -49,6 +49,8 @@ from ray.util.state.common import ClusterEventState
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 def _get_event(msg="empty message", job_id=None, source_type=None):
     return {

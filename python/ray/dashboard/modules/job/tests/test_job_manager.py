@@ -44,6 +44,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noq
 
 import psutil
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(

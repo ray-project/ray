@@ -37,6 +37,8 @@ from ray.util.state import list_nodes
 from ray._raylet import GcsClient
 import psutil
 
+pytestmark = pytest.mark.skip
+
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)

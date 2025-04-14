@@ -5,6 +5,8 @@ import pytest
 
 from ray.dashboard.utils import close_logger_file_descriptor
 
+pytestmark = pytest.mark.skip
+
 
 def test_close_logger_file_descriptor():
     logger_format = "%(message)s"

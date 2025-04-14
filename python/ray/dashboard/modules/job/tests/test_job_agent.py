@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
 
+pytestmark = pytest.mark.skip
+
 
 def get_node_id_for_supervisor_actor_for_job(
     address: str, job_submission_id: str

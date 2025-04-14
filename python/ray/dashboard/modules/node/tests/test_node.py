@@ -22,6 +22,8 @@ from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True

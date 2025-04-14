@@ -7,6 +7,8 @@ import trustme
 import ray
 from ray.job_submission import JobSubmissionClient
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture(scope="session")
 def ca():

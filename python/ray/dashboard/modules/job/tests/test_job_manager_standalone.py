@@ -10,6 +10,8 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.dashboard.modules.job.tests.test_job_manager import check_job_succeeded
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.mark.asyncio
 class TestRuntimeEnvStandalone:

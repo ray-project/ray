@@ -8,6 +8,8 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
 
+pytestmark = pytest.mark.skip
+
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 

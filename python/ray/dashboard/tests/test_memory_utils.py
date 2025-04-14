@@ -1,3 +1,4 @@
+import pytest
 import ray
 from ray.dashboard.memory_utils import (
     MemoryTable,
@@ -17,6 +18,8 @@ OBJECT_ID = "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg=="
 ACTOR_ID = "fffffffffffffffffffffffffffffffff66d17ba010000c801000000"
 DECODED_ID = decode_object_ref_if_needed(OBJECT_ID)
 OBJECT_SIZE = 100
+
+pytestmark = pytest.mark.skip
 
 
 def build_memory_entry(

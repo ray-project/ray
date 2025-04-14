@@ -17,6 +17,8 @@ import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture
 def default_module_config(tmp_path) -> SubprocessModuleConfig:

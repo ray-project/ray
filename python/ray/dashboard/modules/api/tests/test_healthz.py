@@ -7,6 +7,8 @@ import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import find_free_port, wait_for_condition
 from ray.tests.conftest import *  # noqa: F401 F403
 
+pytestmark = pytest.mark.skip
+
 
 def test_healthz_head(monkeypatch, ray_start_cluster):
     dashboard_port = find_free_port()

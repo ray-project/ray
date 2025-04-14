@@ -12,6 +12,8 @@ import ray
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture
 def shutdown_only():

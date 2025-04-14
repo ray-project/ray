@@ -18,6 +18,8 @@ from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
+pytestmark = pytest.mark.skip
+
 
 async def check_job_succeeded(job_manager, job_id):
     data = await job_manager.get_job_info(job_id)

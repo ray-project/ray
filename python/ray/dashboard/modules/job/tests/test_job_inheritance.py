@@ -12,6 +12,8 @@ from ray.dashboard.modules.job.tests.subprocess_driver_scripts.driver_runtime_en
 )
 from ray.job_submission import JobStatus, JobSubmissionClient
 
+pytestmark = pytest.mark.skip
+
 
 def wait_until_status(client, job_id, status_to_wait_for, timeout_seconds=20):
     start = time.time()

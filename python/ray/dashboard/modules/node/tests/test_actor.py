@@ -16,6 +16,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
     """

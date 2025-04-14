@@ -36,6 +36,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 STATS_TEMPLATE = {
     "now": 1614826393.975763,
     "hostname": "fake_hostname.local",

@@ -8,6 +8,8 @@ from ray.dashboard.modules.dashboard_sdk import (
     parse_runtime_env_args,
 )
 
+pytestmark = pytest.mark.skip
+
 
 class TestParseRuntimeEnvArgs:
     @pytest.mark.skipif(

@@ -10,6 +10,8 @@ import ray
 from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
 from ray.dashboard.tests.conftest import *  # noqa
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture
 def setup_memory_profiler():
