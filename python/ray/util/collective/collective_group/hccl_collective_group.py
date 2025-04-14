@@ -343,13 +343,9 @@ class HCCLGroup(BaseGroup):
                 logger.info(f"HcclReduceScatter execute result: {exec_result}")
 
         input_flattened = [
-            _flatten_for_scatter_gather(tensor_list, copy=False)
+            _flatten_for_scatter_gather(tensor_list, copy=True)
             for tensor_list in tensor_lists
         ]
-
-        for i, tensor_list in enumerate(tensor_lists):
-            for j, tensor in enumerate(tensor_list):
-                input_flattened[i][j].copy_(tensor)
 
         self._collective(input_flattened, tensors, collective_fn)
 
