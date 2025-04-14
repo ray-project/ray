@@ -179,7 +179,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclBroadcast execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclBroadcast`. Error code: {exec_result}."
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -209,7 +211,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclAllGather execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclAllGather`. Error code: {exec_result}."
 
         output_flattened = [
             _flatten_for_scatter_gather(tensor_list, copy=False)
@@ -248,7 +252,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclAllReduce execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclAllReduce`. Error code: {exec_result}."
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -299,7 +305,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclReduce execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclReduce`. Error code: {exec_result}."
 
         self._collective(tensors, tensors, collective_fn)
 
@@ -367,7 +375,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclSend execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclSend`. Error code: {exec_result}."
 
         self._point2point(
             tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
@@ -395,7 +405,9 @@ class HCCLGroup(BaseGroup):
                     npuStream_t(stream.npu_stream),
                 )
                 stream.synchronize()
-            logger.debug(f"HcclRecv execute result: {exec_result}")
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclRecv`. Error code: {exec_result}."
 
         self._point2point(
             tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
@@ -409,7 +421,9 @@ class HCCLGroup(BaseGroup):
 
         with torch.npu.device(f"npu:{dev}"):
             exec_result = self.libhccl.HcclGetRootInfo(ctypes.byref(root_info))
-        logger.debug(f"HcclGetRootInfo execute result: {exec_result}")
+        assert (
+            exec_result == 0
+        ), f"Failed to execute `HcclGetRootInfo`. Error code: {exec_result}."
 
         store = HCCLRootInfoStore.options(name=store_name, lifetime="detached").remote(
             store_name
@@ -513,15 +527,15 @@ class HCCLGroup(BaseGroup):
             device_rank = self.rank * len(device_list) + i
             with torch.npu.device(device):
                 comms[i] = hcclComm_t()
-                result = self.libhccl.HcclCommInitRootInfo(
+                exec_result = self.libhccl.HcclCommInitRootInfo(
                     device_world_size,
                     ctypes.byref(root_info),
                     device_rank,
                     ctypes.byref(comms[i]),
                 )
-                logger.debug(
-                    f"Process {self.rank} Device {i}, execute result of `HcclCommInitRootInfo`: {result}"
-                )
+                assert (
+                    exec_result == 0
+                ), f"Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
 
                 streams[i] = torch.npu.Stream()
 
@@ -578,12 +592,12 @@ class HCCLGroup(BaseGroup):
 
         with torch.npu.device(f"npu:{my_npu_idx}"):
             comm = hcclComm_t()
-            result = self.libhccl.HcclCommInitRootInfo(
+            exec_result = self.libhccl.HcclCommInitRootInfo(
                 2, ctypes.byref(root_info), my_p2p_rank, ctypes.byref(comm)
             )
-            logger.debug(
-                f"Process {self.rank} Device {my_npu_idx}, execute result of `HcclCommInitRootInfo`: {result}"
-            )
+            assert (
+                exec_result == 0
+            ), f"Failed to execute `HcclCommInitRootInfo`. Error code: {exec_result}."
 
             stream = torch.npu.Stream()
 
