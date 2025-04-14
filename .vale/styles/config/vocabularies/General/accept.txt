@@ -18,7 +18,7 @@ namespace
 ARM
 breakpoint
 deduplicate[s]
-deduplication
+[Dd]eduplication
 [Aa]sync
 Raylet
 g[Rr][Pp][Cc]
