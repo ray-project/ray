@@ -197,10 +197,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 2"
     tags:
@@ -210,10 +206,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 3"
     tags:
@@ -223,10 +215,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 4"
     tags:
@@ -236,10 +224,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 5"
     tags:
@@ -249,10 +233,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 6"
     tags:
@@ -262,10 +242,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 7"
     tags:
@@ -275,10 +251,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 8"
     tags:
@@ -288,10 +260,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 9"
     tags:
@@ -301,10 +269,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 10"
     tags:
@@ -314,10 +278,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 11"
     tags:
@@ -327,10 +287,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 12"
     tags:
@@ -340,10 +296,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 13"
     tags:
@@ -353,10 +305,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 14"
     tags:
@@ -366,10 +314,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 15"
     tags:
@@ -379,10 +323,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 16"
     tags:
@@ -392,10 +332,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 17"
     tags:
@@ -405,10 +341,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 18"
     tags:
@@ -418,10 +350,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 19"
     tags:
@@ -431,10 +359,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: dashboard tests 20"
     tags:
@@ -444,10 +368,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
-      # ui tests
-      - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: debug test"
     tags: python
