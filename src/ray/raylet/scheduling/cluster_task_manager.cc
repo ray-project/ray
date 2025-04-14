@@ -31,13 +31,11 @@ ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
-    std::function<void(const RayTask &)> announce_infeasible_task,
     ILocalTaskManager &local_task_manager,
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(get_node_info),
-      announce_infeasible_task_(announce_infeasible_task),
       local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
           tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
@@ -255,12 +253,25 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       auto &cur_work_queue = shapes_it->second;
       const auto &work = cur_work_queue[0];
       const RayTask task = work->task;
-      if (announce_infeasible_task_) {
-        announce_infeasible_task_(task);
+      // If the task is part of a placement group, do nothing. If necessary, the
+      // infeasible warning should come from the placement group scheduling, not the
+      // task scheduling.
+      // Push a warning to the task's driver that this task is currently infeasible.
+      if (task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
+        RAY_LOG(WARNING)
+            << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
+            << " cannot be scheduled right now. It requires "
+            << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
+            << " for placement, however the cluster currently cannot provide the "
+               "requested "
+               "resources. The required resources may be added as autoscaling takes "
+               "place "
+               "or placement groups are scheduled. Otherwise, consider reducing the "
+               "resource requirements of the task.";
       }
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      RAY_CHECK(!infeasible_tasks_.contains(shapes_it->first));
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -314,7 +325,8 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      RAY_CHECK(!infeasible_tasks_.contains(shapes_it->first));
+      tasks_to_schedule_[shapes_it->first] = std::move(shapes_it->second);
       infeasible_tasks_.erase(shapes_it++);
     }
   }
