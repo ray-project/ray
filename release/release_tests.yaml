@@ -4269,3 +4269,23 @@
     timeout: 3600
     script: >
       pytest -sv test_batch_sglang.py
+
+#######################
+# Ray examples tests
+#######################
+
+- name: entity-recognition-for-llms
+  frequency: nightly
+  python: "3.11"
+  group: ray-examples
+  team: ml
+  working_dir: ray_examples/entity-recognition-with-llms
+
+  cluster:
+    byod:
+      type: llm-cu124  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+    cluster_compute: configs/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash tests.sh
