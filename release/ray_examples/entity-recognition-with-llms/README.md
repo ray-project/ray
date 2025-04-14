@@ -9,7 +9,7 @@ An end-to-end tutorial where we'll fine-tune an LLM to perform batch inference a
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/e2e_llm.png" width=800>
 
-**Note**: the intent of this tutorial is to show how Ray can be use to implement end-to-end LLM workflows that can extend to any use case. 
+**Note**: the intent of this tutorial is to show how Ray can be use to implement end-to-end LLM workflows that can extend to any use case.
 
 ## Set up
 
@@ -46,7 +46,7 @@ import textwrap
 from IPython.display import Code, Image, display
 ```
 
-We'll start by downloading our data from cloud storage to local shared storage. 
+We'll start by downloading our data from cloud storage to local shared storage.
 
 
 ```bash
@@ -228,7 +228,7 @@ Qwen/Qwen2.5-7B-Instruct
 # Run multinode distributed fine-tuning workload
 USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
 ```
-    
+
     Training started with configuration:
     ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
     │ Training config                                                                                      │
@@ -277,7 +277,7 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
     ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
     100%|██████████| 155/155 [07:12<00:00,  2.85s/it][INFO|trainer.py:3942] 2025-04-11 14:57:59,207 >> Saving model checkpoint to /mnt/cluster_storage/viggo/outputs/checkpoint-155
-    
+
     Training finished iteration 1 at 2025-04-11 14:58:02. Total running time: 10min 24s
     ╭─────────────────────────────────────────╮
     │ Training result                         │
@@ -294,15 +294,15 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
     ╰─────────────────────────────────────────╯
     Training saved a checkpoint for iteration 1 at: (local)/mnt/cluster_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000
 
-    
 
 
-<div class="alert alert-block alert"> <b>Ray Train</b> 
+
+<div class="alert alert-block alert"> <b>Ray Train</b>
 
 Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) here has several advantages:
-- automatically handles **multi-node, multi-GPU** setup with no manual SSH setup or hostfile configs. 
+- automatically handles **multi-node, multi-GPU** setup with no manual SSH setup or hostfile configs.
 - define **per-worker franctional resource requirements** (e.g., 2 CPUs and 0.5 GPU per worker)
-- run on **heterogeneous machines** and scale flexibly (e.g., CPU for preprocessing and GPU for training) 
+- run on **heterogeneous machines** and scale flexibly (e.g., CPU for preprocessing and GPU for training)
 - built-in **fault tolerance** via retry of failed workers (and continue from last checkpoint).
 - supports Data Parallel, Model Parallel, Parameter Server, and even custom strategies.
 - [Ray Compiled graphs](https://docs.ray.io/en/latest/ray-core/compiled-graph/ray-compiled-graph.html) allow us to even define different parallelism for jointly optimizing multipe models (Megatron, Deepspeed, etc. only allow for one global setting).
@@ -316,7 +316,7 @@ Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) here has sever
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/train_dashboard.png" width=700>
 
-<div class="alert alert-block alert"> <b> 🔎 Monitoring and Debugging with Ray</b> 
+<div class="alert alert-block alert"> <b> 🔎 Monitoring and Debugging with Ray</b>
 
 
 OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/ray-observability/index.html) that offers logs and an observability dashboard that we can use to monitor and debug. The dashboard includes a lot of different components such as:
@@ -330,7 +330,7 @@ OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/observability_views.png" width=1000>
 
 
-<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and Debugging on Anyscale</b> 
+<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and Debugging on Anyscale</b>
 
 While OSS Ray comes with an extensive obervability suite, Anyscale takes it many steps further to make it even easier and faster to monitor and debug your workloads.
 
@@ -342,7 +342,7 @@ While OSS Ray comes with an extensive obervability suite, Anyscale takes it many
 
 
 
-<div class="alert alert-block alert"> <b> 🗂️ Storage on Anyscale</b> 
+<div class="alert alert-block alert"> <b> 🗂️ Storage on Anyscale</b>
 
 We can always store to our data inside [any storage buckets](https://docs.anyscale.com/configuration/storage/#private-storage-buckets) but Anyscale offers a [default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) to make things even easier. We also have plenty of other [storage options](https://docs.anyscale.com/configuration/storage/) as well (shared at the cluster, user and cloud levels).
 
@@ -391,9 +391,9 @@ display(Image(filename="/mnt/cluster_storage/viggo/outputs/training_loss.png"))
 ```
 
 
-    
+
 ![train loss](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/loss.png)
-    
+
 
 
 
@@ -449,7 +449,7 @@ vocab.json
 ```
 
 
-## Batch inference 
+## Batch inference
 [`Overview`](https://docs.ray.io/en/latest/data/working-with-llms.html) |  [`API reference`](https://docs.ray.io/en/latest/data/api/llm.html)
 
 The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference. These llm modules use [Ray Data](https://docs.ray.io/en/latest/data/data.html) under the hood, which makes it extremely easy to distribute our workloads but also ensures that they happen:
@@ -461,7 +461,7 @@ The `ray.data.llm` module integrates with key large language model (LLM) inferen
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_data_solution.png" width=800>
 
 [RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has even more functionality on top of Ray Data:
-- **accelerated metadata fetching** to improve reading first time from large datasets 
+- **accelerated metadata fetching** to improve reading first time from large datasets
 - **optimized autoscaling** where Jobs can kick off before waiting for the entire cluster to start
 - **high reliabilty** where entire fails jobs (head node, cluster, uncaptured exceptions, etc.) can resume from checkpoints (OSS Ray can only recover from worker node failures)
 
@@ -485,12 +485,12 @@ config = vLLMEngineProcessorConfig(
         "enable_lora": True,
         "max_lora_rank": 8,
         "max_loras": 1,
-        "pipeline_parallel_size": 1, 
+        "pipeline_parallel_size": 1,
         "tensor_parallel_size": 1,
         "enable_prefix_caching": True,
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,
-        "max_model_len": 4096,  # or increase KV cache size 
+        "max_model_len": 4096,  # or increase KV cache size
         # complete list: https://docs.vllm.ai/en/stable/serving/engine_args.html
     },
     concurrency=1,
@@ -654,7 +654,7 @@ llm_config = LLMConfig(
     # runtime_env={"env_vars": {"HF_TOKEN": os.environ.get("HF_TOKEN")}},
     deployment_config={
         "autoscaling_config": {
-            "min_replicas": 1, 
+            "min_replicas": 1,
             "max_replicas": 2,
             # complete list: https://docs.ray.io/en/latest/serve/autoscaling-guide.html#serve-autoscaling
         }
