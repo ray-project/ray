@@ -44,6 +44,7 @@ import psutil
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
+using_nvidia_smi = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -501,10 +502,6 @@ class ReporterAgent(
 
     @staticmethod
     def _get_gpu_usage() -> List[GpuUtilizationInfo]:
-        global enable_gpu_usage_check
-        if not enable_gpu_usage_check:
-            return []
-
         import ray._private.thirdparty.pynvml as pynvml
 
         gpu_utilizations = []
@@ -579,7 +576,7 @@ class ReporterAgent(
         return gpu_utilizations
 
     @staticmethod
-    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[ProcessGPUInfo]]:
+    def _parse_nvsmi_output(nvsmi_stdout: str) -> Dict[int, List[Tuple[str, str, str]]]:
         """Parse the output of nvidia-smi pmon -c 1."""
         process_utilizations = defaultdict(list)
         lines = nvsmi_stdout.splitlines()
@@ -606,35 +603,71 @@ class ReporterAgent(
             if pid == "-":  # no process on this GPU
                 continue
             gpu_id = int(gpu_id)
-            pinfo = ProcessGPUInfo(
-                pid=int(pid),
-                # NOTE: The memory here is percentage
-                # NOTE: and will be converted to MB later
-                gpu_memory_usage=int(mem),
-                gpu_utilization=int(sm),
-            )
+            pinfo = (pid, mem, sm)
             process_utilizations[gpu_id].append(pinfo)
         return process_utilizations
 
     @staticmethod
-    def _get_gpu_process_usages() -> Dict[int, List[ProcessGPUInfo]]:
+    def _get_gpu_process_usages() -> List[GpuUtilizationInfo]:
         # Start a subprocess to get GPU usage
         # Some information i.e utilization per process is
         # not available in pynvml
+        global enable_gpu_usage_check, using_nvidia_smi
+        if not enable_gpu_usage_check:
+            return []
+        if not using_nvidia_smi:
+            return ReporterAgent._get_gpu_usage()
         try:
-            result = subprocess.run(
+            gpu_info = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,name,uuid,utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits"
+                ],
+                capture_output=True,
+                text=True
+            )
+            gpus = []
+            for line in gpu_info.stdout.strip().split("\n"):
+                index, name, uuid, util, mem_used, mem_total = line.split(", ")
+                gpus.append(
+                    GpuUtilizationInfo(
+                        index=int(index),
+                        name=name,
+                        uuid=uuid,
+                        utilization_gpu=util,
+                        memory_used=int(mem_used),
+                        memory_total=int(mem_total),
+                        processes_pids=[],
+                    )
+                )
+    
+            processes_info = subprocess.run(
                 ["nvidia-smi", "pmon", "-c", "1"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=True,
                 text=True,
             )
-            return ReporterAgent._parse_nvsmi_output(result.stdout)
+            processes_info = ReporterAgent._parse_nvsmi_output(processes_info.stdout)
+            for gpu in gpus:
+                gpu_id = gpu["index"]
+                if gpu_id in processes_info:
+                    for pid, mem, sm in processes_info[gpu_id]:
+                        gpu["processes_pids"].append(
+                            ProcessGPUInfo(
+                                pid=int(pid),
+                                gpu_memory_usage=int(mem * gpu['memory_total'] / 100), # MB
+                                gpu_utilization=int(sm),
+                            )
+                        )
+            return gpus
         except subprocess.CalledProcessError as e:
             logger.debug(
                 f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
             )
-            return {}  # Processed later using the data from _get_gpu_usage()
+            using_nvidia_smi = False
+            return ReporterAgent._get_gpu_usage()
 
     @staticmethod
     def _get_boot_time():
@@ -848,16 +881,13 @@ class ReporterAgent(
             "disk": self._get_disk_usage(),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
-            "gpus": self._get_gpu_usage(),
+            "gpus": self._get_gpu_process_usages(),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-        result["gpu_processes"] = (
-            self._get_gpu_process_usages() if result["gpus"] else []
-        )
         return result
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:
@@ -1029,23 +1059,12 @@ class ReporterAgent(
         self,
         worker_stats: List[dict],
         gpus: List[GpuUtilizationInfo],
-        gpu_processes: Dict[int, List[ProcessGPUInfo]],
     ) -> List[Record]:
         worker_processes = {}
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
             if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
                 worker_processes[stat["pid"]] = cmdline[0]
-
-        if gpu_processes:  # Convert memory usage from percentage to MB
-            for gpu in gpus:
-                for proc in gpu_processes.get(gpu["index"], []):
-                    proc["gpu_memory_usage"] = (
-                        proc["gpu_memory_usage"] * gpu["memory_total"] / 100
-                    )
-                gpu["processes_pids"] = gpu_processes.get(
-                    gpu["index"], gpu.get("processes_pids", [])
-                )
 
         # Generate records for GPU utilization and memory usage
         records = []
@@ -1266,7 +1285,7 @@ class ReporterAgent(
             # -- GPU processes --
             records_reported.extend(
                 self.generate_worker_gpu_stats_record(
-                    stats["workers"], gpus, stats["gpu_processes"]
+                    stats["workers"], gpus
                 )
             )
 
