@@ -4234,7 +4234,7 @@
 #######################
 
 - name: entity-recognition-for-llms
-  frequency: nightly
+  frequency: weekly
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4248,3 +4248,11 @@
   run:
     timeout: 3600
     script: bash tests.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: configs/gcp.yaml
