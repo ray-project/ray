@@ -180,8 +180,6 @@ from ray.includes.optional cimport (
     optional, nullopt
 )
 
-from ray.cython_components.object_ref_generator import DynamicObjectRefGenerator
-
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -226,6 +224,7 @@ import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
+from ray._private.object_ref_generator import DynamicObjectRefGenerator
 from ray.util.annotations import PublicAPI
 
 cimport cpython
