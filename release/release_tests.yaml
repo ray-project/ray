@@ -4233,7 +4233,7 @@
 # Ray examples tests
 #######################
 
-- name: entity-recognition-for-llms
+- name: entity-recognition-with-llms
   frequency: weekly
   python: "3.11"
   group: ray-examples
