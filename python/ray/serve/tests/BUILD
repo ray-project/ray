@@ -330,7 +330,6 @@ py_test_module_list(
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
-        "test_deployment_scheduler.py",
         "test_gcs_failure.py",
         "test_max_replicas_per_node.py",
         "test_replica_placement_group.py",
@@ -374,6 +373,7 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
     files = [
+        "test_deployment_scheduler.py",
         "test_standalone_2.py",
     ],
     name_suffix = "_with_compact_scheduling",
