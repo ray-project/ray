@@ -466,6 +466,7 @@ def test_metrics_agent_record_and_export_performance(get_agent):
     test_gauge = Gauge(metric_name, "desc", "unit", ["tag"])
 
     import time
+
     t1 = time.time()
     record_a = Record(
         gauge=test_gauge,
