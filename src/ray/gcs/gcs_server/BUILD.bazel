@@ -247,7 +247,7 @@ ray_cc_library(
         "//:gcs_service_rpc",
         "//:node_manager_rpc",
         "//:observable_store_client",
-        "//:pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         "//:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
