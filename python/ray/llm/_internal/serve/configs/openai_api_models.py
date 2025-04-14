@@ -672,12 +672,33 @@ class CompletionStreamResponse(BaseModel):
     usage: Optional[UsageInfo] = Field(default=None)
 
 
-class EmbeddingRequest(BaseModel):
-    model: str
-    input: Union[str, List[str], List[int], List[List[int]]]
-    encoding_format: Optional[Literal["float", "base64"]] = "float"
+class EmbeddingCompletionRequest(BaseModel):
+    model: Optional[str] = None
+    input: Union[List[int], List[List[int]], str, List[str]]
+    encoding_format: Literal["float", "base64"] = "float"
     dimensions: Optional[int] = None
     user: Optional[str] = None
+    truncate_prompt_tokens: Optional[Annotated[int, Field(ge=1)]] = None
+
+    additional_data: Optional[Any] = None
+    add_special_tokens: bool = Field(
+        default=True,
+        description=(
+            "If true (the default), special tokens (e.g. BOS) will be added to "
+            "the prompt."
+        ),
+    )
+    priority: int = Field(
+        default=0,
+        description=(
+            "The priority of the request (lower means earlier handling; "
+            "default: 0). Any priority other than 0 will raise an error "
+            "if the served model does not use priority scheduling."
+        ),
+    )
+
+
+EmbeddingRequest = EmbeddingCompletionRequest
 
 
 class EmbeddingResponseData(BaseModel):
