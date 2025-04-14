@@ -6,4 +6,5 @@ py_library(
         ["**/*.py"],
         exclude = ["tests/*.py"],
     ),
+    visibility = ["__subpackages__"],
 )
