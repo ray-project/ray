@@ -783,14 +783,14 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if len(arr) > 0 and np.isscalar(arr[0]):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
+        if isinstance(arr, np.ndarray) and arr.dtype == object:
+            # Elements that are object dtype are converted to Arrow directly,
+            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
+            return pa.array(arr)
         if _is_ndarray_variable_shaped_tensor(arr):
             # Tensor elements have variable shape, so we delegate to
             # ArrowVariableShapedTensorArray.
             return ArrowVariableShapedTensorArray.from_numpy(arr)
-        if arr.dtype == object:
-            # Elements that are object dtype are converted to Arrow directly,
-            # e.g. array([{'a': '1', 'b': '2'}], dtype=object)
-            return pa.array(arr)
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
