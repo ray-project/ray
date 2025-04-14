@@ -280,7 +280,7 @@ class EnvRunnerGroup:
         if (
             local_env_runner
             and self._worker_manager.num_actors() > 0
-            and not config.enable_env_runner_and_connector_v2
+            and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
             spaces = self.get_spaces()
@@ -406,30 +406,24 @@ class EnvRunnerGroup:
         from_worker = from_worker or self.local_env_runner
 
         merge = (
-            (
-                not config.enable_env_runner_and_connector_v2
-                and config.use_worker_filter_stats
-            )
-            or (
-                config.enable_env_runner_and_connector_v2
-                and (
-                    config.merge_env_runner_states is True
-                    or (
-                        config.merge_env_runner_states == "training_only"
-                        and not config.in_evaluation
-                    )
+            not config.enable_env_runner_and_connector_v2
+            and config.use_worker_filter_stats
+        ) or (
+            config.enable_env_runner_and_connector_v2
+            and (
+                config.merge_env_runner_states is True
+                or (
+                    config.merge_env_runner_states == "training_only"
+                    and not config.in_evaluation
                 )
             )
         )
         broadcast = (
-            (
-                not config.enable_env_runner_and_connector_v2
-                and config.update_worker_filter_stats
-            )
-            or (
-                config.enable_env_runner_and_connector_v2
-                and config.broadcast_env_runner_states
-            )
+            not config.enable_env_runner_and_connector_v2
+            and config.update_worker_filter_stats
+        ) or (
+            config.enable_env_runner_and_connector_v2
+            and config.broadcast_env_runner_states
         )
 
         # Early out if the number of (healthy) remote workers is 0. In this case, the
@@ -481,7 +475,11 @@ class EnvRunnerGroup:
                     if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
                 ]
 
-                if self.local_env_runner is not None:
+                if (
+                    self.local_env_runner is not None
+                    and hasattr(self.local_env_runner, "_env_to_module")
+                    and hasattr(self.local_env_runner, "_module_to_env")
+                ):
                     assert env_to_module is None
                     env_to_module = self.local_env_runner._env_to_module
                     assert module_to_env is None

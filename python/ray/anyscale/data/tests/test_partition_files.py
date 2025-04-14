@@ -8,7 +8,7 @@ from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
 )
 from ray.anyscale.data._internal.planner.plan_list_files_op import partition_files
-from ray.anyscale.data._internal.readers import FileReader
+from ray.anyscale.data._internal.readers import InMemorySizeEstimator
 from ray.data.block import BlockAccessor
 
 
@@ -54,15 +54,19 @@ def test_partition_files_produces_correct_partitions(num_paths, expected_partiti
         }
     )
 
+    class StubInMemorySizeEstimator(InMemorySizeEstimator):
+        def estimate_in_memory_size(
+            self, path: str, file_size: int, *, filesystem
+        ) -> int:
+            return 1
+
     outputs = partition_files(
         BlockAccessor.for_block(input_table).iter_rows(public_row_format=True),
         MagicMock(),
         num_buckets=num_buckets,
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        reader=MagicMock(
-            spec=FileReader, estimate_in_memory_size=MagicMock(return_value=1)
-        ),
+        in_memory_size_estimator=StubInMemorySizeEstimator(),
         filesystem=MagicMock(),
         shuffle_config=None,
     )
@@ -81,15 +85,19 @@ def test_partition_files_with_no_file_sizes():
         }
     )
 
+    class StubInMemorySizeEstimator(InMemorySizeEstimator):
+        def estimate_in_memory_size(
+            self, path: str, file_size: int, *, filesystem
+        ) -> int:
+            return None
+
     outputs = partition_files(
         BlockAccessor.for_block(input_table).iter_rows(public_row_format=False),
         MagicMock(),
         num_buckets=1,
         min_bucket_size=1,
         max_bucket_size=1,
-        reader=MagicMock(
-            spec=FileReader, estimate_in_memory_size=MagicMock(return_value=None)
-        ),
+        in_memory_size_estimator=StubInMemorySizeEstimator(),
         filesystem=MagicMock(),
         shuffle_config=None,
     )

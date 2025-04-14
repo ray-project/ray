@@ -322,7 +322,7 @@ class AlgorithmConfig(_Config):
         # `self.env_runners()`
         self.env_runner_cls = None
         self.num_env_runners = 0
-        self.create_local_env_runner = False
+        self.create_local_env_runner = True
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, reaplce the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
@@ -334,6 +334,7 @@ class AlgorithmConfig(_Config):
         self.episodes_to_numpy = True
         self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
+        self.create_env_on_local_worker = False
         self._env_to_module_connector = None
         self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
@@ -664,7 +665,7 @@ class AlgorithmConfig(_Config):
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", None)
-        config["create_env_on_driver"] = config.pop("create_local_env_runner", 1)
+        config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
 
@@ -1766,6 +1767,7 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         create_local_env_runner: Optional[bool] = NotProvided,
+        create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
         gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
@@ -1802,7 +1804,6 @@ class AlgorithmConfig(_Config):
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,  # @OldAPIStack
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,  # @OldAPIStack
         # Deprecated args.
-        create_env_on_local_worker=DEPRECATED_VALUE,
         num_rollout_workers=DEPRECATED_VALUE,
         num_envs_per_worker=DEPRECATED_VALUE,
         validate_workers_after_construction=DEPRECATED_VALUE,
@@ -1867,6 +1868,11 @@ class AlgorithmConfig(_Config):
                 the `num_env_runners` remote EnvRunner actors. If `num_env_runners` is
                 0, this setting is ignored and one local EnvRunner is created
                 regardless.
+            create_env_on_local_worker: When `num_env_runners` > 0, the driver
+                (local_worker; worker-idx=0) does not need an environment. This is
+                because it doesn't have to sample (done by remote_workers;
+                worker_indices > 0) nor evaluate (done by evaluation workers;
+                see below).
             env_to_module_connector: A callable taking an Env as input arg and returning
                 an env-to-module ConnectorV2 (might be a pipeline) object.
             module_to_env_connector: A callable taking an Env and an RLModule as input
@@ -1986,11 +1992,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if create_env_on_local_worker != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.env_runners(create_local_env_runner=...)",
-                error=True,
-            )
         if enable_connectors != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(enable_connectors=...)",
@@ -2046,6 +2047,8 @@ class AlgorithmConfig(_Config):
             self.sample_collector = sample_collector
         if create_local_env_runner is not NotProvided:
             self.create_local_env_runner = create_local_env_runner
+        if create_env_on_local_worker is not NotProvided:
+            self.create_env_on_local_worker = create_env_on_local_worker
         if env_to_module_connector is not NotProvided:
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
@@ -5095,9 +5098,7 @@ class AlgorithmConfig(_Config):
         if key == "callbacks":
             key = "callbacks_class"
         elif key == "create_env_on_driver":
-            key = "create_local_env_runner"
-        elif key == "create_env_on_local_worker":
-            key = "create_local_env_runner"
+            key = "create_env_on_local_worker"
         elif key == "custom_eval_function":
             key = "custom_evaluation_function"
         elif key == "framework":
@@ -5498,23 +5499,6 @@ class AlgorithmConfig(_Config):
     @Deprecated(new="AlgorithmConfig.env_runners(..)", error=True)
     def exploration(self, *args, **kwargs):
         pass
-
-    @property
-    @Deprecated(
-        new="AlgorithmConfig.env_runners(create_local_env_runner=..)",
-        error=False,
-    )
-    def create_env_on_local_worker(self):
-        return self.create_local_env_runner
-
-    @create_env_on_local_worker.setter
-    def create_env_on_local_worker(self, value):
-        deprecation_warning(
-            old="AlgorithmConfig.create_env_on_local_worker",
-            new="AlgorithmConfig.create_local_env_runner",
-            error=False,
-        )
-        self.create_local_env_runner = value
 
     @property
     @Deprecated(

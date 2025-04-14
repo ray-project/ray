@@ -52,10 +52,12 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_EVAL_ENV_RUNNER,
     COMPONENT_LEARNER,
     COMPONENT_LEARNER_GROUP,
     COMPONENT_METRICS_LOGGER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -692,6 +694,19 @@ class Algorithm(Checkpointable, Trainable):
                 pg_offset=self.config.num_env_runners,
             )
 
+        if self.env_runner_group:
+            self.spaces = self.env_runner_group.get_spaces()
+        elif self.eval_env_runner_group:
+            self.spaces = self.eval_env_runner_group.get_spaces()
+
+        if self.env_runner is None and self.spaces is not None:
+            self.env_to_module_connector = self.config.build_env_to_module_connector(
+                spaces=self.spaces
+            )
+            self.module_to_env_connector = self.config.build_module_to_env_connector(
+                spaces=self.spaces
+            )
+
         self.evaluation_dataset = None
         if (
             self.evaluation_config.off_policy_estimation_methods
@@ -1070,23 +1085,24 @@ class Algorithm(Checkpointable, Trainable):
         if self.evaluation_dataset is not None:
             return self._run_offline_evaluation()
 
+        if self.config.enable_env_runner_and_connector_v2:
+            if (
+                self.env_runner_group is not None
+                and self.env_runner_group.healthy_env_runner_ids()
+            ):
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult)
+                weights_src = self.env_runner_group._worker_manager._actors[
+                    self.env_runner_group.healthy_env_runner_ids()[0]
+                ]
+            else:
+                weights_src = self.learner_group
+        else:
+            weights_src = self.env_runner
+
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
-            if self.config.enable_env_runner_and_connector_v2:
-                if (
-                    self.env_runner_group is not None
-                    and self.env_runner_group.healthy_env_runner_ids()
-                ):
-                    # TODO (sven): Replace this with a new ActorManager API:
-                    #  try_remote_request_till_success("get_state") -> tuple(int,
-                    #  remoteresult)
-                    weights_src = self.env_runner_group._worker_manager._actors[
-                        self.env_runner_group.healthy_env_runner_ids()[0]
-                    ]
-                else:
-                    weights_src = self.learner_group
-            else:
-                weights_src = self.env_runner_group.local_env_runner
             self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=weights_src,
                 inference_only=True,
@@ -1111,6 +1127,12 @@ class Algorithm(Checkpointable, Trainable):
                     workers=self.eval_env_runner_group,
                     config=self.evaluation_config,
                 )
+        # Sync weights to the local EnvRunner (if no eval EnvRunnerGroup).
+        elif self.config.enable_env_runner_and_connector_v2:
+            self.env_runner_group.sync_weights(
+                from_worker_or_learner_group=weights_src,
+                inference_only=True,
+            )
 
         make_callback(
             "on_evaluate_start",
@@ -1139,9 +1161,7 @@ class Algorithm(Checkpointable, Trainable):
                 env_steps,
                 agent_steps,
                 batches,
-            ) = self._evaluate_on_local_env_runner(
-                self.env_runner_group.local_env_runner
-            )
+            ) = self._evaluate_on_local_env_runner(self.env_runner)
         # There is only a local eval EnvRunner -> Run on that.
         elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
             (
@@ -2565,24 +2585,31 @@ class Algorithm(Checkpointable, Trainable):
         state = {}
 
         # Get (local) EnvRunner state (w/o RLModule).
-        if self.env_runner_group and self._check_component(
-            COMPONENT_ENV_RUNNER, components, not_components
-        ):
-            state[
-                COMPONENT_ENV_RUNNER
-            ] = self.env_runner_group.local_env_runner.get_state(
-                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
-                not_components=force_list(
-                    self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
+        if self._check_component(COMPONENT_ENV_RUNNER, components, not_components):
+            if self.env_runner:
+                state[COMPONENT_ENV_RUNNER] = self.env_runner.get_state(
+                    components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                    not_components=force_list(
+                        self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
+                    )
+                    # We don't want the RLModule state from the EnvRunners (it's
+                    # `inference_only` anyway and already provided in full by the
+                    # Learners).
+                    + [COMPONENT_RL_MODULE],
+                    **kwargs,
                 )
-                # We don't want the RLModule state from the EnvRunners (it's
-                # `inference_only` anyway and already provided in full by the Learners).
-                + [COMPONENT_RL_MODULE],
-                **kwargs,
-            )
+            else:
+                state[COMPONENT_ENV_RUNNER] = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                        self.env_to_module_connector.get_state()
+                    ),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                        self.module_to_env_connector.get_state()
+                    ),
+                }
 
-        # Get (local) evaluation EnvRunner state (w/o RLModule).
-        if self.eval_env_runner_group and self._check_component(
+                # Get (local) evaluation EnvRunner state (w/o RLModule).
+        if self.eval_env_runner and self._check_component(
             COMPONENT_EVAL_ENV_RUNNER, components, not_components
         ):
             state[COMPONENT_EVAL_ENV_RUNNER] = self.eval_env_runner.get_state(
@@ -2619,16 +2646,31 @@ class Algorithm(Checkpointable, Trainable):
     def set_state(self, state: StateDict) -> None:
         # Set the (training) EnvRunners' states.
         if COMPONENT_ENV_RUNNER in state:
-            self.env_runner_group.local_env_runner.set_state(
-                state[COMPONENT_ENV_RUNNER]
+            if self.env_runner:
+                self.env_runner.set_state(state[COMPONENT_ENV_RUNNER])
+            else:
+                self.env_to_module_connector.set_state(
+                    state[COMPONENT_ENV_RUNNER][COMPONENT_ENV_TO_MODULE_CONNECTOR]
+                )
+                self.module_to_env_connector.set_state(
+                    state[COMPONENT_ENV_RUNNER][COMPONENT_MODULE_TO_ENV_CONNECTOR]
+                )
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                from_worker=self.env_runner,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
             )
-            self.env_runner_group.sync_env_runner_states(config=self.config)
 
         # Set the (eval) EnvRunners' states.
         if self.eval_env_runner_group and COMPONENT_EVAL_ENV_RUNNER in state:
-            self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
+            if self.eval_env_runner:
+                self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
             self.eval_env_runner_group.sync_env_runner_states(
-                config=self.evaluation_config
+                config=self.evaluation_config,
+                from_worker=self.env_runner,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
             )
 
         # Set the LearnerGroup's state.
@@ -2657,11 +2699,11 @@ class Algorithm(Checkpointable, Trainable):
         components = [
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
-        if not self.config.is_offline:
+        if not self.config.is_offline and self.env_runner:
             components.append(
-                (COMPONENT_ENV_RUNNER, self.env_runner_group.local_env_runner),
+                (COMPONENT_ENV_RUNNER, self.env_runner),
             )
-        if self.eval_env_runner_group:
+        if self.eval_env_runner:
             components.append(
                 (
                     COMPONENT_EVAL_ENV_RUNNER,
@@ -3310,12 +3352,16 @@ class Algorithm(Checkpointable, Trainable):
     @property
     def env_runner(self):
         """The local EnvRunner instance within the algo's EnvRunnerGroup."""
-        return self.env_runner_group.local_env_runner
+        if self.env_runner_group:
+            return self.env_runner_group.local_env_runner
+        return None
 
     @property
     def eval_env_runner(self):
         """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
-        return self.eval_env_runner_group.local_env_runner
+        if self.eval_env_runner_group:
+            return self.eval_env_runner_group.local_env_runner
+        return None
 
     def _record_usage(self, config):
         """Record the framework and algorithm used.

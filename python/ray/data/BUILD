@@ -492,6 +492,20 @@ py_test(
 )
 
 py_test(
+    name = "test_logging_dataset",
+    size = "small",
+    srcs = ["tests/test_logging_dataset.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_logging",
     size = "small",
     srcs = ["tests/test_logging.py"],

@@ -9,6 +9,7 @@ import numpy as np
 import ray
 import ray.data.read_api as oss_read_api
 from ray._private.auto_init_hook import wrap_auto_init
+from ray._private.ray_constants import env_bool
 from ray._private.utils import INT32_MAX
 from ray.anyscale.data._internal.logical.operators.list_files_operator import ListFiles
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
@@ -18,13 +19,17 @@ from ray.anyscale.data._internal.planner.file_indexer import (
 from ray.anyscale.data._internal.readers import (
     AudioReader,
     AvroReader,
+    BinaryInMemorySizeEstimator,
     BinaryReader,
     CSVReader,
     FileReader,
     ImageReader,
+    InMemorySizeEstimator,
     JSONReader,
     NumpyReader,
+    ParquetInMemorySizeEstimator,
     ParquetReader,
+    SamplingInMemorySizeEstimator,
     TextReader,
     VideoReader,
     WebDatasetReader,
@@ -48,6 +53,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
     import pyarrow.fs
+
+PARQUET_SAMPLING_ENABLED = env_bool("RAY_DATA_PARQUET_SAMPLING_ENABLED", False)
 
 
 def _try_fallback_to_oss(runtime_func):
@@ -166,9 +173,14 @@ def read_parquet(
         include_paths=include_paths,
         partitioning=partitioning,
     )
+    if PARQUET_SAMPLING_ENABLED:
+        in_memory_size_estimator = SamplingInMemorySizeEstimator(reader)
+    else:
+        in_memory_size_estimator = ParquetInMemorySizeEstimator()
     return read_files(
         paths,
         reader,
+        in_memory_size_estimator=in_memory_size_estimator,
         filesystem=filesystem,
         columns=columns,
         partition_filter=partition_filter,
@@ -472,6 +484,7 @@ def read_avro(
 def read_json(
     paths: Union[str, List[str]],
     *,
+    lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -484,8 +497,20 @@ def read_json(
     concurrency: Optional[int] = None,
     **arrow_json_args,
 ) -> Dataset:
+
+    if lines:
+        incompatible_params = {
+            "filesystem": filesystem,
+            "arrow_open_stream_args": arrow_open_stream_args,
+            "arrow_json_args": arrow_json_args,
+        }
+        for param, value in incompatible_params.items():
+            if value:
+                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+
     reader = JSONReader(
         arrow_json_args,
+        is_jsonl=lines,
         include_paths=include_paths,
         partitioning=partitioning,
         open_args=arrow_open_stream_args,
@@ -559,9 +584,11 @@ def read_binary_files(
         partitioning=partitioning,
         open_args=arrow_open_stream_args,
     )
+    in_memory_size_estimator = BinaryInMemorySizeEstimator()
     return read_files(
         paths,
         reader,
+        in_memory_size_estimator=in_memory_size_estimator,
         filesystem=filesystem,
         columns=None,
         partition_filter=partition_filter,
@@ -635,9 +662,11 @@ def read_text(
         partitioning=partitioning,
         open_args=arrow_open_stream_args,
     )
+    in_memory_size_estimator = BinaryInMemorySizeEstimator()
     return read_files(
         paths,
         reader,
+        in_memory_size_estimator=in_memory_size_estimator,
         filesystem=filesystem,
         columns=None,
         partition_filter=partition_filter,
@@ -690,6 +719,7 @@ def read_files(
     paths: Union[str, List[str]],
     reader: FileReader,
     *,
+    in_memory_size_estimator: Optional[InMemorySizeEstimator] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"],
     columns: Optional[List[str]],
     partition_filter: Optional[PathPartitionFilter],
@@ -703,6 +733,9 @@ def read_files(
 
     if ray_remote_args is None:
         ray_remote_args = {}
+
+    if in_memory_size_estimator is None:
+        in_memory_size_estimator = SamplingInMemorySizeEstimator(reader)
 
     _validate_shuffle_arg(shuffle)
 
@@ -724,7 +757,7 @@ def read_files(
     list_files_op = ListFiles(
         paths=paths,
         file_indexer=file_indexer,
-        reader=reader,
+        in_memory_size_estimator=in_memory_size_estimator,
         filesystem=filesystem,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
@@ -742,7 +775,8 @@ def read_files(
     )
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"ReadFiles": []}, parent=None)
+        DatasetStats(metadata={"ReadFiles": []}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(read_files_op, execution_plan._context)
     return Dataset(plan=execution_plan, logical_plan=logical_plan)

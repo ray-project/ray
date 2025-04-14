@@ -4,12 +4,14 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import pyarrow
 
-from .native_file_reader import NativeFileReader
 from ray.data._internal.util import _check_import
 from ray.data.block import DataBatch
 
+from .native_file_reader import NativeFileReader
+from .supports_row_counting import SupportsRowCounting
 
-class ImageReader(NativeFileReader):
+
+class ImageReader(NativeFileReader, SupportsRowCounting):
     _NUM_THREADS_PER_TASK = 8
 
     def __init__(
@@ -58,5 +60,9 @@ class ImageReader(NativeFileReader):
     def count_rows(self, paths: List[str], *, filesystem) -> int:
         return len(paths)
 
-    def supports_count_rows(self) -> bool:
+    def can_count_rows(self) -> bool:
         return True
+
+    def count_rows_batch_size(self) -> Optional[int]:
+        # Since we just return the number of paths, we don't need to batch.
+        return None

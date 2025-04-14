@@ -217,7 +217,9 @@ class DatasetMixin:
             assert len(input_dependencies) == 1
             list_files_op = input_dependencies[0]
             assert isinstance(list_files_op, ListFiles)
-            execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
+            execution_plan = ExecutionPlan(
+                DatasetStats(metadata={}, parent=None), self.context.copy()
+            )
             logical_plan = LogicalPlan(list_files_op, self.context)
             dataset = Dataset(execution_plan, logical_plan)
             return list({row[PATH_COLUMN_NAME] for row in dataset.take_all()})
