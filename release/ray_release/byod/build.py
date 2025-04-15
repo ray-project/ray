@@ -10,18 +10,20 @@ import time
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
+from ray_release.bazel import bazel_runfile
 from ray_release.test import (
     Test,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
 DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
-RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+RELEASE_BYOD_DIR = os.path.join(bazel_workspace_dir, RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
@@ -82,6 +84,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
+
     subprocess.check_call(
         [
             "docker",
@@ -95,7 +98,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
             byod_image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
-            RELEASE_BYOD_DIR,
+            os.path.join(bazel_workspace_dir, RELEASE_BYOD_DIR),
         ],
         stdout=sys.stderr,
         env=env,
@@ -177,7 +180,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         byod_image,
                         "-f",
                         os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
-                        RELEASE_BYOD_DIR,
+                        os.path.join(bazel_workspace_dir, RELEASE_BYOD_DIR),
                     ],
                     stdout=sys.stderr,
                     env=env,

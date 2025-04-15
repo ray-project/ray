@@ -9,6 +9,7 @@ import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
+from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
@@ -92,7 +93,6 @@ def main(
         f"  priority =                {settings['priority']}\n"
         f"  no_concurrency_limit =    {settings['no_concurrency_limit']}\n"
     )
-
     try:
         test_collection = read_and_validate_release_test_collection(
             test_collection_file or RELEASE_TEST_CONFIG_FILES
