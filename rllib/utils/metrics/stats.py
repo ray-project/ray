@@ -258,6 +258,11 @@ class Stats:
             value: The value item to be appended to the internal values list
                 (`self.values`).
         """
+        if torch and torch.is_tensor(value):
+            value = value.detach()
+        elif tf and tf.is_tensor(value):
+            value = tf.stop_gradient(value)
+
         self.values.append(value)
         # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
         # cheap and avoids long lists, which would be expensive to reduce.
@@ -708,6 +713,13 @@ class Stats:
         """
         values = values if values is not None else self.values
 
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and torch.is_tensor(values[0]):
+            # Make sure, all values are tensors.
+            assert all(torch.is_tensor(v) for v in values), values
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
             return values, values
@@ -718,13 +730,6 @@ class Stats:
                 return float("nan"), []
             else:
                 return 0, []
-
-        # Torch tensor handling. Convert to CPU/numpy first.
-        if torch and torch.is_tensor(values[0]):
-            # Make sure, all values are tensors.
-            assert all(torch.is_tensor(v) for v in values), values
-            # Convert all tensors to numpy values.
-            values = [v.cpu().numpy() for v in values]
 
         # TODO (sven): Deprecate tf (DreamerV3 to torch).
         elif tf and tf.is_tensor(values[0]):
