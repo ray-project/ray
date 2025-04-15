@@ -2643,6 +2643,44 @@ class TestActorReplicaWrapper:
         )
 
 
+def test_get_active_node_ids_none(mock_deployment_state_manager):
+    """Test get_active_node_ids() are not collecting none node ids.
+    When the running replicas has None as the node id, `get_active_node_ids()` should
+    not include it in the set.
+    """
+    node_ids = ("node1", "node2", "node2")
+
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    cluster_node_info_cache.add_node("node1")
+    cluster_node_info_cache.add_node("node2")
+
+    # Deploy deployment with version "1" and 3 replicas
+    info1, v1 = deployment_info(version="1", num_replicas=3)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # When the replicas are in the STARTING state, `get_active_node_ids()` should
+    # return a set of node ids.
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+    mocked_replicas = ds._replicas.get()
+    for idx, mocked_replica in enumerate(mocked_replicas):
+        mocked_replica._actor.set_node_id(node_ids[idx])
+    assert ds.get_active_node_ids() == set(node_ids)
+    assert dsm.get_active_node_ids() == set(node_ids)
+
+    # When the replicas are in the RUNNING state and are having None node id,
+    # `get_active_node_ids()` should return empty set.
+    for mocked_replica in mocked_replicas:
+        mocked_replica._actor.set_node_id(None)
+        mocked_replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+    assert None not in ds.get_active_node_ids()
+    assert None not in dsm.get_active_node_ids()
+
+
 def test_get_active_node_ids(mock_deployment_state_manager):
     """Test get_active_node_ids() are collecting the correct node ids
 
