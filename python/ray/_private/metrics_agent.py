@@ -571,7 +571,7 @@ class MetricsAgent:
     def measurement_map_record(self, opencensus_measurement_map, tags):
         """Rewrite the `record` method of `opencensus.stats.measurement_map.MeasurementMap`
          to fix the performance issue[1].
-        [1] https://github.com/issues/mentioned?issue=ray-project%7Cray%7C35202
+        [1] https://github.com/ray-project/ray/issues/35202
 
         Args:
             opencensus_measurement_map: MeasurementMap to record stats
