@@ -369,6 +369,276 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
 
+  - label: ":ray: core: dashboard tests 21"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 22"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 23"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 24"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 25"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 26"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 27"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 28"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 29"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 30"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 31"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 32"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 33"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 34"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 35"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 36"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 37"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 38"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 39"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 40"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 41"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 42"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 43"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 44"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 45"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 46"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 47"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 48"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 49"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
+  - label: ":ray: core: dashboard tests 50"
+    tags:
+      - python
+      - dashboard
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
+        --parallelism-per-worker 3
+
   - label: ":ray: core: debug test"
     tags: python
     instance_type: medium
