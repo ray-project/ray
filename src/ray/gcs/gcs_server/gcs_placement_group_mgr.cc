@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -20,7 +22,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
