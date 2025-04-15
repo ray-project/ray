@@ -301,9 +301,6 @@ class TorchMetaLearner(TorchLearner):
         To ensure compatibility, the `MultiRLModule`'s `forward` method must encapsulate
         all logic from `forward_train` and support additional keyword arguments (`kwargs`).
         """
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
@@ -335,7 +332,7 @@ class TorchMetaLearner(TorchLearner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     @override(Learner)
     def compute_losses(

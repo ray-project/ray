@@ -719,8 +719,45 @@ class Stats:
             else:
                 return 0, []
 
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and torch.is_tensor(values[0]):
+            # Make sure, all values are tensors.
+            assert all(torch.is_tensor(v) for v in values), values
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+            ##
+            #if len(values[0].shape) == 0:
+            #    reduced = values[0]
+            #else:
+            #    reduce_meth = getattr(torch, "nan" + self._reduce_method)
+            #    reduce_in = torch.stack(list(values))
+            #    if self._reduce_method == "mean":
+            #        reduce_in = reduce_in.float()
+            #    reduced = reduce_meth(reduce_in)
+
+        # TODO (sven): Deprecate tf (DreamerV3 to torch).
+        elif tf and tf.is_tensor(values[0]):
+            # TODO (sven): Currently, tensor metrics only work with window=1.
+            #  We might want o enforce it more formally, b/c it's probably not a
+            #  good idea to have MetricsLogger or Stats tinker with the actual
+            #  computation graph that users are trying to build in their loss
+            #  functions.
+            assert len(values) == 1
+            # TODO (sven) If the shape is (), do NOT even use the reduce method.
+            #  Using `tf.reduce_mean()` here actually lead to a completely broken
+            #  DreamerV3 (for a still unknown exact reason).
+            if len(values[0].shape) == 0:
+                reduced = values[0]
+            else:
+                reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                reduced = reduce_meth(values)
+            if self._inf_window and self._reduce_method != "mean":
+                return reduced, [reduced]
+            else:
+                return reduced, values
+
         # Do EMA (always a "mean" reduction; possibly using a window).
-        elif self._ema_coeff is not None:
+        if self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.
             mean_value = values[0]
             for v in values[1:]:
@@ -729,41 +766,10 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
-        # Do non-EMA reduction (possibly using a window).
+        # Non-EMA reduction (possibly using a window).
         else:
-            # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
-            if torch and torch.is_tensor(values[0]):
-                assert all(torch.is_tensor(v) for v in values), values
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                    reduce_in = torch.stack(list(values))
-                    if self._reduce_method == "mean":
-                        reduce_in = reduce_in.float()
-                    reduced = reduce_meth(reduce_in)
-            elif tf and tf.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                    reduced = reduce_meth(values)
-
-            else:
-                reduce_meth = getattr(np, "nan" + self._reduce_method)
-                reduced = reduce_meth(values)
+            reduce_meth = getattr(np, "nan" + self._reduce_method)
+            reduced = reduce_meth(values)
 
             # Convert from numpy to primitive python types, if original `values` are
             # python types.
