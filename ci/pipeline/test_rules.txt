@@ -222,3 +222,8 @@ setup_hooks.sh
 build.sh
 # pass
 ;
+
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
+;
