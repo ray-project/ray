@@ -65,10 +65,10 @@ ray_cc_library(
     deps = [
         ":object_directory",
         "//:gcs_client_lib",
-        "//:subscriber_lib",
         "//:worker_rpc",
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/pubsub:subscriber_lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
