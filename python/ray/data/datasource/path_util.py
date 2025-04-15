@@ -114,6 +114,7 @@ def _resolve_paths_and_filesystem(
                     # try to use fsspec HTTPFileSystem. This expects fsspec is
                     # installed.
                     try:
+                        import fsspec
                         from fsspec.implementations.http import HTTPFileSystem
                     except ModuleNotFoundError:
                         raise ImportError(
