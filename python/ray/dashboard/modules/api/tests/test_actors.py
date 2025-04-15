@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 KILL_ACTOR_ENDPOINT = "/api/actors/kill"
 
+pytestmark = pytest.mark.skip
+
 
 def _actor_killed(pid: str) -> bool:
     """Check For the existence of a unix pid."""

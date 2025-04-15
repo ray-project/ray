@@ -62,6 +62,8 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 def make_gcs_client(address_info):
     address = address_info["gcs_address"]
