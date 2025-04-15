@@ -14,9 +14,10 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <deque>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -24,12 +25,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
@@ -40,7 +39,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
@@ -53,7 +51,6 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"

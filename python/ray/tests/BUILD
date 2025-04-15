@@ -20,7 +20,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "manual",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -346,6 +346,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
         "test_utils.py",
@@ -424,7 +425,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "test_channel.py",
         "test_nccl_channel.py",
@@ -590,7 +591,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -609,7 +610,7 @@ py_test_module_list(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -912,6 +913,21 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_isolation_config",
+    size = "medium",
+    srcs = ["test_resource_isolation_config.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_runtime_env_container",
     size = "large",
     srcs = ["test_runtime_env_container.py"],
@@ -951,7 +967,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -966,7 +982,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -982,7 +998,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -998,7 +1014,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -1014,7 +1030,7 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -1230,7 +1246,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "spark_plugin_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
