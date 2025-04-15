@@ -486,7 +486,7 @@ def test_metrics_agent_record_and_export_performance(get_agent):
         )
         agent.record_and_export([record_a])
     t3 = time.time()
-    print(f"export 1000 record costs {t3 - t2} seconds")
+    print(f"export 1000 records costs {t3 - t2} seconds")
 
 
 if __name__ == "__main__":
