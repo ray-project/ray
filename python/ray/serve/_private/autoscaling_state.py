@@ -33,8 +33,8 @@ class HandleMetricReport:
         queued_requests: The current number of queued requests at the
             handle, i.e. requests that haven't been assigned to any
             replica yet.
-        running_requests: A map of replica ID to the average number of
-            requests, assigned through the handle, running at that
+        running_requests: A map of replica ID to the aggregated number
+            of requests, assigned through the handle, running at that
             replica.
         timestamp: The time at which this report was received.
     """
@@ -301,19 +301,16 @@ class AutoscalingState:
 
         total_requests = 0
 
-        if (
-            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            or len(self._running_replicas) == 0
-        ):
-            for handle_metric in self._handle_requests.values():
+        for handle_metric in self._handle_requests.values():
+            if (
+                RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+                or len(self._running_replicas) == 0
+            ):
                 total_requests += handle_metric.queued_requests
-                for id in self._running_replicas:
-                    if id in handle_metric.running_requests:
-                        total_requests += handle_metric.running_requests[id]
-        else:
+
             for id in self._running_replicas:
-                if id in self._replica_requests:
-                    total_requests += self._replica_requests[id].running_requests
+                if id in handle_metric.running_requests:
+                    total_requests += handle_metric.running_requests[id]
 
         return total_requests
 
@@ -397,7 +394,7 @@ class AutoscalingStateManager:
     def record_request_metrics_for_handle(
         self,
         *,
-        deployment_id: str,
+        deployment_id: DeploymentID,
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,

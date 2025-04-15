@@ -152,7 +152,7 @@ class InMemoryMetricsStore:
 
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
-    ) -> List[float]:
+    ) -> List[TimeStampedValue]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -191,7 +191,7 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(
+    def window_max(
         self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
     ):
         """Perform a max operation for metric `key`.
@@ -214,3 +214,27 @@ class InMemoryMetricsStore:
             self.data[key] = points_after_idx
 
         return max((point.value for point in points_after_idx), default=None)
+
+    def window_min(
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    ):
+        """Perform a max operation for metric `key`.
+
+        Args:
+            key: the metric name.
+            window_start_timestamp_s: the unix epoch timestamp for the
+              start of the window. The computed average will use all datapoints
+              from this timestamp until now.
+            do_compact: whether or not to delete the datapoints that's
+              before `window_start_timestamp_s` to save memory. Default is
+              true.
+        Returns:
+            Min value of the data points for the key on and after time
+            window_start_timestamp_s, or None if there are no such points.
+        """
+        points_after_idx = self._get_datapoints(key, window_start_timestamp_s)
+
+        if do_compact:
+            self.data[key] = points_after_idx
+
+        return min((point.value for point in points_after_idx), default=None)
