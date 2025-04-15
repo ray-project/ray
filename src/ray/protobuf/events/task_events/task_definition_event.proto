@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package ray.events;
+package ray.rpc.events;
 
 // Message containing the definition information of a task.
 // The message is expected to be emitted once per task attempt.
