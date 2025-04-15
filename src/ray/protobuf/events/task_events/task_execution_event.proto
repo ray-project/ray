@@ -16,7 +16,7 @@ syntax = "proto3";
 
 import "src/ray/protobuf/common.proto";
 
-package ray.events;
+package ray.rpc.events;
 
 // Message containing the execution information of a task.
 message TaskExecutionEvent {
