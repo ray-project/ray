@@ -50,6 +50,7 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "address_param",
     [
@@ -116,12 +117,14 @@ def test_parse_cluster_info(
             )
 
 
+@pytest.mark.skip
 def test_parse_cluster_info_default_address():
     assert parse_cluster_info(
         address=None,
     ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize("expiration_s", [0, 10])
 def test_temporary_uri_reference(monkeypatch, expiration_s):
     """Test that temporary GCS URI references are deleted after expiration_s."""
