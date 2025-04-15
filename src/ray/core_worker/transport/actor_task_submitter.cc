@@ -91,25 +91,25 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
 
 Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsActorCreationTask());
-  auto actor_id = task_spec.ActorCreationId();
-  auto task_id = task_spec.TaskId();
+  const auto actor_id = task_spec.ActorCreationId();
+  const auto task_id = task_spec.TaskId();
   RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
       << "Submitting actor creation task";
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
     // outside of this closure).
-    auto actor_id = task_spec.ActorCreationId();
-    auto task_id = task_spec.TaskId();
+    const auto actor_id = task_spec.ActorCreationId();
+    const auto task_id = task_spec.TaskId();
     task_finisher_.MarkDependenciesResolved(task_id);
     if (!status.ok()) {
       RAY_LOG(WARNING).WithField(actor_id).WithField(task_id)
-          << "Resolving task dependencies failed " << status.ToString();
+          << "Resolving actor creation task dependencies failed " << status;
       RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
           task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
-    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Task dependencies resolved";
+    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Actor creation task dependencies resolved";
     // The actor creation task will be sent to
     // gcs server directly after the in-memory dependent objects are resolved. For
     // more details please see the protocol of actor management based on gcs.
@@ -149,7 +149,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               }
             } else {
               RAY_LOG(INFO).WithField(actor_id).WithField(task_id)
-                  << "Failed to create actor with status: " << status.ToString();
+                  << "Failed to create actor with status: " << status;
             }
             // Actor creation task retry happens in GCS
             // and transient rpc errors are retried in gcs client
