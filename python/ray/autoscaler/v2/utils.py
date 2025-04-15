@@ -552,7 +552,7 @@ class ClusterStatusFormatter:
             for bc in constraint_demand.bundles_by_count
         ]
         for bundle, count in request_demand:
-            constraint_lines.append(f" {bundle}: {count}+ from request_resources()")
+            constraint_lines.append(f" {bundle}: {count} from request_resources()")
         if constraint_lines:
             return "\n".join(constraint_lines)
         return " (no cluster constraints)"

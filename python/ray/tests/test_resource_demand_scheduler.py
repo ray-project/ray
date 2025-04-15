@@ -3167,7 +3167,7 @@ Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3258,7 +3258,7 @@ Total Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Total Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3373,7 +3373,7 @@ Total Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Total Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3465,7 +3465,7 @@ Total Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Total Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3560,7 +3560,7 @@ Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3653,7 +3653,7 @@ Total Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Total Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
@@ -3742,7 +3742,7 @@ Usage:
  3.14GiB/16.00GiB object_store_memory
 
 Constraints:
- {'CPU': 16}: 100+ from request_resources()
+ {'CPU': 16}: 100 from request_resources()
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
  {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)

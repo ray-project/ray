@@ -568,7 +568,7 @@ Total Usage:
  5.42KiB/10.04KiB object_store_memory
 
 Total Constraints:
- {'GPU': 2, 'CPU': 100}: 2+ from request_resources()
+ {'GPU': 2, 'CPU': 100}: 2 from request_resources()
 Total Demands:
  {'CPU': 1, 'GPU': 1}: 11+ pending tasks/actors
  {'CPU': 1, 'GPU': 1} * 1 (STRICT_SPREAD): 1+ pending placement groups

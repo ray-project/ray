@@ -727,7 +727,7 @@ def format_resource_demand_summary(
 def get_constraints_report(lm_summary: LoadMetricsSummary):
     constraint_lines = []
     for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count}+ from request_resources()"
+        line = f" {bundle}: {count} from request_resources()"
         constraint_lines.append(line)
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
