@@ -20,20 +20,23 @@ package ray.rpc.events;
 
 // Message containing the execution information of a task.
 message TaskExecutionEvent {
-    // task_id and task_attempt forms the unique identifier for a task.
-    bytes task_id = 1;
-    int32 task_attempt = 2;
+  // task_id and task_attempt form the unique identifier of a task.
+  bytes task_id = 1;
+  int32 task_attempt = 2;
 
-    // The task execution information
-    map<int32, int64> task_state_ns = 3;
-    UserErrorInfo user_error_info = 4;
-    RayErrorInfo ray_error_info = 5;
+  // The task execution information
 
-    // The correlation ids of the task that can be used to correlate the task with
-    // other events.
-    bytes node_id = 6;
-    bytes worker_id = 7;
-    int32 worker_pid = 8;
-    bytes parent_task_id = 9;
-    bytes placement_group_id = 10;
+  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+  // Value is the timestamp when status changes to the target status indicated by the key.
+  map<int32, int64> task_state_ns = 3;
+  UserErrorInfo user_error_info = 4;
+  RayErrorInfo ray_error_info = 5;
+
+  // The correlation ids of the task that can be used to correlate the task with
+  // other events.
+  bytes node_id = 6;
+  bytes worker_id = 7;
+  int32 worker_pid = 8;
+  bytes parent_task_id = 9;
+  bytes placement_group_id = 10;
 }
