@@ -214,20 +214,17 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
 def get_controller(http_options, grpc_options, global_logging_config):
     from ray.serve._private.controller import ServeController
 
-    actor = ray.actor._make_actor(
-        ServeController,
-        {
-            "num_cpus": 0,
-            "name": SERVE_CONTROLLER_NAME,
-            "lifetime": "detached",
-            "max_restarts": -1,
-            "max_task_retries": -1,
-            "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
-            "namespace": SERVE_NAMESPACE,
-            "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
-            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
-        },
-    )
+    actor = ray.remote(
+        name=SERVE_CONTROLLER_NAME,
+        namespace=SERVE_NAMESPACE,
+        num_cpus=0,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    )(ServeController)
     controller = actor.remote(
         http_options=http_options,
         grpc_options=grpc_options,
