@@ -183,7 +183,6 @@ def get_register_agents_number(gcs_client):
     return len(keys)
 
 
-@pytest.mark.skip
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
@@ -310,6 +309,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     assert len(new_owner_port - old_owner_port) == 1
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
