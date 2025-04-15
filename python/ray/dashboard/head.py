@@ -35,34 +35,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-GRPC_CHANNEL_OPTIONS = (
-    *ray_constants.GLOBAL_GRPC_OPTIONS,
-    ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-)
-
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
 #       GIL contention
 RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS", 1
 )
-
-
-def initialize_grpc_port_and_server(grpc_ip, grpc_port):
-    from grpc import aio as aiogrpc
-
-    import ray._private.tls_utils
-
-    aiogrpc.init_grpc_aio()
-
-    server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
-
-    grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-        server, f"{grpc_ip}:{grpc_port}"
-    )
-
-    return server, grpc_port
 
 
 class DashboardHead:
@@ -74,7 +52,6 @@ class DashboardHead:
         gcs_address: str,
         cluster_id_hex: str,
         node_ip_address: str,
-        grpc_port: int,
         log_dir: str,
         logging_level: int,
         logging_format: str,
@@ -104,7 +81,6 @@ class DashboardHead:
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
-            grpc_port: The port used to listen for gRPC on.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
@@ -147,14 +123,6 @@ class DashboardHead:
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
 
-        if self.minimal:
-            self.server, self.grpc_port = None, None
-        else:
-            grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-            self.server, self.grpc_port = initialize_grpc_port_and_server(
-                grpc_ip, grpc_port
-            )
-            logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
         self.http_server = None
@@ -360,7 +328,9 @@ class DashboardHead:
         return metrics
 
     @dashboard_utils.async_loop_forever(dashboard_consts.METRICS_RECORD_INTERVAL_S)
-    async def _record_dashboard_metrics(self):
+    async def _record_dashboard_metrics(
+        self, subprocess_module_handles: List["SubprocessModuleHandle"]
+    ):
         labels = {
             "ip": self.ip,
             "pid": self.pid,
@@ -369,15 +339,13 @@ class DashboardHead:
             "SessionName": self.session_name,
         }
         assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
-        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
-            float(self.dashboard_proc.cpu_percent())
-        )
-        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
-            float(self.dashboard_proc.memory_full_info().uss) / 1.0e6
-        )
-        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
-            float(self.dashboard_proc.memory_full_info().rss) / 1.0e6
-        )
+        self._record_cpu_mem_metrics_for_proc(self.dashboard_proc)
+        for subprocess_module_handle in subprocess_module_handles:
+            assert subprocess_module_handle.process is not None
+            proc = psutil.Process(subprocess_module_handle.process.pid)
+            self._record_cpu_mem_metrics_for_proc(
+                proc, subprocess_module_handle.module_cls.__name__
+            )
 
         loop = ray._common.utils.get_or_create_event_loop()
 
@@ -392,6 +360,30 @@ class DashboardHead:
             )
             self._event_loop_lag_s_max = None
 
+    def _record_cpu_mem_metrics_for_proc(
+        self, proc: psutil.Process, module_name: str = ""
+    ):
+        labels = {
+            "ip": self.ip,
+            "pid": proc.pid,
+            "Version": ray.__version__,
+            "Component": "dashboard" if not module_name else "dashboard_" + module_name,
+            "SessionName": self.session_name,
+        }
+        proc_attrs = proc.as_dict(attrs=["cpu_percent", "memory_full_info"])
+        self.metrics.metrics_dashboard_cpu.labels(**labels).set(
+            float(proc_attrs.get("cpu_percent", 0.0))
+        )
+        # memory_full_info is None on Mac due to the permission issue
+        # (https://github.com/giampaolo/psutil/issues/883)
+        if proc_attrs.get("memory_full_info") is not None:
+            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").uss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+            )
+
     async def run(self):
         gcs_address = self.gcs_address
 
@@ -401,6 +393,16 @@ class DashboardHead:
             address=gcs_address, cluster_id=self.cluster_id_hex
         )
         internal_kv._initialize_internal_kv(self.gcs_client)
+
+        dashboard_head_modules, subprocess_module_handles = self._load_modules(
+            self._modules_to_load
+        )
+        # Parallel start all subprocess modules.
+        for handle in subprocess_module_handles:
+            handle.start_module()
+        # Wait for all subprocess modules to be ready.
+        for handle in subprocess_module_handles:
+            handle.wait_for_module_ready()
 
         if not self.minimal:
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
@@ -413,7 +415,7 @@ class DashboardHead:
             enable_monitor_loop_lag(on_new_lag)
 
             self.record_dashboard_metrics_task = asyncio.create_task(
-                self._record_dashboard_metrics()
+                self._record_dashboard_metrics(subprocess_module_handles)
             )
 
         try:
@@ -427,20 +429,6 @@ class DashboardHead:
                 "This error message is harmless and can be ignored. "
                 f"Error: {e}"
             )
-
-        # Start a grpc asyncio server.
-        if self.server:
-            await self.server.start()
-
-        dashboard_head_modules, subprocess_module_handles = self._load_modules(
-            self._modules_to_load
-        )
-        # Parallel start all subprocess modules.
-        for handle in subprocess_module_handles:
-            handle.start_module()
-        # Wait for all subprocess modules to be ready.
-        for handle in subprocess_module_handles:
-            handle.wait_for_module_ready()
 
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
@@ -472,20 +460,12 @@ class DashboardHead:
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
-        self.gcs_client.internal_kv_put(
-            dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
-            f"{self.ip}:{self.grpc_port}".encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
 
         concurrent_tasks = [
             self._gcs_check_alive(),
         ]
         for m in dashboard_head_modules:
-            concurrent_tasks.append(m.run(self.server))
-        if self.server:
-            concurrent_tasks.append(self.server.wait_for_termination())
+            concurrent_tasks.append(m.run())
         await asyncio.gather(*concurrent_tasks)
 
         if self.http_server:

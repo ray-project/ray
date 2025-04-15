@@ -396,6 +396,9 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                     dynamic_lora_loading_path="s3://my_dynamic_lora_path",
                     max_num_adapters_per_replica=16,
                 ),
+                engine_kwargs=dict(
+                    enable_lora=True,
+                ),
                 deployment_config=dict(
                     autoscaling_config=dict(
                         min_replicas=1,
@@ -446,7 +449,6 @@ For structured output, you can use JSON mode similar to OpenAI's API:
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
 
-            # Configure the model with LoRA
             llm_config = LLMConfig(
                 model_loading_config=dict(
                     model_id="qwen-0.5b",

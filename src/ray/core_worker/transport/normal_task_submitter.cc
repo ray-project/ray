@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {

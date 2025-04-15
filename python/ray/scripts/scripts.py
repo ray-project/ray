@@ -26,6 +26,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.label_utils import (
+    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
     parse_node_labels_string,
 )
@@ -523,7 +524,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -688,8 +689,8 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
@@ -731,32 +732,40 @@ def start(
     resources = parse_resources_json(resources, cli_logger, cf)
 
     # Compose labels passed in with `--labels` and `--labels-file`.
-    # The label value from `--labels` will overrwite the value of any duplicate keys.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
     try:
-        labels_from_file_dict = parse_node_labels_from_yaml_file(labels_file)
+        labels_from_file = parse_node_labels_from_yaml_file(labels_file)
     except Exception as e:
         cli_logger.abort(
-            "The file at `{}` is not a valid YAML file, detailed error:{}"
+            "The file at `{}` is not a valid YAML file, detailed error: {} "
             "Valid values look like this: `{}`",
             cf.bold(f"--labels-file={labels_file}"),
             str(e),
             cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
         )
     try:
+        # Attempt to parse labels from new string format first.
         labels_from_string = parse_node_labels_string(labels)
     except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid string of key-value pairs, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"--labels={labels}"),
-            str(e),
-            cf.bold('--labels="key1=val1,key2=val2"'),
-        )
-    labels_dict = (
-        {**labels_from_file_dict, **labels_from_string}
-        if labels_from_file_dict
-        else labels_from_string
-    )
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -795,6 +804,11 @@ def start(
         warnings.warn(
             "--storage is deprecated and will be removed in a future version of Ray.",
         )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -826,7 +840,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,

@@ -1,3 +1,4 @@
+import json
 import re
 import yaml
 from typing import (
@@ -35,6 +36,22 @@ LABEL_SELECTOR_REGEX = re.compile(
 )
 
 
+def parse_node_labels_json(labels_json: str) -> Dict[str, str]:
+    labels = json.loads(labels_json)
+    if not isinstance(labels, dict):
+        raise ValueError("The format after deserialization is not a key-value pair map")
+    for key, value in labels.items():
+        if not isinstance(key, str):
+            raise ValueError("The key is not string type.")
+        if not isinstance(value, str):
+            raise ValueError(f'The value of the "{key}" is not string type')
+    
+    # Validate parsed custom node labels don't begin with ray.io prefix
+    validate_node_labels(labels)
+
+    return labels
+
+
 def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
     labels = {}
 
@@ -52,10 +69,13 @@ def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
         # Split each pair by `=`
         key_value = pair.split("=")
         if len(key_value) != 2:
-            raise ValueError("Label value is not a key-value pair.")
+            raise ValueError("Label string is not a key-value pair.")
         key = key_value[0].strip()
         value = key_value[1].strip()
         labels[key] = value
+
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
 
     return labels
 
@@ -76,18 +96,23 @@ def parse_node_labels_from_yaml_file(path: str) -> Dict[str, str]:
             if not isinstance(value, str):
                 raise ValueError(f'The value of "{key}" is not string type.')
 
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
+
     return labels
 
 
+# TODO (ryanaoleary@): This function will be removed after the migration to the label
+# selector API from NodeLabelSchedulingPolicy is complete.
 def validate_node_labels(labels: Dict[str, str]):
     if labels is None:
         return
-    for key, value in labels.items():
-        possible_error_message = validate_label_key(key)
-        if possible_error_message:
-            raise ValueError(possible_error_message)
-        if value is not None:
-            validate_label_value(value)
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"This is reserved for Ray defined labels."
 
 
 def validate_label_key(key: str) -> Optional[str]:
@@ -97,16 +122,13 @@ def validate_label_key(key: str) -> Optional[str]:
             return str(
                 f"Invalid label key prefix `{prefix}`. Prefix must be a series of DNS labels "
                 f"separated by dots (.), not longer than 253 characters in total."
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"This is reserved for Ray defined labels."
             )
-    else:
-        name = key
-    if len(name) > 63 or not re.fullmatch(LABEL_REGEX, name):
-        return str(
-            f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
-            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-            f"dots (.), and alphanumerics between."
-        )
-    return None
 
 
 def validate_label_value(value: str):
@@ -132,3 +154,16 @@ def validate_label_selector_value(selector: str) -> Optional[str]:
         )
 
     return None
+
+
+# TODO (ryanaoleary@): This function will replace `validate_node_labels` after
+# the migration from NodeLabelSchedulingPolicy to the Label Selector API is complete.
+def validate_node_label_syntax(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key, value in labels.items():
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            raise ValueError(possible_error_message)
+        if value is not None:
+            validate_label_value(value)
