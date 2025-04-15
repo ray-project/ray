@@ -50,7 +50,6 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-@pytest.mark.skip
 @pytest.mark.parametrize(
     "address_param",
     [
