@@ -242,6 +242,8 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
         self._port: Optional[int] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -691,6 +693,8 @@ class ActorReplicaWrapper:
                         self._version,
                         self._initialization_latency_s,
                         self._port,
+                        self._http_port,
+                        self._grpc_port,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -926,6 +930,8 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             port=self._actor._port,
+            http_port=self._actor._http_port,
+            grpc_port=self._actor._grpc_port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -1419,6 +1425,13 @@ class DeploymentState:
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
+
+    def get_alive_replica_infos(self) -> List[RunningReplicaInfo]:
+        return [
+            replica.get_running_replica_info(self._cluster_node_info_cache)
+            for replica in self._replicas.get()
+            if replica.actor_node_id is not None
+        ]
 
     def get_running_replica_ids(self) -> List[ReplicaID]:
         return [
@@ -2622,6 +2635,16 @@ class DeploymentStateManager:
             alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
 
         return alive_replica_actor_ids
+
+    def get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        node_id_to_alive_replica_ids = defaultdict(set)
+        for ds in self._deployment_states.values():
+            replicas = ds.get_alive_replica_infos()
+            for replica in replicas:
+                node_id_to_alive_replica_ids[replica.node_id].add(
+                    replica.replica_id.unique_id
+                )
+        return node_id_to_alive_replica_ids
 
     def deploy(
         self,

@@ -19,6 +19,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
+    RunningReplicaInfo,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -1066,6 +1067,24 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return {}
         return self._application_states[name].list_deployment_details()
+
+    def get_running_applications(self) -> List[str]:
+        """Get list of running application names."""
+        return [
+            app_name
+            for app_name, status in self.list_app_statuses().items()
+            if status.status == ApplicationStatus.RUNNING
+        ]
+
+    def get_running_replica_infos(
+        self, app_name: str, deployment_name: str
+    ) -> List[RunningReplicaInfo]:
+        """Get all running replicas for the ingress deployment of an application."""
+        deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        running_replica_infos = (
+            self._deployment_state_manager.get_running_replica_infos()
+        )
+        return running_replica_infos.get(deployment_id, [])
 
     def update(self):
         """Update each application state"""

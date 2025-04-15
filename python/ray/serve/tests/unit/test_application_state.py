@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
+    RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
@@ -152,6 +153,12 @@ class MockDeploymentStateManager:
 
     def delete_deployment(self, id: DeploymentID):
         self.deleting[id] = True
+
+    def get_running_replica_infos(self) -> Dict[DeploymentID, List[RunningReplicaInfo]]:
+        return {
+            deployment_id: [Mock(spec=RunningReplicaInfo)]
+            for deployment_id in self.deployment_infos
+        }
 
 
 @pytest.fixture
@@ -1308,6 +1315,95 @@ class TestOverrideDeploymentInfo:
             updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
             == "s3://B"
         )
+
+
+class TestGetRunningApplications:
+    def test_no_running_applications(self, mocked_application_state_manager):
+        """Test when there are no running applications."""
+        app_state_manager, _, _ = mocked_application_state_manager
+        assert app_state_manager.get_running_applications() == []
+
+    def test_multiple_running_applications(self, mocked_application_state_manager):
+        """Test when there are multiple running applications."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy and make two applications running
+        app1_id = DeploymentID(name="d1", app_name="app1")
+        app2_id = DeploymentID(name="d2", app_name="app2")
+
+        app_state_manager.deploy_app("app1", [deployment_params("d1")])
+        app_state_manager.deploy_app("app2", [deployment_params("d2")])
+
+        # Update to create deployments
+        app_state_manager.update()
+
+        # Make both applications running
+        deployment_state_manager.set_deployment_healthy(app1_id)
+        deployment_state_manager.set_deployment_healthy(app2_id)
+        app_state_manager.update()
+
+        running_apps = app_state_manager.get_running_applications()
+        assert len(running_apps) == 2
+        assert "app1" in running_apps
+        assert "app2" in running_apps
+
+    def test_mixed_application_states(self, mocked_application_state_manager):
+        """Test when some applications are running and others are not."""
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy three applications
+        app1_id = DeploymentID(name="d1", app_name="app1")
+        app2_id = DeploymentID(name="d2", app_name="app2")
+        _ = DeploymentID(name="d3", app_name="app3")
+
+        app_state_manager.deploy_app("app1", [deployment_params("d1")])
+        app_state_manager.deploy_app("app2", [deployment_params("d2")])
+        app_state_manager.deploy_app("app3", [deployment_params("d3")])
+
+        # Update to create deployments
+        app_state_manager.update()
+
+        # Make app1 running, app2 unhealthy, and app3 still deploying
+        deployment_state_manager.set_deployment_healthy(app1_id)
+        deployment_state_manager.set_deployment_unhealthy(app2_id)
+        app_state_manager.update()
+
+        running_apps = app_state_manager.get_running_applications()
+        assert len(running_apps) == 1
+        assert "app1" in running_apps
+        assert "app2" not in running_apps
+        assert "app3" not in running_apps
+
+
+class TestGetRunningReplicaInfos:
+    def test_running_replicas(self, mocked_application_state_manager):
+        """Test when there are running replicas."""
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        assert app_state_manager.get_running_replica_infos("app1", "d1") == []
+
+        # Deploy an application
+        app_state_manager.deploy_app("app1", [deployment_params("d1")])
+        app_state_manager.update()
+
+        replicas = app_state_manager.get_running_replica_infos("app1", "d1")
+        assert len(replicas) == 1
+
+    def test_nonexistent_deployment(self, mocked_application_state_manager):
+        """Test when the deployment doesn't exist."""
+        app_state_manager, _, _ = mocked_application_state_manager
+        replicas = app_state_manager.get_running_replica_infos(
+            "nonexistent_app", "nonexistent_deployment"
+        )
+        assert len(replicas) == 0
 
 
 if __name__ == "__main__":

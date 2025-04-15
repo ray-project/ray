@@ -82,7 +82,6 @@ CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 
 
-@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -378,89 +377,7 @@ class ServeController:
         while True:
             loop_start_time = time.time()
 
-            try:
-                self.cluster_node_info_cache.update()
-            except Exception:
-                logger.exception("Exception updating cluster node info cache.")
-
-            if self._shutting_down:
-                try:
-                    self.shutdown()
-                except Exception:
-                    logger.exception("Exception during shutdown.")
-
-            if (
-                not self.done_recovering_event.is_set()
-                and time.time() - start_time > recovering_timeout
-            ):
-                logger.warning(
-                    f"Replicas still recovering after {recovering_timeout}s, "
-                    "setting done recovering event to broadcast long poll updates."
-                )
-                self.done_recovering_event.set()
-
-            try:
-                dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update()
-
-                self.deployment_state_manager.save_checkpoint()
-
-                self.dsm_update_duration_gauge_s.set(
-                    time.time() - dsm_update_start_time
-                )
-                if not self.done_recovering_event.is_set() and not any_recovering:
-                    self.done_recovering_event.set()
-                    if num_loops > 0:
-                        # Only log if we actually needed to recover anything.
-                        logger.info(
-                            "Finished recovering deployments after "
-                            f"{(time.time() - start_time):.2f}s.",
-                            extra={"log_to_stderr": False},
-                        )
-            except Exception:
-                logger.exception("Exception updating deployment state.")
-
-            try:
-                asm_update_start_time = time.time()
-                self.application_state_manager.update()
-
-                self.application_state_manager.save_checkpoint()
-                # ApplicationStateManager.update() can also mutate the
-                # DeploymentStateManager so we need to checkpoint that as well
-                self.deployment_state_manager.save_checkpoint()
-
-                self.asm_update_duration_gauge_s.set(
-                    time.time() - asm_update_start_time
-                )
-            except Exception:
-                logger.exception("Exception updating application state.")
-
-            # Update the proxy nodes set before updating the proxy states,
-            # so they are more consistent.
-            node_update_start_time = time.time()
-            self._update_proxy_nodes()
-            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
-
-            # Don't update proxy_state until after the done recovering event is set,
-            # otherwise we may start a new proxy but not broadcast it any
-            # info about available deployments & their replicas.
-            if self.proxy_state_manager and self.done_recovering_event.is_set():
-                try:
-                    proxy_update_start_time = time.time()
-                    self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
-                    self.proxy_update_duration_gauge_s.set(
-                        time.time() - proxy_update_start_time
-                    )
-                except Exception:
-                    logger.exception("Exception updating proxy state.")
-
-            # When the controller is done recovering, drop invalid handle metrics
-            # that may be stale for autoscaling
-            if not any_recovering:
-                self.autoscaling_state_manager.drop_stale_handle_metrics(
-                    self.deployment_state_manager.get_alive_replica_actor_ids()
-                    | self.proxy_state_manager.get_alive_proxy_actor_ids()
-                )
+            self.run_control_loop_step(start_time, recovering_timeout, num_loops)
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
@@ -479,6 +396,89 @@ class ServeController:
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+
+    async def run_control_loop_step(
+        self, start_time: float, recovering_timeout: float, num_loops: int
+    ):
+        try:
+            self.cluster_node_info_cache.update()
+        except Exception:
+            logger.exception("Exception updating cluster node info cache.")
+
+        if self._shutting_down:
+            try:
+                self.shutdown()
+            except Exception:
+                logger.exception("Exception during shutdown.")
+
+        if (
+            not self.done_recovering_event.is_set()
+            and time.time() - start_time > recovering_timeout
+        ):
+            logger.warning(
+                f"Replicas still recovering after {recovering_timeout}s, "
+                "setting done recovering event to broadcast long poll updates."
+            )
+            self.done_recovering_event.set()
+
+        try:
+            dsm_update_start_time = time.time()
+            any_recovering = self.deployment_state_manager.update()
+
+            self.deployment_state_manager.save_checkpoint()
+
+            self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
+            if not self.done_recovering_event.is_set() and not any_recovering:
+                self.done_recovering_event.set()
+                if num_loops > 0:
+                    # Only log if we actually needed to recover anything.
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{(time.time() - start_time):.2f}s.",
+                        extra={"log_to_stderr": False},
+                    )
+        except Exception:
+            logger.exception("Exception updating deployment state.")
+
+        try:
+            asm_update_start_time = time.time()
+            self.application_state_manager.update()
+
+            self.application_state_manager.save_checkpoint()
+            # ApplicationStateManager.update() can also mutate the
+            # DeploymentStateManager so we need to checkpoint that as well
+            self.deployment_state_manager.save_checkpoint()
+
+            self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
+        except Exception:
+            logger.exception("Exception updating application state.")
+
+        # Update the proxy nodes set before updating the proxy states,
+        # so they are more consistent.
+        node_update_start_time = time.time()
+        self._update_proxy_nodes()
+        self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+
+        # Don't update proxy_state until after the done recovering event is set,
+        # otherwise we may start a new proxy but not broadcast it any
+        # info about available deployments & their replicas.
+        if self.proxy_state_manager and self.done_recovering_event.is_set():
+            try:
+                proxy_update_start_time = time.time()
+                self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
+                self.proxy_update_duration_gauge_s.set(
+                    time.time() - proxy_update_start_time
+                )
+            except Exception:
+                logger.exception("Exception updating proxy state.")
+
+        # When the controller is done recovering, drop invalid handle metrics
+        # that may be stale for autoscaling
+        if not any_recovering:
+            self.autoscaling_state_manager.drop_stale_handle_metrics(
+                self.deployment_state_manager.get_alive_replica_actor_ids()
+                | self.proxy_state_manager.get_alive_proxy_actor_ids()
+            )
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -956,17 +956,23 @@ class ServeController:
         """
         if self.proxy_state_manager is None:
             return []
-        return [
+        target_groups: List[TargetGroup] = []
+
+        if self.proxy_state_manager.get_proxy_details():
             # setting prefix route to "/" because in ray serve, proxy
             # accepts requests from the client and routes them to the
             # correct application. This is true for both HTTP and gRPC proxies.
-            TargetGroup(
-                protocol=protocol,
-                route_prefix="/",
-                targets=self.proxy_state_manager.get_targets(protocol),
+            target_groups.extend(
+                [
+                    TargetGroup(
+                        protocol=protocol,
+                        route_prefix="/",
+                        targets=self.proxy_state_manager.get_targets(protocol),
+                    )
+                    for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
+                ]
             )
-            for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
-        ]
+        return target_groups
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

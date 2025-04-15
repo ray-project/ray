@@ -17,6 +17,10 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    CONTROLLER_MAX_CONCURRENCY,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -35,6 +39,7 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.util.placement_group import PlacementGroup
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 # NOTE: Please read carefully before changing!
 #
@@ -204,3 +209,28 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         )
 
     return handle.options(stream=not info.app_is_cross_language)
+
+
+def get_controller(http_options, grpc_options, global_logging_config):
+    from ray.serve._private.controller import ServeController
+
+    actor = ray.actor._make_actor(
+        ServeController,
+        {
+            "num_cpus": 0,
+            "name": SERVE_CONTROLLER_NAME,
+            "lifetime": "detached",
+            "max_restarts": -1,
+            "max_task_retries": -1,
+            "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
+            "namespace": SERVE_NAMESPACE,
+            "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
+            "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
+        },
+    )
+    controller = actor.remote(
+        http_options=http_options,
+        grpc_options=grpc_options,
+        global_logging_config=global_logging_config,
+    )
+    return controller

@@ -373,6 +373,12 @@ class ReplicaBase(ABC):
 
         self._port: Optional[int] = None
 
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+        self._http_port = None
+        self._grpc_port = None
+
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -750,12 +756,20 @@ class ReplicaBase(ABC):
 
     def get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+    ) -> Tuple[
+        DeploymentConfig,
+        DeploymentVersion,
+        Optional[float],
+        Optional[int],
+        Optional[int],
+    ]:
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
             self._port,
+            self._http_port,
+            self._grpc_port,
         )
 
     @abstractmethod

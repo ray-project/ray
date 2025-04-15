@@ -513,6 +513,8 @@ class RunningReplicaInfo:
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
     port: Optional[int] = None
+    http_port: Optional[int] = None
+    grpc_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
