@@ -262,9 +262,9 @@ bool ClusterResourceManager::NodeLabelMatchesConstraint(
       return true;
     }
   } else {
-    RAY_CHECK(false) << "Node label match operator type must be one of `label_equals`, "
-                        "`label_not_equals`、"
-                        "`label_in`, or `label_not_in`.";
+    RAY_CHECK(false)
+        << "Node label constraint operator type must be one of equals, not equals (!),"
+           "in、or not in (!in)";
   }
   return false;
 }

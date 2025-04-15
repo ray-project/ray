@@ -307,7 +307,7 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
 }
 
 const rpc::LabelSelector &TaskSpecification::GetLabelSelector() const {
-  return *label_selector_;
+  return message_->label_selector();
 }
 
 const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {

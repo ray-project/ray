@@ -460,6 +460,7 @@ class RemoteFunction:
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
         labels = task_options.get("_labels")
+        label_selector = task_options.get("label_selector")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -491,6 +492,7 @@ class RemoteFunction:
                 generator_backpressure_num_objects,
                 enable_task_events,
                 labels,
+                label_selector,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

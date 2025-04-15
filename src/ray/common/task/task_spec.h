@@ -519,8 +519,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_resources_;
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
-  /// Field storing required label constraints for a node to execute this Task on.
-  std::shared_ptr<rpc::LabelSelector> label_selector_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
   int runtime_env_hash_ = 0;
