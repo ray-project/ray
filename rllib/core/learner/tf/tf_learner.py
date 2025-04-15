@@ -294,7 +294,6 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
-
         def helper(_batch):
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)

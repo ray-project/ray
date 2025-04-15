@@ -106,7 +106,6 @@ class MetricsLogger:
     def __init__(self):
         """Initializes a MetricsLogger instance."""
         self.stats = {}
-        #self._tensor_keys = set()
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -1016,7 +1015,6 @@ class MetricsLogger:
         """
         with self._threading_lock:
             self.stats = {}
-            #self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1061,10 +1059,8 @@ class MetricsLogger:
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set and detach value from graph.
         if torch and torch.is_tensor(value):
-            #self._tensor_keys.add(key)
             value = value.detach()
         elif tf and tf.is_tensor(value):
-            #self._tensor_keys.add(key)
             value = tf.stop_gradient(value)
         return value
 
@@ -1111,10 +1107,6 @@ class MetricsLogger:
         flat_key = force_tuple(tree.flatten(flat_key))
 
         with self._threading_lock:
-            ## Erase the tensor key as well, if applicable.
-            #if flat_key in self._tensor_keys:
-            #    self._tensor_keys.discard(flat_key)
-
             # Erase the key from the (nested) `self.stats` dict.
             _dict = self.stats
             try:
