@@ -20,7 +20,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "manual",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -267,9 +267,6 @@ py_test_module_list(
         "test_streaming_generator_backpressure.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
-        "test_task_events.py",
-        "test_task_events_2.py",
-        "test_task_events_3.py",
         "test_task_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_tempfile.py",
@@ -349,6 +346,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
         "test_utils.py",
@@ -427,7 +425,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "test_channel.py",
         "test_nccl_channel.py",
@@ -564,6 +562,22 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     files = [
+        "autoscaler/test_providers.py",
+    ],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
         "test_cli_logger.py",
@@ -577,7 +591,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -596,7 +610,7 @@ py_test_module_list(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -675,6 +689,9 @@ py_test_module_list(
         "test_state_api_2.py",
         "test_storage.py",
         "test_stress_failure.py",
+        "test_task_events.py",
+        "test_task_events_2.py",
+        "test_task_events_3.py",
         "test_unavailable_actors.py",
     ],
     tags = [
@@ -935,7 +952,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -950,7 +967,7 @@ py_test(
     tags = [
         "exclusive",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -966,7 +983,39 @@ py_test(
         "exclusive",
         "no_windows",
         "small_size_python_tests",
-        "team:serverless",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_cluster_operator",
+    size = "small",
+    srcs = ["vsphere/test_cluster_operator.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "vsphere/test_vmray_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vmray_node_provider.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
     ],
     deps = [
         ":conftest",
@@ -1182,7 +1231,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "spark_plugin_tests",
-        "team:serverless",
+        "team:core",
     ],
     deps = [
         ":conftest",
