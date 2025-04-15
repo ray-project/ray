@@ -183,7 +183,6 @@ def get_register_agents_number(gcs_client):
     return len(keys)
 
 
-@pytest.mark.skip
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
