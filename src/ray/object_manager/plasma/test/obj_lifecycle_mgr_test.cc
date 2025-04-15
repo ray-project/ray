@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 
 #include <limits>
 #include <memory>
@@ -20,8 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/random/random.h"
-#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 

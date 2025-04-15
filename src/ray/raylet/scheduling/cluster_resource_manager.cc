@@ -326,11 +326,18 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
   return false;
 }
 
-std::string ClusterResourceManager::DebugString() const {
+std::string ClusterResourceManager::DebugString(
+    std::optional<size_t> max_num_nodes_to_include) const {
   std::stringstream buffer;
+  size_t num_nodes_included = 0;
   for (auto &node : GetResourceView()) {
+    if (max_num_nodes_to_include.has_value() &&
+        num_nodes_included >= max_num_nodes_to_include.value()) {
+      break;
+    }
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
+    ++num_nodes_included;
   }
   buffer << " " << bundle_location_index_.DebugString();
   return buffer.str();
