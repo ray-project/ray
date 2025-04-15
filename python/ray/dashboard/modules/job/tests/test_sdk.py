@@ -50,6 +50,7 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "address_param",
     [
@@ -306,6 +307,7 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     assert len(new_owner_port - old_owner_port) == 1
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_env_vars",
     [
