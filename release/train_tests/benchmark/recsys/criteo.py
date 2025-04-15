@@ -8,8 +8,6 @@ import numpy as np
 import pyarrow.csv
 
 import ray.data
-from ray.data import DataContext
-from ray.data.context import ShuffleStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +79,7 @@ def fill_missing(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 
 
 def concat_and_normalize_dense_features(
-    batch: Dict[str, np.ndarray]
+    batch: Dict[str, np.ndarray],
 ) -> Dict[str, np.ndarray]:
     """Concatenate dense and sparse features together.
     Apply log transformation to dense features."""
@@ -189,10 +187,6 @@ def _get_base_dataset(stage: str = "train"):
 
 
 def get_ray_dataset(stage: str = "train"):
-    # Enable hash-shuffling
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-
     ds = _get_base_dataset(stage)
 
     # Convert categorical features to integers.
@@ -272,10 +266,6 @@ def _compute_value_counts(ds, feature_name) -> List[Tuple]:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-
-    # Enable hash-shuffling
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = _get_base_dataset(stage="train")
 
