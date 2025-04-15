@@ -319,7 +319,7 @@ class ClusterStatusFormatter:
         pending_report = cls._pending_node_report(data)
         failure_report = cls._failed_node_report(data, verbose)
         cluster_usage_report = cls._cluster_usage_report(data, verbose)
-        constraints_report = cls._constraints_report(data)
+        constraints_report = cls._constraint_report(data)
         demand_report = cls._demand_report(data)
         node_usage_report = (
             ""
@@ -543,8 +543,16 @@ class ClusterStatusFormatter:
         return " (no pending nodes)"
 
     @staticmethod
-    def _constraints_report(data: ClusterStatus) -> str:
-        # Process cluster constraint demand
+    def _constraint_report(data: ClusterStatus) -> str:
+        """Returns a formatted string describing the resource constraints from request_resources().
+
+        Args:
+            data: ClusterStatus object containing resource demand information.
+
+        Returns:
+            String containing the formatted constraints report, either listing each constraint
+            and count or indicating no constraints exist.
+        """
         constraint_lines = []
         request_demand = [
             (bc.bundle, bc.count)
