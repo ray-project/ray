@@ -243,3 +243,39 @@ Data for the following features and attributes is collected to improve Ray Data 
 
 If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
 to turn it off.
+
+.. _production_guide:
+
+Production guide
+--------------------------------------------------
+
+.. _model_cache:
+
+Caching model weight to remote object storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+While deploying Ray Data LLM to large scale clusters, model loading may be rate
+limited by HuggingFace. In this case, you can cache the model to remote object
+storage (AWS S3 or Google Cloud Storage) for more stable model loading.
+
+Ray Data LLM provides the following utility to help uploading models to remote object storage.
+
+.. testcode::
+
+    # Download model from HuggingFace, and upload to GCS
+    python -m ray.llm.utils.upload_model \
+        --model-source facebook/opt-350m \
+        --bucket-uri gs://my-bucket/path/to/facebook-opt-350m
+    # Or upload a local custom model to S3
+    python -m ray.llm.utils.upload_model \
+        --model-source local/path/to/model \
+        --bucket-uri s3://my-bucket/path/to/model_name
+
+And later you can use remote object store URI as `model_source` in the config.
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name
+        ...
+    )

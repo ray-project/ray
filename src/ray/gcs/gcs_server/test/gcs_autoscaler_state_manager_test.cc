@@ -28,7 +28,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"

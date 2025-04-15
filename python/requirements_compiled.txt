@@ -45,10 +45,11 @@ aiofiles==22.1.0
     #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.14
+aiohttp==3.11.16
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   datasets
@@ -1698,6 +1699,7 @@ pytest==7.4.4
     #   pytest-docker-tools
     #   pytest-fixture-config
     #   pytest-forked
+    #   pytest-lazy-fixtures
     #   pytest-mock
     #   pytest-remotedata
     #   pytest-repeat
@@ -2496,8 +2498,9 @@ werkzeug==2.3.8
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.43.0
+wheel==0.45.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   astunparse
     #   lightgbm
 widgetsnbextension==4.0.11
