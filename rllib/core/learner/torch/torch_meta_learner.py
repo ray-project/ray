@@ -209,10 +209,6 @@ class TorchMetaLearner(TorchLearner):
                 others_loss_per_module,
             )
 
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
-
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
             # Log all timesteps (env, agent, modules) based on given episodes/batch.

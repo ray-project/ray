@@ -920,13 +920,6 @@ class MetricsLogger:
         else:
             return self.peek_results(reduced_stats_to_return)
 
-    def tensors_to_numpy(self, tensor_metrics):
-        """Converts all previously logged and returned tensors back to numpy values."""
-        for key, values in tensor_metrics.items():
-            assert self._key_in_stats(key)
-            self._get_key(key).set_to_numpy_values(values)
-        self._threading_lock.release()
-
     def set_value(
         self,
         key: Union[str, Tuple[str, ...]],
