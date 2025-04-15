@@ -19,21 +19,18 @@ This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) will a
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/compute.png" width=500>
 
 ### Dependencies
-Let's start by downloading the dependencies required for this tutorial. You'll notice in our [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) we have a base image `FROM anyscale/ray:2.44.1-py312-cu125` followed by a list of pip packages. If you're not on any [Anyscale](https://console.anyscale.com/), you can pull this docker image yourself and install the dependencies.
-
+Let's start by downloading the dependencies required for this tutorial. You'll notice in our [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) we have a base image `FROM anyscale/ray-llm:2.44.1-py311-cu124` followed by a list of pip packages. If you're not on any [Anyscale](https://console.anyscale.com/), you can pull this docker image yourself and install the dependencies.
 
 
 ```bash
 %%bash
 # Install dependencies
 pip install -q \
-    "ray[serve,llm]>=2.44.0" \
-    "vllm>=0.7.2" \
     "xgrammar==0.1.11" \
     "pynvml==12.0.0" \
     "hf_transfer==0.1.9" \
-    "tensorboard" \
-    "llamafactory @ git+https://github.com/hiyouga/LLaMA-Factory.git#egg=llamafactory"
+    "tensorboard==2.19.0" \
+    "llamafactory@git+https://github.com/hiyouga/LLaMA-Factory.git@ac8c6fdd3ab7fb6372f231f238e6b8ba6a17eb16#egg=llamafactory"
 ```
 
 ## Data
