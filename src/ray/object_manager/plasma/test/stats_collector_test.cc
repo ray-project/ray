@@ -20,7 +20,7 @@
 
 #include "absl/random/random.h"
 #include "gtest/gtest.h"
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
+#include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 
 using plasma::flatbuf::ObjectSource;
 using ray::ObjectID;
