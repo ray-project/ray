@@ -91,20 +91,9 @@ SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   return result;
 }
 
-void SequentialActorSubmitQueue::OnClientConnected() {
-  // This assumes that all replies from the previous incarnation
-  // of the actor have been received. This assumption should be OK
-  // because we fail all inflight tasks in `DisconnectRpcClient`.
-  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                 << caller_starts_at << " to " << next_task_reply_position;
-  caller_starts_at = next_task_reply_position;
-}
-
 uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
-  RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
-      << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
-  return task_spec.ActorCounter() - caller_starts_at;
+  return task_spec.ActorCounter();
 }
 
 void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,

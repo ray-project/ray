@@ -71,7 +71,7 @@ ci/docker/serve.build.Dockerfile
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels
+@ dashboard linux_wheels python
 ;
 
 python/setup.py
