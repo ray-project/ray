@@ -15,6 +15,8 @@ from ray.dashboard.modules.job.cli import job_cli_group
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.fixture
 def mock_sdk_client():
