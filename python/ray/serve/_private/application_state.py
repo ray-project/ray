@@ -1079,7 +1079,7 @@ class ApplicationStateManager:
     def get_running_replica_infos(
         self, app_name: str, deployment_name: str
     ) -> List[RunningReplicaInfo]:
-        """Get all running replicas for the ingress deployment of an application."""
+        """Get all running replicas for the given deployment of an application."""
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         running_replica_infos = (
             self._deployment_state_manager.get_running_replica_infos()

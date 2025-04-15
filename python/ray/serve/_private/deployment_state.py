@@ -1430,7 +1430,6 @@ class DeploymentState:
         return [
             replica.get_running_replica_info(self._cluster_node_info_cache)
             for replica in self._replicas.get()
-            if replica.actor_node_id is not None
         ]
 
     def get_running_replica_ids(self) -> List[ReplicaID]:
@@ -2641,6 +2640,8 @@ class DeploymentStateManager:
         for ds in self._deployment_states.values():
             replicas = ds.get_alive_replica_infos()
             for replica in replicas:
+                if replica.node_id is None:
+                    continue
                 node_id_to_alive_replica_ids[replica.node_id].add(
                     replica.replica_id.unique_id
                 )

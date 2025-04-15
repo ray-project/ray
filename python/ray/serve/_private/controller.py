@@ -377,7 +377,7 @@ class ServeController:
         while True:
             loop_start_time = time.time()
 
-            self.run_control_loop_step(start_time, recovering_timeout, num_loops)
+            await self.run_control_loop_step(start_time, recovering_timeout, num_loops)
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
