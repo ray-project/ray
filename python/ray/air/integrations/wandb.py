@@ -12,7 +12,7 @@ import pyarrow.fs
 
 import ray
 from ray import logger
-from ray._private.storage import _load_class
+from ray._private.utils import load_class
 from ray.air._internal import usage as air_usage
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
@@ -277,7 +277,7 @@ def _get_wandb_project(project: Optional[str] = None) -> Optional[str]:
         # Try to populate WANDB_PROJECT_ENV_VAR and WANDB_GROUP_ENV_VAR
         # from external hook
         try:
-            _load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
+            load_class(os.environ[WANDB_POPULATE_RUN_LOCATION_HOOK])()
         except Exception as e:
             logger.exception(
                 f"Error executing {WANDB_POPULATE_RUN_LOCATION_HOOK} to "
@@ -322,7 +322,7 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
         # Try to get API key from external hook
         if WANDB_SETUP_API_KEY_HOOK in os.environ:
             try:
-                api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
+                api_key = load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
             except Exception as e:
                 logger.exception(
                     f"Error executing {WANDB_SETUP_API_KEY_HOOK} to setup API key: {e}",
@@ -343,7 +343,7 @@ def _run_wandb_process_run_info_hook(run: Any) -> None:
     """Run external hook to process information about wandb run"""
     if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
         try:
-            _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+            load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
         except Exception as e:
             logger.exception(
                 f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e

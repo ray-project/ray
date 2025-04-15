@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import patch, MagicMock
 from ray.llm._internal.batch.stages.tokenize_stage import TokenizeUDF, DetokenizeUDF
@@ -25,7 +27,9 @@ async def test_tokenize_udf_basic(mock_tokenizer_setup):
         {"input_ids": [4, 5, 6]},
     ]
 
-    udf = TokenizeUDF(data_column="__data", model="test-model")
+    udf = TokenizeUDF(
+        data_column="__data", model="test-model", expected_input_keys=["prompt"]
+    )
     batch = {"__data": [{"prompt": "Hello"}, {"prompt": "World"}]}
 
     results = []
@@ -45,7 +49,11 @@ async def test_detokenize_udf_basic(mock_tokenizer_setup):
     mock_tokenizer = mock_tokenizer_setup
     mock_tokenizer.batch_decode.return_value = ["Hello", "World"]
 
-    udf = DetokenizeUDF(data_column="__data", model="test-model")
+    udf = DetokenizeUDF(
+        data_column="__data",
+        model="test-model",
+        expected_input_keys=["generated_tokens"],
+    )
     batch = {
         "__data": [
             {"generated_tokens": [1, 2, 3]},
@@ -65,11 +73,5 @@ async def test_detokenize_udf_basic(mock_tokenizer_setup):
     )
 
 
-def test_tokenize_udf_expected_keys(mock_tokenizer_setup):
-    udf = TokenizeUDF(data_column="__data", model="test-model")
-    assert udf.expected_input_keys == ["prompt"]
-
-
-def test_detokenize_udf_expected_keys(mock_tokenizer_setup):
-    udf = DetokenizeUDF(data_column="__data", model="test-model")
-    assert udf.expected_input_keys == ["generated_tokens"]
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

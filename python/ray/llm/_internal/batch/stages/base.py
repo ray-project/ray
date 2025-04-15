@@ -1,6 +1,6 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable, Type
+from typing import Any, Dict, AsyncIterator, List, Callable, Type, Optional
 
 import pyarrow
 from pydantic import BaseModel, Field
@@ -71,14 +71,18 @@ class StatefulStageUDF:
         __call__ method will take the data column as the input of the udf
         method, and encapsulate the output of the udf method into the data
         column for the next stage.
+        expected_input_keys: The expected input keys of the stage.
     """
 
     # The internal column name for the index of the row in the batch.
     # This is used to align the output of the UDF with the input batch.
     IDX_IN_BATCH_COLUMN: str = "__idx_in_batch"
 
-    def __init__(self, data_column: str):
+    def __init__(
+        self, data_column: str, expected_input_keys: Optional[List[str]] = None
+    ):
         self.data_column = data_column
+        self.expected_input_keys = set(expected_input_keys or [])
 
     async def __call__(self, batch: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """A stage UDF wrapper that processes the input and output columns
@@ -195,8 +199,6 @@ class StatefulStageUDF:
         Raises:
             ValueError: If the required keys are not found.
         """
-        expected_input_keys = set(self.expected_input_keys)
-
         for inp in inputs:
             input_keys = set(inp.keys())
 
@@ -206,25 +208,15 @@ class StatefulStageUDF:
                     "for internal use."
                 )
 
-            if not expected_input_keys:
+            if not self.expected_input_keys:
                 continue
 
-            missing_required = expected_input_keys - input_keys
+            missing_required = self.expected_input_keys - input_keys
             if missing_required:
                 raise ValueError(
                     f"Required input keys {missing_required} not found at the input of "
                     f"{self.__class__.__name__}. Input keys: {input_keys}"
                 )
-
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """A list of required input keys. Missing required keys will raise
-        an exception.
-
-        Returns:
-            A list of required input keys.
-        """
-        return []
 
     async def udf(self, rows: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         raise NotImplementedError("StageUDF must implement the udf method")
@@ -239,11 +231,21 @@ class StatefulStage(BaseModel):
         description="The well-optimized stateful UDF for this stage."
     )
     fn_constructor_kwargs: Dict[str, Any] = Field(
-        description="The keyword arguments of the UDF constructor."
+        default_factory=dict,
+        description="The keyword arguments of the UDF constructor.",
     )
     map_batches_kwargs: Dict[str, Any] = Field(
-        description="The arguments of .map_batches()."
+        default_factory=lambda: {"concurrency": 1},
+        description="The arguments of .map_batches(). Default {'concurrency': 1}.",
     )
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {}
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {}
 
     def get_dataset_map_batches_kwargs(
         self,
@@ -271,13 +273,16 @@ class StatefulStage(BaseModel):
             )
         kwargs["batch_size"] = batch_size
 
-        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs})
+        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs.copy()})
         if "data_column" in kwargs["fn_constructor_kwargs"]:
             raise ValueError(
                 "'data_column' cannot be used as in fn_constructor_kwargs."
             )
 
         kwargs["fn_constructor_kwargs"]["data_column"] = data_column
+        kwargs["fn_constructor_kwargs"]["expected_input_keys"] = list(
+            self.get_required_input_keys().keys()
+        )
         return kwargs
 
     class Config:

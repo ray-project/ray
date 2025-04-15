@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <list>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -182,7 +185,8 @@ struct GcsServerMocker {
         resources_data->set_node_id(raylet_id.Binary());
         resources_data->set_resources_normal_task_changed(true);
         auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-        normal_task_map[kMemory_ResourceLabel] = double(std::numeric_limits<int>::max());
+        normal_task_map[kMemory_ResourceLabel] =
+            static_cast<double>(std::numeric_limits<int>::max());
         resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
       }
 
@@ -327,7 +331,7 @@ struct GcsServerMocker {
 
     /// ShutdownRaylet
     void ShutdownRaylet(
-        const NodeID &node_id,
+        const NodeID &raylet_node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
@@ -340,6 +344,11 @@ struct GcsServerMocker {
       reply.set_is_accepted(true);
       drain_raylet_callbacks.push_back(callback);
     };
+
+    void CancelTasksWithResourceShapes(
+        const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+        const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+        override{};
 
     void IsLocalWorkerDead(
         const WorkerID &worker_id,
@@ -424,7 +433,7 @@ struct GcsServerMocker {
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
     // The store_client and io_context args are NOT used.
-    MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+    explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,
@@ -460,14 +469,6 @@ struct GcsServerMocker {
     Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                          const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
-    }
-
-    Status AsyncDrainNode(const NodeID &node_id,
-                          const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
     }
 
     Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,

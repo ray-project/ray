@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-import uuid
 from typing import Dict, Iterator, List, Optional
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
@@ -27,9 +26,13 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
-from ray.data._internal.logging import get_log_directory
+from ray.data._internal.logging import (
+    get_log_directory,
+    register_dataset_logger,
+    unregister_dataset_logger,
+)
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
@@ -53,14 +56,16 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, data_context: DataContext, dataset_tag: str = "unknown_dataset"):
+    def __init__(
+        self,
+        data_context: DataContext,
+        dataset_id: str = "unknown_dataset",
+    ):
         self._data_context = data_context
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-
-        self._execution_id = uuid.uuid4().hex
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -74,7 +79,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
 
-        self._dataset_tag = dataset_tag
+        self._dataset_id = dataset_id
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
@@ -83,8 +88,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._last_debug_log_time = 0
 
+        register_dataset_logger(self._dataset_id)
         Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._execution_id}"
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
@@ -101,12 +107,14 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             if self._data_context.print_on_execution_start:
-                message = "Starting execution of Dataset."
+                message = f"Starting execution of Dataset {self._dataset_id}."
                 log_path = get_log_directory()
                 if log_path is not None:
                     message += f" Full logs are in {log_path}"
                 logger.info(message)
-                logger.info(f"Execution plan of Dataset: {dag}")
+                logger.info(
+                    f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
+                )
 
             logger.debug("Execution config: %s", self._options)
 
@@ -132,14 +140,14 @@ class StreamingExecutor(Executor, threading.Thread):
         self._autoscaler = create_autoscaler(
             self._topology,
             self._resource_manager,
-            self._execution_id,
+            self._dataset_id,
         )
 
         self._has_op_completed = {op: False for op in self._topology}
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(
-            self._dataset_tag,
+            self._dataset_id,
             self._get_operator_tags(),
         )
         for callback in get_execution_callbacks(self._data_context):
@@ -190,12 +198,14 @@ class StreamingExecutor(Executor, threading.Thread):
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
             self._update_stats_metrics(
-                state="FINISHED" if exception is None else "FAILED",
+                state=DatasetState.FINISHED.name
+                if exception is None
+                else DatasetState.FAILED.name,
                 force_update=True,
             )
             # Once Dataset execution completes, mark it as complete
             # and remove last cached execution stats.
-            StatsManager.clear_last_execution_stats(self._dataset_tag)
+            StatsManager.clear_last_execution_stats(self._dataset_id)
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -210,15 +220,18 @@ class StreamingExecutor(Executor, threading.Thread):
                 # the result of dataset execution.
                 if exception is None:
                     prog_bar_msg = (
-                        f"{OK_PREFIX} Dataset execution finished in "
+                        f"{OK_PREFIX} Dataset {self._dataset_id} execution finished in "
                         f"{self._final_stats.time_total_s:.2f} seconds"
                     )
                 else:
-                    prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
+                    prog_bar_msg = (
+                        f"{WARN_PREFIX} Dataset {self._dataset_id} execution failed"
+                    )
+                logger.info(prog_bar_msg)
                 self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
-                op.shutdown()
+                op.shutdown(force=True)
                 state.close_progress_bars()
             if exception is None:
                 for callback in get_execution_callbacks(self._data_context):
@@ -227,6 +240,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 for callback in get_execution_callbacks(self._data_context):
                     callback.after_execution_fails(self, exception)
             self._autoscaler.on_executor_shutdown()
+            unregister_dataset_logger(self._dataset_id)
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -243,6 +257,8 @@ class StreamingExecutor(Executor, threading.Thread):
                     self._initial_stats.streaming_exec_schedule_s.add(
                         time.process_time() - t_start
                     )
+                for callback in get_execution_callbacks(self._data_context):
+                    callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
         except Exception as e:
@@ -331,7 +347,7 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
-        self._update_stats_metrics(state="RUNNING")
+        self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
@@ -372,8 +388,7 @@ class StreamingExecutor(Executor, threading.Thread):
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            # TODO(scottjlee): Add dataset name/ID to progress bar output.
-            "Running Dataset. Active & requested resources: "
+            f"Running Dataset: {self._dataset_id}. Active & requested resources: "
             f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         )
         if running_usage.gpu > 0:
@@ -397,9 +412,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
+    def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
+        return f"{op.name}_{topology_index}"
+
     def _get_operator_tags(self):
         """Returns a list of operator tags."""
-        return [f"{op.name}{i}" for i, op in enumerate(self._topology)]
+        return [
+            f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
+        ]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -407,13 +427,17 @@ class StreamingExecutor(Executor, threading.Thread):
             "state": state,
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
-            "end_time": time.time() if state != "RUNNING" else None,
+            "total_rows": last_op.num_output_rows_total(),
+            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
-                f"{op.name}{i}": {
+                f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
-                    "state": state,
+                    "total_rows": op.num_output_rows_total(),
+                    "state": DatasetState.FINISHED.name
+                    if op.execution_finished()
+                    else state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
             },
@@ -421,7 +445,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
         StatsManager.update_execution_metrics(
-            self._dataset_tag,
+            self._dataset_id,
             [op.metrics for op in self._topology],
             self._get_operator_tags(),
             self._get_state_dict(state=state),

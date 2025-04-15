@@ -14,7 +14,13 @@
 
 #include "ray/object_manager/object_manager.h"
 
+#include <algorithm>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/plasma/store.h"
@@ -97,7 +103,7 @@ ObjectManager::ObjectManager(
           })),
       buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
-      rpc_work_(rpc_service_),
+      rpc_work_(rpc_service_.get_executor()),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
                              config_.object_manager_address == "127.0.0.1",
@@ -291,7 +297,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
                       << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to " << status.message();
+                      << " failed due to " << status;
                 }
               });
         },
@@ -332,7 +338,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                                        ray::Status status) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "HandleSendFinished on " << self_node_id_ << " to " << node_id
-      << " of object, chunk " << chunk_index << ", status: " << status.ToString();
+      << " of object, chunk " << chunk_index << ", status: " << status;
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
@@ -550,10 +556,10 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   rpc::ClientCallback<rpc::PushReply> callback =
       [this, start_time, object_id, node_id, chunk_index, on_complete](
           const Status &status, const rpc::PushReply &reply) {
-        // TODO: Just print warning here, should we try to resend this chunk?
+        // TODO(Eric Liang): Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING).WithField(object_id).WithField(node_id)
-              << "Send object chunk to node failed due to" << status.ToString()
+              << "Send object chunk to node failed due to" << status
               << ", chunk index: " << chunk_index;
         }
         double end_time = absl::GetCurrentTimeNanos() / 1e9;
@@ -630,7 +636,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
-    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status;
     if (chunk_status.IsOutOfDisk()) {
       pull_manager_->SetOutOfDisk(object_id);
     }

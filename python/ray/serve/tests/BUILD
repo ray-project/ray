@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_library(
@@ -20,7 +21,9 @@ py_test_module_list(
         "test_minimal_installation.py",
     ],
     tags = [
-        "exclusive", "minimal", "team:serve",
+        "exclusive",
+        "minimal",
+        "team:serve",
     ],
     deps = [
         "//python/ray/serve:serve_lib",
@@ -33,6 +36,7 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_advanced.py",
+        "test_backpressure.py",
         "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
@@ -40,12 +44,10 @@ py_test_module_list(
         "test_deployment_version.py",
         "test_expected_versions.py",
         "test_http_cancellation.py",
-        "test_backpressure.py",
         "test_persistence.py",
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
-        "test_telemetry_serve_used.py",
         "test_util.py",
         "test_websockets.py",
     ],
@@ -69,7 +71,6 @@ py_test_module_list(
         "test_controller_recovery.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
-        "test_grpc.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -86,6 +87,7 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -125,9 +127,10 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_deploy_2.py",
+        "test_grpc.py",
         "test_standalone.py",
         "test_standalone_3.py",
-        "test_telemetry.py",
+        "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
     tags = [
@@ -184,10 +187,10 @@ py_test_module_list(
     size = "enormous",
     files = [
         "test_deploy_app.py",
-        "test_metrics.py",
         "test_enable_task_events.py",
         "test_kv_store.py",
         "test_long_poll.py",
+        "test_metrics.py",
         "test_regression.py",
     ],
     tags = [
@@ -298,78 +301,6 @@ py_test(
     ],
 )
 
-# Tests disabling queue len caching feature flag.
-# TODO(edoakes): remove this after the FF is removed.
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_http_cancellation.py",
-        "test_handle_1.py",
-        "test_handle_2.py",
-        "test_handle_cancellation.py",
-        "test_handle_streaming.py",
-        "test_multiplex.py",
-        "test_request_timeout.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests autoscaling when queue len caching is disabled.
-py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_autoscaling_policy.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Test old stop-fully-then-start behavior.
-# TODO(zcin): remove this after the old behavior is completely removed
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
-    files = [
-        "test_controller_recovery.py",
-        "test_deploy.py",
-        "test_max_replicas_per_node.py",
-    ],
-    name_suffix = "_with_stop_fully_then_start_behavior",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
@@ -458,7 +389,6 @@ py_test_module_list(
     ],
 )
 
-
 # Test handle API with local testing mode.
 py_test_module_list(
     size = "small",
@@ -481,7 +411,6 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
-
 
 # Test currently off-by-default behavior to run replica sync methods in a threadpool.
 # TODO(edoakes): remove this once the FF is flipped on by default.

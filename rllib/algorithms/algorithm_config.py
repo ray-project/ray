@@ -25,11 +25,14 @@ import ray
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.differentiable_learner_config import (
+    DifferentiableLearnerConfig,
+)
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
+from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -39,7 +42,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -318,6 +321,7 @@ class AlgorithmConfig(_Config):
         # `self.env_runners()`
         self.env_runner_cls = None
         self.num_env_runners = 0
+        self.create_local_env_runner = True
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, reaplce the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
@@ -334,6 +338,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
         self.add_default_connectors_to_module_to_env_pipeline = True
+        self.merge_env_runner_states = "training_only"
+        self.broadcast_env_runner_states = True
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -473,6 +479,9 @@ class AlgorithmConfig(_Config):
         self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
+        # Use always the final observation until the user explicitly ask
+        # to ignore it.
+        self.ignore_final_observation = False
         self.prelearner_class = None
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
@@ -500,6 +509,8 @@ class AlgorithmConfig(_Config):
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
         self.evaluation_sample_timeout_s = 120.0
+        self.evaluation_auto_duration_min_env_steps_per_sample = 100
+        self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
@@ -960,7 +971,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env, device=None):
+    def build_env_to_module_connector(self, env=None, spaces=None, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -993,20 +1004,28 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
-        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if env is not None:
+            obs_space = getattr(env, "single_observation_space", env.observation_space)
+        else:
+            assert spaces is not None
+            obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
-        act_space = getattr(env, "single_action_space", env.action_space)
+        if env is not None:
+            act_space = getattr(env, "single_action_space", env.action_space)
+        else:
+            assert spaces is not None
+            act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = EnvToModulePipeline(
@@ -1041,7 +1060,7 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_module_to_env_connector(self, env):
+    def build_module_to_env_connector(self, env=None, spaces=None):
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
@@ -1075,20 +1094,28 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
-        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if env is not None:
+            obs_space = getattr(env, "single_observation_space", env.observation_space)
+        else:
+            assert spaces is not None
+            obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
-        act_space = getattr(env, "single_action_space", env.action_space)
+        if env is not None:
+            act_space = getattr(env, "single_action_space", env.action_space)
+        else:
+            assert spaces is not None
+            act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = ModuleToEnvPipeline(
@@ -1738,6 +1765,8 @@ class AlgorithmConfig(_Config):
         *,
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
+        create_local_env_runner: Optional[bool] = NotProvided,
+        create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
         gym_env_vectorize_mode: Optional[str] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
@@ -1755,16 +1784,17 @@ class AlgorithmConfig(_Config):
         add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
         add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
         episode_lookback_horizon: Optional[int] = NotProvided,
-        use_worker_filter_stats: Optional[bool] = NotProvided,
-        update_worker_filter_stats: Optional[bool] = NotProvided,
+        merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
+        broadcast_env_runner_states: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
         episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
-        create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_env_batch_wait_ms: Optional[float] = NotProvided,  # @OldAPIStack
@@ -1833,6 +1863,10 @@ class AlgorithmConfig(_Config):
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
                 collection/buffering/retrieval logic.
+            create_local_env_runner: If True, create a local EnvRunner instance, besides
+                the `num_env_runners` remote EnvRunner actors. If `num_env_runners` is
+                0, this setting is ignored and one local EnvRunner is created
+                regardless.
             create_env_on_local_worker: When `num_env_runners` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
@@ -1867,6 +1901,13 @@ class AlgorithmConfig(_Config):
                 and compile RLModule input data from this information. For example, if
                 your custom env-to-module connector (and your custom RLModule) requires
                 the previous 10 rewards as inputs, you must set this to at least 10.
+            merge_env_runner_states: True, if remote EnvRunner actor states should be
+                merged into central connector pipelines. Use "training_only" (default)
+                for only doing this for the training EnvRunners, NOT for the evaluation
+                EnvRunners.
+            broadcast_env_runner_states: True, if merged EnvRunner states (from the
+                central connector pipelines) should be broadcast back to all remote
+                EnvRunner actors.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2003,6 +2044,8 @@ class AlgorithmConfig(_Config):
             )
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
+        if create_local_env_runner is not NotProvided:
+            self.create_local_env_runner = create_local_env_runner
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
         if env_to_module_connector is not NotProvided:
@@ -2019,6 +2062,10 @@ class AlgorithmConfig(_Config):
             )
         if episode_lookback_horizon is not NotProvided:
             self.episode_lookback_horizon = episode_lookback_horizon
+        if merge_env_runner_states is not NotProvided:
+            self.merge_env_runner_states = merge_env_runner_states
+        if broadcast_env_runner_states is not NotProvided:
+            self.broadcast_env_runner_states = broadcast_env_runner_states
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -2518,9 +2565,10 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            to_check = force_list(callbacks_class)
+            if not all(callable(c) for c in to_check):
                 raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
+                    "`config.callbacks_class` must be a callable or list of callables that "
                     "returns a subclass of DefaultCallbacks, got "
                     f"{callbacks_class}!"
                 )
@@ -2558,6 +2606,8 @@ class AlgorithmConfig(_Config):
         evaluation_interval: Optional[int] = NotProvided,
         evaluation_duration: Optional[Union[int, str]] = NotProvided,
         evaluation_duration_unit: Optional[str] = NotProvided,
+        evaluation_auto_duration_min_env_steps_per_sample: Optional[int] = NotProvided,
+        evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
@@ -2596,6 +2646,14 @@ class AlgorithmConfig(_Config):
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps". Note that this
                 setting is ignored if `evaluation_duration="auto"`.
+            evaluation_auto_duration_min_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at least how many timesteps should be done per remote
+                `sample()` call.
+            evaluation_auto_duration_max_env_steps_per_sample: If `evaluation_duration`
+                is "auto" (in which case `evaluation_duration_unit` is always
+                "timesteps"), at most how many timesteps should be done per remote
+                `sample()` call.
             evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
                 to sample a complete episode in the case your config settings are:
                 `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
@@ -2684,6 +2742,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not NotProvided:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_auto_duration_min_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_min_env_steps_per_sample = (
+                evaluation_auto_duration_min_env_steps_per_sample
+            )
+        if evaluation_auto_duration_max_env_steps_per_sample is not NotProvided:
+            self.evaluation_auto_duration_max_env_steps_per_sample = (
+                evaluation_auto_duration_max_env_steps_per_sample
+            )
         if evaluation_sample_timeout_s is not NotProvided:
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
@@ -2738,6 +2804,7 @@ class AlgorithmConfig(_Config):
         materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
+        ignore_final_observation: Optional[bool] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
@@ -2883,6 +2950,11 @@ class AlgorithmConfig(_Config):
                 `{'prefetch_batches': 2}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
+            ignore_final_observation: If the final observation in an episode chunk should
+                be ignored. This concerns mainly column-based data and instead of using a
+                user-provided `NEXT_OBS` sets final observations to zero. This should be
+                used with BC only, as in true Offline RL algorithms the final observation
+                is important.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
@@ -3011,6 +3083,8 @@ class AlgorithmConfig(_Config):
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
             self.iter_batches_kwargs = iter_batches_kwargs
+        if ignore_final_observation is not NotProvided:
+            self.ignore_final_observation = ignore_final_observation
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_buffer_class is not NotProvided:
@@ -3805,17 +3879,6 @@ class AlgorithmConfig(_Config):
             return default_rl_module_spec
 
     @property
-    def train_batch_size_per_learner(self):
-        # If not set explicitly, try to infer the value.
-        if self._train_batch_size_per_learner is None:
-            return self.train_batch_size // (self.num_learners or 1)
-        return self._train_batch_size_per_learner
-
-    @train_batch_size_per_learner.setter
-    def train_batch_size_per_learner(self, value):
-        self._train_batch_size_per_learner = value
-
-    @property
     def train_batch_size_per_learner(self) -> int:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
@@ -4573,20 +4636,6 @@ class AlgorithmConfig(_Config):
                         f"`config.multi_agent(policies=..)`!"
                     )
 
-        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
-        #  multi-agent.
-        if (
-            self.is_multi_agent
-            and self.enable_env_runner_and_connector_v2
-            and self.num_envs_per_env_runner > 1
-        ):
-            self._value_error(
-                "For now, using env vectorization "
-                "(`config.num_envs_per_env_runner > 1`) in combination with "
-                "multi-agent AND the new EnvRunners is not supported! Try setting "
-                "`config.num_envs_per_env_runner = 1`."
-            )
-
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
 
@@ -4913,6 +4962,14 @@ class AlgorithmConfig(_Config):
             self._value_error(
                 "If no evaluation should be run, `action_space` and "
                 "`observation_space` must be provided."
+            )
+
+        if self.ignore_final_observation and self.algo_class.__name__ != "BC":
+            logger.warning(
+                "`ignore_final_observation=True` (zeros-out truncation observations), "
+                "but the algorithm isn't `BC`. It is recommended to use this "
+                "setting only with `BC`, b/c other RL algorithms rely on truncation-"
+                "observations due to value function estimates."
             )
 
         from ray.rllib.offline.offline_data import OfflineData
@@ -5732,6 +5789,119 @@ class AlgorithmConfig(_Config):
             error=True,
         )
         pass
+
+
+class DifferentiableAlgorithmConfig(AlgorithmConfig):
+    """An RLlib DifferentiableAlgorithmConfig builds a Meta algorithm from a given
+    configuration
+
+    .. testcode::
+
+        from ray.rllib.algorithm.algorithm_config import DifferentiableAlgorithmConfig
+        # Construct a generic config for an algorithm that needs differentiable Learners.
+        config = (
+            DifferentiableAlgorithmConfig()
+            .training(lr=3e-4)
+            .environment(env="CartPole-v1")
+            .learners(
+                differentiable_learner_configs=[
+                    DifferentiableLearnerConfig(
+                        DifferentiableTorchLearner,
+                        lr=1e-4,
+                    )
+                ]
+            )
+        )
+        # Similar to `AlgorithmConfig` the config using differentiable Learners can be
+        # used to build a respective `Algorithm`.
+        algo = config.build()
+
+
+    """
+
+    # A list of `DifferentiableLearnerConfig` instances that define differentiable
+    # `Learner`'s. Note, each of them needs to implement the `DifferentiableLearner`
+    # API.
+    differentiable_learner_configs: List[DifferentiableLearnerConfig]
+
+    def __init__(self, algo_class=None):
+        """Initializes the DifferentiableLearnerConfig instance.
+
+        Args:
+            algo_class: An optional Algorithm class that this config class belongs to.
+                Used (if provided) to build a respective Algorithm instance from this
+                config.
+        """
+        # Initialize the `AlgorithmConfig` first.
+        super().__init__(algo_class=algo_class)
+
+        # Initialize the list of differentiable learner configs to an empty list, which
+        # defines the default, i.e. the `MetaLearner` will have no nested updates.
+        self.differentiable_learner_configs: List[DifferentiableLearnerConfig] = []
+
+    def learners(
+        self,
+        *,
+        differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
+    ) -> "DifferentiableAlgorithmConfig":
+        """Sets the configurations for differentiable learners.
+
+        Args:
+            differentiable_learner_configs: A list of `DifferentiableLearnerConfig` instances
+                defining the `DifferentiableLearner` classes used for the nested updates in
+                `Algorithm`'s learner.
+        """
+        if differentiable_learner_configs is not NotProvided:
+            self.differentiable_learner_configs = differentiable_learner_configs
+
+        return self
+
+    def validate(self):
+        """Validates all values in this config."""
+
+        # First, call the `validate` method of super.
+        super().validate()
+
+        # TODO (simon): Maybe moving this to a private method?
+        # Ensure that the default learner class is derived from `TorchMetaLearner`.
+        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+
+        if not issubclass(self.get_default_learner_class(), TorchMetaLearner):
+            self._value_error(
+                "`get_default_learner_class` must return a `MetaLearner` class "
+                f"or sublass but got {self.get_default_learner_class()}."
+            )
+        # Make sure that the differentiable learner configs are contained in a list.
+        if not isinstance(self.differentiable_learner_configs, list):
+            self._value_error(
+                "`differentiable_learner_configs` must be a list of "
+                "`DifferentiableLearnerConfig` instances, but is "
+                f"{type(self.differentiable_learner_configs)}."
+            )
+        # In addition, check, if all configurations are wrapped in a
+        # `DifferentiableLearnerConfig`.
+        elif not all(
+            isinstance(learner_cfg, DifferentiableLearnerConfig)
+            for learner_cfg in self.differentiable_learner_configs
+        ):
+            self._value_error(
+                "`differentiable_learner_configs` must be a list of "
+                "`DifferentiableLearnerConfig` instances, but at least "
+                "one instance is not a `DifferentiableLearnerConfig`."
+            )
+
+    def get_default_learner_class(self):
+        """Returns the Learner class to use for this algorithm.
+
+        Override this method in the sub-class to return the `MetaLearner`.
+
+        Returns:
+            The `MetaLearner` class to use for this algorithm either as a class
+            type or as a string. (e.g. "ray.rllib.core.learner.torch.torch_meta_learner.TorchMetaLearner")
+        """
+        from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
+
+        return TorchMetaLearner
 
 
 class TorchCompileWhatToCompile(str, Enum):

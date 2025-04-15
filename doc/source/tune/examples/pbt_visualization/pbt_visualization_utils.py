@@ -13,6 +13,16 @@ def Q_batch(theta):
 
 
 def get_arrows(theta_history, perturbation_interval):
+    """
+    Computes the start points and deltas for arrows showing parameter perturbations.
+
+    Args:
+        theta_history: History of parameter values of shape (iterations, 2)
+        perturbation_interval: Number of iterations between perturbations
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Arrow start points and deltas
+    """
     theta_history = theta_history[1:, :]
     arrow_start = theta_history[
         np.arange(perturbation_interval - 1, len(theta_history), perturbation_interval)
@@ -38,6 +48,22 @@ def plot_parameter_history(
     plot_until_iter=None,
     include_colorbar=True,
 ):
+    """
+    Plot parameter history overlaid on the true reward contour.
+
+    Args:
+        results: List of result objects containing metrics dataframes
+        colors: List of colors for each result
+        labels: List of labels for each result
+        perturbation_interval: Interval at which parameter perturbations occur
+        fig: Existing figure to plot on (creates new if None)
+        ax: Existing axes to plot on (creates new if None)
+        plot_until_iter: Maximum iteration to plot (plots all if None)
+        include_colorbar: Whether to include a colorbar for the contour plot
+
+    Returns:
+        List of scatter plot objects
+    """
     if fig is None or ax is None:
         fig, ax = plt.subplots()
 
@@ -50,7 +76,7 @@ def plot_parameter_history(
     contour = ax.contourf(xx, yy, Q_batch(xys).reshape(xx.shape), 20)
     ax.set_xlabel("theta0")
     ax.set_ylabel("theta1")
-    ax.set_title("Q(theta)")
+    ax.set_title("Parameter History and True Reward Q(theta) Contour")
 
     scatters = []
     for i in range(len(results)):
@@ -93,31 +119,42 @@ def plot_parameter_history(
                     length_includes_head=True,
                     alpha=0.25,
                 )
-    ax.legend(loc="upper left")
+    ax.legend(loc="upper left", title="Trial Initial Parameters")
     if include_colorbar:
-        fig.colorbar(contour, ax=ax, orientation="vertical")
+        cbar = fig.colorbar(contour, ax=ax, orientation="vertical")
+        cbar.set_label("Reward Q(theta)")
     return scatters
 
 
 def plot_Q_history(results, colors, labels, ax=None):
+    """
+    Plot the history of true reward values over training iterations.
+
+    Args:
+        results: List of result objects containing metrics dataframes
+        colors: List of colors for each result
+        labels: List of labels for each result
+        ax: Existing axes to plot on (creates new if None)
+    """
     if ax is None:
         fig, ax = plt.subplots()
-    ax.set_title("True function (Q) value over training iterations")
-    ax.set_xlabel("training_iteration")
-    ax.set_ylabel("Q(theta)")
+    ax.set_title("True Reward (Q) Value Over Training Iterations")
+    ax.set_xlabel("Training Iteration")
+    ax.set_ylabel("Reward Q(theta)")
     for i in range(len(results)):
         df = results[i].metrics_dataframe
         ax.plot(df["Q"], label=labels[i], color=colors[i])
-    ax.legend()
+    ax.legend(title="Trial Initial Parameters")
 
 
 def make_animation(
-    results, colors, labels, perturbation_interval=None, filename="pbt.gif"
+    results, colors, labels, perturbation_interval=None, filename="pbt.gif", fps=5
 ):
     fig, ax = plt.subplots(figsize=(8, 8))
 
     def animate(i):
         ax.clear()
+        ax.set_title("Parameter Evolution Over Iterations")
         return plot_parameter_history(
             results,
             colors,
@@ -130,7 +167,7 @@ def make_animation(
         )
 
     ani = FuncAnimation(
-        fig, animate, interval=200, blit=True, repeat=True, frames=range(1, 101)
+        fig, animate, interval=1000 // fps, blit=True, repeat=True, frames=range(1, 101)
     )
-    ani.save(filename, writer=PillowWriter())
+    ani.save(filename, writer=PillowWriter(fps=fps))
     plt.close()

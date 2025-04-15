@@ -37,5 +37,15 @@ Alibaba
 LSH
 BTS
 [Mm]ultimodal
+Pythonic
 [Gg]rafana
 CLI
+[Ee]xoshuffle
+RISECamp
+Anyscale
+[Cc]omposable
+Nsight
+[Pp]rofiler
+deserialize
+teardown
+deserialization

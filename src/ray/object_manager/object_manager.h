@@ -24,7 +24,9 @@
 #include <memory>
 #include <mutex>
 #include <random>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -415,7 +417,7 @@ class ObjectManager : public ObjectManagerInterface,
   instrumented_io_context rpc_service_;
 
   /// Keep rpc service running when no task in rpc service.
-  boost::asio::io_service::work rpc_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
 
   /// The thread pool used for running `rpc_service`.
   /// Data copy operations during request are done in this thread pool.

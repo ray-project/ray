@@ -1,31 +1,54 @@
 """Apply chat template stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Type
+from typing import Any, Dict, AsyncIterator, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.common.utils.download_utils import (
+    download_model_files,
+    NodeModelDownloadable,
+)
 
 
 class ChatTemplateUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
+        chat_template: Optional[str] = None,
     ):
         """
         Initialize the ChatTemplateUDF.
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the chat template.
+            chat_template: The chat template in Jinja template format. This is
+            usually not needed if the model checkpoint already contains the
+            chat template.
         """
-        from transformers import AutoTokenizer
+        from transformers import AutoProcessor
 
-        super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        super().__init__(data_column, expected_input_keys)
+
+        # NOTE: We always use processor instead of tokenizer in this stage,
+        # because tokenizers of VLM models may not have chat template attribute.
+        # However, this may not be a reliable solution, because processors and
+        # tokenizers are not standardized across different models.
+        model_path = download_model_files(
+            model_id=model,
+            mirror_config=None,
+            download_model=NodeModelDownloadable.TOKENIZER_ONLY,
+            download_extra_files=False,
+        )
+        self.processor = AutoProcessor.from_pretrained(
+            model_path, trust_remote_code=True
+        )
+        self.chat_template = chat_template
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -37,11 +60,28 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
-        prompts = self.tokenizer.apply_chat_template(
-            [row["messages"].tolist() for row in batch],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        prompts = []
+        for row in batch:
+            # PyArrow cannot handle the messages with images, so Ray Data
+            # will fallback to use pickle for serialization. In this case,
+            # the "messages" column is already a list of dicts and does not
+            # have .tolist() method.
+            if hasattr(row["messages"], "tolist"):
+                conversation = row["messages"].tolist()
+            else:
+                conversation = row["messages"]
+            add_generation_prompt = self._should_add_generation_prompt(conversation)
+            # If we don't add a generation prompt, we should continue the final message.
+            continue_final_message = not add_generation_prompt
+            prompts.append(
+                self.processor.apply_chat_template(
+                    conversation,
+                    tokenize=False,
+                    chat_template=self.chat_template,
+                    add_generation_prompt=add_generation_prompt,
+                    continue_final_message=continue_final_message,
+                )
+            )
         assert len(batch) == len(prompts)
 
         for row, prompt in zip(batch, prompts):
@@ -50,10 +90,20 @@ class ChatTemplateUDF(StatefulStageUDF):
                 "prompt": prompt,
             }
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-        return ["messages"]
+    def _should_add_generation_prompt(self, conversation: List[Dict[str, Any]]) -> bool:
+        """Determines if the generation prompt should be added for the given conversation.
+
+        Adds the generation prompt only if the last message is from the user.
+        This is useful in cases where the user provides an assistant prefill
+        message.
+
+        Args:
+            conversation: The conversation to check.
+
+        Returns:
+            True if the generation prompt should be added, False otherwise.
+        """
+        return conversation[-1]["role"] == "user"
 
 
 class ChatTemplateStage(StatefulStage):
@@ -62,7 +112,11 @@ class ChatTemplateStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = ChatTemplateUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        return {
+            "messages": "A list of messages in OpenAI chat format. "
+            "See https://platform.openai.com/docs/api-reference/chat/create "
+            "for details."
+        }

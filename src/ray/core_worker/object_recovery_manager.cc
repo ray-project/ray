@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "ray/util/util.h"
 
 namespace ray {

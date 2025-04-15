@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.http_request_proc import (
     HttpRequestProcessorConfig,
@@ -21,3 +25,7 @@ def test_http_request_processor():
         "Authorization": "Bearer 1234567890"
     }
     assert stage.fn_constructor_kwargs["qps"] == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

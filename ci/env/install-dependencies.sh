@@ -27,7 +27,7 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [[ -n "${BUILDKITE-}" ]] && [ "${OSTYPE}" != msys ]; then
+    if [[ -n "${BUILDKITE-}" && "${OSTYPE}" != "msys" ]]; then
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
@@ -43,7 +43,7 @@ install_bazel() {
 }
 
 install_base() {
-  if [ -n "${BUILDKITE-}" ]; then
+  if [[ -n "${BUILDKITE-}" ]]; then
     echo "Skipping install_base in Buildkite"
     return
   fi
@@ -55,13 +55,13 @@ install_base() {
       sudo apt-get update -qq
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
-      if [ "${LINUX_WHEELS-}" = 1 ]; then
+      if [[ "${LINUX_WHEELS-}" == 1 ]]; then
         pkg_install_helper docker
-        if [ -n "${TRAVIS-}" ]; then
+        if [[ -n "${TRAVIS-}" ]]; then
           sudo usermod -a -G docker travis
         fi
       fi
-      if [ -n "${PYTHON-}" ]; then
+      if [[ -n "${PYTHON-}" ]]; then
         "${SCRIPT_DIR}/install-strace.sh" || true
       fi
       ;;
@@ -70,14 +70,14 @@ install_base() {
 
 install_shellcheck() {
   local shellcheck_version="0.7.1"
-  if [ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]; then
+  if [[ "${shellcheck_version}" != "$(command -v shellcheck > /dev/null && shellcheck --version | sed -n "s/version: //p")" ]]; then
     local osname=""
     case "${OSTYPE}" in
       linux*) osname="linux";;
       darwin*) osname="darwin";;
     esac
     local name="shellcheck-v${shellcheck_version}"
-    if [ "${osname}" = linux ] || [ "${osname}" = darwin ]; then
+    if [[ "${osname}" == "linux" || "${osname}" == "darwin" ]]; then
       sudo mkdir -p /usr/local/bin || true
       curl -f -s -L "https://github.com/koalaman/shellcheck/releases/download/v${shellcheck_version}/${name}.${osname}.x86_64.tar.xz" | {
         sudo tar -C /usr/local/bin -x -v -J --strip-components=1 "${name}/shellcheck"
@@ -100,9 +100,9 @@ install_linters() {
 
 install_nvm() {
   local NVM_HOME="${HOME}/.nvm"
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == msys ]]; then
     local ver="1.1.7"
-    if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
+    if [[ ! -f "${NVM_HOME}/nvm.sh" ]]; then
       mkdir -p -- "${NVM_HOME}"
       export NVM_SYMLINK="${PROGRAMFILES}\nodejs"
       (
@@ -119,7 +119,7 @@ install_nvm() {
         "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
-  elif [ -n "${BUILDKITE-}" ]; then
+  elif [[ -n "${BUILDKITE-}" ]]; then
     echo "Skipping nvm on Buildkite because we will use apt-get."
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
@@ -136,7 +136,7 @@ install_upgrade_pip() {
     "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
-    if [ "${CI-}" = true ]; then
+    if [[ "${CI-}" == "true" ]]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
     fi
@@ -146,14 +146,14 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if [ "${OSTYPE}" = msys ] ; then
+  if [[ "${OSTYPE}" == "msys" ]]; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
     return
   fi
 
-  if [ -n "${BUILDKITE-}" ] ; then
+  if [[ -n "${BUILDKITE-}" ]] ; then
     if [[ "${OSTYPE}" = darwin* ]]; then
-      if [ "$(uname -m)" = "arm64" ]; then
+      if [[ "$(uname -m)" == "arm64" ]]; then
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
       else
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
@@ -178,7 +178,7 @@ install_node() {
 }
 
 install_toolchains() {
-  if [ -z "${BUILDKITE-}" ]; then
+  if [[ -z "${BUILDKITE-}" ]]; then
     "${SCRIPT_DIR}"/install-toolchains.sh
   fi
   if [[ "${OSTYPE}" = linux* ]]; then
@@ -189,7 +189,7 @@ install_toolchains() {
 }
 
 download_mnist() {
-  if [ -d "${HOME}/data/MNIST" ]; then
+  if [[ -d "${HOME}/data/MNIST" ]]; then
     return
   fi
   mkdir -p "${HOME}/data"
@@ -209,7 +209,7 @@ retry_pip_install() {
     errmsg=$(eval "${pip_command}" 2>&1) && break
     status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30
   done
-  if [ "$status" != "0" ]; then
+  if [[ "$status" != "0" ]]; then
     echo "${status}" && return 1
   fi
 }
@@ -231,14 +231,14 @@ install_pip_packages() {
 
   requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
 
-  if [ "${LINT-}" = 1 ]; then
+  if [[ "${LINT-}" == 1 ]]; then
     install_linters
 
     requirements_files+=("${WORKSPACE_DIR}/doc/requirements-doc.txt")
   fi
 
   # Additional default doc testing dependencies.
-  if [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${DOC_TESTING-}" == 1 ]]; then
     # For Ray Core and Ray Serve DAG visualization docs test + dataset examples
     sudo apt-get install -y graphviz tesseract-ocr
 
@@ -250,7 +250,7 @@ install_pip_packages() {
   fi
 
   # Additional RLlib test dependencies.
-  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${RLLIB_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
@@ -266,13 +266,13 @@ install_pip_packages() {
   fi
 
   # Additional Train test dependencies.
-  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${TRAIN_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt")
   fi
 
   # Additional Tune/Doc test dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
   fi
@@ -280,7 +280,7 @@ install_pip_packages() {
   # Additional dependency for Ludwig.
   # This cannot be included in requirements files as it has conflicting
   # dependencies with Modin.
-  if [ "${INSTALL_LUDWIG-}" = 1 ]; then
+  if [[ "${INSTALL_LUDWIG-}" == 1 ]]; then
     # TODO: eventually pin this to master.
     requirements_packages+=("ludwig[test]>=0.4")
     requirements_packages+=("jsonschema>=4")
@@ -289,20 +289,20 @@ install_pip_packages() {
   # Additional dependency for time series libraries.
   # This cannot be included in tune-requirements.txt as it has conflicting
   # dependencies.
-  if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
+  if [[ "${INSTALL_TIMESERIES_LIBS-}" == 1 ]]; then
     requirements_packages+=("statsforecast==1.5.0")
     requirements_packages+=("prophet==1.1.1")
     requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
   fi
 
   # Data processing test dependencies.
-  if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${DATA_PROCESSING_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt")
   fi
-  if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
+  if [[ "${DATA_PROCESSING_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt")
-    if [ -n "${ARROW_VERSION-}" ]; then
-      if [ "${ARROW_VERSION-}" = nightly ]; then
+    if [[ -n "${ARROW_VERSION-}" ]]; then
+      if [[ "${ARROW_VERSION-}" == "nightly" ]]; then
         delayed_packages+=("--extra-index-url")
         delayed_packages+=("https://pypi.fury.io/arrow-nightlies/")
         delayed_packages+=("--prefer-binary")
@@ -312,7 +312,7 @@ install_pip_packages() {
         delayed_packages+=("pyarrow==${ARROW_VERSION}")
       fi
     fi
-    if [ -n "${ARROW_MONGO_VERSION-}" ]; then
+    if [[ -n "${ARROW_MONGO_VERSION-}" ]]; then
       delayed_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
     fi
   fi
@@ -320,9 +320,9 @@ install_pip_packages() {
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
-  if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
+  if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
       # If we require a custom torch version, use that
-      if [ -n "${TORCH_VERSION-}" ]; then
+      if [[ -n "${TORCH_VERSION-}" ]]; then
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
@@ -347,12 +347,12 @@ install_pip_packages() {
   fi
 
   # AIR core dependencies
-  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${RLLIB_TESTING-}" = 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
-  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${TRAIN_TESTING-}" = 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
 
     TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
@@ -367,7 +367,7 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  && "${OSTYPE}" != msys ]]; then
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" && "${OSTYPE}" != "msys" ]]; then
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
@@ -378,7 +378,7 @@ install_pip_packages() {
   done
 
   # Expand single requirements
-  if [ "${#requirements_packages[@]}" -gt 0 ]; then
+  if [[ "${#requirements_packages[@]}" -gt 0 ]]; then
     pip_cmd+=" ${requirements_packages[*]}"
   fi
 
@@ -386,21 +386,21 @@ install_pip_packages() {
   eval "${pip_cmd}"
 
   # Install delayed packages
-  if [ "${#delayed_packages[@]}" -gt 0 ]; then
+  if [[ "${#delayed_packages[@]}" -gt 0 ]]; then
     pip install -U -c "${WORKSPACE_DIR}/python/requirements.txt" "${delayed_packages[@]}"
   fi
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
-  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
+  if [[ "${INSTALL_HOROVOD-}" == 1 ]]; then
     "${SCRIPT_DIR}"/install-horovod.sh
   fi
 
-  if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     download_mnist
   fi
 
-  if [ "${DOC_TESTING-}" = 1 ]; then
+  if [[ "${DOC_TESTING-}" == 1 ]]; then
     # Todo: This downgrades spacy and related dependencies because
     # `en_core_web_sm` is only compatible with spacy < 3.6.
     # We should move to a model that does not depend on a stale version.
@@ -422,27 +422,27 @@ install_dependencies() {
   install_bazel
 
   # Only install on buildkite if requested
-  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+  if [[ -z "${BUILDKITE-}" || "${BUILD-}" == "1" ]]; then
     install_base
     install_toolchains
   fi
 
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
+  if [[ -n "${PYTHON-}" || "${LINT-}" == 1 || "${MINIMAL_INSTALL-}" == "1" ]]; then
     install_miniconda
   fi
 
   install_upgrade_pip
 
   # Only install on buildkite if requested
-  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+  if [[ -z "${BUILDKITE-}" || "${BUILD-}" == "1" ]]; then
     install_nvm
-    if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+    if [[ -n "${PYTHON-}" || -n "${LINT-}" || "${MAC_WHEELS-}" == 1 ]]; then
       install_node
     fi
   fi
 
   # install hdfs if needed.
-  if [ "${INSTALL_HDFS-}" = 1 ]; then
+  if [[ "${INSTALL_HDFS-}" == 1 ]]; then
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 

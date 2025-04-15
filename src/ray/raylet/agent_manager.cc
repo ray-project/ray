@@ -14,7 +14,10 @@
 
 #include "ray/raylet/agent_manager.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/event.h"

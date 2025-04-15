@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/profile_event.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/time/clock.h"
 
 namespace ray {

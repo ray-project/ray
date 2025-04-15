@@ -1,13 +1,14 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow
 
+import ray
 from ray.air.result import Result as ResultV1
-from ray.train.v2._internal.exceptions import TrainingFailedError
-from ray.util.annotations import Deprecated
+from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.util.annotations import Deprecated, PublicAPI
 
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
+    checkpoint: Optional["ray.train.Checkpoint"]
     error: Optional[TrainingFailedError]
+    best_checkpoints: Optional[
+        List[Tuple["ray.train.Checkpoint", Dict[str, Any]]]
+    ] = None
+
+    @PublicAPI(stability="alpha")
+    def get_best_checkpoint(
+        self, metric: str, mode: str
+    ) -> Optional["ray.train.Checkpoint"]:
+        return super().get_best_checkpoint(metric, mode)
 
     @classmethod
     def from_path(

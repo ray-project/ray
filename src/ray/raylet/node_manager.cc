@@ -14,26 +14,32 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <algorithm>
 #include <cctype>
 #include <csignal>
+#include <cstddef>
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -146,7 +152,8 @@ NodeManager::NodeManager(
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::Now(); }),
+          /*get_time=*/[]() { return absl::Now(); },
+          config.enable_resource_isolation),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
@@ -233,7 +240,6 @@ NodeManager::NodeManager(
       store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
-      temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
       wait_manager_(/*is_object_local*/
@@ -259,7 +265,6 @@ NodeManager::NodeManager(
           worker_pool_,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
-          /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
@@ -370,8 +375,13 @@ NodeManager::NodeManager(
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
+  periodical_runner_->RunFnPeriodically(
+      [this]() { CheckForUnexpectedWorkerDisconnects(); },
+      RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
+      "NodeManager.CheckForUnexpectedWorkerDisconnects");
+
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
-  // Run the node manger rpc server.
+  // Run the node manager rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
@@ -602,7 +612,8 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
+  DisconnectClient(
+      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -654,6 +665,36 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
   worker_pool_.HandleJobFinished(job_id);
+}
+
+// TODO(edoakes): the connection management and logic to destroy a worker should live
+// inside of the WorkerPool. We also need to unify the destruction paths between
+// DestroyWorker, DisconnectWorker, and KillWorker.
+void NodeManager::CheckForUnexpectedWorkerDisconnects() {
+  std::vector<std::shared_ptr<ClientConnection>> all_connections;
+  std::vector<std::shared_ptr<WorkerInterface>> all_workers =
+      worker_pool_.GetAllRegisteredWorkers();
+  all_connections.reserve(all_workers.size());
+  for (const auto &worker : all_workers) {
+    all_connections.push_back(worker->Connection());
+  }
+  for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
+    all_workers.push_back(driver);
+    all_connections.push_back(driver->Connection());
+  }
+
+  RAY_CHECK_EQ(all_connections.size(), all_workers.size());
+
+  // Check if there are any unexpected disconnects on the worker socket connections.
+  // This will close the connection without processing remaining messages.
+  std::vector<bool> disconnects = CheckForClientDisconnects(all_connections);
+  for (size_t i = 0; i < disconnects.size(); i++) {
+    if (disconnects[i]) {
+      std::string msg = "Worker connection closed unexpectedly.";
+      RAY_LOG(DEBUG).WithField(all_workers[i]->WorkerId()) << msg;
+      DestroyWorker(all_workers[i], rpc::WorkerExitType::SYSTEM_ERROR, msg);
+    }
+  }
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
@@ -976,7 +1017,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
       scheduling::NodeID(node_id.Binary()), labels);
 
-  // TODO: Always use the message from ray syncer.
+  // TODO: Always use the message from ray syncer.  // NOLINT
   ResourceRequest resources;
   for (auto &resource_entry : node_info.resources_total()) {
     resources.Set(scheduling::ResourceID(resource_entry.first),
@@ -1180,9 +1221,21 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::ProcessNewClient(ClientConnection &client) {
-  // The new client is a worker, so begin listening for messages.
-  client.ProcessMessages();
+void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+                                              const boost::system::error_code &error) {
+  const std::string err_msg = absl::StrCat(
+      "Worker unexpectedly exits with a connection error code ",
+      error.value(),
+      ". ",
+      error.message(),
+      ". There are some potential root causes. (1) The process is killed by "
+      "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+      "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+      "unexpected errors.");
+
+  // Disconnect the client and don't process more messages.
+  DisconnectClient(
+      client, /*graceful=*/false, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
 }
 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
@@ -1200,7 +1253,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the job has died already),
     // all the messages are ignored except DisconnectClient.
-    if (message_type_value != protocol::MessageType::DisconnectClient) {
+    if (message_type_value != protocol::MessageType::DisconnectClientRequest) {
       // Listen for more messages.
       client->ProcessMessages();
       return;
@@ -1223,7 +1276,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
       HandleWorkerAvailable(registered_worker);
     }
   } break;
-  case protocol::MessageType::DisconnectClient: {
+  case protocol::MessageType::DisconnectClientRequest: {
     ProcessDisconnectClientMessage(client, message_data);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
@@ -1233,11 +1286,10 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    HandleDirectCallTaskBlocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
+    HandleDirectCallTaskUnblocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
@@ -1331,6 +1383,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
           [this, client](const ray::Status &status) {
             if (!status.ok()) {
               DisconnectClient(client,
+                               /*graceful=*/false,
                                rpc::WorkerExitType::SYSTEM_ERROR,
                                "Worker is failed because the raylet couldn't reply the "
                                "registration request: " +
@@ -1346,8 +1399,6 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     return RegisterForNewWorker(
         worker, pid, worker_startup_token, std::move(send_reply_callback));
   }
-
-  // Register the new driver.
   return RegisterForNewDriver(
       worker, pid, job_id, message, std::move(send_reply_callback));
 }
@@ -1465,6 +1516,7 @@ void NodeManager::SendPortAnnouncementResponse(
         if (!status.ok()) {
           DisconnectClient(
               client,
+              /*graceful=*/false,
               rpc::WorkerExitType::SYSTEM_ERROR,
               "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
         }
@@ -1504,6 +1556,7 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
           DisconnectClient(client,
+                           /*graceful=*/false,
                            rpc::WorkerExitType::SYSTEM_ERROR,
                            "Failed to send RegisterWorkerWithPortReply to client: " +
                                status.ToString());
@@ -1541,13 +1594,29 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
+void SendDisconnectClientReply(const WorkerID &worker_id,
+                               const std::shared_ptr<ClientConnection> &client) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = protocol::CreateDisconnectClientReply(fbb);
+  fbb.Finish(reply);
+
+  // NOTE(edoakes): it's important to use sync WriteMessage here to ensure the message
+  // is written to the socket before it's closed.
+  const auto status = client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
+  if (!status.ok()) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Failed to send disconnect reply to worker: " << status.ToString();
+  }
+}
+
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                                   bool graceful,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
-  RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
-                << ", has creation task exception = " << std::boolalpha
-                << bool(creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1559,11 +1628,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       // The client is a driver.
       is_driver = true;
     } else {
-      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                    << "been disconnected.";
+      RAY_LOG(INFO)
+          << "Not disconnecting client disconnect it has already been disconnected.";
       return;
     }
   }
+
+  RAY_LOG(INFO).WithField(worker->WorkerId())
+      << "Disconnecting client, graceful=" << std::boolalpha << graceful
+      << ", disconnect_type=" << disconnect_type
+      << ", has_creation_task_exception=" << std::boolalpha
+      << bool(creation_task_exception != nullptr);
+
   RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
@@ -1665,6 +1741,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
   cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
 
+  if (graceful) {
+    // Graceful disconnects are initiated by a request from the worker and
+    // it blocks waiting for this reply.
+    SendDisconnectClientReply(worker->WorkerId(), client);
+  }
   client->Close();
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
@@ -1674,7 +1755,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::DisconnectClientRequest>(message_data);
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
   const auto &disconnect_detail = message->disconnect_detail()->str();
   const flatbuffers::Vector<uint8_t> *exception_pb =
@@ -1686,8 +1767,11 @@ void NodeManager::ProcessDisconnectClientMessage(
     creation_task_exception->ParseFromString(std::string(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
-  DisconnectClient(
-      client, disconnect_type, disconnect_detail, creation_task_exception.get());
+  DisconnectClient(client,
+                   /*graceful=*/true,
+                   disconnect_type,
+                   disconnect_detail,
+                   creation_task_exception.get());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1722,15 +1806,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   }
 }
 
-void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  RAY_CHECK(message->release_resources());
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, true);
-}
-
 void NodeManager::ProcessWaitRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
@@ -1758,7 +1833,7 @@ void NodeManager::ProcessWaitRequestMessage(
                         current_task_id,
                         /*ray_get=*/false);
   }
-  if (message->num_ready_objects() == 0) {
+  if (message->num_required_objects() == 0) {
     // If we don't need to wait for any, return immediately after making the pull
     // requests through AsyncResolveObjects above.
     flatbuffers::FlatBufferBuilder fbb;
@@ -1777,13 +1852,13 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status
-             << ", message: " << status.message();
-      DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+      stream << "Failed to write WaitReply to the client. Status " << status;
+      DisconnectClient(
+          client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+  uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
@@ -1801,16 +1876,19 @@ void NodeManager::ProcessWaitRequestMessage(
                                  fbb.GetSize(),
                                  fbb.GetBufferPointer());
         if (status.ok()) {
-          // The client is unblocked now because the wait call has returned.
+          // The client is unblocked now because the wait call has
+          // returned.
           if (resolve_objects) {
             AsyncResolveObjectsFinish(client, current_task_id);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
           std::ostringstream stream;
-          stream << "Failed to write WaitReply to the client. Status " << status
-                 << ", message: " << status.message();
-          DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+          stream << "Failed to write WaitReply to the client. Status " << status;
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           stream.str());
         }
       });
 }
@@ -1869,6 +1947,21 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_task_manager_->FillResourceUsage(*resources_data);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleCancelTasksWithResourceShapes(
+    rpc::CancelTasksWithResourceShapesRequest request,
+    rpc::CancelTasksWithResourceShapesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &resource_shapes = request.resource_shapes();
+  std::vector<ResourceSet> target_resource_shapes;
+  for (const auto &resource_shape : resource_shapes) {
+    target_resource_shapes.emplace_back(
+        ResourceSet(MapFromProtobuf(resource_shape.resource_shape())));
+  }
+
+  cluster_task_manager_->CancelTasksWithResourceShapes(target_resource_shapes);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2106,6 +2199,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
       // The worker should be destroyed.
       DisconnectClient(
           worker->Connection(),
+          /*graceful=*/false,
           rpc::WorkerExitType::SYSTEM_ERROR,
           absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
                        "to be destroyed when it is returned. ",
@@ -2283,11 +2377,11 @@ void NodeManager::MarkObjectsAsFailed(
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
-  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
-      !release_resources) {
+    const std::shared_ptr<WorkerInterface> &worker) {
+  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
+
   local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
@@ -2350,7 +2444,7 @@ void NodeManager::AsyncResolveObjectsFinish(
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
-  // TODO (Alex): We should standardize to pass
+  // TODO(Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
@@ -2561,11 +2655,6 @@ std::string NodeManager::DebugString() const {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
-  }
-
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
   }
 
   // Event stats.
@@ -3115,10 +3204,10 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     float usage_threshold) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-  std::string used_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
-  std::string total_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+  std::string used_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
+  std::string total_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
   auto pid = worker->GetProcess().GetId();
@@ -3132,7 +3221,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
         << "Can't find memory usage for PID, reporting zero. PID: " << pid;
   }
   std::string process_used_bytes_gb =
-      FormatFloat(static_cast<float>(used_bytes) / 1024 / 1024 / 1024, 2);
+      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
@@ -3251,20 +3340,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     agent_command_line.push_back("--disable-metrics-collection");
   }
 
-  // Create a non-zero random agent_id to pass to the child process.
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  std::string agent_name = "dashboard_agent";
   // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
   // dashboard agent crash no longer lead to a raylet crash.
   auto options = AgentManager::Options({self_node_id,

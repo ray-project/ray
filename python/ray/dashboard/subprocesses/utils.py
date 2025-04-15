@@ -1,67 +1,66 @@
-import asyncio
 import os
-import threading
-from typing import Generic, TypeVar
+import sys
+import enum
+from typing import TypeVar
+import aiohttp
+
+from ray._private.utils import validate_socket_filepath
 
 K = TypeVar("K")
 V = TypeVar("V")
 
 
-def assert_not_in_asyncio_loop():
-    try:
-        asyncio.get_running_loop()
-        raise AssertionError(
-            "This function should not be called from within an asyncio loop"
-        )
-    except RuntimeError:
-        pass
+class ResponseType(enum.Enum):
+    HTTP = "http"
+    STREAM = "stream"
+    WEBSOCKET = "websocket"
 
 
-def module_logging_filename(module_name: str, logging_filename: str) -> str:
+def module_logging_filename(
+    module_name: str, logging_filename: str, extension: str = ""
+) -> str:
     """
     Parse logging_filename = STEM EXTENSION,
-    return STEM - MODULE_NAME EXTENSION
+    return STEM _ MODULE_NAME _ EXTENSION
+
+    If logging_filename is empty, return empty string.
+    If extension is empty, use the extension from logging_filename.
 
     Example:
     module_name = "TestModule"
     logging_filename = "dashboard.log"
     STEM = "dashboard"
     EXTENSION = ".log"
-    return "dashboard-TestModule.log"
+    return "dashboard_TestModule.log"
     """
-    stem, extension = os.path.splitext(logging_filename)
-    return f"{stem}-{module_name}{extension}"
+    if not logging_filename:
+        return ""
+    stem, ext = os.path.splitext(logging_filename)
+    if not extension:
+        extension = ext
+    return f"{stem}_{module_name}{extension}"
 
 
-class ThreadSafeDict(Generic[K, V]):
-    """A thread-safe dictionary that only allows certain operations."""
+def get_socket_path(socket_dir: str, module_name: str) -> str:
+    socket_path = os.path.join(socket_dir, "dash_" + module_name)
+    validate_socket_filepath(socket_path)
+    return socket_path
 
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._dict: dict[K, V] = {}
 
-    def put_new(self, key: K, value: V):
-        with self._lock:
-            if key in self._dict:
-                raise KeyError(f"Key {key} already exists in {self._dict}")
-            self._dict[key] = value
+def get_named_pipe_path(module_name: str) -> str:
+    return r"\\.\pipe\dash_" + module_name
 
-    def get_or_raise(self, key: K) -> V:
-        with self._lock:
-            value = self._dict.get(key)
-            if value is None:
-                raise KeyError(f"Key {key} not found in {self._dict}")
-            return value
 
-    def pop_or_raise(self, key: K) -> V:
-        with self._lock:
-            value = self._dict.pop(key)
-            if value is None:
-                raise KeyError(f"Key {key} not found in {self._dict}")
-            return value
-
-    def pop_all(self) -> dict[K, V]:
-        with self._lock:
-            d = self._dict
-            self._dict = {}
-            return d
+def get_http_session_to_module(
+    module_name: str, socket_dir: str
+) -> aiohttp.ClientSession:
+    """
+    Get the aiohttp http client session to the subprocess module.
+    """
+    if sys.platform == "win32":
+        named_pipe_path = get_named_pipe_path(module_name)
+        connector = aiohttp.NamedPipeConnector(named_pipe_path)
+    else:
+        socket_path = get_socket_path(socket_dir, module_name)
+        connector = aiohttp.UnixConnector(socket_path)
+    return aiohttp.ClientSession(connector=connector)

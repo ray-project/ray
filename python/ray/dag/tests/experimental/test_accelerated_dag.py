@@ -19,12 +19,11 @@ from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutErr
 import ray
 import ray._private
 import ray.cluster_utils
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray.dag import DAGContext
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
@@ -204,6 +203,9 @@ class TestDAGRefDestruction:
         result = ray.get(ref)
         assert (result == val).all()
         del ref
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_before_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -216,6 +218,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref still works properly even if
         # ref2 (corresponding to a later execution) is destructed first
         assert ray.get(ref) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_after_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -229,6 +234,9 @@ class TestDAGRefDestruction:
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_release_buffer_on_execute(self, ray_start_regular):
         a = Actor.remote(0)
@@ -247,6 +255,9 @@ class TestDAGRefDestruction:
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
         assert ray.get(ref5) == 15
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -258,6 +269,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref1 still works properly even if
         # ref2 was destructed
         assert ray.get(ref1) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_no_leak(self, ray_start_regular):
         a = Actor.remote(0)
@@ -265,12 +279,44 @@ class TestDAGRefDestruction:
             dag = MultiOutputNode([a.inc.bind(inp), a.inc.bind(inp)])
         compiled_dag = dag.experimental_compile()
         ref_list = compiled_dag.execute(1)
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
         ref1, ref2 = compiled_dag.execute(2)
         del ref1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {1: {0}}
+        assert compiled_dag._got_ref_idxs == {}
         ray.get(ref2)
+        assert compiled_dag._result_buffer == {0: {0: 1, 1: 2}}
         ray.get(ref_list)
         # Test that that ref1 doesn't stay in result_buffer
-        assert len(compiled_dag._result_buffer) == 0
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
+
+    def test_asyncio_destruction(self, ray_start_regular):
+        a = Actor.remote(0)
+        b = Actor.remote(0)
+        with InputNode() as i:
+            dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+        loop = get_or_create_event_loop()
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main(i):
+            # use asyncio.sleep to give back control so GC has
+            # a chance to run
+            await asyncio.sleep(i * 0.1)
+            futs = await compiled_dag.execute_async(i)
+            assert len(futs) == 2
+            result = await futs[0]
+            assert result == i
+
+        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(5)]))
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -1393,6 +1439,76 @@ class TestDAGExceptionCompileMultipleTimes:
             "nodes call `experimental_compile`: ",
         ):
             branch2.experimental_compile()
+
+
+def test_exceed_max_buffered_results(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for i in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            "The compiled graph can't have more than 1 buffered results, "
+            r"and you currently have 1 buffered results. Call `ray.get\(\)` on "
+            r"CompiledDAGRef's \(or await on CompiledDAGFuture's\) to retrieve "
+            "results, or increase `_max_buffered_results` if buffering is "
+            "desired, note that this will increase driver memory usage."
+        ),
+    ):
+        ray.get(ref)
+
+    del refs
+
+
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetch):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for _ in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    if single_fetch:
+        # If there are results not fetched from an execution, that execution
+        # still counts towards the number of buffered results.
+        ray.get(refs[0][0])
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            "The compiled graph can't have more than 1 buffered results, "
+            r"and you currently have 1 buffered results. Call `ray.get\(\)` on "
+            r"CompiledDAGRef's \(or await on CompiledDAGFuture's\) to retrieve "
+            "results, or increase `_max_buffered_results` if buffering is "
+            "desired, note that this will increase driver memory usage."
+        ),
+    ):
+        if single_fetch:
+            ray.get(ref[0])
+        else:
+            ray.get(ref)
+
+    del refs
 
 
 def test_compiled_dag_ref_del(ray_start_regular):
@@ -2546,52 +2662,6 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
     _ = (ref1, ref2)
-
-
-def test_result_buffer_exceeds_capacity(ray_start_regular):
-    expected_error_message = (
-        "The compiled graph can't have more than 2 "
-        "in-flight executions, and you currently have 2 "
-        "in-flight executions. Retrieve an output using ray.get before "
-        "submitting more requests or increase `_max_inflight_executions`. "
-    )
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
-    ref1 = compiled_dag.execute(1)
-    ref2 = compiled_dag.execute(2)
-    ray.get(ref2)
-    ref3 = compiled_dag.execute(3)
-    with pytest.raises(
-        ray.exceptions.RayCgraphCapacityExceeded,
-        match=(expected_error_message),
-    ):
-        _ = compiled_dag.execute(4)
-
-    # test same with asyncio
-    async def main():
-        a = Actor.remote(0)
-        with InputNode() as inp:
-            dag = a.inc.bind(inp)
-        async_compiled_dag = dag.experimental_compile(
-            enable_asyncio=True, _max_inflight_executions=2
-        )
-        ref1 = await async_compiled_dag.execute_async(1)
-        ref2 = await async_compiled_dag.execute_async(2)
-        await ref2
-        ref3 = await async_compiled_dag.execute_async(3)
-        with pytest.raises(
-            ray.exceptions.RayCgraphCapacityExceeded,
-            match=(expected_error_message),
-        ):
-            _ = await async_compiled_dag.execute_async(4)
-        _ = (ref1, ref3)
-
-    loop = get_or_create_event_loop()
-    loop.run_until_complete(main())
-    # same reason as comment for test_inflight_requests_exceed_capacity
-    _ = (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):

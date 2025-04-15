@@ -38,6 +38,7 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -324,6 +325,19 @@ class WorkerGroup:
             ]
         )
 
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={w.distributed_context.world_rank}, "
+                f"local_rank={w.distributed_context.local_rank}, "
+                f"node_rank={w.distributed_context.node_rank}"
+                for w in workers
+            ]
+        )
+        logger.info(
+            f"Started training worker group of size {len(workers)}: \n{workers_info}"
+        )
+
         for callback in self._callbacks:
             callback.after_worker_group_training_start(self)
 
@@ -388,6 +402,8 @@ class WorkerGroup:
             for i, worker in enumerate(workers)
         ]
         ray_get_safe(context_init_tasks)
+
+        self._decorate_worker_log_file_paths(workers)
 
     #####################################################################################
     # Shutdown Worker Group
@@ -679,6 +695,28 @@ class WorkerGroup:
                 node_rank=node_ips.index(worker.metadata.node_ip),
             )
             worker.distributed_context = distributed_context
+
+        return workers
+
+    @staticmethod
+    def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
+        """Decorate worker log file paths.
+
+        Returns:
+            workers: Workers with log file paths set.
+        """
+        # Execute all tasks in parallel and then get results
+        log_path_refs = [
+            worker.execute_async(get_train_application_worker_log_path)
+            for worker in workers
+        ]
+        log_paths = ray_get_safe(log_path_refs)
+
+        # Assign log paths to workers
+        for worker, log_path in zip(workers, log_paths):
+            if log_path is None:
+                raise ValueError("Worker log file path is not set.")
+            worker.log_file_path = log_path
 
         return workers
 

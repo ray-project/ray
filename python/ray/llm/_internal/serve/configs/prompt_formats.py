@@ -4,23 +4,26 @@ from typing import (
     List,
     Literal,
     Optional,
-    Tuple,
     Union,
+    TYPE_CHECKING,
 )
 
-from fastapi import HTTPException, status
 from pydantic import (
     BaseModel,
     ConfigDict,
-    Field,
     PrivateAttr,
     field_validator,
     model_validator,
 )
-from transformers import AutoProcessor
+from ray.llm._internal.utils import try_import
+
+if TYPE_CHECKING:
+    from transformers import AutoProcessor
+
+transformers = try_import("transformers")
 
 
-class TextContent(BaseModel):
+class Text(BaseModel):
     field: str = "text"
     type: str = "text"
     text: str
@@ -31,13 +34,13 @@ class TextContent(BaseModel):
 # Community version of pixtral uses the key `content` instead of `text` in the content.
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
-class ContentContent(BaseModel):
+class Content(BaseModel):
     field: str = "text"
     type: str = "text"
     content: str
 
 
-class ImageContent(BaseModel):
+class Image(BaseModel):
     field: str = "image_url"
     image_url: Dict
 
@@ -52,7 +55,7 @@ class ImageContent(BaseModel):
         return value
 
 
-ContentList = List[Union[ImageContent, TextContent, ContentContent]]
+ContentList = List[Union[Image, Text, Content]]
 
 
 class Message(BaseModel):
@@ -124,242 +127,49 @@ class AbstractPromptFormat(BaseModel):
         raise NotImplementedError()
 
 
-class PromptFormat(AbstractPromptFormat):
-    system: str = Field(
-        description="The template for system message. It should include `{instruction}` template.",
-    )
-    assistant: str = Field(
-        description="The template for the assistant message. This is used when "
-        "the input list of messages includes assistant messages. The content "
-        "of those messages is reformatted with this template. It should "
-        "include `{instruction}` template.",
-    )
-    trailing_assistant: str = Field(
-        default="",
-        description="(Inference only) The string that should be appended to the end of the text before sending it to the model for completion at inference time. This is not used during fine-tuning.",
-    )
-    user: str = Field(
-        description="The template for the user message. It should include `{instruction}` template. If `system_in_user` is set to True, it should also include `{system}` template.",
-    )
-    bos: str = Field(
-        default="",
-        description="The string that should be prepended to the text before sending it to the model for completion. Defaults to empty string",
-    )
-
-    default_system_message: str = Field(
-        default="",
-        description="The default system message that should be included in the prompt if no system message is provided in the input list of messages. If not specified, this is an empty string",
-    )
-    add_system_tags_even_if_message_is_empty: bool = Field(
-        default=False,
-        description="If True, the system message will be included in the prompt even if the content of the system message is empty.",
-    )
-    system_in_user: bool = Field(
-        default=False,
-        description="If True, the system message will be included in the user message.",
-    )
-    system_in_last_user: bool = Field(
-        default=False,
-        description="(Inference only) If True, the system message will be included in the last user message. Otherwise, it will be included in the first user message. This is not used during fine-tuning.",
-    )
-
-    strip_whitespace: bool = Field(
-        default=True,
-        description="If True, the whitespace in the content of the messages will be stripped.",
-    )
-
-    @field_validator("system")
-    @classmethod
-    def check_system(cls, value):
-        assert value and (
-            "{instruction}" in value
-        ), "system must be a string containing '{instruction}'"
-        return value
-
-    @field_validator("assistant")
-    @classmethod
-    def check_assistant(cls, value):
-        assert (
-            value and "{instruction}" in value
-        ), "assistant must be a string containing '{instruction}'"
-        return value
-
-    @field_validator("user")
-    @classmethod
-    def check_user(cls, value):
-        assert value and (
-            "{instruction}" in value
-        ), "user must be a string containing '{instruction}'"
-        return value
-
-    @model_validator(mode="after")
-    def check_user_system_in_user(self):
-        if self.system_in_user:
-            assert (
-                "{system}" in self.user
-            ), "If system_in_user=True, user must contain '{system}'"
-        return self
-
-    @model_validator(mode="after")
-    def check_system_in_last_user(self):
-        assert self.system_in_user or not self.system_in_last_user, (
-            "If system is not included in the user message, "
-            "system_in_last_user cannot be set to False."
-        )
-        return self
-
-    def _parse_system_message(self, messages: List[Message]) -> Optional[Message]:
-        # Get system message
-        system_message_index = -1
-        for i, message in enumerate(messages):
-            if message.role == "system":
-                if system_message_index == -1:
-                    system_message_index = i
-                else:
-                    raise HTTPException(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Only one system message can be specified.",
-                    )
-
-        system_message = None
-        if system_message_index != -1:
-            system_message = messages.pop(system_message_index)
-        elif (
-            self.default_system_message or self.add_system_tags_even_if_message_is_empty
-        ):
-            system_message = Message(role="system", content=self.default_system_message)
-        if (
-            system_message is not None
-            and (
-                system_message.content or self.add_system_tags_even_if_message_is_empty
-            )
-            and not self.system_in_user
-        ):
-            messages.insert(0, system_message)
-
-        return system_message
-
-    def create_user_prompt(
-        self,
-        message: Message,
-        system_message: Optional[Message],
-        is_first: bool,
-        is_last: bool,
-    ) -> str:
-        usr_msg_kwargs = {"instruction": message.content}
-        if self.system_in_user:
-            system = ""
-            if system_message is not None:
-                if (is_last and self.system_in_last_user) or (
-                    is_first and not self.system_in_last_user
-                ):
-                    system = self.system.format(instruction=system_message.content)
-            usr_msg_kwargs["system"] = system
-
-        return self.user.format(**usr_msg_kwargs)
-
-    def create_system_prompt(self, message: Message) -> str:
-        return self.system.format(instruction=message.content)
-
-    def create_assistant_message(self, message: Message) -> str:
-        return self.assistant.format(instruction=message.content)
-
-    def _maybe_strip_whitespaces(self, message: Message) -> None:
-        """Message object is modified in-place if strip is set."""
-        message_content = message.content
-        if not isinstance(message_content, str):
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Content needs to be a string",
-            )
-        if self.strip_whitespace:
-            message.content = message_content.strip()
-
-    def _get_usr_msg_inds(self, messages: List[Message]) -> Tuple[int, int]:
-        last_user_idx = -1
-        first_user_idx = -1
-        for i, msg in enumerate(messages):
-            if msg.role == "user":
-                if first_user_idx == -1:
-                    first_user_idx = i
-                last_user_idx = i
-        return first_user_idx, last_user_idx
-
-    def _prepare_messages(
-        self, messages: Union[Prompt, List[Message]]
-    ) -> List[Message]:
-        if isinstance(messages, Prompt):
-            if isinstance(messages.prompt, str):
-                new_messages = []
-                if self.default_system_message:
-                    new_messages.append(
-                        Message(role="system", content=self.default_system_message),
-                    )
-                new_messages.append(
-                    Message(role="user", content=messages.prompt),
-                )
-                messages = new_messages
-            else:
-                messages = messages.prompt
-
-        return messages
-
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        if isinstance(messages, Prompt):
-            if isinstance(messages.prompt, str):
-                if not messages.use_prompt_format:
-                    return EngineInput(text=self.bos + messages.prompt)
-
-        messages = self._prepare_messages(messages)
-        system_message = self._parse_system_message(messages)
-
-        first_user_msg_idx, last_user_msg_idx = self._get_usr_msg_inds(messages)
-
-        prompt = []
-        msg_idx = 0
-        while msg_idx < len(messages):
-            message = messages[msg_idx]
-            self._maybe_strip_whitespaces(message)
-
-            if message.role == "user":
-                prompt.append(
-                    self.create_user_prompt(
-                        message=message,
-                        system_message=system_message,
-                        is_last=(msg_idx == last_user_msg_idx),
-                        is_first=(msg_idx == first_user_msg_idx),
-                    )
-                )
-            elif message.role == "system":
-                prompt.append(self.create_system_prompt(message))
-            elif message.role == "assistant":
-                prompt.append(self.create_assistant_message(message))
-            msg_idx += 1
-
-        prompt.append(self.trailing_assistant)
-        text = self.bos + "".join(prompt)
-        return EngineInput(text=text)
-
-
 class HuggingFacePromptFormat(AbstractPromptFormat):
-    use_hugging_face_chat_template: Literal[True]
-    _processor: AutoProcessor = PrivateAttr()
+    _processor: "AutoProcessor" = PrivateAttr()
 
-    def set_processor(self, model_id_or_path: str):
+    def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
         if hasattr(self, "_processor"):
             return
 
-        self._processor = AutoProcessor.from_pretrained(model_id_or_path)
+        self._processor = transformers.AutoProcessor.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=trust_remote_code,
+        )
 
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
+    def generate_prompt(
+        self, messages: Union[Prompt, List[Message], dict, List[dict]]
+    ) -> EngineInput:
+        # Normalize to Prompt if the input is a dict
+        if isinstance(messages, dict):
+            messages = Prompt.model_validate(messages)
+
+        # Normalize to List[Message] if the input is a Prompt object
+        if isinstance(messages, Prompt):
+            if isinstance(messages.prompt, str):
+                if not messages.use_prompt_format:
+                    return EngineInput(text=messages.prompt)
+                raise ValueError("String prompts are not supported.")
+            messages = messages.prompt
+
+        # If messages is a list, ensure all elements are of the same type and convert List[dict]to List[Message]
+        elif isinstance(messages, list):
+            if messages == []:
+                raise ValueError("List cannot be empty.")
+            elif all(isinstance(msg, dict) for msg in messages):
+                messages = [Message.model_validate(msg) for msg in messages]
+            elif all(isinstance(msg, Message) for msg in messages):
+                pass
+            else:
+                raise ValueError(
+                    "List must contain either all dicts or all Message objects."
+                )
+
         assert hasattr(
             self, "_processor"
         ), "HuggingFacePromptFormat's processor is not set."
-
-        if isinstance(messages, Prompt):
-            if isinstance(messages.prompt, str):
-                raise ValueError("String prompts are not supported.")
-            messages = messages.prompt
 
         conversation = []
         images = []
@@ -367,9 +177,9 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
             content = []
             if isinstance(message.content, list):
                 for c in message.content:
-                    if isinstance(c, (TextContent, ContentContent)):
+                    if isinstance(c, (Text, Content)):
                         content.append(c.model_dump())
-                    elif isinstance(c, ImageContent):
+                    elif isinstance(c, Image):
                         content.append({"type": "image"})
                         images.append(ImageInput(image_url=c.image_url["url"]))
             else:

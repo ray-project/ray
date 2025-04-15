@@ -164,26 +164,26 @@ def test_process_completed_tasks():
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test input finalization.
     done_task_callback = MagicMock()
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test dependents completed.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -199,11 +199,11 @@ def test_process_completed_tasks():
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
-    o3.mark_execution_completed()
-    o2.mark_execution_completed = MagicMock()
+    o3.mark_execution_finished()
+    o2.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
-    o2.mark_execution_completed.assert_called_once()
+    o2.mark_execution_finished.assert_called_once()
 
 
 def test_select_operator_to_run():
@@ -483,9 +483,13 @@ def test_execution_callbacks():
             self._before_execution_starts_called = False
             self._after_execution_succeeds_called = False
             self._execution_error = None
+            self._on_execution_step_called = False
 
         def before_execution_starts(self, executor: StreamingExecutor):
             self._before_execution_starts_called = True
+
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            self._on_execution_step_called = True
 
         def after_execution_succeeds(self, executor: StreamingExecutor):
             self._after_execution_succeeds_called = True
@@ -498,16 +502,17 @@ def test_execution_callbacks():
     ctx = ds.context
     callback = CustomExecutionCallback()
     add_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == [callback]
+    assert callback in get_execution_callbacks(ctx)
 
     ds.take_all()
 
     assert callback._before_execution_starts_called
     assert callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     assert callback._execution_error is None
 
     remove_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == []
+    assert callback not in get_execution_callbacks(ctx)
 
     # Test the case where the dataset fails due to an error in the UDF.
     ds = ray.data.range(10)
@@ -524,6 +529,7 @@ def test_execution_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, ValueError), error
 
@@ -545,6 +551,7 @@ def test_execution_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
 

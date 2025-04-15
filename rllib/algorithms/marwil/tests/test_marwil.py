@@ -10,6 +10,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
 
@@ -172,7 +173,7 @@ class TestMARWIL(unittest.TestCase):
         )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
-        batch = offline_prelearner(batch)["batch"][0]
+        batch = unflatten_dict(offline_prelearner(batch))
         if Columns.LOSS_MASK in batch[DEFAULT_MODULE_ID]:
             loss_mask = (
                 batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK].detach().cpu().numpy()

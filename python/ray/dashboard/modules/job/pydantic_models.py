@@ -73,7 +73,7 @@ if PYDANTIC_INSTALLED:
         )
         start_time: Optional[int] = Field(
             None,
-            description="The time when the job was started. " "A Unix timestamp in ms.",
+            description="The time when the job was started. A Unix timestamp in ms.",
         )
         end_time: Optional[int] = Field(
             None,

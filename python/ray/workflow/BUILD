@@ -3,8 +3,7 @@
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
-load("//bazel:python.bzl", "py_test_module_list")
-load("//bazel:python.bzl", "doctest")
+load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 doctest(
     files = glob(
@@ -31,12 +30,6 @@ LARGE_ALL_CORE_TESTS = [
     "tests/test_events.py",
 ]
 
-# Tests that are failing and need to be fixed.
-# Tagging these tests are "manual" so they are not run by default.
-FAILING_TESTS = [
-    "tests/test_events_with_crash.py",
-]
-
 py_test_module_list(
     size = "medium",
     extra_srcs = SRCS,
@@ -45,22 +38,10 @@ py_test_module_list(
             "tests/test_*.py",
             "examples/**/*.py",
         ],
-        exclude = LARGE_TESTS + LARGE_ALL_CORE_TESTS + FAILING_TESTS,
+        exclude = LARGE_TESTS + LARGE_ALL_CORE_TESTS,
     ),
     tags = [
         "exclusive",
-        "team:core",
-    ],
-    deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-    size = "medium",
-    extra_srcs = SRCS,
-    files = FAILING_TESTS,
-    tags = [
-        "exclusive",
-        "manual",
         "team:core",
     ],
     deps = ["//:ray_lib"],

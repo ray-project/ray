@@ -1,7 +1,8 @@
+import logging
 from collections import OrderedDict
-from typing import Optional, List, Type, Callable, Dict
+from typing import Optional, List, Type, Callable, Dict, Union, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
 from ray.data import Dataset
@@ -12,26 +13,39 @@ from ray.llm._internal.batch.stages import (
     wrap_preprocess,
     wrap_postprocess,
 )
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
-class ProcessorConfig(BaseModel):
+logger = logging.getLogger(__name__)
+
+
+class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
+        default=64,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case.",
+        "based on your use case. Defaults to 64.",
+    )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will override the default resource bundles for placement groups. "
+        "You can specify a custom device label e.g. {'NPU': 1}. "
+        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,
         description="The accelerator type used by the LLM stage in a processor. "
         "Default to None, meaning that only the CPU will be used.",
     )
-    concurrency: int = Field(
+    concurrency: Optional[Union[int, Tuple[int, int]]] = Field(
         default=1,
-        description="The number of workers for data parallelism. Default to 1.",
+        description="The number of workers for data parallelism. Default to 1."
+        "If ``concurrency`` is a tuple ``(m, n)``, Ray will use an autoscaling actor pool from"
+        " ``m`` to ``n`` workers.",
     )
 
     class Config:
@@ -57,7 +71,7 @@ class Processor:
     # The internal used data column name ("__data"). Your input
     # dataset should not contain this column. If you want to use this column
     # in your input dataset, you have to derive and customize Processor.
-    data_column: str = "__data"
+    DATA_COLUMN: str = "__data"
 
     def __init__(
         self,
@@ -79,12 +93,12 @@ class Processor:
 
         self.preprocess = wrap_preprocess(
             preprocess,
-            self.data_column,
+            self.DATA_COLUMN,
         )
 
         self.postprocess = wrap_postprocess(
             postprocess,
-            self.data_column,
+            self.DATA_COLUMN,
         )
 
         for stage in stages:
@@ -108,7 +122,7 @@ class Processor:
         for stage in self.stages.values():
             kwargs = stage.get_dataset_map_batches_kwargs(
                 batch_size=self.config.batch_size,
-                data_column=self.data_column,
+                data_column=self.DATA_COLUMN,
             )
             dataset = dataset.map_batches(stage.fn, **kwargs)
 
@@ -155,6 +169,25 @@ class Processor:
         if name in self.stages:
             return self.stages[name]
         raise ValueError(f"Stage {name} not found")
+
+    def log_input_column_names(self):
+        """Log.info the input stage and column names of this processor.
+        If the input dataset does not contain these columns, you have to
+        provide a preprocess function to bridge the gap.
+        """
+        name, stage = list(self.stages.items())[0]
+        expected_input_keys = stage.get_required_input_keys()
+        optional_input_keys = stage.get_optional_input_keys()
+
+        message = f"The first stage of the processor is {name}."
+        if expected_input_keys:
+            message += "\nRequired input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in expected_input_keys.items())
+        if optional_input_keys:
+            message += "\nOptional input columns:\n"
+            message += "\n".join(f"\t{k}: {v}" for k, v in optional_input_keys.items())
+
+        logger.info(message)
 
 
 @DeveloperAPI

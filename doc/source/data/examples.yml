@@ -24,6 +24,22 @@ examples:
     use_cases:
       - computer vision
     link: examples/huggingface_vit_batch_prediction
+  - title: Batch Inference with LoRA Adapter
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-lora
+  - title: Batch Inference with Structural Output
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-structural-output
   - title: Tabular Data Training and Batch Inference with XGBoost
     skill_level: beginner
     frameworks:

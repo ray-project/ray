@@ -44,13 +44,14 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
+from ray.data._internal.util import MemoryProfiler
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockExecStats,
     BlockMetadata,
+    BlockExecStats,
     BlockStats,
     to_stats,
 )
@@ -472,7 +473,7 @@ class MapOperator(OneToOneOperator, ABC):
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    def shutdown(self):
+    def shutdown(self, force: bool = False):
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
@@ -530,17 +531,23 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+    TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-        # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata()
-        m_out.exec_stats = stats.build()
-        m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-        m_out.exec_stats.task_idx = ctx.task_idx
-        yield b_out
-        yield m_out
-        stats = BlockExecStats.builder()
+    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+            # TODO(Clark): Add input file propagation from input blocks.
+            m_out = BlockAccessor.for_block(b_out).get_metadata()
+            m_out.exec_stats = stats.build()
+            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
+            m_out.exec_stats.task_idx = ctx.task_idx
+            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            yield b_out
+            yield m_out
+            stats = BlockExecStats.builder()
+            profiler.reset()
+
+    TaskContext.reset_current()
 
 
 class _BlockRefBundler:

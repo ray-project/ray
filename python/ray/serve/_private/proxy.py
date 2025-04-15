@@ -16,7 +16,7 @@ from packaging import version
 from starlette.types import Receive
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
@@ -27,11 +27,11 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -70,6 +70,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     generate_request_id,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -87,8 +88,8 @@ assert HTTP_REQUEST_MAX_RETRIES >= 0, (
     "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
 )
 
-TIMEOUT_ERROR_CODE = "timeout"
-DISCONNECT_ERROR_CODE = "disconnection"
+TIMEOUT_ERROR_CODE = "408"
+DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
@@ -182,13 +183,15 @@ class GenericProxy(ABC):
             ),
         )
 
+        # log REQUEST_LATENCY_BUCKET_MS
+        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
         self.processing_latency_tracker = metrics.Histogram(
             f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
                 f"The end-to-end latency of {self.protocol} requests "
                 f"(measured from the Serve {self.protocol} proxy)."
             ),
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=(
                 "method",
                 "route",
@@ -982,7 +985,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            is_error=not status_code.startswith("2"),
+                            is_error=status_code.startswith(("4", "5")),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1043,7 +1046,7 @@ class HTTPProxy(GenericProxy):
             )
         except (BackPressureError, DeploymentUnavailableError) as e:
             status = ResponseStatus(
-                code=503,
+                code="503",
                 is_error=True,
                 message=e.message,
             )
@@ -1149,10 +1152,7 @@ class ProxyActor:
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
 
-        grpc_enabled = (
-            self._grpc_options.port > 0
-            and len(self._grpc_options.grpc_servicer_functions) > 0
-        )
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
 
         event_loop = get_or_create_event_loop()
         self.long_poll_client = long_poll_client or LongPollClient(

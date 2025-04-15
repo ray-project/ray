@@ -25,13 +25,17 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._private.label_utils import (
+    parse_node_labels_json,
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_string,
+)
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
+    load_class,
     parse_resources_json,
-    parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
@@ -447,16 +451,6 @@ def debug(address: str, verbose: bool):
     "but can be set higher.",
 )
 @click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
-)
-@click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
 )
 @click.option(
@@ -530,7 +524,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -549,6 +543,12 @@ Windows powershell users need additional escaping:
     required=False,
     type=str,
     help="object store directory for memory mapped files",
+)
+@click.option(
+    "--object-spilling-directory",
+    required=False,
+    type=str,
+    help="The path to spill objects to. This path will also be used as the fallback directory when the object store is full of in-use objects and cannot spill.",
 )
 @click.option(
     "--autoscaling-config",
@@ -581,7 +581,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--storage",
     default=None,
-    help="the persistent storage URI for the cluster. Experimental.",
+    help=(
+        "[DEPRECATED] Cluster-wide storage is deprecated and will be removed in a "
+        "future version of Ray."
+    ),
 )
 @click.option(
     "--system-config",
@@ -636,9 +639,19 @@ Windows powershell users need additional escaping:
     "--labels",
     required=False,
     hidden=True,
-    default="{}",
+    default="",
     type=str,
-    help="a JSON serialized dictionary mapping label name to label value.",
+    help="a string list of key-value pairs mapping label name to label value."
+    "These values take precedence over conflicting keys passed in from --labels-file."
+    'Ex: --labels "key1=val1,key2=val2"',
+)
+@click.option(
+    "--labels-file",
+    required=False,
+    hidden=True,
+    default="",
+    type=str,
+    help="a path to a YAML file containing a dictionary mapping of label keys to values.",
 )
 @click.option(
     "--include-log-monitor",
@@ -668,7 +681,6 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
-    redis_max_memory,
     num_cpus,
     num_gpus,
     resources,
@@ -677,11 +689,12 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
+    object_spilling_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -696,6 +709,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    labels_file,
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
@@ -716,7 +730,42 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
-    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
+
+    # Compose labels passed in with `--labels` and `--labels-file`.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
+    try:
+        labels_from_file = parse_node_labels_from_yaml_file(labels_file)
+    except Exception as e:
+        cli_logger.abort(
+            "The file at `{}` is not a valid YAML file, detailed error: {} "
+            "Valid values look like this: `{}`",
+            cf.bold(f"--labels-file={labels_file}"),
+            str(e),
+            cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
+        )
+    try:
+        # Attempt to parse labels from new string format first.
+        labels_from_string = parse_node_labels_string(labels)
+    except Exception as e:
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -751,6 +800,15 @@ def start(
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
+    if storage is not None:
+        warnings.warn(
+            "--storage is deprecated and will be removed in a future version of Ray.",
+        )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
+        )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -771,6 +829,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
@@ -781,7 +840,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -794,7 +852,7 @@ def start(
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
-        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+        load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.
@@ -867,7 +925,6 @@ def start(
         # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_shard_ports=redis_shard_ports,
-            redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
         )
@@ -2312,9 +2369,9 @@ def global_gc(address):
 )
 @click.option(
     "--node-id",
-    required=True,
+    required=False,
     type=str,
-    help="Hex ID of the worker node to be drained.",
+    help="Hex ID of the worker node to be drained. Will default to current node if not provided.",
 )
 @click.option(
     "--reason",
@@ -2357,6 +2414,12 @@ def drain_node(
 
     Manually drain a worker node.
     """
+    # This should be before get_runtime_context() so get_runtime_context()
+    # doesn't start a new worker here.
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    if node_id is None:
+        node_id = ray.get_runtime_context().get_node_id()
     deadline_timestamp_ms = 0
     if deadline_remaining_seconds is not None:
         if deadline_remaining_seconds < 0:
@@ -2370,8 +2433,6 @@ def drain_node(
 
     if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
         raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
-
-    address = services.canonicalize_bootstrap_address_or_die(address)
 
     gcs_client = ray._raylet.GcsClient(address=address)
     _check_ray_version(gcs_client)

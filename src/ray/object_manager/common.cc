@@ -15,6 +15,7 @@
 #include "ray/object_manager/common.h"
 
 #include <csignal>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "ray/common/ray_config.h"

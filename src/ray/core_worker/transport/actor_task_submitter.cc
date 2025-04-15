@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -318,7 +324,6 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-    queue->second.actor_submit_queue->OnClientConnected();
 
     ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
@@ -732,10 +737,11 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
         GetTaskFinisherWithoutMu().CompletePendingTask(
             task_id, reply, addr, reply.is_application_error());
-      }
-      // last failure = Actor death, but we still see the actor "alive" so we optionally
-      // wait for a grace period for the death info.
-      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+
+      } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+        // last failure = Actor death, but we still see the actor "alive" so we optionally
+        // wait for a grace period for the death info.
+
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();

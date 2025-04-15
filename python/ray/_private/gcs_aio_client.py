@@ -20,7 +20,6 @@ class GcsAioClient:
         address: str = None,
         loop=None,
         executor=None,
-        nums_reconnect_retry: int = 5,
         cluster_id: Optional[str] = None,
     ):
         # This must be consistent with GcsClient.__cinit__ in _raylet.pyx

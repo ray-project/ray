@@ -100,6 +100,17 @@ def wandb_env():
         del os.environ[WANDB_ENV_VAR]
 
 
+def fake_wandb_populate_run_location_hook():
+    """Fake user-provided hook to populate W&B environment variables."""
+    os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
+    os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH = (
+    "ray.air.tests.test_integration_wandb.fake_wandb_populate_run_location_hook"
+)
+
+
 class TestWandbLogger:
     def test_wandb_logger_project_group(self, monkeypatch):
         monkeypatch.setenv(WANDB_PROJECT_ENV_VAR, "test_project_from_env_var")
@@ -211,7 +222,7 @@ class TestWandbLogger:
             # Project and group env vars from external hook
             monkeypatch.setenv(
                 WANDB_POPULATE_RUN_LOCATION_HOOK,
-                "ray._private.test_utils.wandb_populate_run_location_hook",
+                FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH,
             )
             logger = WandbTestExperimentLogger(api_key="1234")
             logger.setup()
@@ -515,7 +526,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
+    with patch.object(ray.air.integrations.wandb, "load_class") as mock_load_class:
         logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )

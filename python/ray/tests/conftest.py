@@ -18,6 +18,7 @@ from typing import List, Optional
 from unittest import mock
 import psutil
 import pytest
+import copy
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -37,9 +38,9 @@ from ray._private.test_utils import (
     start_redis_instance,
     start_redis_sentinel_instance,
     redis_sentinel_replicas,
-    find_available_port,
     wait_for_condition,
     find_free_port,
+    reset_autoscaler_v2_enabled_cache,
     RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
@@ -253,10 +254,38 @@ def redis_alive(port, enable_tls):
     return False
 
 
+def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
+    ports = []
+    for _ in range(num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
+
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != num:
+        raise RuntimeError(f"Can't find {num} available port from {start} to {end}.")
+
+    return ports
+
+
 def start_redis_with_sentinel(db_dir):
     temp_dir = ray._private.utils.get_ray_temp_dir()
 
-    redis_ports = find_available_port(49159, 55535, redis_sentinel_replicas() + 1)
+    redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
     master_port = redis_ports[1]
     redis_processes = [
@@ -292,7 +321,7 @@ def start_redis(db_dir):
         redis_ports = []
         while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
-            port, free_port = find_available_port(49159, 55535, 2)
+            port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
                 proc = None
@@ -443,6 +472,25 @@ def external_redis(request):
 def external_redis_with_sentinel(request):
     with _setup_redis(request, True):
         yield
+
+
+@pytest.fixture
+def local_autoscaling_cluster(request, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
+
+    # Start a mock multi-node autoscaling cluster.
+    head_resources, worker_node_types, system_config = copy.deepcopy(request.param)
+    cluster = AutoscalingCluster(
+        head_resources=head_resources,
+        worker_node_types=worker_node_types,
+        autoscaler_v2=enable_v2,
+    )
+    cluster.start(_system_config=system_config)
+
+    yield None
+
+    # Shutdown the cluster
+    cluster.shutdown()
 
 
 @pytest.fixture
