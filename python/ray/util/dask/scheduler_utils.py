@@ -7,8 +7,9 @@ import os
 from queue import Queue, Empty
 
 from dask import config
+from dask._task_spec import DataNode, DependenciesMapping, convert_legacy_graph
 from dask.callbacks import local_callbacks, unpack_callbacks
-from dask.core import _execute_task, flatten, get_dependencies, has_tasks, reverse_dict
+from dask.core import flatten, get_dependencies, reverse_dict
 from dask.order import order
 
 if os.name == "nt":
@@ -56,17 +57,18 @@ def start_state_from_dask(dsk, cache=None, sortkey=None):
         cache = config.get("cache", None)
     if cache is None:
         cache = dict()
+
     data_keys = set()
     for k, v in dsk.items():
-        if not has_tasks(dsk, v):
-            cache[k] = v
+        if isinstance(v, DataNode):
+            cache[k] = v()
             data_keys.add(k)
 
     dsk2 = dsk.copy()
     dsk2.update(cache)
 
-    dependencies = {k: get_dependencies(dsk2, k) for k in dsk}
-    waiting = {k: v.copy() for k, v in dependencies.items() if k not in data_keys}
+    dependencies = DependenciesMapping(dsk)
+    waiting = {k: set(v) for k, v in dependencies.items() if k not in data_keys}
 
     dependents = reverse_dict(dependencies)
     for a in cache:
@@ -102,7 +104,7 @@ def execute_task(key, task_info, dumps, loads, get_id, pack_exception):
     """
     try:
         task, data = loads(task_info)
-        result = _execute_task(task, data)
+        result = task(data)
         id = get_id()
         result = dumps((result, id))
         failed = False
@@ -339,7 +341,7 @@ def get_async(
                             for dep in get_dependencies(dsk, key)
                         }
                         task = dsk[key]
-                        _execute_task(task, data)  # Re-execute locally
+                        task(data)  # Re-execute locally
                     else:
                         raise_exception(exc, tb)
                 res, worker_id = loads(res_info)
