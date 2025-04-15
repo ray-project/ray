@@ -100,8 +100,6 @@ def parse_node_labels_from_yaml_file(path: str) -> Dict[str, str]:
 
 
 def validate_node_labels(labels: Dict[str, str]):
-    if labels is None:
-        return
     for key, value in labels.items():
         possible_error_message = validate_label_key(key)
         if possible_error_message:
