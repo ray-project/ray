@@ -80,7 +80,7 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
     @property
     def runner_health_probe_timeout_s(self):
         """Number of seconds to wait for health probe calls to `Runner`s."""
-        self.config.offline_eval_runner_health_probe_timeout_s
+        return self.config.offline_eval_runner_health_probe_timeout_s
 
     @property
     def runner_cls(self) -> Callable:
@@ -122,4 +122,4 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
     @property
     def _validate_runners_after_construction(self):
         """If runners should validated after constructed."""
-        self.config.validate_offline_eval_runners_after_construction
+        return self.config.validate_offline_eval_runners_after_construction

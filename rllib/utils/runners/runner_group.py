@@ -102,8 +102,6 @@ class RunnerGroup(metaclass=abc.ABCMeta):
 
         # TODO (simon): Deprecate this as soon as we are deprecating the old stack.
         self._local_runner = None
-        if num_runners == 0:
-            local_runner = True
 
         self._local_config = config
 
