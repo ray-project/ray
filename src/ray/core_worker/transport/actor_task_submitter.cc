@@ -109,7 +109,8 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
           task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
-    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id) << "Actor creation task dependencies resolved";
+    RAY_LOG(DEBUG).WithField(actor_id).WithField(task_id)
+        << "Actor creation task dependencies resolved";
     // The actor creation task will be sent to
     // gcs server directly after the in-memory dependent objects are resolved. For
     // more details please see the protocol of actor management based on gcs.
