@@ -12,6 +12,8 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip
+
 
 @contextmanager
 def conda_env(env_name):

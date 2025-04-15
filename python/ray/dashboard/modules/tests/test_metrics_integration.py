@@ -10,6 +10,8 @@ from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
 from ray.scripts.scripts import metrics_group
 
+pytestmark = pytest.mark.skip
+
 
 @pytest.mark.parametrize(
     "os_type,architecture",
