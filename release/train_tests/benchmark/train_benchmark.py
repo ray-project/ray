@@ -11,12 +11,6 @@ from ray.train.v2._internal.util import date_str
 
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
-from image_classification.image_classification_parquet.factory import (
-    ImageClassificationParquetFactory,
-)
-from image_classification.image_classification_jpeg.factory import (
-    ImageClassificationJpegFactory,
-)
 
 
 logger = logging.getLogger(__name__)
@@ -54,8 +48,16 @@ def main():
     )
 
     if benchmark_config.task == "image_classification_parquet":
+        from image_classification.image_classification_parquet.factory import (
+            ImageClassificationParquetFactory,
+        )
+
         factory = ImageClassificationParquetFactory(benchmark_config)
     elif benchmark_config.task == "image_classification_jpeg":
+        from image_classification.image_classification_jpeg.factory import (
+            ImageClassificationJpegFactory,
+        )
+
         factory = ImageClassificationJpegFactory(benchmark_config)
     elif benchmark_config.task == "recsys":
         from recsys.recsys_factory import RecsysFactory
