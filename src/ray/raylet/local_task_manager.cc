@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
@@ -45,6 +46,7 @@ LocalTaskManager::LocalTaskManager(
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
+      self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
       is_owner_alive_(is_owner_alive),
@@ -64,6 +66,18 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  // The local node must be feasible if the cluster task manager decides to run the task
+  // locally.
+  RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
+      self_scheduling_node_id_,
+      ResourceMapToResourceRequest(work->task.GetTaskSpecification()
+                                       .GetRequiredPlacementResources()
+                                       .GetResourceMap(),
+                                   /*requires_object_store_memory=*/false)))
+      << work->task.GetTaskSpecification().DebugString() << " "
+      << cluster_resource_scheduler_.GetClusterResourceManager()
+             .GetNodeResources(self_scheduling_node_id_)
+             .DebugString();
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
@@ -463,11 +477,10 @@ void LocalTaskManager::SpillWaitingTasks() {
       // If scheduling strategy is spread, we prefer honoring spread decision
       // and waiting for task dependencies to be pulled
       // locally than spilling back and causing uneven spread.
-      scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+      scheduling_node_id = self_scheduling_node_id_;
     }
 
-    if (!scheduling_node_id.IsNil() &&
-        scheduling_node_id.Binary() != self_node_id_.Binary()) {
+    if (!scheduling_node_id.IsNil() && scheduling_node_id != self_scheduling_node_id_) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!spec.GetDependencies().empty()) {
@@ -506,7 +519,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
-      scheduling_node_id.Binary() == self_node_id_.Binary()) {
+      scheduling_node_id == self_scheduling_node_id_) {
     return false;
   }
 
