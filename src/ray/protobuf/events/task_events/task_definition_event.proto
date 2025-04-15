@@ -19,18 +19,18 @@ package ray.rpc.events;
 // Message containing the definition information of a task.
 // The message is expected to be emitted once per task attempt.
 message TaskDefinitionEvent {
-    // task_id and task_attempt forms the unique identifier for a task.
-    bytes task_id = 1;
-    int32 task_attempt = 2;
+  // task_id and task_attempt form the unique identifier of a task.
+  bytes task_id = 1;
+  int32 task_attempt = 2;
 
-    // The task definition information.
-    FunctionDescriptor task_func = 3;
-    string task_name = 4;
-    map<string, string> required_resources = 5;
-    RuntimeEnvInfo runtime_env_info = 6;
+  // The task definition information.
+  FunctionDescriptor task_func = 3;
+  string task_name = 4;
+  map<string, string> required_resources = 5;
+  RuntimeEnvInfo runtime_env_info = 6;
 
-    // The correlation ids of the task that can be used to correlate the task with
-    // other events.
-    bytes job_id = 7;
-    map<string, bytes> ref_ids = 8;
+  // The correlation ids of the task that can be used to correlate the task with
+  // other events.
+  bytes job_id = 7;
+  map<string, bytes> ref_ids = 8;
 }
