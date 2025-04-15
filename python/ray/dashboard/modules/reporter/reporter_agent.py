@@ -504,6 +504,7 @@ class ReporterAgent(
     def _test_pynvml_init():
         global enable_gpu_usage_check
         import ray._private.thirdparty.pynvml as pynvml
+
         try:
             pynvml.nvmlInit()
             pynvml.nvmlShutdown()
@@ -513,7 +514,7 @@ class ReporterAgent(
             if type(e).__name__ == "NVMLError_DriverNotLoaded":
                 enable_gpu_usage_check = False
             return False
-        
+
     @staticmethod
     def _get_gpu_usage() -> List[GpuUtilizationInfo]:
         import ray._private.thirdparty.pynvml as pynvml
@@ -636,10 +637,10 @@ class ReporterAgent(
                 [
                     "nvidia-smi",
                     "--query-gpu=index,name,uuid,utilization.gpu,memory.used,memory.total",
-                    "--format=csv,noheader,nounits"
+                    "--format=csv,noheader,nounits",
                 ],
                 capture_output=True,
-                text=True
+                text=True,
             )
             gpus = []
             for line in gpu_info.stdout.strip().split("\n"):
@@ -655,7 +656,7 @@ class ReporterAgent(
                         processes_pids=[],
                     )
                 )
-    
+
             processes_info = subprocess.run(
                 ["nvidia-smi", "pmon", "-c", "1"],
                 stdout=subprocess.PIPE,
@@ -671,7 +672,9 @@ class ReporterAgent(
                         gpu["processes_pids"].append(
                             ProcessGPUInfo(
                                 pid=int(pid),
-                                gpu_memory_usage=int(mem * gpu['memory_total'] / 100), # MB
+                                gpu_memory_usage=int(
+                                    mem * gpu["memory_total"] / 100
+                                ),  # MB
                                 gpu_utilization=int(sm),
                             )
                         )
@@ -1298,9 +1301,7 @@ class ReporterAgent(
 
             # -- GPU processes --
             records_reported.extend(
-                self.generate_worker_gpu_stats_record(
-                    stats["workers"], gpus
-                )
+                self.generate_worker_gpu_stats_record(stats["workers"], gpus)
             )
 
         # -- Disk per node --
