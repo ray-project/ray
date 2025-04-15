@@ -724,6 +724,18 @@ def format_resource_demand_summary(
     return demand_lines
 
 
+def get_constraints_report(lm_summary: LoadMetricsSummary):
+    constraint_lines = []
+    for bundle, count in lm_summary.request_demand:
+        line = f" {bundle}: {count}+ from request_resources()"
+        constraint_lines.append(line)
+    if len(constraint_lines) > 0:
+        constraints_report = "\n".join(constraint_lines)
+    else:
+        constraints_report = " (no cluster constraints)"
+    return constraints_report
+
+
 def get_demand_report(lm_summary: LoadMetricsSummary):
     demand_lines = []
     if lm_summary.resource_demand:
@@ -732,9 +744,6 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
         pg, count = entry
         pg_str = format_pg(pg)
         line = f" {pg_str}: {count}+ pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
     if len(demand_lines) > 0:
         demand_report = "\n".join(demand_lines)
@@ -893,6 +902,7 @@ def format_info_string(
         failure_report += " (no failures)"
 
     usage_report = get_usage_report(lm_summary, verbose)
+    constraints_report = get_constraints_report(lm_summary)
     demand_report = get_demand_report(lm_summary)
     formatted_output = f"""{header}
 Node status
@@ -914,6 +924,8 @@ Resources
 {separator}
 {"Total " if verbose else ""}Usage:
 {usage_report}
+{"Total " if verbose else ""}Constraints:
+{constraints_report}
 {"Total " if verbose else ""}Demands:
 {demand_report}"""
 

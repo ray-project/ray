@@ -319,6 +319,7 @@ class ClusterStatusFormatter:
         pending_report = cls._pending_node_report(data)
         failure_report = cls._failed_node_report(data, verbose)
         cluster_usage_report = cls._cluster_usage_report(data, verbose)
+        constraints_report = cls._constraints_report(data)
         demand_report = cls._demand_report(data)
         node_usage_report = (
             ""
@@ -343,6 +344,8 @@ class ClusterStatusFormatter:
             separator,
             f"{'Total ' if verbose else ''}Usage:",
             cluster_usage_report,
+            f"{'Total ' if verbose else ''}Constraints:",
+            constraints_report,
             f"{'Total ' if verbose else ''}Demands:",
             demand_report,
             node_usage_report,
@@ -540,6 +543,21 @@ class ClusterStatusFormatter:
         return " (no pending nodes)"
 
     @staticmethod
+    def _constraints_report(data: ClusterStatus) -> str:
+        # Process cluster constraint demand
+        constraint_lines = []
+        request_demand = [
+            (bc.bundle, bc.count)
+            for constraint_demand in data.resource_demands.cluster_constraint_demand
+            for bc in constraint_demand.bundles_by_count
+        ]
+        for bundle, count in request_demand:
+            constraint_lines.append(f" {bundle}: {count}+ from request_resources()")
+        if constraint_lines:
+            return "\n".join(constraint_lines)
+        return " (no cluster constraints)"
+
+    @staticmethod
     def _demand_report(data: ClusterStatus) -> str:
         # Process resource demands
         resource_demands = [
@@ -579,15 +597,6 @@ class ClusterStatusFormatter:
         for pg, count in pg_demand:
             pg_str = format_pg(pg)
             demand_lines.append(f" {pg_str}: {count}+ pending placement groups")
-
-        # Process cluster constraint demand
-        request_demand = [
-            (bc.bundle, bc.count)
-            for constraint_demand in data.resource_demands.cluster_constraint_demand
-            for bc in constraint_demand.bundles_by_count
-        ]
-        for bundle, count in request_demand:
-            demand_lines.append(f" {bundle}: {count}+ from request_resources()")
 
         # Generate demand report
         if demand_lines:

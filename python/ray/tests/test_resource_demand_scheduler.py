@@ -3166,10 +3166,11 @@ Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3256,10 +3257,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 
 Node: 192.168.1.1
  Usage:
@@ -3370,10 +3372,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 
 Node: 192.168.1.1 (head-node)
  Usage:
@@ -3461,10 +3464,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3555,10 +3559,11 @@ Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3647,10 +3652,11 @@ Total Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Total Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3735,11 +3741,12 @@ Usage:
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
+Constraints:
+ {'CPU': 16}: 100+ from request_resources()
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
  {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
 """
 
     actual = format_info_string(
