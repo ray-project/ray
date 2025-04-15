@@ -93,9 +93,7 @@ SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
 
 uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
-  RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
-      << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
-  return task_spec.ActorCounter() - caller_starts_at;
+  return task_spec.ActorCounter();
 }
 
 void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
