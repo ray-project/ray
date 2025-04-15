@@ -921,13 +921,6 @@ class MetricsLogger:
         else:
             return self.peek_results(reduced_stats_to_return)
 
-    #def resolve_gpu_tensors(self):
-    #    """Reduces Switches off tensor-mode."""
-    #    # Return all logged tensors (logged during the tensor-mode phase).
-    #    logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
-    #    ## Clear out logged tensor keys.
-    #    #self._tensor_keys.clear()
-
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
         for key, values in tensor_metrics.items():

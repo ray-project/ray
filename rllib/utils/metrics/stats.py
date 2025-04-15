@@ -725,15 +725,6 @@ class Stats:
             assert all(torch.is_tensor(v) for v in values), values
             # Convert all tensors to numpy values.
             values = [v.cpu().numpy() for v in values]
-            ##
-            #if len(values[0].shape) == 0:
-            #    reduced = values[0]
-            #else:
-            #    reduce_meth = getattr(torch, "nan" + self._reduce_method)
-            #    reduce_in = torch.stack(list(values))
-            #    if self._reduce_method == "mean":
-            #        reduce_in = reduce_in.float()
-            #    reduced = reduce_meth(reduce_in)
 
         # TODO (sven): Deprecate tf (DreamerV3 to torch).
         elif tf and tf.is_tensor(values[0]):
