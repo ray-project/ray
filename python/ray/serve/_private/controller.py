@@ -376,8 +376,14 @@ class ServeController:
         start_time = time.time()
         while True:
             loop_start_time = time.time()
-
-            await self.run_control_loop_step(start_time, recovering_timeout, num_loops)
+            try:
+                await self.run_control_loop_step(
+                    start_time, recovering_timeout, num_loops
+                )
+            except Exception as e:
+                # we never expect this to happen, but adding this to be safe
+                logger.exception(f"There was an exception in the control loop: {e}")
+                await asyncio.sleep(1)
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
@@ -421,6 +427,9 @@ class ServeController:
             )
             self.done_recovering_event.set()
 
+        # setting this to true because its possible that update call to deployment_state_manager
+        # will throw an exception and we don't want unintentionally drop handle metrics
+        any_recovering = None
         try:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
@@ -474,7 +483,7 @@ class ServeController:
 
         # When the controller is done recovering, drop invalid handle metrics
         # that may be stale for autoscaling
-        if not any_recovering:
+        if any_recovering is not None and any_recovering is False:
             self.autoscaling_state_manager.drop_stale_handle_metrics(
                 self.deployment_state_manager.get_alive_replica_actor_ids()
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
