@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+// clang-format on
 
 #include <memory>
 #include <string>

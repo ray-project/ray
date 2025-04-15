@@ -30,7 +30,7 @@ ray_cc_library(
         ":task_receiver",
         "//:gcs_client_lib",
         "//:gcs_pb_util",
-        "//:pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         "//:raylet_client_lib",
         "//:worker_rpc",
         "//src/ray/common/cgroup:cgroup_context",
@@ -177,7 +177,7 @@ ray_cc_library(
     deps = [
         ":lease_policy",
         "//:grpc_server",
-        "//:pubsub_lib",
+        "//src/ray/pubsub:pubsub_lib",
         "//:worker_rpc",
         "//src/ray/common:id",
         "//src/ray/protobuf:common_cc_proto",

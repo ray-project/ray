@@ -73,7 +73,7 @@ ray_cc_library(
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     deps = [
-        ":object_lifecycle_manager",
+        ":obj_lifecycle_mgr",
         ":plasma_allocator",
         ":plasma_object_store",
         ":plasma_store",
@@ -90,7 +90,7 @@ ray_cc_library(
     srcs = ["store.cc"],
     hdrs = ["store.h"],
     deps = [
-        ":object_lifecycle_manager",
+        ":obj_lifecycle_mgr",
         ":object_manager_plasma_common",
         ":plasma_allocator",
         ":plasma_connection_protocol",
@@ -120,7 +120,7 @@ ray_cc_library(
     srcs = ["get_request_queue.cc"],
     hdrs = ["get_request_queue.h"],
     deps = [
-        ":object_lifecycle_manager",
+        ":obj_lifecycle_mgr",
         ":plasma_connection_protocol",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -128,9 +128,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "object_lifecycle_manager",
-    srcs = ["object_lifecycle_manager.cc"],
-    hdrs = ["object_lifecycle_manager.h"],
+    name = "obj_lifecycle_mgr",
+    srcs = ["obj_lifecycle_mgr.cc"],
+    hdrs = ["obj_lifecycle_mgr.h"],
     deps = [
         ":plasma_allocator",
         ":plasma_connection_protocol",
