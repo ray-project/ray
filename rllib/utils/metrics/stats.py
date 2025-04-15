@@ -258,10 +258,7 @@ class Stats:
             value: The value item to be appended to the internal values list
                 (`self.values`).
         """
-        if torch and torch.is_tensor(value):
-            value = value.detach()
-        elif tf and tf.is_tensor(value):
-            value = tf.stop_gradient(value)
+        value = self._detach_tensor_from_graph(value)
 
         self.values.append(value)
         # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
@@ -373,7 +370,7 @@ class Stats:
         # a new Stats object.
         else:
             values = copy.deepcopy(self.values)
-        return Stats.similar_to(self, init_value=values)
+        return Stats.similar_to(self, init_value=self._numpy_if_necessary(values))
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         # Make sure `others` have same reduction settings.
@@ -569,19 +566,21 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
-    def set_to_numpy_values(self, values) -> None:
-        """Converts `self.values` from tensors to actual numpy values.
+    def _detach_tensor_from_graph(self, value):
+        if torch and torch.is_tensor(value):
+            value = value.detach()
+        elif tf and tf.is_tensor(value):
+            value = tf.stop_gradient(value)
+        return value
 
-        Args:
-            values: The (numpy) values to set `self.values` to.
-        """
-        numpy_values = convert_to_numpy(values)
-        if self._reduce_method is None:
-            assert isinstance(values, list) and len(self.values) >= len(values)
-            self.values = numpy_values
-        else:
-            assert len(self.values) > 0
-            self._set_values(force_list(numpy_values))
+    def _numpy_if_necessary(self, values):
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and torch.is_tensor(values[0]):
+            # Make sure, all values are tensors.
+            assert all(torch.is_tensor(v) for v in values), values
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+        return values
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -689,6 +688,7 @@ class Stats:
         return stats
 
     def _set_values(self, new_values):
+        new_values = [self._detach_tensor_from_graph(v) for v in new_values]
         # For stats with window, use a deque with maxlen=window.
         # This way, we never store more values than absolutely necessary.
         if not self._inf_window:
@@ -712,13 +712,7 @@ class Stats:
             to be used.
         """
         values = values if values is not None else self.values
-
-        # Torch tensor handling. Convert to CPU/numpy first.
-        if torch and torch.is_tensor(values[0]):
-            # Make sure, all values are tensors.
-            assert all(torch.is_tensor(v) for v in values), values
-            # Convert all tensors to numpy values.
-            values = [v.cpu().numpy() for v in values]
+        values = self._numpy_if_necessary(values)
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:

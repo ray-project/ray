@@ -3130,7 +3130,25 @@ class Algorithm(Checkpointable, Trainable):
 
         # Only here (at the end of the iteration), reduce the results into a single
         # result dict.
-        return self.metrics.reduce(), train_iter_ctx
+
+        # TEST
+        import tree
+        import torch
+
+        def func(p, s):
+            if any(torch.is_tensor(v) for v in s.values):
+                print(f"TENSOR ({s.values}) at path={p}")
+                quit()
+
+        red = self.metrics.reduce()
+
+        tree.map_structure_with_path(
+            func,
+            red,
+        )
+        # END TEST
+
+        return red, train_iter_ctx
 
     def _run_one_evaluation(
         self,
