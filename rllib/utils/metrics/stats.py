@@ -162,7 +162,7 @@ class Stats:
                 )  # Track last push time for throughput calculation
 
         # The actual, underlying data in this Stats object.
-        self.values: List = None
+        self.values: Union[List, deque.Deque] = None
         self._set_values(force_list(init_values))
 
         # Track if new values were pushed since last reduce
