@@ -501,6 +501,20 @@ class ReporterAgent(
             return psutil.cpu_percent()
 
     @staticmethod
+    def _test_pynvml_init():
+        global enable_gpu_usage_check
+        import ray._private.thirdparty.pynvml as pynvml
+        try:
+            pynvml.nvmlInit()
+            pynvml.nvmlShutdown()
+            return True
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+            return False
+        
+    @staticmethod
     def _get_gpu_usage() -> List[GpuUtilizationInfo]:
         import ray._private.thirdparty.pynvml as pynvml
 
@@ -1432,6 +1446,9 @@ class ReporterAgent(
     async def _run_loop(self, publisher):
         """Get any changes to the log files and push updates to kv."""
         loop = get_or_create_event_loop()
+
+        # Test if the GPU present
+        self._test_pynvml_init()
 
         while True:
             try:
