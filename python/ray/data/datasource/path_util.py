@@ -148,6 +148,7 @@ def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
     from pyarrow.fs import FSSpecHandler, PyFileSystem
 
     try:
+        import fsspec
         from fsspec.implementations.http import HTTPFileSystem
     except ModuleNotFoundError:
         return False
