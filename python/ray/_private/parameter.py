@@ -3,7 +3,6 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._private.label_utils import validate_node_labels
 from ray._private.utils import check_ray_client_dependencies_installed
 
 
@@ -449,8 +448,6 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
-
-        validate_node_labels(self.labels)
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

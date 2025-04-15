@@ -5,7 +5,7 @@ from typing import (
     Dict,
     Optional,
 )
-
+import ray._private.ray_constants as ray_constants
 
 # Regex patterns used to validate that labels conform to Kubernetes label syntax rules.
 # https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
@@ -45,7 +45,7 @@ def parse_node_labels_json(labels_json: str) -> Dict[str, str]:
             raise ValueError("The key is not string type.")
         if not isinstance(value, str):
             raise ValueError(f'The value of the "{key}" is not string type')
-    
+
     # Validate parsed custom node labels don't begin with ray.io prefix
     validate_node_labels(labels)
 
@@ -113,6 +113,7 @@ def validate_node_labels(labels: Dict[str, str]):
                 f"Custom label keys `{key}` cannot start with the prefix "
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
+            )
 
 
 def validate_label_key(key: str) -> Optional[str]:
@@ -122,13 +123,16 @@ def validate_label_key(key: str) -> Optional[str]:
             return str(
                 f"Invalid label key prefix `{prefix}`. Prefix must be a series of DNS labels "
                 f"separated by dots (.), not longer than 253 characters in total."
-    for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
             )
+    else:
+        name = key
+    if len(name) > 63 or not re.fullmatch(LABEL_REGEX, name):
+        return str(
+            f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
+            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
+            f"dots (.), and alphanumerics between."
+        )
+    return None
 
 
 def validate_label_value(value: str):

@@ -48,29 +48,39 @@ def test_parse_node_labels_from_string(
         labels_dict = parse_node_labels_string(labels_string)
         assert labels_dict == expected_result
 
-@pytest.mark.parametrize(
-    "labels_json, expected_result, expected_exception",
-    [
-        ("{}", {}, None),  # Empty label argument
-        ('{"region":""}', {"region": ""}, None),  # Valid label key with empty value
-        (
-            '{"ray.io/accelerator-type":"A100", "region":"us-west4"}',
-            {"ray.io/accelerator-type": "A100", "region": "us-west4"},
-            None,
-        ),  # Multiple valid labels
-        ('{500:"A100"}', None, json.decoder.JSONDecodeError),  # Invalid label key
-        ('{"ray.io/accelerator-type":500}', "ValueError", ValueError),  # Invalid label value
-    ]
-)
-def test_parse_node_labels_from_json(labels_json, expected_result, expected_exception):
-    if expected_exception:
-        with pytest.raises(expected_exception) as e:
-            parse_node_labels_json(labels_json)
-        if expected_exception is ValueError:
-            assert 'The value of the "ray.io/accelerator-type" is not string type' in str(e.value)
-    else:
-        labels_dict = parse_node_labels_json(labels_json)
-        assert labels_dict == expected_result
+
+def test_parse_node_labels_from_json():
+    # Empty label argument passed
+    labels_json = "{}"
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {}
+
+    # Invalid label prefix - starts with ray.io
+    labels_json = '{"ray.io/accelerator-type": "A100"}'
+    with pytest.raises(ValueError) as e:
+        parse_node_labels_json(labels_json)
+    assert "This is reserved for Ray defined labels" in str(e)
+
+    # Valid label key with empty value
+    labels_json = '{"region":""}'
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {"region": ""}
+
+    # Multiple valid label keys and values
+    labels_json = '{"accelerator-type":"A100", "region":"us-west4"}'
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {"accelerator-type": "A100", "region": "us-west4"}
+
+    # Invalid label key - json.loads should fail
+    labels_json = '{500:"A100"}'
+    with pytest.raises(json.decoder.JSONDecodeError):
+        parse_node_labels_json(labels_json)
+
+    # Invalid label value - must be string type
+    labels_json = '{"accelerator-type":500}'
+    with pytest.raises(ValueError) as e:
+        parse_node_labels_json(labels_json)
+    assert 'The value of the "accelerator-type" is not string type' in str(e)
 
 
 def test_parse_node_labels_from_yaml_file():
@@ -151,10 +161,10 @@ def test_parse_node_labels_from_yaml_file():
 def test_validate_node_label_syntax(labels_dict, expected_error, expected_message):
     if expected_error:
         with pytest.raises(expected_error) as e:
-            validate_node_labels(labels_dict)
+            validate_node_label_syntax(labels_dict)
         assert expected_message in str(e.value)
     else:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
 
 
 @pytest.mark.parametrize(
@@ -219,6 +229,7 @@ def test_validate_label_selector_value(selector, expected_error):
         assert expected_error in error_msg
     else:
         assert error_msg is None
+
 
 def test_validate_node_labels():
     # Custom label starts with ray.io prefix
