@@ -19,6 +19,6 @@ Usage:
  0.+
 
 Constraints:
- \(no cluster constraints\)
+ \(no request_resources\(\) constraints\)
 Demands:
  \(no resource demands\)

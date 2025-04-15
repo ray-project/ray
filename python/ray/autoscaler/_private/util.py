@@ -732,7 +732,7 @@ def get_constraints_report(lm_summary: LoadMetricsSummary):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no cluster constraints)"
+        constraints_report = " (no request_resources() constraints)"
     return constraints_report
 
 
