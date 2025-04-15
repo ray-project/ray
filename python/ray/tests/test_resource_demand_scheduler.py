@@ -3268,6 +3268,11 @@ def test_info_string_verbose():
                 "object_store_memory": (0, 2**32),
             },
         },
+        resource_demand_counts={
+            "num_ready_requests_queued": 1,
+            "num_infeasible_requests_queued": 2,
+            "backlog_size": 3,
+        },
     )
     autoscaler_summary = AutoscalerSummary(
         active_nodes=[],
@@ -3320,6 +3325,10 @@ Total Constraints:
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+Total Demands (by count):
+ 1 ready requests queued
+ 2 infeasible requests queued
+ 3 total backlog queued
 
 Node: 192.168.1.1
  Usage:
@@ -3369,6 +3378,11 @@ def test_info_string_verbose_node_types():
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
         request_demand=[({"CPU": 16}, 100)],
         node_types=[],
+        resource_demand_counts={
+            "num_ready_requests_queued": 1,
+            "num_infeasible_requests_queued": 2,
+            "backlog_size": 3,
+        },
         usage_by_node={
             "192.168.1.1": {
                 "CPU": (5.0, 20.0),
@@ -3435,6 +3449,10 @@ Total Constraints:
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+Total Demands (by count):
+ 1 ready requests queued
+ 2 infeasible requests queued
+ 3 total backlog queued
 
 Node: 192.168.1.1 (head-node)
  Usage:
@@ -3481,6 +3499,11 @@ def test_info_string_verbose_no_breakdown():
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
         request_demand=[({"CPU": 16}, 100)],
         node_types=[],
+        resource_demand_counts={
+            "num_ready_requests_queued": 1,
+            "num_infeasible_requests_queued": 2,
+            "backlog_size": 3,
+        },
         usage_by_node=None,
     )
     autoscaler_summary = AutoscalerSummary(
@@ -3527,6 +3550,10 @@ Total Constraints:
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+Total Demands (by count):
+ 1 ready requests queued
+ 2 infeasible requests queued
+ 3 total backlog queued
 """.strip()
     actual = format_info_string(
         lm_summary,
@@ -3645,6 +3672,11 @@ def test_info_string_with_launch_failures_verbose():
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
         request_demand=[({"CPU": 16}, 100)],
         node_types=[],
+        resource_demand_counts={
+            "num_ready_requests_queued": 1,
+            "num_infeasible_requests_queued": 2,
+            "backlog_size": 3,
+        },
     )
     base_timestamp = datetime(
         year=2012, month=12, day=21, hour=13, minute=3, second=1
@@ -3715,6 +3747,10 @@ Total Constraints:
 Total Demands:
  {'CPU': 1}: 150+ pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+Total Demands (by count):
+ 1 ready requests queued
+ 2 infeasible requests queued
+ 3 total backlog queued
 """.strip()
     actual = format_info_string(
         lm_summary,

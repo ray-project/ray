@@ -89,6 +89,24 @@ def is_placement_group_resource(resource_name: str) -> bool:
 
 
 @dataclass
+class ResourceDemandCounts:
+    """
+    ResourceDemandCounts: An object containing the aggregated counts of:
+
+    Attributes:
+        num_ready_requests_queued: The number of resource requests that are ready,
+            but that are waiting for resources.
+        num_infeasible_requests_queued: The number of requests for which there is
+            no node that is a superset of their requested resource shapes.
+        backlog_size: The number of requests still queued in CoreWorkers.
+    """
+
+    num_ready_requests_queued: int
+    num_infeasible_requests_queued: int
+    backlog_size: int
+
+
+@dataclass
 class LoadMetricsSummary:
     # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
     usage: Usage
@@ -111,6 +129,12 @@ class LoadMetricsSummary:
     # backwards compatibility.
     node_type_mapping: Optional[Dict[str, str]] = None
     idle_time_map: Optional[Dict[str, int]] = None
+    # Counts of num_ready_requests_queued, num_infeasible_requests_queued, and backlog_size.
+    # This must be a dict rather than a ResourceDemandCounts because this data gets serialized to JSON.
+    # JSON serialization/deserialization would lose the ResourceDemandCounts type information,
+    # potentially causing errors when the object is reconstructed. Using a dict ensures the data
+    # structure remains valid and consistent across serialization boundaries.
+    resource_demand_counts: Optional[Dict[str, int]] = None
 
 
 class ConcurrentCounter:
@@ -770,6 +794,47 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
+def get_demand_counts(resource_demand_counts: Optional[Dict[str, int]]):
+    """Returns a formatted string describing the resource demand counts.
+
+    Args:
+        resource_demand_counts: Optional dictionary containing counts of resource demands,
+            with keys 'num_ready_requests_queued', 'num_infeasible_requests_queued', and
+            'backlog_size'. If None or empty, indicates no resource demands.
+
+    Returns:
+        String containing the formatted demand counts report, either listing each count
+        type and value or indicating no demands exist.
+
+    Example:
+        >>> resource_demand_counts = {
+        ...     "num_ready_requests_queued": 5,
+        ...     "num_infeasible_requests_queued": 2,
+        ...     "backlog_size": 10
+        ... }
+        >>> get_demand_counts(resource_demand_counts)
+        " 5 ready requests queued\\n 2 infeasible requests queued\\n 10 total backlog queued"
+    """
+    demand_lines = []
+    for key, msg in {
+        "num_ready_requests_queued": "ready requests queued",
+        "num_infeasible_requests_queued": "infeasible requests queued",
+        "backlog_size": "total backlog queued",
+    }.items():
+        if (
+            resource_demand_counts
+            and key in resource_demand_counts
+            and resource_demand_counts[key]
+        ):
+            line = f" {resource_demand_counts[key]} {msg}"
+            demand_lines.append(line)
+    if len(demand_lines) > 0:
+        demand_report = "\n".join(demand_lines)
+    else:
+        demand_report = " (no resource demands)"
+    return demand_report
+
+
 def get_per_node_breakdown_as_dict(
     lm_summary: LoadMetricsSummary,
 ) -> dict:
@@ -948,6 +1013,9 @@ Resources
 {demand_report}"""
 
     if verbose:
+        formatted_output += f"""
+Total Demands (by count):
+{get_demand_counts(lm_summary.resource_demand_counts)}"""
         if lm_summary.usage_by_node:
             formatted_output += get_per_node_breakdown(
                 lm_summary,

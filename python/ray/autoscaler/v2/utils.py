@@ -10,6 +10,7 @@ from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.util import (
+    ResourceDemandCounts,
     format_pg,
     format_resource_demand_summary,
     parse_usage,
@@ -323,6 +324,11 @@ class ClusterStatusFormatter:
             data.resource_demands.cluster_constraint_demand
         )
         demand_report = cls._demand_report(data)
+        demand_counts_report = (
+            ""
+            if not verbose
+            else cls._demand_counts_report(data.resource_demand_counts)
+        )
         node_usage_report = (
             ""
             if not verbose
@@ -350,6 +356,8 @@ class ClusterStatusFormatter:
             constraints_report,
             f"{'Total ' if verbose else ''}Demands:",
             demand_report,
+            f"{'Total Demands (by count):' if verbose else ''}",
+            demand_counts_report,
             node_usage_report,
         ]
 
@@ -626,6 +634,44 @@ class ClusterStatusFormatter:
         return " (no resource demands)"
 
     @staticmethod
+    def _demand_counts_report(resource_demand_counts: ResourceDemandCounts) -> str:
+        """Returns a formatted string describing the resource demand counts.
+
+        Args:
+            resource_demand_counts: Object containing counts of
+                ready requests queued, infeasible requests queued, and total backlog size.
+
+        Returns:
+            str: Formatted string containing the demand counts report, either listing each count
+                type and value or indicating no demands exist.
+
+        Example:
+            >>> counts = ResourceDemandCounts(
+            ...     num_ready_requests_queued=5,
+            ...     num_infeasible_requests_queued=2,
+            ...     backlog_size=10
+            ... )
+            >>> _demand_counts_report(counts)
+            ' 5 ready requests queued\\n 2 infeasible requests queued\\n 10 total backlog queued'
+        """
+        demand_lines = []
+        if resource_demand_counts.num_ready_requests_queued:
+            demand_lines.append(
+                f" {resource_demand_counts.num_ready_requests_queued} ready requests queued"
+            )
+        if resource_demand_counts.num_infeasible_requests_queued:
+            demand_lines.append(
+                f" {resource_demand_counts.num_infeasible_requests_queued} infeasible requests queued"
+            )
+        if resource_demand_counts.backlog_size:
+            demand_lines.append(
+                f" {resource_demand_counts.backlog_size} total backlog queued"
+            )
+        if demand_lines:
+            return "\n".join(demand_lines)
+        return " (no resource demands)"
+
+    @staticmethod
     def _cluster_usage_report(data: ClusterStatus, verbose: bool) -> str:
         # Build usage dictionary
         usage = {
@@ -667,6 +713,10 @@ class ClusterStatusParser:
         # parse resource demands
         resource_demands = cls._parse_resource_demands(proto.cluster_resource_state)
 
+        resource_demand_counts = cls._parse_resource_demand_counts(
+            list(proto.cluster_resource_state.pending_resource_requests)
+        )
+
         # parse stats
         stats = cls._parse_stats(proto, stats)
 
@@ -679,6 +729,7 @@ class ClusterStatusParser:
             failed_nodes=failed_nodes,
             cluster_resource_usage=cluster_resource_usage,
             resource_demands=resource_demands,
+            resource_demand_counts=resource_demand_counts,
             stats=stats,
         )
 
@@ -754,6 +805,55 @@ class ClusterStatusParser:
             placement_group_demand=pg_demand,
             cluster_constraint_demand=constraint_demand,
         )
+
+    @classmethod
+    def _parse_resource_demand_counts(
+        cls, pending_resource_requests: List[ResourceRequestByCountProto]
+    ) -> ResourceDemandCounts:
+        """
+        Parse the resource demand counts from the cluster resource state.
+        Args:
+            pending_resource_requests: A list of ResourceRequestByCountProto objects containing
+                information about pending resource requests and their breakdown statistics.
+
+        Returns:
+            ResourceDemandCounts: An object containing aggregated counts of:
+                - num_ready_requests_queued: Number of requests ready to be scheduled
+                - num_infeasible_requests_queued: Number of requests that cannot be scheduled
+                - backlog_size: Total size of request backlog
+
+        Example:
+            >>> requests = [
+            ...     ResourceRequestByCountProto(
+            ...         breakdown=ResourceRequestByCountBreakdown(
+            ...             num_ready_requests_queued=5,
+            ...             num_infeasible_requests_queued=2,
+            ...             backlog_size=7
+            ...         )
+            ...     )
+            ... ]
+            >>> _parse_resource_demand_counts(requests)
+            ResourceDemandCounts(
+                num_ready_requests_queued=5,
+                num_infeasible_requests_queued=2,
+                backlog_size=7
+            )
+        """
+        counts = ResourceDemandCounts(
+            num_ready_requests_queued=0,
+            num_infeasible_requests_queued=0,
+            backlog_size=0,
+        )
+        for request_count in pending_resource_requests:
+            if request_count.breakdown:
+                counts.num_ready_requests_queued += (
+                    request_count.breakdown.num_ready_requests_queued
+                )
+                counts.num_infeasible_requests_queued += (
+                    request_count.breakdown.num_infeasible_requests_queued
+                )
+                counts.backlog_size += request_count.breakdown.backlog_size
+        return counts
 
     @classmethod
     def _aggregate_resource_requests_by_shape(

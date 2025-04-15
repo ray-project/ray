@@ -6,6 +6,7 @@ from typing import Dict
 import pytest  # noqa
 from google.protobuf.json_format import ParseDict
 
+from ray.autoscaler._private.util import ResourceDemandCounts
 from ray.autoscaler.v2.schema import (
     ClusterConstraintDemand,
     ClusterStatus,
@@ -537,6 +538,11 @@ def test_cluster_status_formatter():
             cluster_resource_state_version="20",
             request_ts_s=775303535,
         ),
+        resource_demand_counts=ResourceDemandCounts(
+            num_ready_requests_queued=1,
+            num_infeasible_requests_queued=2,
+            backlog_size=3,
+        ),
     )
     actual = ClusterStatusFormatter.format(state, verbose=True)
 
@@ -573,6 +579,10 @@ Total Demands:
  {'CPU': 1, 'GPU': 1}: 11+ pending tasks/actors
  {'CPU': 1, 'GPU': 1} * 1 (STRICT_SPREAD): 1+ pending placement groups
  {'GPU': 2} * 1 (STRICT_PACK): 2+ pending placement groups
+Total Demands (by count):
+ 1 ready requests queued
+ 2 infeasible requests queued
+ 3 total backlog queued
 
 Node: instance1 (head_node)
  Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00001

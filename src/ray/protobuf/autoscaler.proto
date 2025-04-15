@@ -93,9 +93,22 @@ message ResourceRequest {
   repeated LabelSelector label_selectors = 3;
 }
 
+message ResourceRequestByCountBreakdown {
+  // The number of requests that are ready to run (i.e., dependencies have been
+  // fulfilled), but that are waiting for resources.
+  uint64 num_ready_requests_queued = 1;
+  // The number of requests for which there is no node that is a superset of
+  // the requested resource shape.
+  uint64 num_infeasible_requests_queued = 2;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 3;
+}
+
 message ResourceRequestByCount {
   ResourceRequest request = 1;
   int64 count = 2;
+  optional ResourceRequestByCountBreakdown breakdown = 3;
 }
 
 // A bundle selector used to specify the resource bundles that should be

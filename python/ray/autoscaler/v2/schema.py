@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+from ray.autoscaler._private.util import ResourceDemandCounts
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -204,6 +205,10 @@ class ClusterStatus:
     # Demand summary.
     resource_demands: ResourceDemandSummary = field(
         default_factory=ResourceDemandSummary
+    )
+    # Resource demand counts.
+    resource_demand_counts: ResourceDemandCounts = field(
+        default_factory=ResourceDemandCounts
     )
     # Query metics
     stats: Stats = field(default_factory=Stats)
