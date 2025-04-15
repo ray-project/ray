@@ -10,7 +10,7 @@ from ray.llm._internal.common.utils.cloud_utils import (
 
 import tempfile
 import os
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch, ANY, call
 
 import pyarrow.fs as pa_fs
 from pytest import raises
@@ -446,8 +446,12 @@ class TestCloudFileSystem:
             CloudFileSystem.upload_files(tempdir, "s3://bucket/dir")
 
             # Check that the files are copied
-            assert mock_copy_files.call_count == 1
-            assert mock_copy_files.called_with(tempdir, "bucket/dir/", ANY, ANY)
+            mock_copy_files.assert_called_once_with(
+                source=tempdir,
+                destination="bucket/dir",
+                source_filesystem=ANY,
+                destination_filesystem=ANY,
+            )
 
     @patch("pyarrow.fs.copy_files")
     def test_upload_model(self, mock_copy_files):
@@ -469,12 +473,22 @@ class TestCloudFileSystem:
             CloudFileSystem.upload_model(tempdir, "gs://bucket/model")
 
             # Check that the files are copied
-            assert mock_copy_files.call_count == 2
-            assert mock_copy_files.called_with(
-                model_rev_path, "bucket/model/hash", ANY, ANY
-            )
-            assert mock_copy_files.called_with(
-                model_asset_path, "bucket/model/", ANY, ANY
+            mock_copy_files.assert_has_calls(
+                [
+                    call(
+                        source=model_rev_path,
+                        destination="bucket/model/hash",
+                        source_filesystem=ANY,
+                        destination_filesystem=ANY,
+                    ),
+                    call(
+                        source=model_asset_path,
+                        destination="bucket/model",
+                        source_filesystem=ANY,
+                        destination_filesystem=ANY,
+                    ),
+                ],
+                any_order=True,
             )
 
 

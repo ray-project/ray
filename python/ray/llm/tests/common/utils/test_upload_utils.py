@@ -1,6 +1,7 @@
 import os
 import tempfile
-from unittest.mock import patch, ANY
+from unittest.mock import patch, ANY, call
+from pathlib import Path
 
 from ray.llm._internal.common.utils.upload_utils import upload_model_files
 
@@ -24,9 +25,13 @@ def test_upload_undownloaded_model(mock_copy_files):
             # upload the model
             upload_model_files(model_id, "gs://bucket/model-id")
 
-        # check that the model was uploaded
-        assert mock_copy_files.call_count == 1
-        assert mock_copy_files.called_with(model_dir, "bucket/model-id/", ANY, ANY)
+        # check that the model was uploaded1
+        mock_copy_files.assert_called_once_with(
+            source=Path(model_dir),
+            destination="bucket/model-id",
+            source_filesystem=ANY,
+            destination_filesystem=ANY,
+        )
 
 
 @patch("pyarrow.fs.copy_files")
@@ -49,11 +54,22 @@ def test_upload_downloaded_hf_model(mock_copy_files):
             upload_model_files(model_id, "s3://bucket/model-id")
 
         assert mock_copy_files.call_count == 2
-        assert mock_copy_files.called_with(
-            os.path.join(model_dir, "snapshots", hash), "bucket/model-id/", ANY, ANY
-        )
-        assert mock_copy_files.called_with(
-            os.path.join(model_rev_path, "main"), "bucket/model-id/hash", ANY, ANY
+        mock_copy_files.assert_has_calls(
+            [
+                call(
+                    source=os.path.join(model_dir, "snapshots", hash),
+                    destination="bucket/model-id",
+                    source_filesystem=ANY,
+                    destination_filesystem=ANY,
+                ),
+                call(
+                    source=os.path.join(model_rev_path, "main"),
+                    destination="bucket/model-id/hash",
+                    source_filesystem=ANY,
+                    destination_filesystem=ANY,
+                ),
+            ],
+            any_order=True,
         )
 
 
@@ -70,5 +86,9 @@ def test_upload_custom_model(mock_copy_files):
         ):
             upload_model_files(model_id, "s3://bucket/model-id")
 
-        assert mock_copy_files.call_count == 1
-        assert mock_copy_files.called_with(model_dir, "bucket/model-id/", ANY, ANY)
+        mock_copy_files.assert_called_once_with(
+            source=Path(model_dir),
+            destination="bucket/model-id",
+            source_filesystem=ANY,
+            destination_filesystem=ANY,
+        )
