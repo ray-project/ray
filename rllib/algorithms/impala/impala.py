@@ -757,7 +757,6 @@ class IMPALA(Algorithm):
                     rl_module_state = result_from_1_learner.pop(
                         "_rl_module_state_after_update", rl_module_state
                     )
-
                 self.metrics.merge_and_log_n_dicts(
                     stats_dicts=learner_results,
                     key=LEARNER_RESULTS,
