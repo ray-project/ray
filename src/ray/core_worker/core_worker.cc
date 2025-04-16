@@ -1024,6 +1024,7 @@ void CoreWorker::Shutdown() {
     RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
   }
+  RAY_LOG(INFO) << "Shutting down.";
 
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
