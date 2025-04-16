@@ -276,6 +276,7 @@ class VLLMEngine:
         self.running = False
         self.model_config: "ModelConfig" = None
         self.engine = None
+        self.vllm_config: "VllmConfig" = None
 
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -384,6 +385,10 @@ class VLLMEngine:
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+
+        # Note (genesu): vllm_config is used to extract the scheduler config for
+        # computing the correct prompt limit.
+        self.vllm_config = engine_config
         return engine_args, engine_config, node_initialization
 
     async def _start_engine_v1(self) -> "EngineClient":
@@ -666,6 +671,24 @@ class VLLMEngine:
             # phase
             await self.engine.abort(vllm_generation_request.request_id)
 
+    def _get_prompt_limit(self) -> int:
+        """Helper to get the prompt limit from scheduler config
+
+        Port from https://github.com/vllm-project/vllm/blob/7b5ecf79bd94aab0d782c70126d0dcc37c16bc60/vllm/core/scheduler.py#L939
+        """
+        scheduler_config = self.vllm_config.scheduler_config
+        if (
+            scheduler_config.chunked_prefill_enabled
+            and not scheduler_config.is_multi_step
+        ):
+            prompt_limit = scheduler_config.max_model_len
+        else:
+            prompt_limit = min(
+                scheduler_config.max_model_len,
+                scheduler_config.max_num_batched_tokens,
+            )
+        return prompt_limit
+
     def _handle_input_too_long(
         self, request_output: "RequestOutput", finish_reason: Optional[FinishReason]
     ):
@@ -676,7 +699,7 @@ class VLLMEngine:
         ):
             # This means that the prompt was too long and we did not generate anything.
             raise InputTooLong(
-                len(request_output.prompt_token_ids), self.model_config.max_model_len
+                len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
 
     async def check_health(self):
