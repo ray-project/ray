@@ -44,6 +44,8 @@ namespace stats {
 
 /// Tasks stats, broken down by state.
 DECLARE_stats(tasks);
+/// Memory High Watermark of resident memory of tasks.
+DECLARE_stats(task_rss_hwm_kb);
 
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
