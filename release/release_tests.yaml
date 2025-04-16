@@ -4248,3 +4248,28 @@
       python run_vision_language_model.py
       --model-source mistral-community/pixtral-12b
       --tp-size 2 --concurrency 2 --vllm-use-v1
+
+
+#######################
+# Ray examples tests
+#######################
+
+- name: byod_e2e_xgboost  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.12"
+  group: ray-examples
+  team: ml
+  working_dir: ray_examples/e2e-xgboost  # release/
+
+  cluster:
+    byod:
+      type: cu124  # anyscale/ray:<PR_RAY_VERSION>-py311-cu124
+      post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
+    cluster_compute: config/aws.yaml  # release/<working_dir>/
+
+  run:
+    timeout: 3600
+    script: pytest  # release/<working_dir>/
+
+  variations:
+    - __suffix__: aws  # uses default specs above
