@@ -6,9 +6,11 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import torch
 
 import ray
 import ray.data
+from ray.air.util.tensor_extensions.pandas import TensorDtype
 from ray.data._internal.pandas_block import (
     PandasBlockAccessor,
     PandasBlockBuilder,
@@ -449,6 +451,21 @@ class TestSizeBytes:
 
         true_size = block.memory_usage(index=True, deep=True).sum()
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
+
+
+class TestPandasBlockBuilder:
+    def test_add_dataframe_with_torch_tensors(self):
+        df = pd.DataFrame(
+            {"data": [torch.randint(0, 256, (1024**2,), dtype=torch.uint8)]}
+        )
+        builder = PandasBlockBuilder()
+
+        builder.add_block(df)
+        block = builder.build()
+
+        assert isinstance(block.dtypes["data"], TensorDtype)
+        block_accessor = PandasBlockAccessor.for_block(block)
+        assert block_accessor.size_bytes() == pytest.approx(1024**2, rel=0.1)
 
 
 if __name__ == "__main__":

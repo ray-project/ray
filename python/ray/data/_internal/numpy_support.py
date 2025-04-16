@@ -130,12 +130,13 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
     Raises:
         ValueError if an input was array-like but we failed to convert it to an array.
     """
+    import pandas as pd
 
     if isinstance(column_values, np.ndarray):
         # No copy/conversion needed, just keep it verbatim.
         return column_values
 
-    elif isinstance(column_values, list):
+    elif isinstance(column_values, (list, pd.Series)):
         if len(column_values) == 1 and isinstance(column_values[0], np.ndarray):
             # Optimization to avoid conversion overhead from list to np.array.
             return np.expand_dims(column_values[0], axis=0)
