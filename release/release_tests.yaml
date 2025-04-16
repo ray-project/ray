@@ -2144,7 +2144,7 @@
     - __suffix__: full_training.jpeg
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16  --prefetch_batches 32
 
     - __suffix__: full_training.jpeg.torch_dataloader
       run:
@@ -2154,7 +2154,7 @@
     - __suffix__: skip_training.jpeg
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end --prefetch_batches 32
 
     - __suffix__: skip_training.jpeg.torch_dataloader
       run:
