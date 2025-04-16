@@ -475,8 +475,8 @@ class MapOperator(OneToOneOperator, ABC):
 
     def shutdown(self, force: bool = False):
         if force:
-            tasks: List[OpTask] = (
-                list(self._data_tasks.values()) + list(self._metadata_tasks.values())
+            tasks: List[OpTask] = list(self._data_tasks.values()) + list(
+                self._metadata_tasks.values()
             )
 
             # Interrupt all (still) running tasks immediately
