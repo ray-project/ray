@@ -2,10 +2,9 @@ import numpy
 import ray
 import types
 
-from typing import Any, Collection, Dict, Iterable, Optional, Union
+from typing import Any, Collection, Dict, Iterable, Optional, TYPE_CHECKING, Union
 
 from ray.data.iterator import DataIterator
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import (
     ALL_MODULES,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
@@ -36,15 +35,31 @@ from ray.rllib.utils.runners.runner import Runner
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ModuleID, StateDict, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 EVAL_TOTAL_LOSS_KEY = "eval_total_loss"
 
 
 class OfflineEvaluationRunner(Runner, Checkpointable):
-    def __init__(self, config: "AlgorithmConfig", **kwargs):
+    def __init__(
+        self,
+        config: "AlgorithmConfig",
+        module_spec: Optional[MultiRLModuleSpec] = None,
+        **kwargs,
+    ):
+
+        # This needs to be defined before we call the `Runner.__init__`
+        # b/c the latter calls the `make_module` and then needs the spec.
+        # TODO (simon): Check, if we make this a generic attribute.
+        self.__module_spec: MultiRLModuleSpec = module_spec
+        self.__dataset_iterator = None
+        self._batch_iterator = None
+
         Runner.__init__(self, config=config)
         Checkpointable.__init__(self)
 
-        self._batch_iterator = None
+        # This has to be defined after we have a `self.config`.
         self._loss_for_module_fn = types.MethodType(self.get_loss_for_module_fn(), self)
 
     def run(
@@ -487,19 +502,20 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     @override(Runner)
     def make_module(self):
         try:
-            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                # TODO (simon): Implement an `offline_inference_only` config param.
-                env=None,
-                spaces={
-                    DEFAULT_MODULE_ID: (
-                        self.config.observation_space,
-                        self.config.action_space,
-                    )
-                },
-                inference_only=False,
-            )
+            if not self._module_spec:
+                self.__module_spec = self.config.get_multi_rl_module_spec(
+                    # TODO (simon): Implement an `offline_inference_only` config param.
+                    env=None,
+                    spaces={
+                        DEFAULT_MODULE_ID: (
+                            self.config.observation_space,
+                            self.config.action_space,
+                        )
+                    },
+                    inference_only=False,
+                )
             # Build the module from its spec.
-            self.module = module_spec.build()
+            self.module = self._module_spec.build()
             # TODO (simon): Implement GPU inference.
             # Move the RLModule to our device.
             # TODO (sven): In order to make this framework-agnostic, we should maybe
@@ -556,3 +572,8 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     def set_dataset_iterator(self, iterator):
         """Sets the dataset iterator."""
         self.__dataset_iterator = iterator
+
+    @property
+    def _module_spec(self) -> MultiRLModuleSpec:
+        """Returns the `MultiRLModuleSpec` of this `Runner`."""
+        return self.__module_spec

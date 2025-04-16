@@ -6,9 +6,8 @@ import ray
 import time
 import types
 
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -21,13 +20,16 @@ from ray.rllib.utils.annotations import (
 )
 from ray.util.annotations import PublicAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class OfflineData:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def __init__(self, config: AlgorithmConfig):
+    def __init__(self, config: "AlgorithmConfig"):
 
         # TODO (simon): Define self.spaces here.
         self.config = config

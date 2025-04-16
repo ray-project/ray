@@ -2,11 +2,20 @@ import abc
 import logging
 import ray
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+    TypeVar,
+    Union,
+)
 
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_LEARNER,
@@ -20,6 +29,9 @@ from ray.rllib.utils.runners.runner import Runner
 from ray.rllib.utils.typing import PolicyID
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 logger = logging.getLogger(__name__)
 
 # Generic type var for `foreach_*` methods.
@@ -30,7 +42,7 @@ T = TypeVar("T")
 class RunnerGroup(metaclass=abc.ABCMeta):
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         # TODO (simon): Check, if this is needed. Derived classes could define
         # this if needed.
         # default_policy_class: Optional[Type[Policy]]
@@ -97,6 +109,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         *,
         config: Optional["AlgorithmConfig"] = None,
         num_runners: int = 0,
+        validate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
 
@@ -108,10 +121,13 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         # Create a number of @ray.remote workers.
         self.add_workers(
             num_runners,
-            validate=self._validate_runners_after_construction,
+            validate=validate
+            if validate is not None
+            else self._validate_runners_after_construction,
+            **kwargs,
         )
 
-    def add_workers(self, num_workers: int, validate: bool = False) -> None:
+    def add_workers(self, num_workers: int, validate: bool = False, **kwargs) -> None:
         """Creates and adds a number of remote runners to this runner set."""
 
         old_num_workers = self._worker_manager.num_actors()
@@ -123,6 +139,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 # pass it by reference instead of value
                 # (https://docs.ray.io/en/latest/ray-core/patterns/pass-large-arg-by-value.html) # noqa
                 config=self._remote_config_obj_ref,
+                **kwargs,
             )
             for i in range(num_workers)
         ]
@@ -132,19 +149,20 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". Establish initial states.
         if validate:
-            for result in self._worker_manager.foreach_actor(
-                lambda w: w.assert_healthy()
-            ):
-                # Simiply raise the error, which will get handled by the try-except
-                # clause around the _setup().
-                if not result.ok:
-                    e = result.get()
-                    if self._ignore_ray_errors_on_env_runners:
-                        logger.error(
-                            f"Validation of {self.runner_cls.__name__} failed! Error={str(e)}"
-                        )
-                    else:
-                        raise e
+            self.validate()
+
+    def validate(self) -> Exception:
+        for result in self._worker_manager.foreach_actor(lambda w: w.assert_healthy()):
+            # Simiply raise the error, which will get handled by the try-except
+            # clause around the _setup().
+            if not result.ok:
+                e = result.get()
+                if self._ignore_ray_errors_on_runners:
+                    logger.error(
+                        f"Validation of {self.runner_cls.__name__} failed! Error={str(e)}"
+                    )
+                else:
+                    raise e
 
     def _make_worker(
         self,
@@ -624,12 +642,12 @@ class RunnerGroup(metaclass=abc.ABCMeta):
 
         FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results,
-            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+            ignore_ray_errors=self._ignore_ray_errors_on_runners,
         )
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
-    def probe_unhealthy_env_runners(self) -> List[int]:
+    def probe_unhealthy_runners(self) -> List[int]:
         """Checks for unhealthy workers and tries restoring their states.
 
         Returns:

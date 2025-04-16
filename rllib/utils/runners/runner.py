@@ -1,12 +1,14 @@
 import abc
 import logging
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 logger = logging.getLogger(__name__)
 

@@ -1,21 +1,27 @@
-from typing import Any, Callable, Dict, List, Optional
+import ray
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ray.data.iterator import DataIterator
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.runners.runner_group import RunnerGroup
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 
 class OfflineEvaluationRunnerGroup(RunnerGroup):
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         local_runner: Optional[bool] = False,
         module_state: Dict[str, Any] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
+        spaces: Optional[Dict[str, Any]] = None,
         logdir: Optional[str] = None,
         tune_trial_id: Optional[str] = None,
         pg_offset: int = 0,
@@ -34,6 +40,8 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
             pg_offset=pg_offset,
             _setup=_setup,
             module_state=module_state,
+            module_spec=module_spec,
+            spaces=spaces,
         )
 
     @override(RunnerGroup)
@@ -43,6 +51,8 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         config: Optional["AlgorithmConfig"] = None,
         num_runners: int = 0,
         module_state: Dict[str, Any] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
+        spaces: Optional[Dict[str, Any]] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
 
@@ -50,17 +60,32 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         super()._setup(
             config=config,
             num_runners=num_runners,
+            # Do not validate until the `DataIterators` are distributed.
+            validate=False,
+            module_spec=module_spec,
         )
 
         # Setup the evaluation offline dataset and return an iterator.
         self._offline_data: OfflineData = OfflineData(config=config)
-        spaces = (config.observation_space, config.action_space)
-        self._offline_data.spaces = {"__env__": spaces}
-        module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-            spaces={DEFAULT_MODULE_ID: spaces},
-            inference_only=False,
+        # We need the spaces to be defined for the `OfflinePreLearner`.
+        spaces = spaces or {
+            INPUT_ENV_SPACES: (config.observation_space, config.action_space)
+        }
+        self._offline_data.spaces = spaces
+        # The `OfflinePreLearner` also needs the module spec.
+        module_spec: MultiRLModuleSpec = module_spec or self.config.get_multi_rl_module_spec(
+            # TODO (simon): this needs merely the spaces defined via the connectors.
+            spaces={DEFAULT_MODULE_ID: spaces[INPUT_ENV_SPACES]},
+            inference_only=self.config.offline_eval_rl_module_inference_only,
         )
         self._offline_data.module_spec = module_spec
+        # If we have remote runners set the locality hints for the streaming split
+        # dataset iterators.
+        if self.num_remote_runners > 0:
+            runner_node_ids = self.foreach_runner(
+                lambda _: ray.get_runtime_context().get_node_id()
+            )
+            self._offline_data.locality_hints = runner_node_ids
         # Return a data iterator for each `Runner`.
         self._offline_data_iterators: List[DataIterator] = self._offline_data.sample(
             num_samples=self.config.offline_eval_batch_size_per_runner,
@@ -76,6 +101,8 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
                 {"iterator": iterator} for iterator in self._offline_data_iterators
             ],
         )
+        # Now validate healthiness.
+        self.validate()
 
     @property
     def runner_health_probe_timeout_s(self):

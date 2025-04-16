@@ -416,6 +416,7 @@ class AlgorithmConfig(_Config):
         self.callbacks_class = RLlibCallback
         self.callbacks_on_algorithm_init = None
         self.callbacks_on_env_runners_recreated = None
+        self.callbacks_on_offline_eval_runners_recreated = None
         self.callbacks_on_checkpoint_loaded = None
         self.callbacks_on_environment_created = None
         self.callbacks_on_episode_created = None
@@ -491,20 +492,6 @@ class AlgorithmConfig(_Config):
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
-        # Offline evaluation.
-        self.num_offline_eval_runners = 1
-        self.num_cpus_per_offline_eval_runner = 1
-        self.num_gpus_per_offline_eval_runner = 0
-        self.custom_resources_per_offline_eval_runner = {}
-        self.restart_failed_offline_eval_runners = True
-        self.ignore_offline_eval_runner_failures = False
-        self.max_num_offline_eval_runner_restarts = 1000
-        self.max_requests_in_flight_per_offline_eval_runner = 1
-        self.validate_offline_eval_runners_after_construction = True
-        self.offline_eval_runner_health_probe_timeout_s = 30.0
-        self.offline_eval_batch_size_per_runner = 256
-        self.offline_eval_minibatch_size = None
-        self.dataset_num_iters_per_eval_runner = 1
         self.output = None
         self.output_config = {}
         self.output_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
@@ -539,6 +526,26 @@ class AlgorithmConfig(_Config):
         #  way). Replace by logic within `training_step` to merge and broadcast the
         #  EnvRunner (connector) states.
         self.sync_filters_on_rollout_workers_timeout_s = 10.0
+        # Offline evaluation.
+        self.num_offline_eval_runners = 1
+        self.offline_evaluation_duration = 1
+        self.offline_evaluation_parallel_to_training = False
+        self.offline_evaluation_sample_timeout_s = 120.0
+        self.num_cpus_per_offline_eval_runner = 1
+        self.num_gpus_per_offline_eval_runner = 0
+        self.custom_resources_per_offline_eval_runner = {}
+        self.restart_failed_offline_eval_runners = True
+        self.ignore_offline_eval_runner_failures = False
+        self.max_num_offline_eval_runner_restarts = 1000
+        self.offline_eval_runner_restore_timeout_s = 1800.0
+        self.max_requests_in_flight_per_offline_eval_runner = 1
+        self.validate_offline_eval_runners_after_construction = True
+        self.offline_eval_runner_health_probe_timeout_s = 30.0
+        self.offline_eval_rl_module_inference_only = False
+        self.broadcast_offline_eval_runner_states = False
+        self.offline_eval_batch_size_per_runner = 256
+        self.offline_eval_minibatch_size = None
+        self.dataset_num_iters_per_eval_runner = 1
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -2493,6 +2500,9 @@ class AlgorithmConfig(_Config):
         on_env_runners_recreated: Optional[
             Union[Callable, List[Callable]]
         ] = NotProvided,
+        on_offline_eval_runners_recreated: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
         on_checkpoint_loaded: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_environment_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_episode_created: Optional[Union[Callable, List[Callable]]] = NotProvided,
@@ -2597,6 +2607,10 @@ class AlgorithmConfig(_Config):
             self.callbacks_on_evaluate_end = on_evaluate_end
         if on_env_runners_recreated is not NotProvided:
             self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_offline_eval_runners_recreated is not NotProvided:
+            self.callbacks_on_offline_eval_runners_recreated = (
+                on_offline_eval_runners_recreated
+            )
         if on_checkpoint_loaded is not NotProvided:
             self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
         if on_environment_created is not NotProvided:
@@ -2632,6 +2646,28 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        # Offline evaluation.
+        num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_evaluation_duration: Optional[Union[str, int]] = NotProvided,
+        offline_evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        offline_evaluation_sample_timeout_s: Optional[float] = NotProvided,
+        num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        custom_resources_per_offline_eval_runner: Optional[
+            Dict[str, Any]
+        ] = NotProvided,
+        restart_failed_offline_eval_runners: Optional[bool] = NotProvided,
+        ignore_offline_eval_runner_failures: Optional[bool] = NotProvided,
+        max_num_offline_eval_runner_restarts: Optional[int] = NotProvided,
+        offline_eval_runner_restore_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_offline_eval_runner: Optional[int] = NotProvided,
+        validate_offline_eval_runners_after_construction: Optional[bool] = NotProvided,
+        offline_eval_runner_health_probe_timeout_s: Optional[float] = NotProvided,
+        offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
+        broadcast_offline_eval_runner_states: Optional[bool] = NotProvided,
+        offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
+        offline_eval_minibatch_size: Optional[int] = NotProvided,
+        dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         # Deprecated args.
         always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
@@ -2797,6 +2833,70 @@ class AlgorithmConfig(_Config):
             self.custom_evaluation_function = custom_evaluation_function
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
+        if num_offline_eval_runners is not NotProvided:
+            self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_evaluation_duration is not NotProvided:
+            self.offline_evaluation_duration = offline_evaluation_duration
+        if offline_evaluation_parallel_to_training is not NotProvided:
+            self.offline_evaluation_parallel_to_training = (
+                offline_evaluation_parallel_to_training
+            )
+        if offline_evaluation_sample_timeout_s is not NotProvided:
+            self.offline_evaluation_sample_timeout_s = (
+                offline_evaluation_sample_timeout_s
+            )
+        if num_cpus_per_offline_eval_runner is not NotProvided:
+            self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if num_gpus_per_offline_eval_runner is not NotProvided:
+            self.num_gpus_per_offline_eval_runner = num_gpus_per_offline_eval_runner
+        if custom_resources_per_offline_eval_runner is not NotProvided:
+            self.custom_resources_per_offline_eval_runner = (
+                custom_resources_per_offline_eval_runner
+            )
+        if restart_failed_offline_eval_runners is not NotProvided:
+            self.restart_failed_offline_eval_runners = (
+                restart_failed_offline_eval_runners
+            )
+        if ignore_offline_eval_runner_failures is not NotProvided:
+            self.ignore_offline_eval_runner_failures = (
+                ignore_offline_eval_runner_failures
+            )
+        if max_num_offline_eval_runner_restarts is not NotProvided:
+            self.max_num_offline_eval_runner_restarts = (
+                max_num_offline_eval_runner_restarts
+            )
+        if offline_eval_runner_restore_timeout_s is not NotProvided:
+            self.offline_eval_runner_restore_timeout_s = (
+                offline_eval_runner_restore_timeout_s
+            )
+        if max_requests_in_flight_per_offline_eval_runner is not NotProvided:
+            self.max_requests_in_flight_per_offline_eval_runner = (
+                max_requests_in_flight_per_offline_eval_runner
+            )
+        if validate_offline_eval_runners_after_construction is not NotProvided:
+            self.validate_offline_eval_runners_after_construction = (
+                validate_offline_eval_runners_after_construction
+            )
+        if offline_eval_runner_health_probe_timeout_s is not NotProvided:
+            self.offline_eval_runner_health_probe_timeout_s = (
+                offline_eval_runner_health_probe_timeout_s
+            )
+        if offline_eval_rl_module_inference_only is not NotProvided:
+            self.offline_eval_rl_module_inference_only = (
+                offline_eval_rl_module_inference_only
+            )
+        if broadcast_offline_eval_runner_states is not NotProvided:
+            self.broadcast_offline_eval_runner_states = (
+                broadcast_offline_eval_runner_states
+            )
+        if offline_eval_batch_size_per_runner is not NotProvided:
+            self.offline_eval_batch_size_per_runner = offline_eval_batch_size_per_runner
+        if offline_eval_minibatch_size is not NotProvided:
+            self.offline_eval_minibatch_size = offline_eval_minibatch_size
+        if dataset_num_iters_per_offline_eval_runner is not NotProvided:
+            self.dataset_num_iters_per_eval_runner = (
+                dataset_num_iters_per_offline_eval_runner
+            )
 
         return self
 
@@ -2828,14 +2928,6 @@ class AlgorithmConfig(_Config):
         actions_in_input_normalized: Optional[bool] = NotProvided,
         postprocess_inputs: Optional[bool] = NotProvided,
         shuffle_buffer_size: Optional[int] = NotProvided,
-        num_offline_eval_runners: Optional[int] = NotProvided,
-        restart_failed_offline_eval_runners: Optional[bool] = NotProvided,
-        ignore_offline_eval_runner_failures: Optional[bool] = NotProvided,
-        max_requests_in_flight_per_offline_eval_runner: Optional[int] = NotProvided,
-        validate_offline_eval_runners_after_construction: Optional[bool] = NotProvided,
-        offline_eval_runner_health_probe_timeout_s: Optional[int] = NotProvided,
-        offline_eval_minibatch_size: Optional[int] = NotProvided,
-        dataset_num_iters_per_eval_runner: Optional[int] = NotProvided,
         output: Optional[str] = NotProvided,
         output_config: Optional[Dict] = NotProvided,
         output_compress_columns: Optional[List[str]] = NotProvided,
@@ -3154,30 +3246,6 @@ class AlgorithmConfig(_Config):
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
-        # Offline evaluation.
-        if num_offline_eval_runners is not NotProvided:
-            self.num_offline_eval_runners = num_offline_eval_runners
-        if restart_failed_offline_eval_runners is not NotProvided:
-            self.restart_failed_offline_eval_runners = (
-                restart_failed_offline_eval_runners
-            )
-        if ignore_offline_eval_runner_failures is not NotProvided:
-            self.ignore_offline_eval_runner_failures = (
-                ignore_offline_eval_runner_failures
-            )
-        if max_requests_in_flight_per_offline_eval_runner is not NotProvided:
-            self.max_requests_in_flight_per_offline_eval_runner = (
-                max_requests_in_flight_per_offline_eval_runner
-            )
-        if validate_offline_eval_runners_after_construction is not NotProvided:
-            self.validate_offline_eval_runners_after_construction = (
-                validate_offline_eval_runners_after_construction
-            )
-        self.offline_eval_runner_health_probe_timeout_s = 30.0
-        if offline_eval_minibatch_size is not NotProvided:
-            self.offline_eval_minibatch_size = offline_eval_minibatch_size
-        if dataset_num_iters_per_eval_runner is not NotProvided:
-            self.dataset_num_iters_per_eval_runner = dataset_num_iters_per_eval_runner
         # TODO (simon): Enable storing to general log-directory.
         if output is not NotProvided:
             self.output = output
@@ -4609,6 +4677,7 @@ class AlgorithmConfig(_Config):
                 or self.callbacks_on_episode_end is not None
                 or self.callbacks_on_checkpoint_loaded is not None
                 or self.callbacks_on_env_runners_recreated is not None
+                or self.callbacks_on_offline_eval_runners_recreated is not None
             ):
                 self._value_error(
                     "Config settings `config.callbacks(on_....=lambda ..)` aren't "
@@ -4712,6 +4781,7 @@ class AlgorithmConfig(_Config):
         # evaluation, and set `evaluation_parallel_to_training` to False.
         if (
             self.evaluation_num_env_runners == 0
+            and self.num_offline_eval_runners == 0
             and self.evaluation_parallel_to_training
         ):
             self._value_error(
