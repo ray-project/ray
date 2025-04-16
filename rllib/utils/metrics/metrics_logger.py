@@ -739,13 +739,29 @@ class MetricsLogger:
 
             if not self._key_in_stats(key):
                 base_stats = incoming_stats[0]
+            elif len(incoming_stats) > 0:
+                base_stats = own_stats
+            else:
+                continue
+
+            # Special case: `base_stats` is a lifetime sum (reduce=sum,
+            # clear_on_reduce=False) -> We subtract the previous value (from 2
+            # `reduce()` calls ago) from all to-be-merged stats, so we don't count
+            # twice the older sum from before.
+            if (
+                base_stats._reduce_method == "sum"
+                and base_stats._window is None
+                and base_stats._clear_on_reduce is False
+            ):
+                for stat in incoming_stats:
+                    stat.push(-stat.get_reduce_history()[-2][0])
+
+            if not self._key_in_stats(key):
                 # Note that we may take a mean of means here, which is not the same as a mean of all values
                 # In the future, we could implement a weighted mean of means here by introducing a new Stats object that counts samples for each mean Stats object
                 if len(incoming_stats) > 1:
                     base_stats.merge_in_parallel(*incoming_stats[1:])
-                self._set_key(key, base_stats)
             elif len(incoming_stats) > 0:
-                base_stats = own_stats
                 if len(incoming_stats) > 1:
                     # There are more than one incoming parallel others -> Merge all of them
                     # in parallel (equal importance)
@@ -753,7 +769,7 @@ class MetricsLogger:
                 # Merge incoming Stats object into base Stats object on time axis (giving incoming ones priority)
                 base_stats.merge_on_time_axis(incoming_stats[0])
 
-                self._set_key(key, base_stats)
+            self._set_key(key, base_stats)
 
     def log_time(
         self,
@@ -916,27 +932,12 @@ class MetricsLogger:
         def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
-
-            # Check if this is a lifetime stat (clear_on_reduce=False, reduce="sum" and infinite window)
-            is_lifetime_stat = (
-                not stats._clear_on_reduce
-                and stats._reduce_method == "sum"
-                and stats._inf_window
-            )
-
             # If this is a lifetime stat on a non-root logger, temporarily set clear_on_reduce to True
             # We need to do this so that lifetime stats are accumulated only in the root logger
             if not self._is_root_logger:
-                if is_lifetime_stat:
-                    # Clear lifetime stats in non-root loggers
-                    stats._clear_on_reduce = True
-                    values = stats.reduce(compile=False)
-                    stats._clear_on_reduce = False
-                    return Stats.similar_to(stats, init_values=values)
-                else:
-                    # For non-root logger or non-lifetime stats, reduce normally
-                    values = stats.reduce(compile=False)
-                    return Stats.similar_to(stats, init_values=values)
+                # For non-root logger or non-lifetime stats, reduce normally
+                values = stats.reduce(compile=False)
+                return Stats.similar_to(stats, init_values=values)
             else:
                 # Only the root logger should return the actual values
                 return stats.reduce(compile=True)
