@@ -1042,6 +1042,10 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
+  opencensus::stats::StatsExporter::ExportNow();
+
+  // Force task state events push before exiting the worker.
+  task_event_buffer_->FlushEvents(/* forced= */ true);
   task_event_buffer_->Stop();
 
   io_service_.stop();
@@ -1103,10 +1107,6 @@ void CoreWorker::Disconnect(
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
-  // Force task state events push before exiting the worker.
-  task_event_buffer_->FlushEvents(/* forced */ true);
-
-  opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
@@ -1183,7 +1183,7 @@ void CoreWorker::Exit(
   }
   is_exit_ = true;
 
-  RAY_LOG(ERROR) << "Exit signal received, this process will exit after all outstanding "
+  RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
@@ -1220,9 +1220,6 @@ void CoreWorker::Exit(
           // process liveness
           Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
-          RAY_LOG(ERROR) << "Shutdown() called from async bullshit, sleepy time!";
-          std::this_thread::sleep_for(std::chrono::seconds(1000));
-          RAY_LOG(ERROR) << "Shutdown() called from async bullshit is exiting";
         },
         "CoreWorker.Shutdown");
   };
@@ -1278,7 +1275,6 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
   // https://github.com/ray-project/ray/pull/34883
   // TODO(iycheng): Improve the Process.h and make it able to monitor
   // process liveness
-  RAY_LOG(ERROR) << "Disconnect() called from ForceExit";
   Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
@@ -4529,10 +4525,8 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   const auto &kill_actor_reason =
       gcs::GenErrorMessageFromDeathCause(request.death_cause());
 
-  RAY_LOG(ERROR) << "GOT FORCE KILL, SLEEPING FOR 5s";
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  if (true) {
-    RAY_LOG(ERROR) << "Force kill actor request has received. exiting immediately... "
+  if (request.force_kill()) {
+    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately... "
                   << kill_actor_reason;
     // If we don't need to restart this actor, we notify raylet before force killing it.
     ForceExit(
