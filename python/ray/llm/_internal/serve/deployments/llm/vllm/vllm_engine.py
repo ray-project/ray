@@ -341,6 +341,17 @@ class VLLMEngine:
         """
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
+
+        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
+        # decide which engine to use based on the passed configs.
+        # Here we set it explicitly to make sure Ray Serve LLM and vLLM
+        # configs are consistent.
+        runtime_env = dict(
+            env_vars=dict(
+                VLLM_USE_V1=str(int(use_v1)),
+            ),
+        )
+
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
@@ -352,15 +363,7 @@ class VLLMEngine:
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
-                        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
-                        # decide which engine to use based on the passed configs.
-                        # Here we set it explicitly to make sure Ray LLM and vLLM
-                        # configs are consistent.
-                        runtime_env=dict(
-                            env_vars=dict(
-                                VLLM_USE_V1=str(int(use_v1)),
-                            ),
-                        ),
+                        runtime_env=runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -371,9 +374,10 @@ class VLLMEngine:
                 ref = (
                     ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
                     .options(
+                        runtime_env=runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
-                        )
+                        ),
                     )
                     .remote(self.llm_config)
                 )
