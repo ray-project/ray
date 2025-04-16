@@ -56,6 +56,9 @@ doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
 doc/source/cluster/kubernetes/getting-started.md: lint k8s_doc
+doc/source/cluster/kubernetes/doc_sanitize.cfg: lint k8s_doc
+doc/source/cluster/kubernetes/scripts/doctest-utils.sh: lint k8s_doc
+ci/k8s/run-kuberay-doc-tests.sh: lint k8s_doc
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements_buildkite.txt: lint release_tests
 ci/lint/lint.sh: lint tools
