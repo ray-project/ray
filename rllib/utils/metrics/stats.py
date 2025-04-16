@@ -568,8 +568,6 @@ class Stats:
     def _detach_tensor_from_graph(self, value):
         if torch and torch.is_tensor(value):
             value = value.detach()
-        elif tf and tf.is_tensor(value):
-            value = tf.stop_gradient(value)
         return value
 
     def _numpy_if_necessary(self, values):
