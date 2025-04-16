@@ -11,7 +11,10 @@ import ray
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
+)
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
@@ -435,28 +438,31 @@ def test_best_fit_node():
     )
 
     # Custom resource prioritization: customx is more important than customy
-    os.environ["RAY_SERVE_CUSTOM_RESOURCES"] = "customx,customy"
-    original = Resources.CUSTOM_PRIORITY
-    Resources.CUSTOM_PRIORITY = ["customx", "customy"]
-    assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(customx=1, customy=1),
-        available_resources={
-            "node1": Resources(customx=2, customy=5),
-            "node2": Resources(customx=2, customy=1),
-        },
-    )
+    with mock.patch.dict(os.environ, {RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: "customx,customy"}):
+        original = Resources.CUSTOM_PRIORITY
+        Resources.CUSTOM_PRIORITY = [
+            r for r in os.environ[RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES].split(",") if r
+        ]
 
-    # If customx and customy are equal, GPU should determine best fit
-    assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(customx=1, customy=1, GPU=1),
-        available_resources={
-            "node1": Resources(customx=2, customy=2, GPU=10),
-            "node2": Resources(customx=2, customy=2, GPU=2),
-        },
-    )
+        assert "node2" == scheduler._best_fit_node(
+            required_resources=Resources(customx=1, customy=1),
+            available_resources={
+                "node1": Resources(customx=2, customy=5),
+                "node2": Resources(customx=2, customy=1),
+            },
+        )
 
-    # restore
-    Resources.CUSTOM_PRIORITY = original
+        # If customx and customy are equal, GPU should determine best fit
+        assert "node2" == scheduler._best_fit_node(
+            required_resources=Resources(customx=1, customy=1, GPU=1),
+            available_resources={
+                "node1": Resources(customx=2, customy=2, GPU=10),
+                "node2": Resources(customx=2, customy=2, GPU=2),
+            },
+        )
+
+        # restore
+        Resources.CUSTOM_PRIORITY = original
 
 
 def test_schedule_replica():

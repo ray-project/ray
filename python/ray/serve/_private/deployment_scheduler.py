@@ -19,6 +19,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
@@ -41,7 +42,7 @@ class SpreadDeploymentSchedulingPolicy:
 class Resources(dict):
     # Custom resource priority from environment variable
     CUSTOM_PRIORITY = [
-        r for r in os.environ.get("RAY_SERVE_CUSTOM_RESOURCES", "").split(",") if r
+        r for r in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES.split(",") if r
     ]
 
     def get(self, key: str):
@@ -83,7 +84,7 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. Custom resources defined in RAY_SERVE_CUSTOM_RESOURCES (in order)
+        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (in order)
         2. GPU
         3. CPU
         4. memory

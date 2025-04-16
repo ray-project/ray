@@ -376,6 +376,11 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
 
+# Comma-separated list of custom resources prioritized in scheduling (e.g., "customx,customy")
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES = os.environ.get(
+    "RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", ""
+)
+
 # Feature flag to always override local_testing_mode to True in serve.run.
 # This is used for internal testing to avoid passing the flag to every invocation.
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
