@@ -344,7 +344,7 @@ class VLLMEngine:
 
         # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
         # decide which engine to use based on the passed configs.
-        # Here we set it explicitly to make sure Ray LLM and vLLM
+        # Here we set it explicitly to make sure Ray Serve LLM and vLLM
         # configs are consistent.
         runtime_env = dict(
             env_vars=dict(
