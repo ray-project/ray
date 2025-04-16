@@ -492,13 +492,14 @@ class _StatsActor:
         operator_tags: List[str],
         dag_structure: Dict[str, Any],
     ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
             "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
-            "start_time": time.time(),
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
@@ -509,7 +510,13 @@ class _StatsActor:
                 for operator in operator_tags
             },
         }
-        self._maybe_export_data_metadata(dag_structure)
+        dataset_metadata = {
+            "job_id": job_id,
+            "dag_structure": dag_structure,
+            "dataset_id": dataset_tag,
+            "start_time": start_time,
+        }
+        self._maybe_export_data_metadata(dataset_metadata)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -610,14 +617,14 @@ class _StatsActor:
 
         return logger, is_data_metadata_export_api_enabled
 
-    def _maybe_export_data_metadata(self, dag_structure: Dict[str, Any]) -> Any:
+    def _maybe_export_data_metadata(self, dataset_metadata: Dict[str, Any]) -> Any:
         if not self.is_export_api_enabled():
             return
 
-        data_metadata_proto = self._dataset_metadata_to_proto(dag_structure)
+        data_metadata_proto = self._dataset_metadata_to_proto(dataset_metadata)
         self._export_logger.send_event(data_metadata_proto)
 
-    def _dataset_metadata_to_proto(self, dag_structure: Dict[str, Any]) -> Any:
+    def _dataset_metadata_to_proto(self, dataset_metadata: Dict[str, Any]) -> Any:
         """Convert the DAG structure dictionary to a protobuf message.
 
         Args:
@@ -626,62 +633,54 @@ class _StatsActor:
         Returns:
             The protobuf message representing the DAG structure.
         """
-        try:
-            from ray.core.generated.export_data_metadata_pb2 import (
-                ExportDataMetadata,
-                OperatorDAG,
-                Operator,
-                SubOperator,
-            )
+        from ray.core.generated.export_data_metadata_pb2 import (
+            ExportDataMetadata,
+            OperatorDAG,
+            Operator,
+            SubOperator,
+        )
 
-            # Create the protobuf message
-            data_metadata = ExportDataMetadata()
-            dag = OperatorDAG()
+        # Create the protobuf message
+        data_metadata = ExportDataMetadata()
+        dag = OperatorDAG()
 
-            # Add operators to the DAG
-            if "operators" in dag_structure:
-                for op_dict in dag_structure["operators"]:
-                    operator = Operator()
-                    operator.name = op_dict.get("name", "unknown")
-                    operator.id = op_dict.get("id", "unknown")
+        # Add operators to the DAG
+        dag_structure = dataset_metadata["dag_structure"]
+        if "operators" in dag_structure:
+            for op_dict in dag_structure["operators"]:
+                operator = Operator()
+                operator.name = op_dict.get("name", "unknown")
+                operator.id = op_dict.get("id", "unknown")
 
-                    # Add input dependencies if they exist
-                    if "input_dependencies" in op_dict:
-                        for dep_id in op_dict["input_dependencies"]:
-                            operator.input_dependencies.append(dep_id)
+                # Add input dependencies if they exist
+                if "input_dependencies" in op_dict:
+                    for dep_id in op_dict["input_dependencies"]:
+                        operator.input_dependencies.append(dep_id)
 
-                    # Add sub-operators if they exist
-                    if "sub_operators" in op_dict:
-                        for sub_op_dict in op_dict["sub_operators"]:
-                            sub_op = SubOperator()
-                            sub_op.name = sub_op_dict.get("name", "unknown")
-                            sub_op.id = sub_op_dict.get("id", "unknown")
-                            operator.sub_operators.append(sub_op)
+                # Add sub-operators if they exist
+                if "sub_operators" in op_dict:
+                    for sub_op_dict in op_dict["sub_operators"]:
+                        sub_op = SubOperator()
+                        sub_op.name = sub_op_dict.get("name", "unknown")
+                        sub_op.id = sub_op_dict.get("id", "unknown")
+                        operator.sub_operators.append(sub_op)
 
-                    # Add the operator to the DAG
-                    dag.operators.append(operator)
+                # Add the operator to the DAG
+                dag.operators.append(operator)
 
-            # Set the DAG in the metadata
-            data_metadata.dag.CopyFrom(dag)
+        # Set the DAG in the metadata
+        data_metadata.dag.CopyFrom(dag)
 
-            # Add execution ID if available
-            if "execution_id" in dag_structure:
-                data_metadata.execution_id = dag_structure["execution_id"]
+        if "job_id" in dataset_metadata:
+            data_metadata.job_id = dataset_metadata["job_id"]
 
-            # Add dataset ID if available
-            if "dataset_id" in dag_structure:
-                data_metadata.dataset_id = dag_structure["dataset_id"]
+        if "start_time" in dataset_metadata:
+            data_metadata.start_time = int(dataset_metadata["start_time"])
 
-            # Add any other relevant metadata
-            if "start_time" in dag_structure:
-                data_metadata.start_time = int(dag_structure["start_time"])
+        if "dataset_id" in dataset_metadata:
+            data_metadata.dataset_id = dataset_metadata["dataset_id"]
 
-            return data_metadata
-
-        except Exception as e:
-            logger.warning(f"Failed to convert DAG structure to proto: {e}")
-            # Return a simple dictionary representation as fallback
-            return {"dag_structure": dag_structure}
+        return data_metadata
 
 
 # Creating/getting an actor from multiple threads is not safe.

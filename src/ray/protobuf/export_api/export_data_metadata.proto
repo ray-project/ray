@@ -52,4 +52,13 @@ message OperatorDAG {
 message ExportDataMetadata {
   // The operator DAG structure
   OperatorDAG dag = 1;
+
+  // The dataset ID
+  string dataset_id = 2;
+
+  // The job ID
+  string job_id = 3;
+
+  // The timestamp when execution started (in milliseconds since epoch)
+  uint64 start_time = 4;
 }

@@ -6,6 +6,7 @@ import json
 from ray.data._internal.stats import _get_or_create_stats_actor
 
 STUB_JOB_ID = "stub_job_id"
+STUB_DATASET_ID = "stub_dataset_id"
 
 
 def _get_export_file_path() -> str:
@@ -93,10 +94,10 @@ def _test_data_metadata_export(dag_structure):
     """Test that data metadata export events are written when export API is enabled."""
     stats_actor = _get_or_create_stats_actor()
 
-    # Create or update train run
+    # Simulate a dataset registration
     ray.get(
         stats_actor.register_dataset.remote(
-            dataset_tag="test_dataset",
+            dataset_tag=STUB_DATASET_ID,
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             dag_structure=dag_structure,
             job_id=STUB_JOB_ID,
@@ -108,6 +109,9 @@ def _test_data_metadata_export(dag_structure):
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_DATA_METADATA"
     assert data[0]["event_data"]["dag"] == dag_structure
+    assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
+    assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
+    assert data[0]["event_data"]["start_time"] is not None
 
 
 def test_export_data_metadata_enabled_by_config(
