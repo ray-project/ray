@@ -95,8 +95,6 @@ class MockReplicaActorWrapper:
         self._node_id_is_set = False
         self._actor_id = None
         self._port = None
-        self._http_port = None
-        self._grpc_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
 
@@ -2728,43 +2726,6 @@ def test_get_active_node_ids(mock_deployment_state_manager):
         total=6,
         by_state=[(ReplicaState.STOPPING, 3, v1), (ReplicaState.STARTING, 3, v1)],
     )
-
-
-def test_get_alive_replica_infos(mock_deployment_state_manager):
-    create_dsm, _, _, _ = mock_deployment_state_manager
-    dsm = create_dsm()
-
-    info1, v1 = deployment_info(version="1", num_replicas=3)
-    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
-    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
-    mocked_replicas = ds._replicas.get()
-
-    replica_ids = [
-        mocked_replica.replica_id.unique_id for mocked_replica in mocked_replicas
-    ]
-    node_id = mocked_replicas[0]._actor.node_id
-    assert dsm.get_node_id_to_alive_replica_ids() == {
-        node_id: set(replica_ids),
-    }
-
-    for mocked_replica in mocked_replicas:
-        mocked_replica._actor.set_ready()
-    dsm.update()
-    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
-    assert dsm.get_node_id_to_alive_replica_ids() == {
-        node_id: set(replica_ids),
-    }
-
-    # delete_deployment
-    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
-    dsm.update()
-    for replica in ds._replicas.get():
-        replica._actor.set_done_stopping()
-    dsm.update()
-    assert dsm.get_node_id_to_alive_replica_ids() == {}
 
 
 class TestAutoscaling:
