@@ -23,7 +23,7 @@ DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
 DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
-RELEASE_BYOD_DIR = os.path.join(bazel_workspace_dir, RELEASE_PACKAGE_DIR, "ray_release/byod")
+RELEASE_BYOD_DIR = os.path.join(bazel_workspace_dir, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
@@ -84,7 +84,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-
+    print("Dockerfile path: ", os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"))
     subprocess.check_call(
         [
             "docker",
