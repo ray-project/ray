@@ -55,6 +55,7 @@ docker/Dockerfile.ray: lint docker linux_wheels
 doc/code.py: lint doc
 doc/example.ipynb: lint doc
 doc/tutorial.rst: lint doc
+doc/source/cluster/kubernetes/getting-started.md: lint k8s_doc
 ci/docker/doctest.build.Dockerfile: lint
 release/requirements_buildkite.txt: lint release_tests
 ci/lint/lint.sh: lint tools
