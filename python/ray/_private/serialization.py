@@ -329,10 +329,14 @@ class SerializationContext:
             # the error type.
             try:
                 error_type = int(metadata_fields[0])
-            except Exception:
+            except Exception as e:
+                logger.info(f"deser exception: {e}")
+                logger.info(f"data: {data}")
+                import faulthandler
+                faulthandler.dump_traceback()
                 raise Exception(
                     f"Can't deserialize object: {object_ref}, " f"metadata: {metadata}"
-                )
+                ) from e
 
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
