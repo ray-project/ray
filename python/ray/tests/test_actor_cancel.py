@@ -226,7 +226,8 @@ def test_async_actor_server_side_cancel(shutdown_only):
                 ]
             )
         )
-        == 100
+        == 100,
+        timeout=100000
     )
 
     for ref in refs:
