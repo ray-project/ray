@@ -50,11 +50,7 @@ class EventLogType(Enum):
         {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
     )
     SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
-
-    DATA_METADATA = (
-        "EXPORT_DATA_METADATA",
-        {ExportDataMetadata},
-    )
+    DATA_METADATA = ("EXPORT_DATA_METADATA", {ExportDataMetadata})
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
         """Initialize an EventLogType enum value.
@@ -207,6 +203,7 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
             _export_event_logger[log_type_name] = ExportEventLoggerAdapter(
                 log_type, logger
             )
+
         return _export_event_logger[log_type_name]
 
 

@@ -492,35 +492,6 @@ class StreamingExecutor(Executor, threading.Thread):
 
         return result
 
-    def export_topology_structure(self) -> Dict[str, List[Dict]]:
-        """Export the topology structure as a dictionary that can be converted to JSON.
-
-        Returns:
-            A dictionary with the structure of the topology, containing operator names,
-            IDs, and sub-operators where applicable.
-        """
-        if not self._topology:
-            return {"operators": []}
-
-        result = {"operators": []}
-
-        for i, (op, _) in enumerate(self._topology.items()):
-            op_id = self._get_operator_id(op, i)
-            op_entry = {"name": op.name, "id": op_id, "sub_operators": []}
-
-            # Check if the operator has sub-progress bars (indicating sub-operations)
-            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
-                # If so, create sub-operator entries for each
-                for j, sub_name in enumerate(op._sub_progress_bar_names):
-                    sub_op_id = f"{op_id}_sub_{j}"
-                    op_entry["sub_operators"].append(
-                        {"name": sub_name, "id": sub_op_id}
-                    )
-
-            result["operators"].append(op_entry)
-
-        return result
-
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     """Raises an exception on invalid DAGs.
