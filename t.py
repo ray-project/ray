@@ -2,6 +2,7 @@ import time
 
 import ray
 
+
 @ray.remote
 class A:
     def hi(self):
@@ -9,6 +10,7 @@ class A:
 
     async def f(self):
         ray.actor.exit_actor()
+
 
 a = A.remote()
 ray.get(a.hi.remote())
