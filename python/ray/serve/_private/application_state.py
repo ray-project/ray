@@ -1067,14 +1067,6 @@ class ApplicationStateManager:
             return {}
         return self._application_states[name].list_deployment_details()
 
-    def get_running_applications(self) -> List[str]:
-        """Get list of running application names."""
-        return [
-            app_name
-            for app_name, status in self.list_app_statuses().items()
-            if status.status == ApplicationStatus.RUNNING
-        ]
-
     def update(self):
         """Update each application state"""
         apps_to_be_deleted = []

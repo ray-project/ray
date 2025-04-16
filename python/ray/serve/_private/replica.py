@@ -750,7 +750,7 @@ class ReplicaBase(ABC):
 
     def get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int],]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         return (
             self._version.deployment_config,
             self._version,
