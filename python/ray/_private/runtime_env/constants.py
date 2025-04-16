@@ -1,5 +1,6 @@
 import sys
 import os
+from ray._private.ray_constants import env_bool, env_integer
 
 # Env var set by job manager to pass runtime env and metadata to subprocess
 RAY_JOB_CONFIG_JSON_ENV_VAR = "RAY_JOB_CONFIG_JSON_ENV_VAR"
@@ -42,3 +43,18 @@ else:
     LIBRARY_PATH_ENV_NAME = "PATH"
 
 PRELOAD_ENV_NAME = "LD_PRELOAD"
+
+
+# Container or image uri plugin placeholder, which will be replaced by env_vars.
+CONTAINER_ENV_PLACEHOLDER = "$CONTAINER_ENV_PLACEHOLDER"
+
+# the key for java jar dirs in the environment variable.
+RAY_JAVA_JARS_DIRS = "RAY_JAVA_JARS_DIRS"
+
+# Whether podman integrate nydus
+RAY_PODMAN_UES_NYDUS = env_bool("RAY_PODMAN_UES_NYDUS", True)
+
+# Default mount points for Podman containers.
+# The format allows "{source_path}:{target_path}" for bind mounts
+# Entries are separated by semicolons (e.g., "A:A;B:C").
+RAY_PODMAN_DEFAULT_MOUNT_POINTS = os.environ.get("RAY_PODMAN_DEFAULT_MOUNT_POINTS", "")

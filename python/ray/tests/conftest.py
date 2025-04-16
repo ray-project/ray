@@ -1494,3 +1494,11 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+@pytest.fixture(scope="module")
+def set_runtime_env_container_default_mount_points(request):
+    default_mount_points = getattr(request, "param", "0")
+    os.environ["RAY_PODMAN_DEFAULT_MOUNT_POINTS"] = default_mount_points
+    yield default_mount_points
+    os.environ.pop("RAY_PODMAN_DEFAULT_MOUNT_POINTS", None)

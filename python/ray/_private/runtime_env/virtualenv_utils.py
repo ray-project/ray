@@ -1,6 +1,12 @@
 """Utils to detect runtime environment."""
 
 import sys
+import platform
+from ray._private.utils import (
+    get_ray_site_packages_path,
+    get_current_python_info,
+    get_specify_python_info,
+)
 from ray._private.runtime_env.utils import check_output_cmd
 import logging
 import os
@@ -107,3 +113,29 @@ async def create_or_get_virtualenv(path: str, cwd: str, logger: logging.Logger):
             virtualenv_path,
         )
     await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
+
+
+def get_all_packages_paths(target_dir: str, python_version: str = None) -> List:
+    ray_package_path = None
+    if not python_version:
+        _, host_site_packages_dir, python_version = get_current_python_info()
+    else:
+        _, host_site_packages_dir = get_specify_python_info(python_version)
+
+    if platform.python_version().startswith(python_version):
+        # We need this path because in the development environment,
+        # the ray package is located in the source code directory
+        # in which the ray is compiled and installed by
+        # `pip install -e python/ --verbose`.
+        ray_package_path = get_ray_site_packages_path()
+
+    virtualenv_path = get_virtualenv_path(target_dir)
+    virtualenv_site_packages_path = os.path.join(
+        virtualenv_path, "lib", "python" + python_version, "site-packages"
+    )
+    all_packages = []
+    if ray_package_path:
+        all_packages.append(ray_package_path)
+    all_packages.append(host_site_packages_dir)
+    all_packages.append(virtualenv_site_packages_path)
+    return all_packages

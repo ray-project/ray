@@ -16,6 +16,8 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
+from ray._private.runtime_env.working_dir import set_pythonpath_in_context
+
 default_logger = logging.getLogger(__name__)
 
 
@@ -384,6 +386,13 @@ class PipPlugin(RuntimeEnvPlugin):
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
+        # We get the path of the ray base environment, virtual environment,
+        # and virtual environment on the current pod, and add them to `PYTHONPATH`
+        all_packages = virtualenv_utils.get_all_packages_paths(
+            target_dir, runtime_env.pip_config().get("python_version")
+        )
+        for package in all_packages:
+            set_pythonpath_in_context(package, context)
         context.command_prefix += virtualenv_utils.get_virtualenv_activate_command(
             target_dir
         )

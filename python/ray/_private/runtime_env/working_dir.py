@@ -200,6 +200,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             )
         # Use placeholder here and will replace it by `pre_worker_startup`.
         working_dir = WorkingDirPlugin.working_dir_placeholder
+        # NOTE(Jacky): We need to set the working_dir in the context here, so that
+        # the container plugin can change the working dir placeholder to real working dir
+        context.working_dir = working_dir
         context.symlink_paths_to_working_dir.append(str(local_dir))
         context.env_vars[runtime_env_consts.RAY_WORKING_DIR] = working_dir
 
@@ -246,6 +249,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             context.env_vars[k] = v.replace(
                 WorkingDirPlugin.working_dir_placeholder, working_dir
             )
+        if "container_command" in context.container:
+            for i, command_str in enumerate(context.container["container_command"]):
+                context.container["container_command"][i] = command_str.replace(
+                    WorkingDirPlugin.working_dir_placeholder, working_dir
+                )
         # Add symbol links to the working dir.
         # Deduplicate, as linking duplicate file will raise FileExistsError
         linked_dir = set()

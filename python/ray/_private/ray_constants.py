@@ -560,3 +560,6 @@ GCS_ADDRESS_KEY = STORAGE_NAMESPACE + "GcsServerAddress"
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
+
+# The default pyenv root
+RAY_DEFAULT_PYENV_ROOT = "/home/admin/.pyenv"

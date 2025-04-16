@@ -2130,3 +2130,13 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+def check_logs_by_keyword(keyword, log_file_pattern):
+    command = f'grep "{keyword}" -r ' f"/tmp/ray/session_latest/logs/{log_file_pattern}"
+    try:
+        result = subprocess.run(command, shell=True)
+        # If the grep command caught nothing, the return code should be 1.
+        return result.returncode == 0
+    except Exception:
+        return False

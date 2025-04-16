@@ -1866,11 +1866,15 @@ def update_envs(env_vars: Dict[str, str]):
     if not env_vars:
         return
 
+    updated_envs = {}
     for key, value in env_vars.items():
         expanded = os.path.expandvars(value)
         # Replace non-existant env vars with an empty string.
         result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
         os.environ[key] = result
+        updated_envs[key] = os.environ[key]
+
+    return updated_envs
 
 
 def parse_node_labels_json(
@@ -2076,3 +2080,193 @@ def try_update_ld_library_path(
         all_library_paths += ":"
         all_library_paths += working_dir
     os.environ[runtime_env_constants.LIBRARY_PATH_ENV_NAME] = all_library_paths
+
+
+def try_update_container_command(
+    language: Language,
+    container: Dict[str, Any],
+    updated_envs: Dict[str, str],
+    passthrough_args: List[str],
+    py_executable: str,
+):
+    container_command = container["container_command"]
+    redirected_pyenv_folder = container.get("redirected_pyenv_folder", None)
+    updated_envs_list = []
+    for k, v in updated_envs.items():
+        updated_envs_list.append("--env")
+        updated_envs_list.append(k + "=" + v)
+    if runtime_env_constants.CONTAINER_ENV_PLACEHOLDER in container_command:
+        container_placeholder = runtime_env_constants.CONTAINER_ENV_PLACEHOLDER
+        index_to_replace = container_command.index(container_placeholder)
+        container_command = (
+            container_command[:index_to_replace]
+            + updated_envs_list
+            + container_command[index_to_replace + 1 :]
+        )
+
+    if language == Language.PYTHON:
+        passthrough_args.insert(0, py_executable)
+        passthrough_args[1] = "-m ray._private.workers.default_worker"
+    elif language == Language.JAVA:
+        if redirected_pyenv_folder:
+            cp_param_index = 0
+            passthrough_args.insert(0, "java")
+            for idx, remaining_arg in enumerate(passthrough_args):
+                if remaining_arg == "-cp":
+                    cp_param_index = idx
+                    passthrough_args[idx + 1] = passthrough_args[idx + 1].replace(
+                        ".pyenv", redirected_pyenv_folder
+                    )
+            passthrough_args.insert(
+                cp_param_index, "-DWORKER_SHIM_PID={}".format(os.getpid())
+            )
+    container_command.append(" ".join(passthrough_args)) if len(
+        passthrough_args
+    ) > 0 else None
+    return container_command
+
+
+def get_ray_site_packages_path():
+    """
+    Get ray package site path
+    """
+    ray_path = Path(ray.__path__[0])
+    return str(ray_path.parent.absolute())
+
+
+def get_pyenv_path():
+    # Get the pyenv path automatically instead of hard code.
+    return os.environ.get("PYENV_ROOT", ray_constants.RAY_DEFAULT_PYENV_ROOT)
+
+
+def get_current_python_info():
+    """
+    Get current python executable and site package directory.
+    """
+    version_dir = os.path.dirname(os.path.dirname(sys.executable))
+    # The python version format must be `{major}.{minor}`.
+    splited_version = os.path.basename(version_dir).split(".")
+    python_version = ".".join(splited_version[0:2])
+    site_packages_path = os.path.join(
+        version_dir,
+        "lib",
+        "python" + python_version,
+        "site-packages",
+    )
+    return sys.executable, site_packages_path, python_version
+
+
+def get_specify_python_info(python_version):
+    """
+    Get specified python executable and site package directory.
+    """
+    base_path = os.path.join(get_pyenv_path(), "versions")
+    for version_dir_name in os.listdir(base_path):
+        if version_dir_name.startswith(python_version):
+            return os.path.join(
+                base_path,
+                version_dir_name,
+                "bin",
+                "python",
+            ), os.path.join(
+                base_path,
+                version_dir_name,
+                "lib",
+                "python" + python_version,
+                "site-packages",
+            )
+    return None, None
+
+
+def set_java_jar_dirs_to_env_vars(
+    java_jar_dirs_list: List[str], context: "RuntimeEnvContext"
+):
+    """Insert the path in RAY_JAVA_JARS_DIRS in the runtime env."""
+    java_jar_dirs = ":".join(java_jar_dirs_list)
+    logger.info(f"Setting java jar dirs {java_jar_dirs} to context {context}.")
+    context.env_vars[runtime_env_constants.RAY_JAVA_JARS_DIRS] = java_jar_dirs
+
+
+def try_parse_default_mount_points(mount_dict: Dict[str, str]):
+    default_mount_points = runtime_env_constants.RAY_PODMAN_DEFAULT_MOUNT_POINTS
+    if default_mount_points:
+        default_mount_point_list = default_mount_points.split(";")
+        for mount_point in default_mount_point_list:
+            parts = mount_point.split(":")
+            if len(parts) != 2:
+                raise RuntimeError(
+                    f"Incorrect mount point, got '{mount_point}'"
+                    "please check the value of the environment variable `RAY_PODMAN_DEFAULT_MOUNT_POINTS`. "
+                    "Ensure that it is properly set and formatted correctly. "
+                    "The value should be a valid string representing the default mount points for podman. "
+                    "For more details, please refer to the comments or documentation for the "
+                    "`RAY_PODMAN_DEFAULT_MOUNT_POINTS` environment variable."
+                )
+            mount_dict[parts[1]] = parts[0]
+
+    return mount_dict
+
+
+def try_parse_container_run_options(
+    run_options: List,
+    container_command: List,
+    container_to_host_mount_dict: Dict[str, str],
+):
+    if not run_options:
+        return
+    index = 0
+    while index < len(run_options):
+        run_option = run_options[index]
+        if run_option == "-v":
+            if index == len(run_options) - 1:
+                raise RuntimeError(
+                    "Incorrect mount path command, "
+                    "please check the container field "
+                    "in the run_options field mount path, "
+                    "`-v host_path:container_path`."
+                )
+            next_option = run_options[index + 1]
+            paths = next_option.split(":")
+            if len(paths) != 2:
+                raise RuntimeError(
+                    "Incorrect mount path command, "
+                    "please check the container field "
+                    "in the run_options field mount path, "
+                    f"got {next_option}"
+                )
+            source_path = paths[0].strip()
+            target_path = paths[1].strip()
+            # Iterate over the key of
+            # 'container_to_host_mount_dict'
+            # to find if target_path already exists
+            container_to_host_mount_dict[target_path] = source_path
+            index += 2
+        else:
+            container_command.append(run_option)
+            index += 1
+    return container_command, container_to_host_mount_dict
+
+
+def try_update_runtime_env_vars(
+    runtime_env_vars: Dict[str, Any],
+    redirected_pyenv_folder: Optional[str],
+):
+    env_vars = dict()
+
+    # Propagate all host environment variables that have the prefix "RAY_"
+    # This should include RAY_RAYLET_PID
+
+    for env_var_name, env_var_value in os.environ.items():
+        if env_var_name.startswith("RAY_"):
+            env_vars[env_var_name] = env_var_value
+
+    # Support for runtime_env['env_vars']
+    runtime_env_vars.update(env_vars)
+    # unset PYENV_VERSION, the image may use pyenv with other python.
+    runtime_env_vars["PYENV_VERSION"] = ""
+
+    if runtime_env_vars.get("PYTHONPATH") and redirected_pyenv_folder:
+        runtime_env_vars["PYTHONPATH"] = runtime_env_vars["PYTHONPATH"].replace(
+            ".pyenv", redirected_pyenv_folder
+        )
+    return runtime_env_vars

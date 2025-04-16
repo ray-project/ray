@@ -351,7 +351,7 @@ class RuntimeEnvAgent:
                 per_job_logger,
             )
 
-            # Then within the working dir, create the other plugins.
+            # Then within the working dir, create the other plugins and skip container plugin.
             working_dir_uri_or_none = runtime_env.working_dir_uri()
             with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
                 """Run setup for each plugin unless it has already been cached."""
@@ -359,11 +359,25 @@ class RuntimeEnvAgent:
                     plugin_setup_context
                 ) in self._plugin_manager.sorted_plugin_setup_contexts():
                     plugin = plugin_setup_context.class_instance
+                    # Container plugin should be created after all other plugins, because the container plugin may depends on others.
+                    # So we skip the container plugin here.
+                    if plugin.name == ContainerPlugin.name:
+                        continue
                     if plugin.name != WorkingDirPlugin.name:
                         uri_cache = plugin_setup_context.uri_cache
                         await create_for_plugin_if_needed(
                             runtime_env, plugin, uri_cache, context, per_job_logger
                         )
+            # Container plugin should be created after all other plugins, because the container plugin may depends on others.
+            container_ctx = self._plugin_manager.plugins[ContainerPlugin.name]
+            await create_for_plugin_if_needed(
+                runtime_env,
+                container_ctx.class_instance,
+                container_ctx.uri_cache,
+                context,
+                per_job_logger,
+            )
+
             return context
 
         async def _create_runtime_env_with_retry(

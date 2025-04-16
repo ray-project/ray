@@ -385,19 +385,9 @@ class RuntimeEnv(dict):
                 "#create-env-file-manually"
             )
 
-        if self.get("container"):
-            invalid_keys = set(runtime_env.keys()) - {"container", "config", "env_vars"}
-            if len(invalid_keys):
-                raise ValueError(
-                    "The 'container' field currently cannot be used "
-                    "together with other fields of runtime_env. "
-                    f"Specified fields: {invalid_keys}"
-                )
-
-            logger.warning(
-                "The `container` runtime environment field is DEPRECATED and will be "
-                "removed after July 31, 2025. Use `image_uri` instead. See "
-                "https://docs.ray.io/en/latest/serve/advanced-guides/multi-app-container.html."  # noqa
+        if self.get("container") and self.get("image_uri"):
+            raise ValueError(
+                "'container' field and 'image_uri' field cannot be set at the same time."
             )
 
         if self.get("image_uri"):
