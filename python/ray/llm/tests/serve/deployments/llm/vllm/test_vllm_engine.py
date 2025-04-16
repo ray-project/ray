@@ -10,6 +10,7 @@ from ray.llm._internal.serve.configs.server_models import FinishReason
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import (
     BatchLLMRawResponses,
     VLLMEngine,
+    _get_vllm_engine_config,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
@@ -193,6 +194,60 @@ class TestVLLMEngine:
         guided_json = json.loads(parsed_params.guided_decoding.json)
         assert guided_json == sampling_params.response_format.json_schema
         assert getattr(parsed_params, "response_format", None) is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "engine_kwargs, expected_prompt_limit",
+        [
+            ({"enable_chunked_prefill": True, "trust_remote_code": True}, 1024000),
+            (
+                {
+                    "enable_chunked_prefill": True,
+                    "trust_remote_code": True,
+                    "max_model_len": 999,
+                },
+                999,
+            ),
+            (
+                {
+                    "enable_chunked_prefill": True,
+                    "trust_remote_code": True,
+                    "max_num_batched_tokens": 888,
+                },
+                1024000,
+            ),
+            (
+                {
+                    "enable_chunked_prefill": True,
+                    "trust_remote_code": True,
+                    "max_model_len": 999,
+                    "max_num_batched_tokens": 888,
+                    "enforce_eager": True,
+                },
+                999,
+            ),
+            ({"enable_chunked_prefill": False, "trust_remote_code": True}, 1024000),
+            (
+                {
+                    "enable_chunked_prefill": False,
+                    "trust_remote_code": True,
+                    "max_model_len": 999,
+                },
+                999,
+            ),
+        ],
+    )
+    async def test_get_prompt_limit(
+        self, llm_config: LLMConfig, engine_kwargs: dict, expected_prompt_limit: int
+    ):
+        llm_config = llm_config.model_copy(deep=True)
+        vllm_engine = VLLMEngine(llm_config)
+
+        # Test with default engine kwargs
+        llm_config.engine_kwargs = engine_kwargs
+        _, vllm_config = _get_vllm_engine_config(llm_config)
+        vllm_engine.vllm_config = vllm_config
+        assert vllm_engine._get_prompt_limit() == expected_prompt_limit
 
 
 TEXT_VALUE = "foo"
