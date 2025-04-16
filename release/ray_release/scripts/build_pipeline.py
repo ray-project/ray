@@ -6,6 +6,7 @@ from typing import Tuple
 from pathlib import Path
 
 import click
+import time
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
@@ -123,6 +124,7 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
+    time.sleep(3600)
     logger.info("Build anyscale base BYOD images")
     build_anyscale_base_byod_images(tests)
     logger.info("Build anyscale custom BYOD images")
