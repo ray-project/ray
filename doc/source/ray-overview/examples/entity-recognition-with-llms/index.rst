@@ -1,6 +1,6 @@
 .. _ref-entity-recognition-with-llms:
 
-Entity Recnogition with LLMs
+Entity Recognition with LLMs
 ============================
 
 An end-to-end tutorial where we'll fine-tune an LLM to perform batch inference and online serving at scale.
