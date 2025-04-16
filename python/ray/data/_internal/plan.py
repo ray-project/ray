@@ -376,7 +376,7 @@ class ExecutionPlan:
         elif self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-            iter_ref_bundles, _, _ = self.execute_to_iterator()
+            iter_ref_bundles, _, executor = self.execute_to_iterator()
             try:
                 ref_bundle = next(iter(iter_ref_bundles))
                 for metadata in ref_bundle.metadata:
@@ -385,6 +385,11 @@ class ExecutionPlan:
                         break
             except StopIteration:  # Empty dataset.
                 schema = None
+            finally:
+                # NOTE: Make sure executor is terminated at this point and all
+                #       outstanding tasks are finished (to make sure it won't affect
+                #       subsequent execution)
+                del executor
 
         self._schema = schema
         return self._schema
