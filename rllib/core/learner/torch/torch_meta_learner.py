@@ -203,7 +203,7 @@ class TorchMetaLearner(TorchLearner):
 
             # Make the actual in-graph/traced meta-`_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
+            fwd_out, loss_per_module, _ = self._update(
                 tensor_minibatch.policy_batches,
                 params,
                 others_loss_per_module,

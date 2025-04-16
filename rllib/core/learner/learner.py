@@ -67,7 +67,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
     MiniBatchRayDataIterator,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -1065,9 +1064,7 @@ class Learner(Checkpointable):
 
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                tensor_minibatch.policy_batches
-            )
+            fwd_out, loss_per_module, _ = self._update(tensor_minibatch.policy_batches)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -1093,7 +1090,7 @@ class Learner(Checkpointable):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
+        for mid, loss in loss_per_module.items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
                 value=loss,
@@ -1420,7 +1417,7 @@ class Learner(Checkpointable):
                     # Cut out the module ID from the beginning since it's already part
                     # of the key sequence: (ModuleID, "[optim name]_lr").
                     key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
-                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    value=self._get_optimizer_lr(optimizer),
                     window=1,
                 )
 

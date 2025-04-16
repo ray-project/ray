@@ -339,7 +339,7 @@ class DifferentiableLearner(Checkpointable):
 
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, params, tensor_metrics = self._update(
+            fwd_out, loss_per_module, params, _ = self._update(
                 # TODO (simon): Maybe filter ParamDict by module keys in batch.
                 tensor_minibatch.policy_batches,
                 params,
