@@ -1041,8 +1041,6 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  opencensus::stats::StatsExporter::ExportNow();
-
   // Force task state events push before exiting the worker.
   task_event_buffer_->FlushEvents(/* forced= */ true);
   task_event_buffer_->Stop();
@@ -1105,6 +1103,8 @@ void CoreWorker::Disconnect(
         /* timestamp */ absl::GetCurrentTimeNanos());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
+
+  opencensus::stats::StatsExporter::ExportNow();
 
   if (connected_) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
