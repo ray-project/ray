@@ -3,9 +3,9 @@
 Working with LLMs
 =================
 
-The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference.
+The :ref:`ray.data.llm <llm-ref>` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference.
 
-This guide shows you how to use `ray.data.llm` to:
+This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
@@ -16,11 +16,11 @@ This guide shows you how to use `ray.data.llm` to:
 Perform batch inference with LLMs
 ---------------------------------
 
-At a high level, the `ray.data.llm` module provides a `Processor` object which encapsulates
+At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the `build_llm_processor` API to construct a processor.
-The following example uses the `vLLMEngineProcessorConfig` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
+You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
+The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 
 To run this example, install vLLM, which is a popular and optimized LLM inference engine.
 
@@ -29,9 +29,9 @@ To run this example, install vLLM, which is a popular and optimized LLM inferenc
     # Later versions *should* work but are not tested yet.
     pip install -U vllm==0.7.2
 
-The `vLLMEngineProcessorConfig`` is a configuration object for the vLLM engine.
+The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` is a configuration object for the vLLM engine.
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
-Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
+Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
 .. testcode::
 
@@ -77,7 +77,7 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
 
     {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 
-Each processor requires specific input columns. You can find get more info by using the following API:
+Each processor requires specific input columns. You can find more info by using the following API:
 
 .. testcode::
 
@@ -90,7 +90,7 @@ Each processor requires specific input columns. You can find get more info by us
     Required input columns:
             messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
 
-Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
+Some models may require a Hugging Face token to be specified. You can specify the token in the :attr:`runtime_env <ray.serve.llm.LLMConfig.runtime_env>` argument.
 
 .. testcode::
 
@@ -106,7 +106,7 @@ Some models may require a Hugging Face token to be specified. You can specify th
 Configure vLLM for LLM inference
 --------------------------------
 
-Use the `vLLMEngineProcessorConfig` to configure the vLLM engine.
+Use the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to configure the vLLM engine.
 
 .. testcode::
 
@@ -136,7 +136,7 @@ For handling larger models, specify model parallelism.
         batch_size=64,
     )
 
-The underlying `Processor` object instantiates replicas of the vLLM engine and automatically
+The underlying :class:`Processor <ray.data.llm.Processor>` object instantiates replicas of the vLLM engine and automatically
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
 if specified).
 
@@ -271,7 +271,7 @@ Ray Data LLM provides the following utility to help uploading models to remote o
         --model-source local/path/to/model \
         --bucket-uri s3://my-bucket/path/to/model_name
 
-And later you can use remote object store URI as `model_source` in the config.
+And later you can use remote object store URI as :attr:`model_source <ray.data.llm.vLLMEngineProcessorConfig.model_source>` in the config.
 
 .. testcode::
 
