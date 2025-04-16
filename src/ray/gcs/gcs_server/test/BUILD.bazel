@@ -12,10 +12,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_placement_group_manager_mock_test",
+    name = "gcs_placement_group_mgr_mock_test",
     size = "small",
     srcs = [
-        "gcs_placement_group_manager_mock_test.cc",
+        "gcs_placement_group_mgr_mock_test.cc",
     ],
     tags = ["team:core"],
     deps = [
@@ -149,10 +149,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_placement_group_manager_test",
+    name = "gcs_placement_group_mgr_test",
     size = "small",
     srcs = [
-        "gcs_placement_group_manager_test.cc",
+        "gcs_placement_group_mgr_test.cc",
     ],
     tags = [
         "no_tsan",

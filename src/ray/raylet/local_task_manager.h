@@ -284,6 +284,7 @@ class LocalTaskManager : public ILocalTaskManager {
 
  private:
   const NodeID &self_node_id_;
+  const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
   ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
