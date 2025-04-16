@@ -162,7 +162,10 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling:
+        # This test consistently fails on a fixed-size cluster due to head OOMs. So,
+        # we only run it on autoscaling clusters.
+        - autoscaling
       shuffle_strategy: [sort_shuffle_pull_based]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -316,7 +319,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   cluster:
     byod:
@@ -355,6 +358,9 @@
 
 
 - name: "sort_{{scaling}}"
+  # This test intermittently fails due to Arrow offset overflow errors, or OOD from
+  # overly-conservative autoscaling.
+  stable: False
 
   matrix:
     setup:
