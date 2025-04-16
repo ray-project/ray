@@ -10,6 +10,10 @@
 #
 #   ;  # Semicolon to separate rules
 
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
+;
 
 python/ray/air/
 @ ml train tune data linux_wheels
@@ -221,9 +225,4 @@ setup_hooks.sh
 .prettierrc.toml
 build.sh
 # pass
-;
-
-doc/source/cluster/kubernetes/
-ci/k8s/
-@ k8s_doc
 ;
