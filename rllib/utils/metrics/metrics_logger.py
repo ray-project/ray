@@ -106,6 +106,7 @@ class MetricsLogger:
     def __init__(self):
         """Initializes a MetricsLogger instance."""
         self.stats = {}
+        self._tensor_mode = False
         # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
         #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
         #  An actual RLock, however, breaks our current OfflineData and
@@ -340,6 +341,8 @@ class MetricsLogger:
         # -> We'll force-reset our values upon `reduce()`.
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
+
+        value = self._detach_tensor_if_necessary(value)
 
         with self._threading_lock:
             # `key` doesn't exist -> Automatically create it.
@@ -646,6 +649,7 @@ class MetricsLogger:
             for i, stat_or_value in enumerate(available_stats):
                 # Value is NOT a Stats object -> Convert it to one.
                 if not isinstance(stat_or_value, Stats):
+                    stat_or_value = self._detach_tensor_if_necessary(stat_or_value)
                     available_stats[i] = stat_or_value = Stats(
                         stat_or_value,
                         reduce=reduce,
@@ -897,6 +901,9 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
+                assert (
+                    not self.tensor_mode
+                ), "Can't reduce if `self.tensor_mode` is True!"
                 reduced_stats_to_return = tree.map_structure_with_path(
                     _reduce, stats_to_return
                 )
@@ -916,6 +923,26 @@ class MetricsLogger:
         # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
             return self.peek_results(reduced_stats_to_return)
+
+    def activate_tensor_mode(self):
+        assert not self.tensor_mode
+        self._tensor_mode = True
+
+    def deactivate_tensor_mode(self):
+        assert self.tensor_mode
+        self._tensor_mode = False
+
+    @property
+    def tensor_mode(self):
+        return self._tensor_mode
+
+    def _detach_tensor_if_necessary(self, value):
+        if self.tensor_mode:
+            if torch and torch.is_tensor(value):
+                return value.detach()
+            elif tf and tf.is_tensor(value):
+                return tf.stop_gradient(value)
+        return value
 
     def set_value(
         self,
