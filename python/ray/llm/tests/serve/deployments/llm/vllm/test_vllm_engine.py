@@ -199,11 +199,11 @@ class TestVLLMEngine:
     @pytest.mark.parametrize(
         "engine_kwargs, expected_prompt_limit",
         [
-            ({"enable_chunked_prefill": True, "trust_remote_code": True}, 1024000),
+            ({"enable_chunked_prefill": True, "device": "cpu"}, 1024000),
             (
                 {
                     "enable_chunked_prefill": True,
-                    "trust_remote_code": True,
+                    "device": "cpu",
                     "max_model_len": 999,
                 },
                 999,
@@ -211,7 +211,7 @@ class TestVLLMEngine:
             (
                 {
                     "enable_chunked_prefill": True,
-                    "trust_remote_code": True,
+                    "device": "cpu",
                     "max_num_batched_tokens": 888,
                 },
                 1024000,
@@ -219,18 +219,18 @@ class TestVLLMEngine:
             (
                 {
                     "enable_chunked_prefill": True,
-                    "trust_remote_code": True,
+                    "device": "cpu",
                     "max_model_len": 999,
                     "max_num_batched_tokens": 888,
                     "enforce_eager": True,
                 },
                 999,
             ),
-            ({"enable_chunked_prefill": False, "trust_remote_code": True}, 1024000),
+            ({"enable_chunked_prefill": False, "device": "cpu"}, 1024000),
             (
                 {
                     "enable_chunked_prefill": False,
-                    "trust_remote_code": True,
+                    "device": "cpu",
                     "max_model_len": 999,
                 },
                 999,
