@@ -574,7 +574,7 @@ class Stats:
 
     def _numpy_if_necessary(self, values):
         # Torch tensor handling. Convert to CPU/numpy first.
-        if torch and torch.is_tensor(values[0]):
+        if torch and len(values) > 0 and torch.is_tensor(values[0]):
             # Make sure, all values are tensors.
             assert all(torch.is_tensor(v) for v in values), values
             # Convert all tensors to numpy values.
