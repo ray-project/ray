@@ -27,7 +27,8 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.rllib.utils.typing import StateDict
-from ray.tune import Checkpoint
+from ray.train import Checkpoint as Checkpoint_train
+from ray.tune import Checkpoint as Checkpoint_tune
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
@@ -687,7 +688,7 @@ def _is_dir(file_info: pyarrow.fs.FileInfo) -> bool:
 
 @OldAPIStack
 def get_checkpoint_info(
-    checkpoint: Union[str, Checkpoint],
+    checkpoint: Union[str, Checkpoint_train, Checkpoint_tune],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
 ) -> Dict[str, Any]:
     """Returns a dict with information about an Algorithm/Policy checkpoint.
@@ -696,7 +697,7 @@ def get_checkpoint_info(
     information from the contained `rllib_checkpoint.json` file.
 
     Args:
-        checkpoint: The checkpoint directory (str) or an AIR Checkpoint object.
+        checkpoint: The checkpoint directory (str) or a Checkpoint object.
         filesystem: PyArrow FileSystem to use to access data at the `checkpoint`. If not
             specified, this is inferred from the URI scheme provided by `checkpoint`.
 
@@ -725,7 +726,7 @@ def get_checkpoint_info(
     }
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
-    if isinstance(checkpoint, Checkpoint):
+    if isinstance(checkpoint, (Checkpoint_train, Checkpoint_tune)):
         checkpoint = checkpoint.to_directory()
 
     if checkpoint and not filesystem:
@@ -886,7 +887,7 @@ def get_checkpoint_info(
 
 @OldAPIStack
 def convert_to_msgpack_checkpoint(
-    checkpoint: Union[str, Checkpoint],
+    checkpoint: Union[str, Checkpoint_train, Checkpoint_tune],
     msgpack_checkpoint_dir: str,
 ) -> str:
     """Converts an Algorithm checkpoint (pickle based) to a msgpack based one.
@@ -978,7 +979,7 @@ def convert_to_msgpack_checkpoint(
 
 @OldAPIStack
 def convert_to_msgpack_policy_checkpoint(
-    policy_checkpoint: Union[str, Checkpoint],
+    policy_checkpoint: Union[str, Checkpoint_train, Checkpoint_tune],
     msgpack_checkpoint_dir: str,
 ) -> str:
     """Converts a Policy checkpoint (pickle based) to a msgpack based one.

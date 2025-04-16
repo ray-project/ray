@@ -8,10 +8,9 @@ import ray
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -107,16 +106,15 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name,
-            self._base_dataset._uuid,
-            self._output_split_idx,
-        )
+        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
@@ -137,11 +135,9 @@ class SplitCoordinator:
         # Set current DataContext.
         self._data_context = dataset.context
         ray.data.DataContext._set_current(self._data_context)
-        # Automatically set locality with output to the specified location hints.
-        if locality_hints:
+        if self._data_context.execution_options.locality_with_output is True:
             self._data_context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
-
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -156,13 +152,7 @@ class SplitCoordinator:
 
         def gen_epochs():
             while True:
-                executor = StreamingExecutor(
-                    self._data_context,
-                    create_dataset_tag(
-                        self._base_dataset._name, self._base_dataset._uuid
-                    ),
-                )
-                self._executor = executor
+                self._executor = self._base_dataset._plan.create_executor()
 
                 def add_split_op(dag):
                     return OutputSplitter(
@@ -174,7 +164,7 @@ class SplitCoordinator:
                     )
 
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    executor,
+                    self._executor,
                     dataset._plan,
                     dag_rewrite=add_split_op,
                 )

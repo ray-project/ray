@@ -15,7 +15,12 @@ export TORCH_VERSION=2.0.1
 export TORCHVISION_VERSION=0.15.2
 
 filter_out_flaky_tests() {
-  bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+  if [[ "${RAYCI_DISABLE_TEST_DB:-}" == "1" ]]; then
+    # Test DB is disabled, so simply passthrough and run everything.
+    cat
+  else
+    bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
+  fi
 }
 
 select_flaky_tests() {

@@ -302,6 +302,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Test is failing: https://github.com/ray-project/ray/issues/52270
+        "manual",
     ],
 )
 
@@ -3660,6 +3662,8 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
+        # Test is failing: https://github.com/ray-project/ray/issues/47717
+        "manual",
     ],
 )
 

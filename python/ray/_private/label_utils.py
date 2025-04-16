@@ -1,3 +1,4 @@
+import json
 import re
 import yaml
 from typing import Dict
@@ -20,6 +21,19 @@ LABEL_REGEX = re.compile(r"[a-zA-Z0-9]([a-zA-Z0-9_.-]*[a-zA-Z0-9]){0,62}")
 LABEL_PREFIX_REGEX = rf"^({LABEL_REGEX.pattern}?(\.{LABEL_REGEX.pattern}?)*)$"
 
 
+def parse_node_labels_json(labels_json: str) -> Dict[str, str]:
+    labels = json.loads(labels_json)
+    if not isinstance(labels, dict):
+        raise ValueError("The format after deserialization is not a key-value pair map")
+    for key, value in labels.items():
+        if not isinstance(key, str):
+            raise ValueError("The key is not string type.")
+        if not isinstance(value, str):
+            raise ValueError(f'The value of the "{key}" is not string type')
+
+    return labels
+
+
 def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
     labels = {}
 
@@ -37,10 +51,13 @@ def parse_node_labels_string(labels_str: str) -> Dict[str, str]:
         # Split each pair by `=`
         key_value = pair.split("=")
         if len(key_value) != 2:
-            raise ValueError("Label value is not a key-value pair.")
+            raise ValueError("Label string is not a key-value pair.")
         key = key_value[0].strip()
         value = key_value[1].strip()
         labels[key] = value
+
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
 
     return labels
 
@@ -61,6 +78,9 @@ def parse_node_labels_from_yaml_file(path: str) -> Dict[str, str]:
             if not isinstance(value, str):
                 raise ValueError(f'The value of "{key}" is not string type.')
 
+    # Validate parsed node labels follow expected Kubernetes label syntax
+    validate_node_label_syntax(labels)
+
     return labels
 
 
@@ -74,6 +94,14 @@ def validate_node_labels(labels: Dict[str, str]):
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
+
+
+# TODO (ryanaoleary@): This function will replace `validate_node_labels` after
+# the migration from NodeLabelSchedulingPolicy to the Label Selector API is complete.
+def validate_node_label_syntax(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
         if "/" in key:
             prefix, name = key.rsplit("/")
             if len(prefix) > 253 or not re.match(LABEL_PREFIX_REGEX, prefix):
