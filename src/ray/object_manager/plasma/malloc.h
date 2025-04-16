@@ -33,7 +33,7 @@ constexpr int64_t kMmapRegionsGap = sizeof(size_t);
 
 struct MmapRecord {
   MEMFD_TYPE fd;
-  int64_t size;
+  size_t size;
 };
 
 /// Hashtable that contains one entry per segment that we got from the OS
@@ -45,7 +45,7 @@ extern absl::flat_hash_map<void *, MmapRecord> mmap_records;
 namespace internal {
 bool GetMallocMapinfo(const void *const addr,
                       MEMFD_TYPE *fd,
-                      int64_t *map_length,
+                      size_t *map_length,
                       ptrdiff_t *offset);
 }
 }  // namespace plasma
