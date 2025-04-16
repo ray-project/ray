@@ -2310,10 +2310,10 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, username=None, passwor
     command to the server until the command gets through.
 
     Args:
-        redis_ip_address (str): The IP address of the redis server.
-        redis_port (int): The port of the redis server.
-        username (str): The username of the Redis server.
-        password (str): The password of the Redis server.
+        redis_ip_address: The IP address of the redis server.
+        redis_port: The port of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.

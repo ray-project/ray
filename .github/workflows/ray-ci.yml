@@ -112,10 +112,27 @@ jobs:
             echo "allowed=false" >> $GITHUB_OUTPUT
           fi
 
+  lint-check:
+    name: Lint Check
+    runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    needs: [check-permissions, start-ecs-runner]
+    outputs:
+      lint_success: ${{ steps.lint.outputs.lint_success }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: check lint
+        id: lint
+        run: |
+          bash ci/lint/lint.sh code_format || (echo "lint_success=false" >> $GITHUB_OUTPUT && exit 1)
+          echo "lint_success=true" >> $GITHUB_OUTPUT
+        
+
   build-base-images:
     name: Build Base Images
-    needs: [check-permissions, start-ecs-runner]
-    if: needs.check-permissions.outputs.allowed == 'true'
+    needs: [check-permissions, start-ecs-runner, lint-check]
+    if: needs.check-permissions.outputs.allowed == 'true' && needs.lint-check.outputs.lint_success == 'true'
     runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
     strategy:
       matrix:
@@ -190,8 +207,8 @@ jobs:
       REPORT_LABEL_6: workflow_tests
       REPORT_LABEL_7: debug_tests
       REPORT_LABEL_8: asan_tests
-    needs: [build-base-images, check-permissions, start-ecs-runner]
-    if: needs.check-permissions.outputs.allowed == 'true'
+    needs: [build-base-images, check-permissions, start-ecs-runner, lint-check]
+    if: needs.check-permissions.outputs.allowed == 'true' && needs.lint-check.outputs.lint_success == 'true'
     runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
     strategy:
       matrix:
@@ -511,6 +528,7 @@ jobs:
     needs:
       - start-ecs-runner
       - check-permissions
+      - lint-check
       - build-base-images
       - core-tests
     if: always()

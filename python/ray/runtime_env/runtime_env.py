@@ -498,8 +498,8 @@ class RuntimeEnv(dict):
         """Combines two serialized strings into a single serialized representation.
 
         Args:
-            serialized_runtime_env (str): The serialized representation of the runtime environment.
-            serialized_allocated_instances (str): The serialized representation of the allocated instances.
+            serialized_runtime_env: The serialized representation of the runtime environment.
+            serialized_allocated_instances: The serialized representation of the allocated instances.
 
         Returns:
             str: A combined serialized string, with the two inputs concatenated using "&&" as a separator.
