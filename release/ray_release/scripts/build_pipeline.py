@@ -173,8 +173,8 @@ def main(
             json.dump(settings, fp)
 
     steps_str = json.dumps(steps)
+    logger.info(steps_str)
     print(steps_str)
-
 
 if __name__ == "__main__":
     sys.exit(main())
