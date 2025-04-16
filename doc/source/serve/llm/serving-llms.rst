@@ -753,8 +753,9 @@ If you are using huggingface models, you can enable fast download by setting `HF
 How to configure tokenizer pool size so it doesn't hang?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When using `tokenizer_pool_size` in vLLM's engine keyargs, `tokenizer_pool_size` is also
-required to configure together in order to have the tokenizer group scheduled correctly.
+When using `tokenizer_pool_size` in vLLM's `engine_kwargs`,
+`tokenizer_pool_size` is also required to configure together in order to have
+the tokenizer group scheduled correctly.
 
 An example config is shown below:
 
