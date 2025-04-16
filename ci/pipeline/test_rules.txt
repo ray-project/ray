@@ -10,11 +10,6 @@
 #
 #   ;  # Semicolon to separate rules
 
-doc/source/cluster/kubernetes/
-ci/k8s/
-@ k8s_doc
-;
-
 python/ray/air/
 @ ml train tune data linux_wheels
 ;
@@ -120,6 +115,11 @@ cpp/
 docker/
 .buildkite/pipeline.build_cpp.yml
 @ docker linux_wheels
+;
+
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
 ;
 
 .readthedocs.yaml
