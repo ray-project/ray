@@ -27,7 +27,6 @@ from ray.rllib.utils.metrics import (
     DIFFERENTIABLE_LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.utils import to_snake_case
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -233,7 +232,7 @@ class TorchMetaLearner(TorchLearner):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
+        for mid, loss in loss_per_module.items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
                 value=loss,
