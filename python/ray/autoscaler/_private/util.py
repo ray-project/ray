@@ -734,6 +734,14 @@ def get_constraint_report(request_demand: List[DictCount]):
     Returns:
         String containing the formatted constraints report, either listing each constraint
         and count or indicating no constraints exist.
+
+    Example:
+        >>> request_demand = [
+        ...     ({"CPU": 4}, 2),
+        ...     ({"GPU": 1}, 1)
+        ... ]
+        >>> get_constraint_report(request_demand)
+        " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
     """
     constraint_lines = []
     for bundle, count in request_demand:

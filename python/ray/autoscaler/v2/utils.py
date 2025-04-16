@@ -319,7 +319,9 @@ class ClusterStatusFormatter:
         pending_report = cls._pending_node_report(data)
         failure_report = cls._failed_node_report(data, verbose)
         cluster_usage_report = cls._cluster_usage_report(data, verbose)
-        constraints_report = cls._constraint_report(data)
+        constraints_report = cls._constraint_report(
+            data.resource_demands.cluster_constraint_demand
+        )
         demand_report = cls._demand_report(data)
         node_usage_report = (
             ""
@@ -543,7 +545,9 @@ class ClusterStatusFormatter:
         return " (no pending nodes)"
 
     @staticmethod
-    def _constraint_report(data: ClusterStatus) -> str:
+    def _constraint_report(
+        cluster_constraint_demand: List[ClusterConstraintDemand],
+    ) -> str:
         """Returns a formatted string describing the resource constraints from request_resources().
 
         Args:
@@ -552,11 +556,21 @@ class ClusterStatusFormatter:
         Returns:
             String containing the formatted constraints report, either listing each constraint
             and count or indicating no constraints exist.
+
+        Example:
+            >>> cluster_constraint_demand = [
+            ...     ClusterConstraintDemand(bundles_by_count=[
+            ...         ResourceRequestByCount(bundle={"CPU": 4}, count=2),
+            ...         ResourceRequestByCount(bundle={"GPU": 1}, count=1)
+            ...     ])
+            ... ]
+            >>> ClusterStatusFormatter._constraint_report(cluster_constraint_demand)
+            " {'CPU': 4}: 2 from request_resources()\\n {'GPU': 1}: 1 from request_resources()"
         """
         constraint_lines = []
         request_demand = [
             (bc.bundle, bc.count)
-            for constraint_demand in data.resource_demands.cluster_constraint_demand
+            for constraint_demand in cluster_constraint_demand
             for bc in constraint_demand.bundles_by_count
         ]
         for bundle, count in request_demand:
