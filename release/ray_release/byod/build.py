@@ -98,7 +98,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
             byod_image,
             "-f",
             os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"),
-            os.path.join(bazel_workspace_dir, RELEASE_BYOD_DIR),
+            RELEASE_BYOD_DIR,
         ],
         stdout=sys.stderr,
         env=env,
@@ -138,16 +138,16 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                 built.add(byod_image)
                 continue
             ray_image = test.get_ray_image()
-            if not _image_exist(ray_image):
-                # TODO(can): instead of waiting for the base image to be built, we can
-                #  build it ourselves
-                timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
-                logger.info(
-                    f"Image {ray_image} does not exist yet. "
-                    f"Wait for another {timeout}s..."
-                )
-                time.sleep(BASE_IMAGE_WAIT_DURATION)
-                continue
+            # if not _image_exist(ray_image):
+            #     # TODO(can): instead of waiting for the base image to be built, we can
+            #     #  build it ourselves
+            #     timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
+            #     logger.info(
+            #         f"Image {ray_image} does not exist yet. "
+            #         f"Wait for another {timeout}s..."
+            #     )
+            #     time.sleep(BASE_IMAGE_WAIT_DURATION)
+            #     continue
             logger.info(f"Building {byod_image} from {ray_image}")
             with open(DATAPLANE_FILENAME, "rb") as build_file:
                 subprocess.check_call(
@@ -180,7 +180,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         byod_image,
                         "-f",
                         os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
-                        os.path.join(bazel_workspace_dir, RELEASE_BYOD_DIR),
+                        RELEASE_BYOD_DIR,
                     ],
                     stdout=sys.stderr,
                     env=env,
