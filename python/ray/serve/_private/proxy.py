@@ -108,7 +108,7 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
         "been deprecated. Please set `request_timeout_s` in your Serve config's "
-        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "`http_options` or `grpc_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
         "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
         "ema.request_timeout_s"
@@ -1128,6 +1128,16 @@ def _set_proxy_default_http_options(http_options: HTTPOptions) -> HTTPOptions:
     return http_options
 
 
+def _set_proxy_default_grpc_options(grpc_options) -> gRPCOptions:
+    grpc_options = deepcopy(grpc_options) or gRPCOptions()
+
+    grpc_options.request_timeout_s = (
+        grpc_options.request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+    )
+
+    return grpc_options
+
+
 @ray.remote(num_cpus=0)
 class ProxyActor:
     def __init__(
@@ -1145,7 +1155,7 @@ class ProxyActor:
 
         # Configure proxy default HTTP and gRPC options.
         http_options = _set_proxy_default_http_options(http_options)
-        grpc_options = grpc_options or gRPCOptions()
+        grpc_options = _set_proxy_default_grpc_options(grpc_options)
         self._http_options = http_options
         self._grpc_options = grpc_options
 
@@ -1198,20 +1208,6 @@ class ProxyActor:
             proxy_router=self.proxy_router,
             request_timeout_s=self._http_options.request_timeout_s,
         )
-
-        if (
-            RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S is not None
-            and self._grpc_options.request_timeout_s is None
-        ):
-            self._grpc_options.request_timeout_s = (
-                RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-            )
-            logger.warning(
-                "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable will be deprecated "
-                "in the future release. Please set `request_timeout_s` in your Serve config's `grpc_options` "
-                "field instead."
-            )
-
         self.grpc_proxy = (
             gRPCProxy(
                 node_id=self._node_id,
