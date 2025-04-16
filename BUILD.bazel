@@ -596,8 +596,8 @@ ray_cc_library(
     srcs = ["src/ray/raylet/raylet.cc"],
     hdrs = ["src/ray/raylet/raylet.h"],
     deps = [
-        # ":core_worker_lib",
-        # ":dependency_manager",
+        "//src/ray/core_worker:core_worker_lib",
+        ":dependency_manager",
         ":gcs",
         ":gcs_client_lib",
         ":local_object_manager",
@@ -660,7 +660,7 @@ ray_cc_library(
     srcs = ["src/ray/raylet/node_manager.cc"],
     hdrs = ["src/ray/raylet/node_manager.h"],
     deps = [
-        ":core_worker_lib",
+        "//src/ray/core_worker:core_worker_lib",
         ":dependency_manager",
         ":gcs_pb_util",
         ":local_object_manager",
@@ -671,7 +671,7 @@ ray_cc_library(
         ":raylet_agent_manager",
         ":raylet_client_lib",
         ":runtime_env_agent_client",
-        ":subscriber_lib",
+        "//src/ray/pubsub:subscriber_lib",
         ":wait_manager",
         ":worker_killing_policy_lib",
         ":worker_pool",
