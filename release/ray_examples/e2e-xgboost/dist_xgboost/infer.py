@@ -71,7 +71,9 @@ def main():
     )
 
     # Calculate confusion matrix
-    test_results = test_predictions.map_batches(confusion_matrix_batch, batch_format="pandas", batch_size=1000)
+    test_results = test_predictions.map_batches(
+        confusion_matrix_batch, batch_format="pandas", batch_size=1000
+    )
 
     # Calculate metrics
     # Sum all confusion matrix values across batches
@@ -87,7 +89,9 @@ def main():
     accuracy = (tp + tn) / (tp + tn + fp + fn)
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    f1 = (
+        2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    )
 
     metrics = {"precision": precision, "recall": recall, "f1": f1, "accuracy": accuracy}
 

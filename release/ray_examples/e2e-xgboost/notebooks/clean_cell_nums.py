@@ -11,7 +11,10 @@ def clear_execution_numbers(nb_path):
         if cell["cell_type"] == "code":
             cell["execution_count"] = None
             for output in cell["outputs"]:
-                if "execution_count" in output and output["execution_count"] is not None:
+                if (
+                    "execution_count" in output
+                    and output["execution_count"] is not None
+                ):
                     output["execution_count"] = None
                     cleaned = True
     if cleaned:

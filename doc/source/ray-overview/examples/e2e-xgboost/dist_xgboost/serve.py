@@ -45,7 +45,9 @@ class XGBoostModel:
 
 def main():
     xgboost_model = XGBoostModel.bind(load_model_and_preprocessor)
-    _handle: DeploymentHandle = serve.run(xgboost_model, name="xgboost-breast-cancer-classifier")
+    _handle: DeploymentHandle = serve.run(
+        xgboost_model, name="xgboost-breast-cancer-classifier"
+    )
 
     sample_input = {
         "mean radius": 14.9,
