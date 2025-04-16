@@ -6,11 +6,9 @@ from typing import Tuple
 from pathlib import Path
 
 import click
-import time
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
