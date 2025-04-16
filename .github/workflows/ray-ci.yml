@@ -97,6 +97,10 @@ jobs:
     outputs:
       allowed: ${{ steps.check_user.outputs.allowed }}
     steps:
+      - name: remove all running containers
+        run: |
+          docker rm -v -f $(docker ps -qa) || true
+
       - name: Check if user is allowed
         id: check_user
         run: |
@@ -237,7 +241,7 @@ jobs:
     - name: Check Core Image Existence
       id: check_core_image
       run: |
-        if docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -q "localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild"; then
+        if docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -q "localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild"; then
           echo "exists=true" >> $GITHUB_OUTPUT
         else
           echo "exists=false" >> $GITHUB_OUTPUT
@@ -250,7 +254,7 @@ jobs:
         context: .
         file: ci/docker/core.build.Dockerfile
         tags: |
-          localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild
+          localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild
         build-args: |
           RAYCI_IS_GPU_BUILD=false
           BUILDKITE=true
@@ -267,7 +271,7 @@ jobs:
       run: |
         max_attempts=3
         for i in $(seq 1 $max_attempts); do
-          if docker push localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild; then
+          if docker push localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild; then
             echo "Docker push succeeded on attempt $i"
             break
           else
@@ -283,7 +287,7 @@ jobs:
     - name: Run Core Python Tests (1)
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
       run: |
         echo "Running core: python tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
@@ -306,7 +310,7 @@ jobs:
     - name: Run Core Python Tests (2)
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running core: python tests..."
@@ -331,7 +335,7 @@ jobs:
     - name: Run Core Python Tests (3)
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         #echo "Running core: python tests..."
@@ -355,13 +359,13 @@ jobs:
     - name: Update Test Image
       if: '!cancelled()'
       run: |
-        docker build -t localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -f ci/docker/core.build.ant.Dockerfile \
-          --build-arg DOCKER_IMAGE_BASE=localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild \
+        docker build -t localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -f ci/docker/core.build.ant.Dockerfile \
+          --build-arg DOCKER_IMAGE_BASE=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild \
           .
     - name: Run Core Cpp Tests
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running core: cpp tests..."
@@ -383,7 +387,7 @@ jobs:
     - name: Run Dashboard Tests
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running dashboard tests..."
@@ -406,7 +410,7 @@ jobs:
     - name: Run Workflow Tests
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running workflow tests..."
@@ -437,7 +441,7 @@ jobs:
     - name: Run Debug Tests
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running debug tests..."
@@ -464,7 +468,7 @@ jobs:
     - name: Run ASAN Tests
       if: '!cancelled()'
       env:
-        RAYCI_WORK_REPO: localhost:5000/citemp
+        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
 
       run: |
         echo "Running ASAN tests..."
@@ -499,7 +503,7 @@ jobs:
       if: always()
       continue-on-error: true
       run: |
-        docker ps -a --filter ancestor=localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
+        docker ps -a --filter ancestor=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
         # Clean up any dangling containers
         docker ps -a --filter status=exited -q | xargs -r docker rm || true
 
@@ -522,6 +526,22 @@ jobs:
         echo "🔗 [Ant Ray Dashboard](https://ant-ray.streamlit.app?run_id=${{ github.run_id }}&artifact_id=${{ steps.artifact-upload-step.outputs.artifact-id }})" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "This link contains test reports and analysis for commit \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  cleanup-unused-images:
+    name: Cleanup Unused Images
+    needs:
+      - start-ecs-runner
+      - check-permissions
+      - build-base-images
+      - core-tests
+ 
+    if: always()
+    runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    steps:
+      - name: Cleanup Unused Images
+        run: |
+          docker rmi $(docker images --filter "dangling=true" -q --no-trunc) || true
+
   stop-ecs-runner:
     name: Stop ECS Instance
     environment: aliyun
@@ -531,6 +551,7 @@ jobs:
       - lint-check
       - build-base-images
       - core-tests
+      - cleanup-unused-images
     if: always()
     runs-on: longrun
     steps:
