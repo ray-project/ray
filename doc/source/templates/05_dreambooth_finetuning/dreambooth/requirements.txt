@@ -7,6 +7,6 @@ huggingface_hub==0.27.0
 jax==0.4.13
 jaxlib==0.4.13
 numpy==1.24.4
-torch==2.0.1
+torch==2.6.0
 torchvision==0.15.2
 transformers==4.30.2
