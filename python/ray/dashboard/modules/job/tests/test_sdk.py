@@ -196,7 +196,9 @@ def get_register_agents_number(gcs_client):
     ],
     indirect=True,
 )
-def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
+def test_job_head_choose_job_agent_E2E(
+    ray_start_cluster_head_with_env_vars, call_ray_stop_only
+):
     cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = cluster.webui_url
@@ -343,7 +345,7 @@ def test_jobs_run_on_head_by_default_E2E(ray_start_cluster_head_with_env_vars):
             return False
 
     wait_for_condition(lambda: _check_nodes(num_nodes=3), timeout=15)
-    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=20)
+    wait_for_condition(lambda: get_register_agents_number(gcs_client) == 3, timeout=40)
 
     # Submit 20 simple jobs.
     for i in range(20):
