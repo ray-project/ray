@@ -729,10 +729,7 @@ class Stats:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
                 # Only one item in the
-                if len(values) == 1:
-                    reduced = values[0]
-
-                elif len(values[0].shape) == 0:
+                if len(values[0].shape) == 0:
                     reduced = values[0]
                 else:
                     reduce_meth = getattr(torch, "nan" + self._reduce_method)

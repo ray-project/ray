@@ -936,11 +936,6 @@ class MetricsLogger:
     def _detach_tensor_if_necessary(self, value):
         if self.tensor_mode:
             if torch and torch.is_tensor(value):
-                if value.shape not in [(), (1,)]:
-                    raise ValueError(
-                        "Only tensors of shape () or (1,) can be logged with "
-                        "MetricsLogger!"
-                    )
                 return value.detach()
             elif tf and tf.is_tensor(value):
                 return tf.stop_gradient(value)
