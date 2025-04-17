@@ -1020,7 +1020,7 @@ CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 void CoreWorker::Shutdown() {
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
-  if (is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
+  if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
   }
@@ -1177,7 +1177,7 @@ void CoreWorker::Exit(
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   // Ensure that the shutdown logic runs at most once.
   bool expected = false;
-  if (is_exited_.compare_exchange_strong(expected, /*desired=*/true)) {
+  if (!is_exited_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Exit was called multipled times, ignoring.";
     return;
   }
