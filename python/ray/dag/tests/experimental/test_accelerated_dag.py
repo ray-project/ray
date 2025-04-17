@@ -1173,6 +1173,34 @@ def test_get_with_zero_timeout(ray_start_regular):
     assert result == 1
 
 
+def test_submit_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        # By default, shared memory channel is buffered
+        # To test submission timeout, use with_tensor_transport()
+        # for a non-buffered channel
+        inp = inp.with_tensor_transport()
+        dag = a.sleep.bind(inp)
+
+    refs = []
+    compiled_dag = dag.experimental_compile()
+    # No timeout, the object will stay at actor.sleep() for 5 seconds
+    refs.append(compiled_dag.execute(5, _submit_timeout=1))
+    # No timeout, the object will immediately enter DAG input channel
+    refs.append(compiled_dag.execute(3, _submit_timeout=1))
+
+    with pytest.raises(
+        RayChannelTimeoutError,
+        match="Timed out after 1 seconds. "
+        "If the execution is expected to take a long time, "
+        "increase _submit_timeout or RAY_CGRAPH_submit_timeout. "
+        "Otherwise, this may indicate that execution is hanging.",
+    ):
+        # Timeout, the object submission is blocked
+        ref = compiled_dag.execute(3, _submit_timeout=1)
+        refs.append(ref)
+
+
 def test_dag_exception_basic(ray_start_regular, capsys):
     # Test application throwing exceptions with a single task.
     a = Actor.remote(0)
