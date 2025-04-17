@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Iterable, Iterator, Optional
+from typing import Iterable, Iterator, Optional, ContextManager
 
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator
@@ -38,7 +38,7 @@ class OutputIterator(Iterator[RefBundle]):
         return self.get_next()
 
 
-class Executor(ABC):
+class Executor(ContextManager, ABC):
     """Abstract class for executors, which implement physical operator execution.
 
     Subclasses:
@@ -82,3 +82,10 @@ class Executor(ABC):
         while iterating over `execute` results for streaming execution.
         """
         ...
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback, /):
+        self.shutdown(exception=exc_value)
+
