@@ -1110,7 +1110,21 @@ class Learner(Checkpointable):
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
-            return self.metrics.reduce()
+
+            #TEST
+            import tree
+            import torch
+            from ray.rllib.utils.metrics.stats import Stats
+
+            def _test(p, s):
+                assert isinstance(s, Stats)
+                if any(torch.is_tensor(v) for v in s.values):
+                    print(p)
+                    quit()
+
+            red = self.metrics.reduce()
+            tree.map_structure_with_path(_test, red)
+            return red
 
     def _create_iterator_if_necessary(
         self,
