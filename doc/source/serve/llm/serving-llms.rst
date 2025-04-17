@@ -27,7 +27,7 @@ Requirements
 Key Components
 --------------
 
-The ``ray.serve.llm`` module provides two key deployment types for serving LLMs:
+The :ref:`ray.serve.llm <serve-llm-api>` module provides two key deployment types for serving LLMs:
 
 LLMServer
 ~~~~~~~~~~~~~~~~~~
@@ -48,7 +48,7 @@ Configuration
 
 LLMConfig
 ~~~~~~~~~
-The ``LLMConfig`` class specifies model details such as:
+The :class:`LLMConfig <ray.serve.llm.LLMConfig>` class specifies model details such as:
 
 - Model loading sources (HuggingFace or cloud storage)
 - Hardware requirements (accelerator type)
@@ -61,8 +61,8 @@ Quickstart Examples
 
 
 
-Deployment through ``LLMRouter``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -165,7 +165,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
                     print(chunk.choices[0].delta.content, end="", flush=True)
 
 
-For deploying multiple models, you can pass a list of ``LLMConfig`` objects to the ``LLMRouter`` deployment:
+For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.serve.llm.LLMConfig>` objects to the :class:`LLMRouter <ray.serve.llm.LLMRouter>` deployment:
 
 .. tab-set::
 
@@ -367,7 +367,7 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``.
+You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
 This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
 
@@ -680,7 +680,7 @@ How do I use gated Huggingface models?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can use `runtime_env` to specify the env variables that are required to access the model.
-To set the deployment options, you can use the ``get_serve_options`` method on the ``LLMConfig`` object.
+To set the deployment options, you can use the :meth:`get_serve_options <ray.serve.llm.LLMConfig.get_serve_options>` method on the :class:`LLMConfig <ray.serve.llm.LLMConfig>` object.
 
 .. code-block:: python
 
