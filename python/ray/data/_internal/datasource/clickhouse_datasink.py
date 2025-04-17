@@ -312,7 +312,7 @@ class ClickHouseDatasink(Datasink):
                         "Use mode='APPEND' or 'OVERWRITE' instead."
                     )
                     logger.error(msg)
-                    raise RuntimeError(msg)
+                    raise ValueError(msg)
                 # Otherwise, create it (requires user-provided schema).
                 if not table_exists:
                     if self._schema is None:
