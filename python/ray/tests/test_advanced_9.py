@@ -372,7 +372,7 @@ def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
         capture_output=True,
     )
 
-    assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
+    assert "Failed to authenticate redis" in p.stderr.decode()
 
 
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
