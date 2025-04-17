@@ -429,7 +429,7 @@ class TestClickHouseDatasink:
             datasink, "_get_existing_order_by", return_value="(prev_col)"
         ) as mock_get_order:
             if mode == SinkMode.CREATE and table_exists:
-                with pytest.raises(RuntimeError, match="already exists.*CREATE"):
+                with pytest.raises(ValueError, match="already exists.*CREATE"):
                     datasink.on_write_start()
                 mock_tbl_exists.assert_called_once()
                 mock_get_order.assert_not_called()
