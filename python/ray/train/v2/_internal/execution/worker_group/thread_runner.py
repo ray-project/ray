@@ -53,7 +53,9 @@ class ThreadRunner:
             with self._lock:
                 self._is_running = False
 
-        self._thread = threading.Thread(target=_run_target, daemon=True)
+        self._thread = threading.Thread(
+            target=_run_target, daemon=True, name=target.__name__
+        )
         self._thread.start()
 
     def is_running(self) -> bool:
