@@ -5389,9 +5389,10 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-
-        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
+        # Sync progress-bars first
         self._synchronize_progress_bar()
+        # Fetch iterator
+        iter_ref_bundles, _ = self._execute_to_iterator()
         return iter_ref_bundles
 
     @Deprecated
@@ -5768,6 +5769,14 @@ class Dataset:
         if self._current_executor:
             self._current_executor.shutdown()
             self._current_executor = None
+
+    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+        bundle_iter, stats, executor = self._plan.execute_to_iterator()
+        # Capture current executor to be able to clean it up properly, once
+        # dataset is garbage-collected
+        self._current_executor = executor
+
+        return bundle_iter, stats
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
