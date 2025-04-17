@@ -82,6 +82,10 @@ class NodeResourceInstanceSet {
   /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
 
+  absl::flat_hash_map<std::string, std::vector<double>> GetResourceMap() const;
+
+  bool IsEmpty() const;
+
   /// Only for testing.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
     return resources_;
