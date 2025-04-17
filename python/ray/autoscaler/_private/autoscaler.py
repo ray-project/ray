@@ -403,18 +403,6 @@ class StandardAutoscaler:
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 
-        # Update running nodes gauge
-        num_workers = len(self.non_terminated_nodes.worker_ids)
-        self.prom_metrics.running_workers.set(num_workers)
-
-        # Remove from LoadMetrics the ips unknown to the NodeProvider.
-        self.load_metrics.prune_active_ips(
-            active_ips=[
-                self.provider.internal_ip(node_id)
-                for node_id in self.non_terminated_nodes.all_node_ids
-            ]
-        )
-
         # Update status strings
         if AUTOSCALER_STATUS_LOG:
             logger.info(self.info_string())
@@ -436,6 +424,18 @@ class StandardAutoscaler:
                 if self.worker_liveness_check:
                     self.attempt_to_recover_unhealthy_nodes(now)
                 self.set_prometheus_updater_data()
+
+        # Update running nodes gauge
+        num_workers = len(self.non_terminated_nodes.worker_ids)
+        self.prom_metrics.running_workers.set(num_workers)
+
+        # Remove from LoadMetrics the ips unknown to the NodeProvider.
+        self.load_metrics.prune_active_ips(
+            active_ips=[
+                self.provider.internal_ip(node_id)
+                for node_id in self.non_terminated_nodes.all_node_ids
+            ]
+        )
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = self.resource_demand_scheduler.get_nodes_to_launch(
