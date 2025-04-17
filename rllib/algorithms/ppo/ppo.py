@@ -437,18 +437,6 @@ class PPO(Algorithm):
                 minibatch_size=self.config.minibatch_size,
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
-            #TEST
-            import tree
-            import torch
-            from ray.rllib.utils.metrics.stats import Stats
-
-            def _test(p, s):
-                assert isinstance(s, Stats)
-                if any(torch.is_tensor(v) for v in s.values):
-                    print(p)
-                    quit()
-    
-            tree.map_structure_with_path(_test, learner_results)
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all remote

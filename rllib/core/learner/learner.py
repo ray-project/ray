@@ -1120,7 +1120,7 @@ class Learner(Checkpointable):
                 assert isinstance(s, Stats)
                 if any(torch.is_tensor(v) for v in s.values):
                     print(p)
-                    quit()
+                    raise ValueError(f"BAD key {p}! values={s.values}")
 
             red = self.metrics.reduce()
             tree.map_structure_with_path(_test, red)
