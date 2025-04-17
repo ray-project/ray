@@ -1,6 +1,9 @@
 from __future__ import annotations
 from ray.util.annotations import DeveloperAPI
-from typing import Iterator, List
+from typing import Iterator, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import ray
 
 
 @DeveloperAPI
