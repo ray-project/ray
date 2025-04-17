@@ -4254,7 +4254,7 @@
 # Ray examples tests
 #######################
 
-- name: byod_e2e_xgboost  # do not use dashes (regex sensitive)
+- name: e2e_xgboost  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.12"
   group: ray-examples
