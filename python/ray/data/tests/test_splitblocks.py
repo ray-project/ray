@@ -90,9 +90,8 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     assert "Operator 1 ReadCSV->SplitBlocks(100)" in stats, stats
     assert "Operator 2 MapBatches" in stats, stats
 
-    ctx = ray.data.context.DataContext.get_current()
     # Smaller than a single row.
-    ctx.target_max_block_size = 1
+    ds.context.target_max_block_size = 1
     ds = ds.map_batches(lambda x: x).materialize()
     # 150 rows.
     assert ds._plan.initial_num_blocks() == 150
@@ -144,7 +143,7 @@ def test_map_batches_split(ray_start_10_cpus_shared, restore_data_context):
 
     # A single row is already larger than the target block
     # size.
-    ctx.target_max_block_size = 4
+    ds.context.target_max_block_size = 4
     assert ds.materialize()._plan.initial_num_blocks() == 1000
 
 

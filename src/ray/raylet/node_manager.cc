@@ -265,7 +265,6 @@ NodeManager::NodeManager(
           worker_pool_,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
-          /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
@@ -1853,47 +1852,45 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status
-             << ", message: " << status.message();
+      stream << "Failed to write WaitReply to the client. Status " << status;
       DisconnectClient(
           client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
-  wait_manager_.Wait(object_ids,
-                     message->timeout(),
-                     num_required_objects,
-                     [this, resolve_objects, client, current_task_id](
-                         std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
-                       // Write the data.
-                       flatbuffers::FlatBufferBuilder fbb;
-                       flatbuffers::Offset<protocol::WaitReply> wait_reply =
-                           protocol::CreateWaitReply(
-                               fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
-                       fbb.Finish(wait_reply);
+  wait_manager_.Wait(
+      object_ids,
+      message->timeout(),
+      num_required_objects,
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
+        // Write the data.
+        flatbuffers::FlatBufferBuilder fbb;
+        flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+        fbb.Finish(wait_reply);
 
-                       auto status = client->WriteMessage(
-                           static_cast<int64_t>(protocol::MessageType::WaitReply),
-                           fbb.GetSize(),
-                           fbb.GetBufferPointer());
-                       if (status.ok()) {
-                         // The client is unblocked now because the wait call has
-                         // returned.
-                         if (resolve_objects) {
-                           AsyncResolveObjectsFinish(client, current_task_id);
-                         }
-                       } else {
-                         // We failed to write to the client, so disconnect the client.
-                         std::ostringstream stream;
-                         stream << "Failed to write WaitReply to the client. Status "
-                                << status << ", message: " << status.message();
-                         DisconnectClient(client,
-                                          /*graceful=*/false,
-                                          rpc::WorkerExitType::SYSTEM_ERROR,
-                                          stream.str());
-                       }
-                     });
+        auto status =
+            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                 fbb.GetSize(),
+                                 fbb.GetBufferPointer());
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has
+          // returned.
+          if (resolve_objects) {
+            AsyncResolveObjectsFinish(client, current_task_id);
+          }
+        } else {
+          // We failed to write to the client, so disconnect the client.
+          std::ostringstream stream;
+          stream << "Failed to write WaitReply to the client. Status " << status;
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           stream.str());
+        }
+      });
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
@@ -2660,11 +2657,6 @@ std::string NodeManager::DebugString() const {
            << async_plasma_objects_notification_.size();
   }
 
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
-  }
-
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats().StatsString();
 
@@ -3348,20 +3340,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     agent_command_line.push_back("--disable-metrics-collection");
   }
 
-  // Create a non-zero random agent_id to pass to the child process.
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();  // NOLINT
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  std::string agent_name = "dashboard_agent";
   // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
   // dashboard agent crash no longer lead to a raylet crash.
   auto options = AgentManager::Options({self_node_id,

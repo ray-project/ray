@@ -297,7 +297,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
                       << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to " << status.message();
+                      << " failed due to " << status;
                 }
               });
         },
@@ -338,7 +338,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
                                        ray::Status status) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "HandleSendFinished on " << self_node_id_ << " to " << node_id
-      << " of object, chunk " << chunk_index << ", status: " << status.ToString();
+      << " of object, chunk " << chunk_index << ", status: " << status;
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
     RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
@@ -559,7 +559,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
         // TODO(Eric Liang): Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING).WithField(object_id).WithField(node_id)
-              << "Send object chunk to node failed due to" << status.ToString()
+              << "Send object chunk to node failed due to" << status
               << ", chunk index: " << chunk_index;
         }
         double end_time = absl::GetCurrentTimeNanos() / 1e9;
@@ -636,7 +636,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
-    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status;
     if (chunk_status.IsOutOfDisk()) {
       pull_manager_->SetOutOfDisk(object_id);
     }

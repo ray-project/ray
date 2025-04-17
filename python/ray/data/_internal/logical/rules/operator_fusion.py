@@ -366,14 +366,14 @@ class OperatorFusionRule(Rule):
                 name,
                 input_op,
                 down_logical_op._fn,
-                down_logical_op._fn_args,
-                down_logical_op._fn_kwargs,
-                down_logical_op._fn_constructor_args,
-                down_logical_op._fn_constructor_kwargs,
-                min_rows_per_bundled_input,
-                compute,
-                ray_remote_args_fn,
-                ray_remote_args,
+                fn_args=down_logical_op._fn_args,
+                fn_kwargs=down_logical_op._fn_kwargs,
+                fn_constructor_args=down_logical_op._fn_constructor_args,
+                fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
+                min_rows_per_bundled_input=min_rows_per_bundled_input,
+                compute=compute,
+                ray_remote_args_fn=ray_remote_args_fn,
+                ray_remote_args=ray_remote_args,
             )
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.

@@ -31,7 +31,7 @@ class LimitOperator(OneToOneOperator):
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op, data_context, target_max_block_size=None)
         if self._limit <= 0:
-            self.mark_execution_completed()
+            self.mark_execution_finished()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -81,7 +81,7 @@ class LimitOperator(OneToOneOperator):
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)
         if self._limit_reached():
-            self.mark_execution_completed()
+            self.mark_execution_finished()
 
         # We cannot estimate if we have only consumed empty blocks,
         # or if the input dependency's total number of output bundles is unknown.
@@ -114,7 +114,7 @@ class LimitOperator(OneToOneOperator):
     def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._execution_completed:
+        if self._execution_finished:
             return self._cur_output_bundles
         return self._estimated_num_output_bundles
 

@@ -123,6 +123,7 @@ ray_cc_test(
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@nlohmann_json",
     ],
 )
 

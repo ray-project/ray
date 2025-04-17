@@ -180,6 +180,7 @@ if __name__ == "__main__":
             SimpleCorridor,
             env_config={"corridor_length": args.corridor_length_training},
         )
+        .env_runners(create_env_on_local_worker=True)
         .evaluation(
             # Do we use the custom eval function defined above?
             custom_evaluation_function=(

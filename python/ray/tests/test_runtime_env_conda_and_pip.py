@@ -225,7 +225,9 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
     for ref in refs:
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
             ray.get(ref)
-        assert "can't be activated with" in str(exc_info.value)  # noqa
+        assert "doesn't exist from the output of `conda info --json`" in str(
+            exc_info.value
+        )  # noqa
 
 
 def test_get_requirements_file():

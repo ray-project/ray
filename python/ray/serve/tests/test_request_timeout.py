@@ -219,6 +219,12 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
 
     serve.run(BlockOnSecondChunk.bind())
 
+    # Wait for the server to start by doing health check.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/-/healthz").status_code == 200,
+        timeout=10,
+    )
+
     r = requests.get("http://localhost:8000", stream=True)
     iterator = r.iter_content(chunk_size=None, decode_unicode=True)
 

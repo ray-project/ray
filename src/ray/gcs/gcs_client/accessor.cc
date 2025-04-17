@@ -1407,7 +1407,7 @@ Status InternalKVAccessor::AsyncGetInternalConfig(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status;
         }
         callback(status, reply.config());
       });

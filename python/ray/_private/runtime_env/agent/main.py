@@ -10,9 +10,8 @@ from ray.core.generated import (
 from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray._private.utils import open_log
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import StreamRedirector
+from ray._private import logging_utils
 
 
 def import_libs():
@@ -26,19 +25,6 @@ import_libs()
 import runtime_env_consts  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 from aiohttp import web  # noqa: E402
-
-
-def get_capture_filepaths(log_dir):
-    """Get filepaths for the given [log_dir].
-
-    log_dir:
-        Logging directory to place output and error logs.
-    """
-    filename = "runtime_env_agent"
-    return (
-        f"{log_dir}/{filename}.out",
-        f"{log_dir}/{filename}.err",
-    )
 
 
 if __name__ == "__main__":
@@ -122,6 +108,20 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stderr.",
+    )
 
     args = parser.parse_args()
 
@@ -140,33 +140,13 @@ if __name__ == "__main__":
         backup_count=logging_rotation_backup_count,
     )
 
-    # Setup stdout/stderr redirect files
-    out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
-    StreamRedirector.redirect_stdout(
-        out_filepath,
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
         logging_rotation_bytes,
         logging_rotation_backup_count,
-        False,
-        False,
     )
-    StreamRedirector.redirect_stderr(
-        err_filepath,
-        logging_rotation_bytes,
-        logging_rotation_backup_count,
-        False,
-        False,
-    )
-
-    # Setup python stdout/stderr stream.
-    stdout_fileno = sys.stdout.fileno()
-    stderr_fileno = sys.stderr.fileno()
-    # We also manually set sys.stdout and sys.stderr because that seems to
-    # have an effect on the output buffering. Without doing this, stdout
-    # and stderr are heavily buffered resulting in seemingly lost logging
-    # statements. We never want to close the stdout file descriptor, dup2 will
-    # close it when necessary and we don't want python's GC to close it.
-    sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
-    sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,

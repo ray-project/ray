@@ -164,26 +164,26 @@ def test_process_completed_tasks():
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test input finalization.
     done_task_callback = MagicMock()
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test dependents completed.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -199,11 +199,11 @@ def test_process_completed_tasks():
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
-    o3.mark_execution_completed()
-    o2.mark_execution_completed = MagicMock()
+    o3.mark_execution_finished()
+    o2.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
-    o2.mark_execution_completed.assert_called_once()
+    o2.mark_execution_finished.assert_called_once()
 
 
 def test_select_operator_to_run():

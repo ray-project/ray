@@ -11,8 +11,8 @@ import ray
 import ray.data
 from ray.data._internal.pandas_block import (
     PandasBlockAccessor,
-    PandasBlockColumnAccessor,
     PandasBlockBuilder,
+    PandasBlockColumnAccessor,
 )
 from ray.data._internal.util import is_null
 from ray.data.extensions.object_extension import _object_extension_type_allowed
@@ -156,16 +156,23 @@ class TestPandasBlockColumnAccessorAllNullSeries:
         assert is_null(result)
 
 
-def test_append_column(ray_start_regular_shared):
-    animals = ["Flamingo", "Centipede"]
-    num_legs = [2, 100]
-    block = pd.DataFrame({"animals": animals})
+@pytest.mark.parametrize(
+    "input_block, fill_column_name, fill_value, expected_output_block",
+    [
+        (
+            pd.DataFrame({"a": [0, 1]}),
+            "b",
+            2,
+            pd.DataFrame({"a": [0, 1], "b": [2, 2]}),
+        ),
+    ],
+)
+def test_fill_column(input_block, fill_column_name, fill_value, expected_output_block):
+    block_accessor = PandasBlockAccessor.for_block(input_block)
 
-    block_accessor = PandasBlockAccessor.for_block(block)
-    actual_block = block_accessor.append_column("num_legs", num_legs)
+    actual_output_block = block_accessor.fill_column(fill_column_name, fill_value)
 
-    expected_block = pd.DataFrame({"animals": animals, "num_legs": num_legs})
-    assert actual_block.equals(expected_block)
+    assert actual_output_block.equals(expected_output_block)
 
 
 def test_pandas_block_timestamp_ns(ray_start_regular_shared):

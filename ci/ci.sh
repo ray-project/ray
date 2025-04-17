@@ -85,7 +85,7 @@ compile_pip_dependencies() {
     cd "${WORKSPACE_DIR}"
 
     echo "Target file: $TARGET"
-    pip install pip-tools
+    pip install "pip-tools==7.4.1" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0

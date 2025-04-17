@@ -29,12 +29,12 @@ from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
-    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -169,16 +169,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.column_names
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.column_names
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
+        import pyarrow.compute as pc
 
-        return self._table.append_column(name, [data])
+        if isinstance(value, pyarrow.Scalar):
+            type = value.type
+        else:
+            type = pyarrow.infer_type([value])
+
+        array = pyarrow.nulls(len(self._table), type=type)
+        array = pc.fill_null(array, value)
+        return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":

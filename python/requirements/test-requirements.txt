@@ -120,3 +120,5 @@ virtualenv>=20.29
 jsonschema>=4.23.0
 attrs>=22.2.0
 openapi-schema-validator>=0.6.3
+wheel>=0.45.1
+aiohttp>=3.11.16

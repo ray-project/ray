@@ -325,6 +325,19 @@ class WorkerGroup:
             ]
         )
 
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={w.distributed_context.world_rank}, "
+                f"local_rank={w.distributed_context.local_rank}, "
+                f"node_rank={w.distributed_context.node_rank}"
+                for w in workers
+            ]
+        )
+        logger.info(
+            f"Started training worker group of size {len(workers)}: \n{workers_info}"
+        )
+
         for callback in self._callbacks:
             callback.after_worker_group_training_start(self)
 

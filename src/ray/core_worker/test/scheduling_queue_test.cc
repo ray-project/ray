@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/transport/scheduling_queue.h"
+
 #include <memory>
 #include <string>
 #include <thread>
@@ -21,6 +23,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/task_receiver.h"
 
 // using namespace std::chrono_literals;

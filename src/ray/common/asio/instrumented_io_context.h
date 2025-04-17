@@ -16,6 +16,8 @@
 
 #include <boost/asio.hpp>
 #include <limits>
+#include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"

@@ -420,7 +420,7 @@ def test_grpc_proxy_timeouts(ray_instance, ray_shutdown, streaming: bool):
     assert timeout_response in rpc_error.details()
 
     # Unblock the handlers to avoid graceful shutdown time.
-    ray.get(signal_actor.send.remote())
+    ray.get(signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])
@@ -526,6 +526,9 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
 
     with pytest.raises(grpc.FutureCancelledError):
         r.result()
+
+    ray.get(running_signal_actor.send.remote(clear=True))
+    ray.get(cancelled_signal_actor.send.remote(clear=True))
 
 
 @pytest.mark.parametrize("streaming", [False, True])

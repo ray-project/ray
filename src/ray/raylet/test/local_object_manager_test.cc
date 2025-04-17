@@ -348,7 +348,6 @@ class LocalObjectManagerTestWithMinSpillingSize {
             worker_pool,
             client_pool,
             /*max_io_workers=*/2,
-            /*min_spilling_size=*/min_spilling_size,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -365,6 +364,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             object_directory_.get()),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
+    manager.min_spilling_size_ = min_spilling_size;
   }
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
@@ -636,7 +636,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   ASSERT_EQ(GetCurrentSpilledBytes(), object_ids.size() * object_size);
 }
 
-TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
+TEST_F(LocalObjectManagerTest, TestTryToSpillObjectsZero) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -653,9 +653,9 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
-  // This is important to cover min_spilling_size_== 0.
-  ASSERT_TRUE(manager.SpillObjectsOfSize(0));
+  // Make sure providing 0 bytes as min_spilling_size_ will spill one object.
+  manager.min_spilling_size_ = 0;
+  ASSERT_TRUE(manager.TryToSpillObjects());
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
@@ -689,7 +689,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
+  manager.min_spilling_size_ = total_size;
+  ASSERT_TRUE(manager.TryToSpillObjects());
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -734,14 +735,15 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   objects.push_back(std::move(object));
 
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
+  manager.min_spilling_size_ = 1000;
+  ASSERT_FALSE(manager.TryToSpillObjects());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Now object is evictable. Spill should succeed.
   unevictable_objects_.erase(object_id);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
+  ASSERT_TRUE(manager.TryToSpillObjects());
 
   AssertIOWorkersDoSpill(/*num_objects*/ 1, /*num_batches*/ 1);
   ASSERT_EQ(GetCurrentSpilledCount(), 1);

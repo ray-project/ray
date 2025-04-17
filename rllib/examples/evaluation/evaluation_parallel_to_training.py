@@ -176,6 +176,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
+        .env_runners(create_env_on_local_worker=True)
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation OR - in auto
         # mode - run at least as many episodes as we have eval workers.

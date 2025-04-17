@@ -60,7 +60,6 @@ ray_cc_library(
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
     ],
 )
 

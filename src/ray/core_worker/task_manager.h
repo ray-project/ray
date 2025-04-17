@@ -24,7 +24,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_finisher.h"
@@ -49,8 +48,8 @@ class TaskResubmissionInterface {
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
-using RetryTaskCallback = std::function<void(
-    TaskSpecification &spec, bool object_recovery, bool update_seqno, uint32_t delay_ms)>;
+using RetryTaskCallback =
+    std::function<void(TaskSpecification &spec, bool object_recovery, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,

@@ -45,7 +45,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                            const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error retrieving the value of object ID " << object_id
-                     << " that was deserialized: " << status.ToString();
+                     << " that was deserialized: " << status;
   }
 
   if (!status.ok()) {

@@ -26,7 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"

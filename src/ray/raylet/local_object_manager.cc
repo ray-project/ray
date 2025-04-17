@@ -122,12 +122,13 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these states: pinned, spilling, or spilled.
-  RAY_CHECK(pinned_objects_.contains(object_id) ||
+  auto pinned_objects_it = pinned_objects_.find(object_id);
+  RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
             spilled_objects_url_.contains(object_id) ||
             objects_pending_spill_.contains(object_id));
-  if (pinned_objects_.contains(object_id)) {
-    pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
-    pinned_objects_.erase(object_id);
+  if (pinned_objects_it != pinned_objects_.end()) {
+    pinned_objects_size_ -= pinned_objects_it->second->GetSize();
+    pinned_objects_.erase(pinned_objects_it);
     local_objects_.erase(it);
   } else {
     // If the object is being spilled or is already spilled, then we will clean
@@ -164,7 +165,7 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   // Spill as fast as we can using all our spill workers.
   bool can_spill_more = true;
   while (can_spill_more) {
-    if (!SpillObjectsOfSize(min_spilling_size_)) {
+    if (!TryToSpillObjects()) {
       break;
     }
     can_spill_more = num_active_workers_ < max_active_workers_;
@@ -173,12 +174,14 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
 
 bool LocalObjectManager::IsSpillingInProgress() { return num_active_workers_ > 0; }
 
-bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
+bool LocalObjectManager::TryToSpillObjects() {
   if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+  RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
+                 << min_spilling_size_
+                 << " or with total # of objects = " << max_fused_object_count_;
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;
@@ -198,10 +201,11 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     return false;
   }
 
-  if (idx == objects_pending_spill_.size() && bytes_to_spill < num_bytes_to_spill &&
+  if (idx == objects_pending_spill_.size() && bytes_to_spill < min_spilling_size_ &&
       !objects_pending_spill_.empty()) {
-    // We have gone through all spillable objects but we have not yet reached
-    // the minimum bytes to spill and we are already spilling other objects.
+    // 1. We've gone through all objects and it didn't hit max_fused_object_count_.
+    // 2. The total size of the current objects is less than min_spilling_size.
+    // 3. There are other objects already being spilled.
     // Let those spill requests finish before we try to spill the current
     // objects. This gives us some time to decide whether we really need to
     // spill the current objects or if we can afford to wait for additional
@@ -264,7 +268,7 @@ void LocalObjectManager::SpillObjectsInternal(
     std::function<void(const ray::Status &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   // Filter for the objects that can be spilled.
-  // TODO(dayshah): The logic in this loop should be moved to SpillObjectsOfSize. We can
+  // TODO(dayshah): The logic in this loop should be moved to TryToSpillObjects. We can
   // do this logic while creating what we pass into object_ids here and don't need
   // to recreate objects_to_spill. The error status is also thrown away in the callback
   // here as a debug log, so we wouldn't know if we failed to spill because of the check.
@@ -392,11 +396,7 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     auto parsed_url = ParseURL(object_url);
     const auto base_url_it = parsed_url->find("url");
     RAY_CHECK(base_url_it != parsed_url->end());
-    if (!url_ref_count_.contains(base_url_it->second)) {
-      url_ref_count_[base_url_it->second] = 1;
-    } else {
-      url_ref_count_[base_url_it->second] += 1;
-    }
+    url_ref_count_[base_url_it->second] += 1;
 
     // Mark that the object is spilled and unpin the pending requests.
     spilled_objects_url_.emplace(object_id, object_url);

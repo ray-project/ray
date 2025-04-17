@@ -4089,6 +4089,27 @@
     long_running: false
     script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
 
+- name: llm_serve_llama_3dot2_1B_no_accelerator
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_g5-4xlarge.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml
+
+
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
   python: "3.11"

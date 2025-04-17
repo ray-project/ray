@@ -16,6 +16,8 @@
 
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+
 namespace ray {
 namespace core {
 

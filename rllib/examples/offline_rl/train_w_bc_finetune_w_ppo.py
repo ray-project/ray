@@ -262,6 +262,7 @@ if __name__ == "__main__":
     base_config = (
         PPOConfig()
         .environment(args.env)
+        .env_runners(create_env_on_local_worker=True)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.
             lr=0.00002,

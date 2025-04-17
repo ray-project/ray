@@ -133,7 +133,7 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    testing::RpcFailure failure = testing::get_rpc_failure(call_name);
+    testing::RpcFailure failure = testing::GetRpcFailure(call_name);
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.

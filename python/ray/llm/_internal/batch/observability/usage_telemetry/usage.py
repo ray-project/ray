@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Union, Tuple
 import ray
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
@@ -17,7 +17,7 @@ class BatchModelTelemetry(BaseModelExtended):
     model_architecture: str = ""
     batch_size: int = 0
     accelerator_type: str = ""
-    concurrency: int = 0
+    concurrency: Union[int, Tuple[int, int]] = 0
     task_type: str = ""
     pipeline_parallel_size: int = 0
     tensor_parallel_size: int = 0

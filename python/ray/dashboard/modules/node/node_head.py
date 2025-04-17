@@ -493,7 +493,9 @@ class NodeHead(SubprocessModule):
 
         # NOTE: Zip will silently truncate to shorter argument that potentially
         #       could lead to subtle hard to catch issues, hence the assertion
-        assert len(node_ids) == len(responses)
+        assert len(node_ids) == len(
+            responses
+        ), f"node_ids({len(node_ids)}): {node_ids}, responses({len(responses)}): {responses}"
 
         new_node_stats = await self._loop.run_in_executor(
             self._node_executor, postprocess, zip(node_ids, responses)

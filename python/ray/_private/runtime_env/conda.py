@@ -21,7 +21,8 @@ from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
-    check_if_conda_environment_valid,
+    get_conda_info_json,
+    get_conda_envs,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -344,13 +345,15 @@ class CondaPlugin(RuntimeEnvPlugin):
                 if result in self._validated_named_conda_env:
                     return 0
 
+                conda_info = get_conda_info_json()
+                envs = get_conda_envs(conda_info)
+
                 # We accept `result` as a conda name or full path.
-                if not check_if_conda_environment_valid(result):
+                if not any(result == env[0] or result == env[1] for env in envs):
                     raise ValueError(
                         f"The given conda environment '{result}' "
-                        f"from the runtime env {runtime_env} can't "
-                        f"be activated with conda activate {result} 1>&2 "
-                        "&& python --version"
+                        f"from the runtime env {runtime_env} doesn't "
+                        "exist from the output of `conda info --json`. "
                         "You can only specify an env that already exists. "
                         f"Please make sure to create an env {result} "
                     )

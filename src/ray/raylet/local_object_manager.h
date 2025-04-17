@@ -51,7 +51,6 @@ class LocalObjectManager {
       IOWorkerPoolInterface &io_worker_pool,
       rpc::CoreWorkerClientPool &owner_client_pool,
       int max_io_workers,
-      int64_t min_spilling_size,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
@@ -68,7 +67,7 @@ class LocalObjectManager {
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
-        min_spilling_size_(min_spilling_size),
+        min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
@@ -189,24 +188,22 @@ class LocalObjectManager {
     size_t object_size;
   };
 
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
+  FRIEND_TEST(LocalObjectManagerTest, TestTryToSpillObjectsZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
-              TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
+              TestTryToSpillObjectsNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
   FRIEND_TEST(LocalObjectManagerTest, TestRetryDeleteSpilledObjects);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
-  /// spill at least num_bytes_to_spill and returns true if we found objects to
-  /// spill.
-  /// If num_bytes_to_spill many objects cannot be found and there are other
-  /// objects already being spilled, this will return false to give the
+  /// spill at least min_spilling_size_ or max_fused_object_count_ and returns true if we
+  /// found objects to spill. If neither are satisifed and there
+  /// are other objects already being spilled, this will return false to give the
   /// currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill.
-  /// \return True if it can spill num_bytes_to_spill. False otherwise.
-  bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
+  /// \return True if it decides to spill more objects. False otherwise.
+  bool TryToSpillObjects();
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
@@ -387,8 +384,6 @@ class LocalObjectManager {
   std::atomic<int64_t> num_failed_deletion_requests_ = 0;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
-  friend class LocalObjectManagerTest;
-  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

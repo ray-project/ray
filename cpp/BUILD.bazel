@@ -56,9 +56,9 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
-        "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:ray_common",
+        "//src/ray/core_worker:core_worker_lib",
         "//src/ray/util",
         "//src/ray/util:process",
         "//src/ray/util:cmd_line_utils",
@@ -361,7 +361,7 @@ cc_test(
         "metric_example.so",
     ],
     linkstatic = True,
-    tags = ["team:serverless"],
+    tags = ["team:core"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",

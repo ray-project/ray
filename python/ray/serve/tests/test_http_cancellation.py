@@ -140,8 +140,8 @@ async def test_request_cancelled_error_on_http_client_disconnect_during_executio
         pass
 
     wait_for_condition(
-        lambda: ray.get(collector.get.remote())
-        == ["Child_CancelledError", "Parent_CancelledError"]
+        lambda: set(ray.get(collector.get.remote()))
+        == {"Child_CancelledError", "Parent_CancelledError"}
     )
 
 

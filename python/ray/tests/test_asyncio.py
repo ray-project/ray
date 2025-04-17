@@ -106,7 +106,7 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    batch_size = sys.getrecursionlimit() * 4
+    batch_size = sys.getrecursionlimit()
     actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
         batch_size
     )

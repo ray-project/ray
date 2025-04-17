@@ -110,7 +110,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-
     expected_json = json.dumps(
         {
             "controller_info": {
@@ -203,6 +202,18 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 }
             },
             "target_capacity": None,
+            "target_groups": [
+                {
+                    "targets": [{"ip": node_ip, "port": 8000}],
+                    "route_prefix": "/",
+                    "protocol": "HTTP",
+                },
+                {
+                    "targets": [{"ip": node_ip, "port": 9000}],
+                    "route_prefix": "/",
+                    "protocol": "gRPC",
+                },
+            ],
         }
     )
     assert details_json == expected_json

@@ -68,7 +68,7 @@ def main(pargs):
             num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length="auto",
-            create_env_on_local_worker=True,
+            create_local_env_runner=True,
         )
         .framework(
             "torch",

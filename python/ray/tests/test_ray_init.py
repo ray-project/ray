@@ -9,6 +9,7 @@ import pytest
 
 import ray
 import ray._private.services
+import ray._private.utils as utils
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
@@ -291,6 +292,57 @@ os.kill(os.getpid(), signal.SIGTERM)
     # test if sigterm handler is overwritten by ray.init
     test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
     assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
+
+
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
+
+
+def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
+    ray.init(address="local")
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert not node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
+    total_system_cpu = 10
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    ray.init(address="local", enable_resource_isolation=True)
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+
+
+def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
+    cgroup_path = "/sys/fs/cgroup/subcgroup"
+    system_reserved_cpu = 1
+    system_reserved_memory = 1 * 10**9
+    total_system_cpu = 10
+    total_system_memory = 25 * 10**9
+    object_store_memory = 1 * 10**9
+    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
+    monkeypatch.setattr(
+        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
+    )
+    ray.init(
+        address="local",
+        enable_resource_isolation=True,
+        _cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
+    )
+    node = ray._private.worker._global_node
+    assert node is not None
+    assert node.resource_isolation_config.is_enabled()
+    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
+    assert (
+        node.resource_isolation_config.system_reserved_memory
+        == system_reserved_memory + object_store_memory
+    )
 
 
 if __name__ == "__main__":

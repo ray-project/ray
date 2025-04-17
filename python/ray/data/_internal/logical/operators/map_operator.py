@@ -64,6 +64,7 @@ class AbstractUDFMap(AbstractMap):
         name: str,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        *,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
