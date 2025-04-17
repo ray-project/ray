@@ -474,6 +474,45 @@ class TestContainerRuntimeEnvCommandLine:
             lambda: check_logs_by_keyword(keyword2, log_file_pattern), timeout=20
         )
 
+    @pytest.mark.parametrize(
+        "ray_start_regular",
+        [{"_system_config": {"worker_resource_limits_enabled": True}}],
+        indirect=True,
+    )
+    def test_container_command_with_resources_limit(
+        self, api_version, ray_start_regular
+    ):
+        runtime_env = {
+            api_version: {
+                "image": "unknown_image",
+            },
+        }
+        num_cpus = 1
+        memory = 100 * 1024 * 1024
+        a = Counter.options(
+            runtime_env=runtime_env,
+            num_cpus=num_cpus,
+            memory=memory,
+        ).remote()
+        try:
+            ray.get(a.increment.remote(), timeout=1)
+        except (ray.exceptions.RuntimeEnvSetupError, ray.exceptions.GetTimeoutError):
+            # ignore the exception because container mode don't work in common
+            # test environments.
+            pass
+        # Checkout the worker logs to ensure if the cgroup params is set correctly
+        # in the podman command.
+        keyword1 = f"\--cpus={num_cpus}"
+        keyword2 = f"\--memory={int(memory / 10000)}m"
+        log_file_pattern = "raylet.err"
+        wait_for_condition(
+            lambda: check_logs_by_keyword(keyword1, log_file_pattern), timeout=20
+        )
+
+        wait_for_condition(
+            lambda: check_logs_by_keyword(keyword2, log_file_pattern), timeout=20
+        )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

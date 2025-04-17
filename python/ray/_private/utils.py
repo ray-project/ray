@@ -2346,3 +2346,32 @@ def try_generate_entrypoint_args(
         entrypoint_args.extend(podman_dependencies_installer)
 
     return entrypoint_args
+
+
+# NOTE(Jacky): it will be used to setup resource limit.
+def parse_allocated_resource(serialized_allocated_instances):
+    container_resource_args = []
+    allocated_resource = json.loads(serialized_allocated_instances)
+    if "CPU" in allocated_resource:
+        cpu_resource = allocated_resource["CPU"]
+        if isinstance(cpu_resource, list):
+            # cpuset: because we may split one cpu core into some pieces,
+            # we need set cpuset.cpu_exclusive=0 and set cpuset-cpus
+            cpu_ids = []
+            cpus = 0
+            for idx, val in enumerate(cpu_resource):
+                if val > 0:
+                    cpu_ids.append(idx)
+                    cpus += val / 10000
+            container_resource_args.append("--cpus=" + str(int(cpus)))
+            container_resource_args.append(
+                "--cpuset-cpus=" + ",".join(str(e) for e in cpu_ids)
+            )
+        else:
+            # cpushare
+            container_resource_args.append("--cpus=" + str(int(cpu_resource / 10000)))
+    if "memory" in allocated_resource:
+        container_resource_args.append(
+            "--memory=" + str(int(allocated_resource["memory"] / 100000000)) + "m"
+        )
+    return container_resource_args

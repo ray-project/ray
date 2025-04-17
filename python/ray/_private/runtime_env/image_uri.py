@@ -17,6 +17,7 @@ from ray._private.utils import (
     get_ray_whl_dir,
     get_dependencies_installer_path,
     try_generate_entrypoint_args,
+    parse_allocated_resource,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -99,6 +100,12 @@ def _modify_container_context_impl(
     container_to_host_mount_dict = try_parse_default_mount_points(
         container_to_host_mount_dict
     )
+
+    # Add reousrces isolation if needed
+    if runtime_env.get_serialized_allocated_instances():
+        container_command.extend(
+            parse_allocated_resource(runtime_env.get_serialized_allocated_instances())
+        )
 
     pip_packages = runtime_env.pip_config().get("packages", [])
     # NOTE(Jacky): When `install_ray` is True, generate `entrypoint_args` to install dependencies before starting the worker.
