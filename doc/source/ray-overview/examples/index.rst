@@ -1,7 +1,12 @@
 .. _ref-reference-architectures:
 
+<<<<<<< HEAD
 Examples
 ========
+=======
+ML workflows
+============
+>>>>>>> 91de6a8db1 (change title from ref arch to ml workflows in side nav)
 
 .. toctree::
    :maxdepth: 2
