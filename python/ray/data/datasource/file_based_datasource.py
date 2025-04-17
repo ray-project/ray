@@ -248,7 +248,7 @@ class FileBasedDatasource(Datasource):
                     partitions = parse(read_path)
 
                 with RetryingContextManager(
-                    self._open_input_source(fs, read_path, **open_stream_args),
+                    lambda: self._open_input_source(fs, read_path, **open_stream_args),
                     context=self._data_context,
                 ) as f:
                     for block in iterate_with_retry(

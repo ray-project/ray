@@ -1116,12 +1116,13 @@ def make_async_gen(
 class RetryingContextManager:
     def __init__(
         self,
-        f: pyarrow.NativeFile,
+        create_file: Callable[..., pyarrow.NativeFile],
         context: DataContext,
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
-        self._f = f
+        self._create_file = create_file
+        self._file: Optional[pyarrow.NativeFile] = None
         self._data_context = context
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
@@ -1139,14 +1140,19 @@ class RetryingContextManager:
             max_backoff_s=self._max_backoff_s,
         )
 
+    def _create_and_open_file(self):
+        self._file = self._create_file()
+        self._file.__enter__()
+
     def __enter__(self):
-        return self._retry_operation(self._f.__enter__, "enter file context")
+        return self._retry_operation(self._create_and_open_file, "enter file context")
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._retry_operation(
-            lambda: self._f.__exit__(exc_type, exc_value, traceback),
-            "exit file context",
-        )
+        if self._file is not None:
+            self._retry_operation(
+                lambda: self._file.__exit__(exc_type, exc_value, traceback),
+                "exit file context",
+            )
 
 
 class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
