@@ -329,10 +329,27 @@ class SerializationContext:
             # the error type.
             try:
                 error_type = int(metadata_fields[0])
-            except Exception:
+            except Exception as e:
+                logger.info(f"deser exception: {e}")
+                import faulthandler
+
+                faulthandler.dump_traceback()
+
+                logger.info(f"data: {data}")
+
+                # Print payload data in string and hex format
+                if data:
+                    try:
+                        # Print as string
+                        logger.info("\n=== Payload as string ===")
+                        logger.info(data.to_pybytes().decode("utf-8", errors="replace"))
+                        logger.info("\n=== Payload as string end ===")
+                    except Exception as decode_err:
+                        logger.info(f"Failed to decode as string: {decode_err}")
+
                 raise Exception(
                     f"Can't deserialize object: {object_ref}, " f"metadata: {metadata}"
-                )
+                ) from e
 
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
