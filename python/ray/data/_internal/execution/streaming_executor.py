@@ -474,6 +474,7 @@ class StreamingExecutor(Executor, threading.Thread):
             op_entry = {
                 "name": op.name,
                 "id": op_id,
+                "uuid": op.id,
                 "input_dependencies": [
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],

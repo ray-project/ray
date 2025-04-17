@@ -651,6 +651,7 @@ class _StatsActor:
                 operator = Operator()
                 operator.name = op_dict.get("name", "unknown")
                 operator.id = op_dict.get("id", "unknown")
+                operator.uuid = op_dict.get("uuid", "unknown")
 
                 # Add input dependencies if they exist
                 if "input_dependencies" in op_dict:

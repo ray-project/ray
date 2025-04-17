@@ -35,11 +35,14 @@ message Operator {
   // Unique identifier for the operator
   string id = 2;
 
+  // UUID for the operator
+  string uuid = 3;
+
   // List of operator IDs that this operator depends on for input
-  repeated string input_dependencies = 3;
+  repeated string input_dependencies = 4;
 
   // List of sub-operators contained within this operator
-  repeated SubOperator sub_operators = 4;
+  repeated SubOperator sub_operators = 5;
 }
 
 // Represents the complete structure of the operator DAG

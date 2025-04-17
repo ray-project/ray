@@ -58,12 +58,14 @@ def dummy_dataset_dag_structure():
             {
                 "name": "Input",
                 "id": "Input_0",
+                "uuid": "uuid_0",
                 "input_dependencies": [],
                 "sub_operators": [],
             },
             {
                 "name": "ReadRange->Map(<lambda>)->Filter(<lambda>)",
                 "id": "ReadRange->Map(<lambda>)->Filter(<lambda>)_1",
+                "uuid": "uuid_1",
                 "input_dependencies": ["Input_0"],
                 "sub_operators": [],
             },
