@@ -1,7 +1,7 @@
 .. _ref-reference-architectures:
 
-Reference architectures
-=======================
+ML workflows
+============
 
 .. toctree::
    :maxdepth: 2
