@@ -157,29 +157,28 @@ class StreamingExecutor(Executor, threading.Thread):
         self._execution_started = True
 
         class StreamIterator(OutputIterator):
-            def __init__(self, outer: Executor):
-                self._outer = outer
+            def __init__(self, executor: Executor):
+                self._executor = executor
 
             def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
                 try:
-                    item = self._outer._output_node.get_output_blocking(
+                    item = self._executor._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    if self._outer._global_info:
-                        self._outer._global_info.update(
+                    if self._executor._global_info:
+                        self._executor._global_info.update(
                             item.num_rows(), dag.num_output_rows_total()
                         )
                     return item
-                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
-                # can leave dangling progress bars by skipping shutdown.
+                # Have to be BaseException to catch ``KeyboardInterrupt``
                 except BaseException as e:
-                    self._outer.shutdown(
+                    self._executor.shutdown(
                         e if not isinstance(e, StopIteration) else None
                     )
                     raise
 
             def __del__(self):
-                self._outer.shutdown()
+                self._executor.shutdown()
 
         return StreamIterator(self)
 
