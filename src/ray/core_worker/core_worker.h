@@ -1893,7 +1893,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
   /// See https://github.com/ray-project/ray/issues/51642.
 
-  /// Used to ensure that the `Exit` method is called at most once.
+  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
   std::atomic<bool> is_exited_ = false;
   /// Used to ensure that the `Shutdown` method is called at most once.
   std::atomic<bool> is_shutdown_ = false;
