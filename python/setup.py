@@ -828,7 +828,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 3.0.12", "pip", "wheel"],
+    setup_requires=["cython >= 3.1.0a1", "pip", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
