@@ -606,6 +606,118 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert datasink.unresolved_path == output_path
 
 
+def test_dump_dag_structure():
+    """Test that _dump_dag_structure correctly serializes the DAG structure."""
+    # Create a simple DAG with a few connected operators
+    inputs = make_ref_bundles([[x] for x in range(10)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
+    )
+
+    # Create a StreamingExecutor instance
+    executor = StreamingExecutor(DataContext.get_current())
+
+    # Test that it returns empty dict when topology is not initialized
+    assert executor._dump_dag_structure(o3) == {}
+
+    # Initialize the topology on the executor
+    executor._topology, _ = build_streaming_topology(o3, ExecutionOptions())
+
+    # Call the _dump_dag_structure method
+    dag_dict = executor._dump_dag_structure(o3)
+
+    # Verify the structure of the returned dictionary
+    assert "operators" in dag_dict
+    assert isinstance(dag_dict["operators"], list)
+    assert len(dag_dict["operators"]) == 3  # We should have 3 operators
+
+    # Find each operator by name - the operators are simplified in the representation
+    operators_by_name = {op["name"]: op for op in dag_dict["operators"]}
+
+    # Check input data buffer (appears as "Input" in the structure)
+    assert "Input" in operators_by_name
+    input_buffer = operators_by_name["Input"]
+    assert "id" in input_buffer
+    assert "uuid" in input_buffer
+    assert input_buffer["input_dependencies"] == []
+
+    # Check map operators (appear as "Map" in the structure)
+    assert "Map" in operators_by_name
+
+    # Since there are two Map operators with the same name, we need to identify them by their ID
+    map_ops = [op for op in dag_dict["operators"] if op["name"] == "Map"]
+    assert len(map_ops) == 2
+
+    # Sort by ID to get them in order
+    map_ops.sort(key=lambda op: op["id"])
+    map_op1, map_op2 = map_ops
+
+    # First map operator should depend on the input buffer
+    assert len(map_op1["input_dependencies"]) == 1
+    assert map_op1["input_dependencies"][0] == input_buffer["id"]
+
+    # Second map operator should depend on the first map operator
+    assert len(map_op2["input_dependencies"]) == 1
+    assert map_op2["input_dependencies"][0] == map_op1["id"]
+
+    # Cleanup
+    executor.shutdown()
+
+
+def test_dump_dag_structure_with_sub_operators():
+    """Test that _dump_dag_structure correctly handles sub-operators."""
+    inputs = make_ref_bundles([[x] for x in range(5)])
+
+    # Create a base operator
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+
+    # Create an operator with sub-progress bars
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+
+    # Add fake sub-progress bar names to test the sub-operators feature
+    o2._sub_progress_bar_names = ["SubOp1", "SubOp2"]
+
+    # Create the executor and set up topology
+    executor = StreamingExecutor(DataContext.get_current())
+    executor._topology, _ = build_streaming_topology(o2, ExecutionOptions())
+
+    # Get the DAG structure
+    dag_dict = executor._dump_dag_structure(o2)
+
+    # Find the operator with sub-operators (appears as "Map" in the structure)
+    map_op = None
+    for op in dag_dict["operators"]:
+        if op["name"] == "Map":
+            map_op = op
+            break
+
+    assert map_op is not None
+    assert "sub_operators" in map_op
+    assert len(map_op["sub_operators"]) == 2
+
+    # Check that sub-operators have the expected structure
+    sub_op1, sub_op2 = map_op["sub_operators"]
+    assert sub_op1["name"] == "SubOp1"
+    assert sub_op1["id"].endswith("_sub_0")
+    assert sub_op2["name"] == "SubOp2"
+    assert sub_op2["id"].endswith("_sub_1")
+
+    # Cleanup
+    executor.shutdown()
+
+
 if __name__ == "__main__":
     import sys
 
