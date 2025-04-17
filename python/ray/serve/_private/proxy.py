@@ -111,7 +111,9 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "`http_options` or `grpc_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
         "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
-        "ema.request_timeout_s"
+        "ema.request_timeout_s and https://docs.ray.io/en/latest/serve/api/"
+        "doc/ray.serve.config.gRPCOptions.request_timeout_s.html#"
+        "ray.serve.config.gRPCOptions.request_timeout_s"
     )
 
 
