@@ -38,7 +38,7 @@ from ray.rllib.utils.typing import ModuleID, StateDict, TensorType
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-EVAL_TOTAL_LOSS_KEY = "eval_total_loss"
+TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
 
 
 class OfflineEvaluationRunner(Runner, Checkpointable):
@@ -54,7 +54,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         # TODO (simon): Check, if we make this a generic attribute.
         self.__module_spec: MultiRLModuleSpec = module_spec
         self.__dataset_iterator = None
-        self._batch_iterator = None
+        self.__batch_iterator = None
 
         Runner.__init__(self, config=config)
         Checkpointable.__init__(self)
@@ -64,20 +64,19 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
 
     def run(
         self,
-        num_samples: int = None,
         explore: bool = False,
         train: bool = True,
-        random_actions: bool = None,
         **kwargs,
     ) -> None:
 
         if self.__dataset_iterator is None:
             raise ValueError(
-                f"{self} doesn't have a data iterator. Can't call `run` on it."
+                f"{self} doesn't have a data iterator. Can't call `run` on "
+                "`OfflineEvalautionRunner`."
             )
 
         if not self._batch_iterator:
-            self._batch_iterator = self._create_batch_iterator()
+            self.__batch_iterator = self._create_batch_iterator()
 
         # Log current weight seq no.
         self.metrics.log_value(
@@ -94,7 +93,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             return self._evaluate(
                 explore=explore,
                 train=train,
-                random_actions=random_actions,
             )
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
@@ -120,6 +118,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
             return self._convert_batch_type(batch, to_device=True, use_stream=True)
 
+        # Return a minibatch iterator.
         return MiniBatchRayDataIterator(
             iterator=self._dataset_iterator,
             collate_fn=_collate_fn,
@@ -129,87 +128,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             **kwargs,
         )
 
-    def evaluate(
-        self,
-        *,
-        num_samples: int = None,
-        explore: bool = False,
-        train: bool = True,
-        random_actions: bool = None,
-        **kwargs,
-    ) -> None:
-        """Runs an evaluation on the offline data."""
-
-        if self.offline_data is None:
-            raise ValueError(
-                f"{self} doesn't have offline data. Can't call evaluate on it."
-            )
-
-        def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-            _batch = unflatten_dict(_batch)
-            _batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in _batch.items()
-                },
-                env_steps=sum(
-                    len(next(iter(module_data.values())))
-                    for module_data in _batch.values()
-                ),
-            )
-            _batch = self._convert_batch_type(_batch, to_device=False)
-            return _batch
-
-        def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
-            return self._convert_batch_type(batch, to_device=True, use_stream=True)
-
-        if not self._iterator:
-            eval_data_iterator = self.offline_data.sample(
-                num_samples=num_samples,
-                return_iterator=True,
-                # TODO (simon): Think about how to implement here also parallel evaluation.
-                #   Maybe this will need instantiation of the iterators on the main process.
-                num_shards=1,
-            )
-            self._iterator = MiniBatchRayDataIterator(
-                iterator=eval_data_iterator,
-                collate_fn=_collate_fn,
-                finalize_fn=_finalize_fn,
-                minibatch_size=self.config.minibatch_size,
-                num_iters=self.config.dataset_num_iters_per_learner,
-                **kwargs,
-            )
-
-        # TODO (simon): Implement.
-        # Log time between `evaluate()` requests.
-        # if self._time_after_sampling is not None:
-        #     self.metrics.log_value(
-        #         key=TIME_BETWEEN_SAMPLING,
-        #     )
-
-        # Log current weight seq no.
-        self.metrics.log_value(
-            key=WEIGHTS_SEQ_NO,
-            value=self._weights_seq_no,
-            window=1,
-        )
-
-        with self.metrics.log_time(OFFLINE_SAMPLING_TIMER):
-            if explore is None:
-                explore = self.config.explore
-
-            # Evaluate on offline data.
-            return self._evaluate(
-                explore=explore,
-                train=train,
-                random_actions=random_actions,
-            )
-
     def _evaluate(
         self,
         explore: bool,
         train: bool,
-        random_actions: bool,
     ) -> None:
 
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
@@ -225,7 +147,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 )
             self.metrics.activate_tensor_mode()
 
-            # TODO (simon): Implement random action sampling.
             if explore:
                 fwd_out = self.module.forward_exploration(
                     tensor_minibatch.policy_batches
@@ -239,6 +160,8 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 fwd_out=fwd_out, batch=tensor_minibatch.policy_batches
             )
 
+            # TODO (simon): Check, if `deactivate_tensor_mode` is called later with newest
+            # changes.
             self.metrics.tensors_to_numpy(self.metrics.deactivate_tensor_mode())
 
             self._log_steps_evaluated_metrics(tensor_minibatch)
@@ -261,7 +184,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         # window is only 1 anyways.
         for mid, loss in convert_to_numpy(eval_loss_per_module).items():
             self.metrics.log_value(
-                key=(mid, EVAL_TOTAL_LOSS_KEY),
+                key=(mid, TOTAL_EVAL_LOSS_KEY),
                 value=loss,
                 window=1,
             )
@@ -504,7 +427,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         try:
             if not self._module_spec:
                 self.__module_spec = self.config.get_multi_rl_module_spec(
-                    # TODO (simon): Implement an `offline_inference_only` config param.
+                    # Note, usually we have no environemnt in case of offline evaluation.
                     env=None,
                     spaces={
                         DEFAULT_MODULE_ID: (
@@ -512,7 +435,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                             self.config.action_space,
                         )
                     },
-                    inference_only=False,
+                    inference_only=self.config.offline_eval_rl_module_inference_only,
                 )
             # Build the module from its spec.
             self.module = self._module_spec.build()
@@ -530,35 +453,16 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             #         )
             #     )
 
-        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # If `AlgorithmConfig.get_multi_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
             self.module = None
 
-    # def make_module(self):
-    #     try:
-    #         # TODO (simon): Where to get the spaces from?
-    #         module_spec: RLModuleSpec = self.config.get_rl_module_spec(
-    #             env=None, spaces={DEFAULT_MODULE_ID: (self.config.observation_space, self.config.action_space)}, inference_only=True
-    #         )
-    #         # Build the module from its spec.
-    #         self.module = module_spec.build()
-
-    #         # TODO (simon): Implement GPU training.
-    #         # Move the RLModule to our device.
-    #         # TODO (sven): In order to make this framework-agnostic, we should maybe
-    #         #  make the RLModule.build() method accept a device OR create an additional
-    #         #  `RLModule.to()` override.
-    #         #self.module.to(self._device)
-
-    #     # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
-    #     # will not have an RLModule, but might still be usable with random actions.
-    #     except NotImplementedError:
-    #         self.module = None
-
     def get_loss_for_module_fn(self):
+        # Either the user has provided a loss-for-module function.
         if self.config.get("loss_for_module_fn"):
             return self.config.loss_for_module_fn
+        # Or we take the loss funciton from the default `Learner` class.
         else:
             return self.config.get_default_learner_class().__dict__[
                 "compute_loss_for_module"
@@ -572,6 +476,10 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
     def set_dataset_iterator(self, iterator):
         """Sets the dataset iterator."""
         self.__dataset_iterator = iterator
+
+    @property
+    def _batch_iterator(self) -> MiniBatchRayDataIterator:
+        return self.__batch_iterator
 
     @property
     def _module_spec(self) -> MultiRLModuleSpec:

@@ -2649,7 +2649,6 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         num_offline_eval_runners: Optional[int] = NotProvided,
         offline_evaluation_duration: Optional[Union[str, int]] = NotProvided,
-        offline_evaluation_parallel_to_training: Optional[bool] = NotProvided,
         offline_evaluation_sample_timeout_s: Optional[float] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
         num_gpus_per_offline_eval_runner: Optional[int] = NotProvided,
@@ -2837,10 +2836,6 @@ class AlgorithmConfig(_Config):
             self.num_offline_eval_runners = num_offline_eval_runners
         if offline_evaluation_duration is not NotProvided:
             self.offline_evaluation_duration = offline_evaluation_duration
-        if offline_evaluation_parallel_to_training is not NotProvided:
-            self.offline_evaluation_parallel_to_training = (
-                offline_evaluation_parallel_to_training
-            )
         if offline_evaluation_sample_timeout_s is not NotProvided:
             self.offline_evaluation_sample_timeout_s = (
                 offline_evaluation_sample_timeout_s

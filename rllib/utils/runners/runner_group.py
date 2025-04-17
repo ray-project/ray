@@ -109,17 +109,20 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         *,
         config: Optional["AlgorithmConfig"] = None,
         num_runners: int = 0,
+        local_runner: Optional[bool] = False,
         validate: Optional[bool] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
 
         # TODO (simon): Deprecate this as soon as we are deprecating the old stack.
         self._local_runner = None
+        if num_runners == 0:
+            local_runner = True
 
-        self._local_config = config
+        self.__local_config = config
 
         # Create a number of @ray.remote workers.
-        self.add_workers(
+        self.add_runners(
             num_runners,
             validate=validate
             if validate is not None
@@ -127,24 +130,31 @@ class RunnerGroup(metaclass=abc.ABCMeta):
             **kwargs,
         )
 
-    def add_workers(self, num_workers: int, validate: bool = False, **kwargs) -> None:
+        if local_runner:
+            self._local_runner = self._make_runner(
+                runner_index=0,
+                num_runners=num_runners,
+                config=self._local_config,
+            )
+
+    def add_runners(self, num_runners: int, validate: bool = False, **kwargs) -> None:
         """Creates and adds a number of remote runners to this runner set."""
 
-        old_num_workers = self._worker_manager.num_actors()
-        new_workers = [
-            self._make_worker(
-                worker_index=old_num_workers + i + 1,
-                num_workers=old_num_workers + num_workers,
+        old_num_runners = self._worker_manager.num_actors()
+        new_runners = [
+            self._make_runner(
+                runner_index=old_num_runners + i + 1,
+                num_runners=old_num_runners + num_runners,
                 # `self._remote_config` can be large and it's best practice to
                 # pass it by reference instead of value
                 # (https://docs.ray.io/en/latest/ray-core/patterns/pass-large-arg-by-value.html) # noqa
                 config=self._remote_config_obj_ref,
                 **kwargs,
             )
-            for i in range(num_workers)
+            for i in range(num_runners)
         ]
         # Add the new workers to the worker manager.
-        self._worker_manager.add_actors(new_workers)
+        self._worker_manager.add_actors(new_runners)
 
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". Establish initial states.
@@ -164,34 +174,36 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 else:
                     raise e
 
-    def _make_worker(
+    def _make_runner(
         self,
         *,
-        worker_index: int,
-        num_workers: int,
-        recreated_worker: bool = False,
+        runner_index: int,
+        num_runners: int,
+        recreated_runner: bool = False,
         config: "AlgorithmConfig",
         **kwargs,
     ) -> ActorHandle:
+        # TODO (simon): Change this in the `EnvRunner` API
+        # to `runner_*`.
         kwargs = dict(
             config=config,
-            worker_index=worker_index,
-            num_workers=num_workers,
-            recreated_worker=recreated_worker,
+            worker_index=runner_index,
+            num_workers=num_runners,
+            recreated_worker=recreated_runner,
             log_dir=self._logdir,
             tune_trial_id=self._tune_trial_id,
             **kwargs,
         )
 
         # If a local runner is requested just return a runner instance.
-        if worker_index == 0:
+        if runner_index == 0:
             return self.runner_cls(**kwargs)
 
         # Otherwise define a bundle index and schedule the remote worker.
         pg_bundle_idx = (
             -1
             if ray.util.get_current_placement_group() is None
-            else self._pg_offset + worker_index
+            else self._pg_offset + runner_index
         )
         return (
             ray.remote(**self._remote_args)(self.runner_cls)
@@ -549,11 +561,16 @@ class RunnerGroup(metaclass=abc.ABCMeta):
 
         local_result = []
         if local_runner and self.local_runner is not None:
-            assert kwargs is None
-            if isinstance(func, str):
-                local_result = [getattr(self.local_runner, func)]
+            if kwargs:
+                local_kwargs = kwargs[0]
+                kwargs = kwargs[1:]
             else:
-                local_result = [func(self.local_runner)]
+                local_kwargs = {}
+                kwargs = kwargs
+            if isinstance(func, str):
+                local_result = [getattr(self.local_runner, func)(**local_kwargs)]
+            else:
+                local_result = [func(self.local_runner, **local_kwargs)]
 
         if not self._worker_manager.actor_ids():
             return local_result
@@ -667,6 +684,11 @@ class RunnerGroup(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def runner_cls(self) -> Callable:
         """Class for each runner."""
+
+    @property
+    def _local_config(self) -> "AlgorithmConfig":
+        """Returns the config for a local `Runner`."""
+        return self.__local_config
 
     @property
     def local_runner(self) -> Runner:

@@ -19,13 +19,13 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         self,
         config: "AlgorithmConfig",
         local_runner: Optional[bool] = False,
-        module_state: Dict[str, Any] = None,
-        module_spec: Optional[MultiRLModuleSpec] = None,
-        spaces: Optional[Dict[str, Any]] = None,
         logdir: Optional[str] = None,
         tune_trial_id: Optional[str] = None,
         pg_offset: int = 0,
         _setup: bool = True,
+        spaces: Optional[Dict[str, Any]] = None,
+        module_state: Dict[str, Any] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
 
@@ -50,16 +50,26 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         *,
         config: Optional["AlgorithmConfig"] = None,
         num_runners: int = 0,
+        local_runner: Optional[bool] = False,
         module_state: Dict[str, Any] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         spaces: Optional[Dict[str, Any]] = None,
         **kwargs: Dict[str, Any],
     ) -> None:
 
+        # We can either run on a local runner or on remote runners only b/c
+        # streaming split needs remote runners.
+        if num_runners > 0 and local_runner:
+            raise ValueError(
+                f"Cannot run `OfflineEvaluationRunnerGroup with {num_runners=} "
+                "and a local runner. Either use no remote runners or only "
+                "remote runners."
+            )
         # Create all workers.
         super()._setup(
             config=config,
             num_runners=num_runners,
+            local_runner=local_runner,
             # Do not validate until the `DataIterators` are distributed.
             validate=False,
             module_spec=module_spec,
@@ -85,9 +95,11 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
             runner_node_ids = self.foreach_runner(
                 lambda _: ray.get_runtime_context().get_node_id()
             )
+            if self.local_runner is not None:
+                runner_node_ids.insert(0, ray.get_runtime_context().get_node_id())
             self._offline_data.locality_hints = runner_node_ids
         # Return a data iterator for each `Runner`.
-        self._offline_data_iterators: List[DataIterator] = self._offline_data.sample(
+        self._offline_data_iterators: List[DataIterator] = self.offline_data.sample(
             num_samples=self.config.offline_eval_batch_size_per_runner,
             return_iterator=True,
             num_shards=num_runners,
@@ -96,7 +108,7 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
         # Provide each `Runner` with a `DataIterator`.
         self.foreach_runner(
             func="set_dataset_iterator",
-            local_runner=False,
+            local_runner=local_runner,
             kwargs=[
                 {"iterator": iterator} for iterator in self._offline_data_iterators
             ],
@@ -118,6 +130,10 @@ class OfflineEvaluationRunnerGroup(RunnerGroup):
     def num_runners(self) -> int:
         """Number of runners to schedule and manage."""
         return self.config.num_offline_eval_runners
+
+    @property
+    def offline_data(self) -> OfflineData:
+        return self._offline_data
 
     @property
     def _remote_args(self):

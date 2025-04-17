@@ -10,14 +10,6 @@ from ray.rllib.offline.offline_evaluation_runner_group import (
     OfflineEvaluationRunnerGroup,
 )
 
-data_path = "tests/data/cartpole/cartpole-v1_large"
-base_path = Path(__file__).parents[2]
-data_path = "local://" + base_path.joinpath(data_path).as_posix()
-# Assign the observation and action spaces.
-env = gym.make("CartPole-v1")
-observation_space = env.observation_space
-action_space = env.action_space
-
 
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
@@ -33,8 +25,8 @@ class TestOfflineData(unittest.TestCase):
         self.config = (
             BCConfig()
             .environment(
-                observation_space=observation_space,
-                action_space=action_space,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
             )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
@@ -52,6 +44,7 @@ class TestOfflineData(unittest.TestCase):
             )
             .evaluation(
                 num_offline_eval_runners=2,
+                offline_eval_batch_size_per_runner=256,
             )
         )
         # Start ray.
@@ -62,6 +55,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_evaluation_runner_group_setup(self):
 
+        # Build the algorithm.
         algo = self.config.build()
 
         # The module state is needed for the `OfflinePreLearner`.
@@ -78,6 +72,12 @@ class TestOfflineData(unittest.TestCase):
         self.assertEqual(
             offline_runner_group.num_runners, self.config.num_offline_eval_runners
         )
+        # Make sure we have no local runner.
+        self.assertEqual(
+            offline_runner_group.num_runners, offline_runner_group.num_remote_runners
+        )
+        self.assertIsNone(offline_runner_group.local_runner)
+
         # Make sure that an `OfflineData` instance is created.
         from ray.rllib.offline.offline_data import OfflineData
 
@@ -110,10 +110,6 @@ class TestOfflineData(unittest.TestCase):
         # Run the runner group and receive metrics.
         metrics = offline_runner_group.foreach_runner(
             "run",
-            kwargs=[
-                {"num_samples": 1}
-                for _ in range(offline_runner_group.num_remote_runners)
-            ],
             local_runner=False,
         )
         from ray.rllib.utils.metrics.stats import Stats
@@ -123,7 +119,7 @@ class TestOfflineData(unittest.TestCase):
         self.assertEqual(len(metrics), offline_runner_group.num_runners)
         # Ensure that the `eval_total_loss_key` is part of the runner metrics.
         from ray.rllib.core import DEFAULT_MODULE_ID, ALL_MODULES
-        from ray.rllib.offline.offline_evaluation_runner import EVAL_TOTAL_LOSS_KEY
+        from ray.rllib.offline.offline_evaluation_runner import TOTAL_EVAL_LOSS_KEY
         from ray.rllib.utils.metrics import (
             NUM_ENV_STEPS_SAMPLED,
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -133,7 +129,7 @@ class TestOfflineData(unittest.TestCase):
 
         for metric_dict in metrics:
             # Ensure the most generic metrics are contained in the `ResultDict`.
-            self.assertIn(EVAL_TOTAL_LOSS_KEY, metric_dict[DEFAULT_MODULE_ID])
+            self.assertIn(TOTAL_EVAL_LOSS_KEY, metric_dict[DEFAULT_MODULE_ID])
             self.assertIn(NUM_ENV_STEPS_SAMPLED, metric_dict[ALL_MODULES])
             self.assertIn(NUM_ENV_STEPS_SAMPLED_LIFETIME, metric_dict[ALL_MODULES])
             self.assertIn(NUM_MODULE_STEPS_SAMPLED, metric_dict[ALL_MODULES])
@@ -141,6 +137,42 @@ class TestOfflineData(unittest.TestCase):
             # Ensure all entries are `Stats` instances.
             for metric in metric_dict[DEFAULT_MODULE_ID].values():
                 self.assertIsInstance(metric, Stats)
+
+    def test_offline_evaluation_runner_group_with_local_runner(self):
+
+        algo = self.config.build()
+
+        # The module state is needed for the `OfflinePreLearner`.
+        module_state = algo.learner_group._learner.module.get_state()
+
+        self.config.evaluation(num_offline_eval_runners=0)
+        # Setup the runner group.
+        offline_runner_group = OfflineEvaluationRunnerGroup(
+            config=self.config,
+            local_runner=True,
+            module_state=module_state,
+        )
+
+        # Ensure that we have a local runner.
+        self.assertTrue(
+            offline_runner_group.num_runners == offline_runner_group.num_remote_runners
+        )
+        self.assertIsNotNone(offline_runner_group.local_runner)
+
+        # Make sure that the local runner has also a data split stream iterator.
+        self.assertIsNotNone(offline_runner_group.local_runner._dataset_iterator)
+        from ray.data.iterator import DataIterator
+
+        self.assertIsInstance(
+            offline_runner_group.local_runner._dataset_iterator, DataIterator
+        )
+
+        # Ensure that we can run the group together with a local runner.
+        metrics = offline_runner_group.foreach_runner(
+            "run",
+            local_runner=True,
+        )
+        self.assertEqual(len(metrics), 1)
 
 
 if __name__ == "__main__":

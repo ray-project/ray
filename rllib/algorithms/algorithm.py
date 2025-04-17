@@ -875,6 +875,8 @@ class Algorithm(Checkpointable, Trainable):
                     # Provide the `RLModule`'s state for the `OfflinePreLearner`s.
                     module_state=rl_module_state[COMPONENT_RL_MODULE],
                     module_spec=module_spec,
+                    # Note, even if no environment is run, the `MultiRLModule` needs
+                    # spaces to construct the policy network.
                     spaces=spaces,
                 )
 
