@@ -106,7 +106,7 @@ class TaskPoolMapOperator(MapOperator):
             *bundle.block_refs,
             **self.get_map_task_kwargs(),
         )
-        self._submit_data_task(gen, bundle, is_actor_task=False)
+        self._submit_data_task(gen, bundle)
 
     def progress_str(self) -> str:
         return ""
