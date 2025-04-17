@@ -212,8 +212,8 @@ ray_cc_library(
     name = "grpc_common_lib",
     # TODO(core): Both two header files are not needed, keep them there because of circular dependency between raylet and node rpc.
     hdrs = [
-        "src/ray/raylet_client/raylet_client.h",
-        "src/ray/raylet_client/raylet_connection.h",
+        "//src/ray/raylet_client:raylet_client.h",
+        "//src/ray/raylet_client:raylet_connection.h",
     ],
     # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
     deps = [
@@ -651,34 +651,6 @@ ray_cc_library(
         "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
-    ],
-)
-
-ray_cc_library(
-    name = "raylet_client_connection_lib",
-    srcs = ["src/ray/raylet_client/raylet_connection.cc"],
-    hdrs = ["src/ray/raylet_client/raylet_connection.h"],
-    deps = [
-        "//src/ray/common:asio",
-        "//src/ray/common:network",
-    ],
-)
-
-ray_cc_library(
-    name = "raylet_client_lib",
-    srcs = ["src/ray/raylet_client/raylet_client.cc"],
-    hdrs = ["src/ray/raylet_client/raylet_client.h"],
-    deps = [
-        ":node_manager_rpc",
-        ":raylet_client_connection_lib",
-        "//src/ray/common:asio",
-        "//src/ray/common:id",
-        "//src/ray/common:network",
-        "//src/ray/common:ray_object",
-        "//src/ray/common:status",
-        "//src/ray/common:task_common",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util:logging",
     ],
 )
 

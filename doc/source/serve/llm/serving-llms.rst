@@ -69,7 +69,7 @@ Deployment through ``LLMRouter``
     .. tab-item:: Builder Pattern
         :sync: builder
 
-        .. code-block:: python 
+        .. code-block:: python
 
             from ray import serve
             from ray.serve.llm import LLMConfig, build_openai_app
@@ -212,7 +212,7 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
         :sync: bind
 
         .. code-block:: python
-            
+
             from ray import serve
             from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
 
@@ -511,7 +511,7 @@ For structured output, you can use JSON mode similar to OpenAI's API:
         If you want, you can also specify the schema you want for the response, using pydantic models:
 
         .. code-block:: python
-            
+
             from openai import OpenAI
             from typing import List, Literal
             from pydantic import BaseModel
@@ -529,7 +529,7 @@ For structured output, you can use JSON mode similar to OpenAI's API:
                 response_format={
                     "type": "json_schema",
                     "json_schema": Color.model_json_schema()
-                    
+
                 },
                 messages=[
                     {
@@ -673,7 +673,6 @@ You can then specify the `bucket_uri` in the `model_loading_config` to point to 
       name: llm_app
       route_prefix: "/"
 
-
 Frequently Asked Questions
 --------------------------
 
@@ -750,6 +749,31 @@ If you are using huggingface models, you can enable fast download by setting `HF
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app, blocking=True)
+
+How to configure tokenizer pool size so it doesn't hang?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `tokenizer_pool_size` in vLLM's `engine_kwargs`,
+`tokenizer_pool_size` is also required to configure together in order to have
+the tokenizer group scheduled correctly.
+
+An example config is shown below:
+
+.. code-block:: yaml
+
+    # config.yaml
+    applications:
+    - args:
+        llm_configs:
+            - engine_kwargs:
+                max_model_len: 1000
+                tokenizer_pool_size: 2
+                tokenizer_pool_extra_config: "{\"runtime_env\": {}}"
+              model_loading_config:
+                model_id: Qwen/Qwen2.5-7B-Instruct
+      import_path: ray.serve.llm:build_openai_app
+      name: llm_app
+      route_prefix: "/"
 
 Usage Data Collection
 --------------------------
