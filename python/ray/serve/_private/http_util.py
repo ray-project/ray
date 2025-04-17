@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from packaging import version
 from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
+import starlette.responses
 import starlette
 import uvicorn
+from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
@@ -24,10 +26,7 @@ from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders, generate_request_id
 from ray.serve.exceptions import RayServeException
-
-from fastapi import Request
 from ray.serve.exceptions import BackPressureError
-import starlette.responses
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
