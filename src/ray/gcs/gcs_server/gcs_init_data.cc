@@ -17,7 +17,7 @@
 namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(Postable<void()> on_done) {
-  // There are 5 kinds of table data need to be loaded.
+  // There are 6 kinds of table data need to be loaded.
   auto count_down = std::make_shared<int>(6);
   auto on_load_finished = Postable<void()>(
       [count_down, on_done]() mutable {
@@ -38,6 +38,8 @@ void GcsInitData::AsyncLoad(Postable<void()> on_done) {
   AsyncLoadPlacementGroupTableData(on_load_finished);
 
   AsyncLoadVirtualClusterTableData(on_load_finished);
+
+  AsyncLoadWorkerTableData(on_load_finished);
 }
 
 void GcsInitData::AsyncLoadJobTableData(Postable<void()> on_done) {
@@ -108,6 +110,18 @@ void GcsInitData::AsyncLoadVirtualClusterTableData(Postable<void()> on_done) {
           })
 
                                                           ));
+}
+
+void GcsInitData::AsyncLoadWorkerTableData(Postable<void()> on_done) {
+  RAY_LOG(INFO) << "Loading worker table data.";
+  RAY_CHECK_OK(gcs_table_storage_.WorkerTable().GetAll(std::move(on_done).TransformArg(
+      [this](absl::flat_hash_map<WorkerID, rpc::WorkerTableData> result) -> void {
+        worker_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading worker table data, size = "
+                      << worker_table_data_.size();
+      })
+
+                                                           ));
 }
 
 }  // namespace gcs

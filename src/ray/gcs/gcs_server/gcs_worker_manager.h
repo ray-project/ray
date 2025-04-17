@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <list>
+
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
@@ -66,6 +69,19 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  void AddDeadWorkerToCache(const std::shared_ptr<rpc::WorkerTableData> &worker_data);
+
+  void EvictOneDeadWorker();
+
+  /// Evict all dead workers which ttl is expired.
+  void EvictExpiredWorkers();
+
  private:
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
@@ -82,6 +98,12 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
 
   /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// All dead workers.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::WorkerTableData>> dead_workers_;
+  /// The dead workers are sorted according to the timestamp, and the oldest is at the
+  /// head of the list.
+  std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
 };
 
 }  // namespace gcs

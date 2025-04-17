@@ -164,7 +164,7 @@ class GcsServer {
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager();
@@ -189,6 +189,9 @@ class GcsServer {
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize dead data cleaner.
+  void InitDeadDataCleaner();
 
   /// Install event listeners.
   void InstallEventListeners();

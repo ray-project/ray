@@ -73,6 +73,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
            listener(worker_failure_data);
          }
 
+         AddDeadWorkerToCache(worker_failure_data);
+
          auto on_done = [this,
                          worker_address,
                          worker_id,
@@ -354,6 +356,91 @@ void GcsWorkerManager::GetWorkerInfo(
             }
             return data;
           })));
+}
+
+void GcsWorkerManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (auto &entry : gcs_init_data.Workers()) {
+    if (!entry.second.is_alive()) {
+      dead_workers_.emplace(entry.first,
+                            std::make_shared<rpc::WorkerTableData>(entry.second));
+      sorted_dead_worker_list_.emplace_back(entry.first, entry.second.timestamp());
+    }
+  }
+  sorted_dead_worker_list_.sort([](const std::pair<WorkerID, int64_t> &left,
+                                   const std::pair<WorkerID, int64_t> &right) {
+    return left.second < right.second;
+  });
+}
+
+void GcsWorkerManager::AddDeadWorkerToCache(
+    const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
+  if (dead_workers_.size() >=
+      RayConfig::instance().maximum_gcs_dead_worker_cached_count()) {
+    EvictOneDeadWorker();
+  }
+  auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
+  dead_workers_.emplace(worker_id, worker_data);
+  sorted_dead_worker_list_.emplace_back(worker_id, worker_data->timestamp());
+}
+
+void GcsWorkerManager::EvictOneDeadWorker() {
+  if (!sorted_dead_worker_list_.empty()) {
+    auto iter = sorted_dead_worker_list_.begin();
+    const auto &worker_id = iter->first;
+    RAY_CHECK_OK(
+        gcs_table_storage_.WorkerTable().Delete(worker_id, {[](auto) {}, io_context_}));
+    dead_workers_.erase(worker_id);
+    sorted_dead_worker_list_.erase(iter);
+  }
+}
+
+void GcsWorkerManager::EvictExpiredWorkers() {
+  RAY_LOG(INFO) << "Try evicting expired workers, there are "
+                << sorted_dead_worker_list_.size() << " dead workers in the cache.";
+  int evicted_worker_number = 0;
+
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  std::vector<WorkerID> batch_ids;
+  batch_ids.reserve(batch_size);
+
+  std::vector<UniqueID> batch_worker_process_ids;
+  batch_worker_process_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_worker_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_worker_data_keep_duration_ms();
+  while (!sorted_dead_worker_list_.empty()) {
+    auto timestamp = sorted_dead_worker_list_.begin()->second;
+    if (timestamp + gcs_dead_worker_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_dead_worker_list_.begin();
+    const auto &worker_id = iter->first;
+    batch_ids.emplace_back(worker_id);
+
+    auto dead_worker_iter = dead_workers_.find(worker_id);
+    if (dead_worker_iter != dead_workers_.end()) {
+      dead_workers_.erase(dead_worker_iter);
+    }
+
+    sorted_dead_worker_list_.erase(iter);
+    ++evicted_worker_number;
+
+    if (batch_ids.size() == batch_size) {
+      RAY_CHECK_OK(gcs_table_storage_.WorkerTable().BatchDelete(
+          batch_ids, {[](auto) {}, io_context_}));
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    RAY_CHECK_OK(gcs_table_storage_.WorkerTable().BatchDelete(
+        batch_ids, {[](auto) {}, io_context_}));
+  }
+
+  RAY_LOG(INFO) << evicted_worker_number << " workers are evicted, there are still "
+                << sorted_dead_worker_list_.size() << " dead workers in the cache.";
 }
 
 }  // namespace gcs

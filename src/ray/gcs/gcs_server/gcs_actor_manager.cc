@@ -1822,11 +1822,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    const auto &actor_id = sorted_destroyed_actor_list_.front().first;
-    RAY_CHECK_OK(
-        gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_}));
-    destroyed_actors_.erase(actor_id);
-    sorted_destroyed_actor_list_.pop_front();
+    EvictOneDestroyedActor();
   }
 
   if (destroyed_actors_.emplace(actor->GetActorID(), actor).second) {
@@ -1954,6 +1950,63 @@ void GcsActorManager::RecordMetrics() const {
                                                  liftime_num_created_actors_);
   }
   actor_state_counter_->FlushOnChangeCallbacks();
+}
+
+void GcsActorManager::EvictExpiredActors() {
+  RAY_LOG(INFO) << "Try evicting expired actors, there are "
+                << sorted_destroyed_actor_list_.size()
+                << " destroyed actors in the cache.";
+  int evicted_actor_number = 0;
+
+  std::vector<ActorID> batch_ids;
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  batch_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_actor_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_actor_data_keep_duration_ms();
+  while (!sorted_destroyed_actor_list_.empty()) {
+    auto timestamp = sorted_destroyed_actor_list_.begin()->second;
+    if (timestamp + gcs_dead_actor_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_destroyed_actor_list_.begin();
+    const auto &actor_id = iter->first;
+    if (destroyed_actors_.erase(actor_id) == 0) {
+      // The actor may be already erased when job dead.
+      // See GcsActorManager::OnJobFinished.
+      sorted_destroyed_actor_list_.erase(iter);
+      continue;
+    }
+    batch_ids.emplace_back(actor_id);
+    sorted_destroyed_actor_list_.erase(iter);
+    ++evicted_actor_number;
+
+    if (batch_ids.size() == batch_size) {
+      RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
+          batch_ids, {[](auto) {}, io_context_}));
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    RAY_CHECK_OK(gcs_table_storage_->ActorTable().BatchDelete(
+        batch_ids, {[](auto) {}, io_context_}));
+  }
+  RAY_LOG(INFO) << evicted_actor_number << " actors are evicted, there are still "
+                << sorted_destroyed_actor_list_.size()
+                << " destroyed actors in the cache.";
+}
+
+void GcsActorManager::EvictOneDestroyedActor() {
+  if (!sorted_destroyed_actor_list_.empty()) {
+    const auto &actor_id = sorted_destroyed_actor_list_.front().first;
+    RAY_CHECK_OK(
+        gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_}));
+    destroyed_actors_.erase(actor_id);
+    sorted_destroyed_actor_list_.pop_front();
+  }
 }
 
 }  // namespace gcs

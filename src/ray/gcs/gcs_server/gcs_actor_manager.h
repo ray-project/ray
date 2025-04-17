@@ -541,6 +541,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_destroy_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Evict all actors which ttl is expired.
+  void EvictExpiredActors();
+
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
       const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
@@ -626,6 +629,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+
+  /// Evict one destoyed actor from sorted_destroyed_actor_list_ as well as
+  /// destroyed_actors_.
+  void EvictOneDestroyedActor();
 
   rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
     rpc::ActorTableData actor_delta;

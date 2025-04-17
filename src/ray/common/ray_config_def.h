@@ -389,6 +389,10 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// Maximum number of dead worker in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 10000)
+/// Maximum number of dead job in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_job_cached_count, 300)
 // The interval at which the gcs server will pull a new resource.
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
@@ -955,3 +959,21 @@ RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
 // Frequency at which to check all local worker & driver sockets for unexpected
 // disconnects.
 RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
+
+// The interval to check the gcs dead data.
+RAY_CONFIG(int64_t, gcs_dead_data_check_interval_ms, 600 * 1000)
+
+// Maximum duration in milliseconds to keep dead actor data.
+RAY_CONFIG(int64_t, gcs_dead_actor_data_keep_duration_ms, 5 * 86400 * 1000)
+
+// Maximum duration in milliseconds to keep dead node data.
+RAY_CONFIG(int64_t, gcs_dead_node_data_keep_duration_ms, 7 * 86400 * 1000)
+
+// Maximum duration in milliseconds to keep dead job data.
+RAY_CONFIG(int64_t, gcs_dead_job_data_keep_duration_ms, 30LL * 86400 * 1000)
+
+// Maximum duration in milliseconds to keep dead worker data.
+RAY_CONFIG(int64_t, gcs_dead_worker_data_keep_duration_ms, 600 * 1000)
+
+// Maximum batch size when delete dead data in gcs.
+RAY_CONFIG(int64_t, gcs_dead_data_max_batch_delete_size, 500)

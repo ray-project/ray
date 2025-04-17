@@ -169,12 +169,19 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  /// Evict all dead nodes which ttl is expired.
+  void EvictExpiredNodes();
+
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+
+  /// Evict one dead node from sorted_dead_node_list_ as well as
+  /// dead_nodes_.
+  void EvictOneDeadNode();
 
   /// Infer death cause of the node based on existing draining requests.
   ///

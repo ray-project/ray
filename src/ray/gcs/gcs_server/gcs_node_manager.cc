@@ -505,11 +505,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    const auto &node_id = sorted_dead_node_list_.front().first;
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
-    dead_nodes_.erase(sorted_dead_node_list_.front().first);
-    sorted_dead_node_list_.pop_front();
+    EvictOneDeadNode();
   }
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
@@ -525,6 +521,57 @@ std::string GcsNodeManager::DebugString() const {
          << "\n- GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
+}
+
+void GcsNodeManager::EvictExpiredNodes() {
+  RAY_LOG(INFO) << "Try evicting expired nodes, there are "
+                << sorted_dead_node_list_.size() << " dead nodes in the cache.";
+  int evicted_node_number = 0;
+
+  std::vector<NodeID> batch_ids;
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  batch_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_node_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_node_data_keep_duration_ms();
+  while (!sorted_dead_node_list_.empty()) {
+    auto timestamp = sorted_dead_node_list_.begin()->second;
+    if (timestamp + gcs_dead_node_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_dead_node_list_.begin();
+    const auto &worker_id = iter->first;
+    batch_ids.emplace_back(worker_id);
+    dead_nodes_.erase(worker_id);
+    sorted_dead_node_list_.erase(iter);
+    ++evicted_node_number;
+
+    if (batch_ids.size() == batch_size) {
+      RAY_CHECK_OK(gcs_table_storage_->NodeTable().BatchDelete(
+          batch_ids, {[](auto) {}, io_context_}));
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().BatchDelete(batch_ids,
+                                                             {[](auto) {}, io_context_}));
+  }
+  RAY_LOG(INFO) << evicted_node_number << " nodes are evicted, there are still "
+                << sorted_dead_node_list_.size() << " dead nodes in the cache.";
+}
+
+void GcsNodeManager::EvictOneDeadNode() {
+  if (!sorted_dead_node_list_.empty()) {
+    auto iter = sorted_dead_node_list_.begin();
+    const auto &node_id = iter->first;
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
+    dead_nodes_.erase(node_id);
+    sorted_dead_node_list_.erase(iter);
+  }
 }
 
 }  // namespace gcs
