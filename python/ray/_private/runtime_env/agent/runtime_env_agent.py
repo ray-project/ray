@@ -30,6 +30,7 @@ from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
+from ray._private.runtime_env.omnitrace import OmnitracePlugin
 from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
@@ -225,6 +226,7 @@ class RuntimeEnvAgent:
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
+        self._omnitrace_plugin = OmnitracePlugin(self._runtime_env_dir)
         self._mpi_plugin = MPIPlugin()
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
@@ -241,6 +243,7 @@ class RuntimeEnvAgent:
             self._java_jars_plugin,
             self._container_plugin,
             self._nsight_plugin,
+            self._omnitrace_plugin,
             self._mpi_plugin,
             self._image_uri_plugin,
         ]
