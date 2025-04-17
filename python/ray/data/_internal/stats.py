@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -577,9 +578,6 @@ class _StatsActor:
             tags["node_ip"] = node_ip_tag
         return tags
 
-    def is_export_api_enabled(self) -> bool:
-        return self._export_logger is not None
-
     def _init_export_logger(self) -> tuple[Optional[logging.Logger], bool]:
         """Initialize the export logger and check if the export API is enabled.
         Returns:
@@ -587,7 +585,7 @@ class _StatsActor:
                 - The export logger (or None if export API is not enabled).
                 - A boolean indicating if the export API is enabled for data metadata.
         """
-        # Proto schemas should be imported within the scope of TrainStateActor to
+        # Proto schemas should be imported within the scope of StatsActor to
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
@@ -618,7 +616,7 @@ class _StatsActor:
         return logger, is_data_metadata_export_api_enabled
 
     def _maybe_export_data_metadata(self, dataset_metadata: Dict[str, Any]) -> Any:
-        if not self.is_export_api_enabled():
+        if not self._is_data_metadata_export_enabled:
             return
 
         data_metadata_proto = self._dataset_metadata_to_proto(dataset_metadata)
@@ -628,7 +626,8 @@ class _StatsActor:
         """Convert the DAG structure dictionary to a protobuf message.
 
         Args:
-            dag_structure: Dictionary representation of the DAG structure.
+            dag_structure: Dictionary representation of the DAG structure. This
+            is passed as a dictionary to avoid serializing the protobuf message.
 
         Returns:
             The protobuf message representing the DAG structure.
@@ -649,9 +648,9 @@ class _StatsActor:
         if "operators" in dag_structure:
             for op_dict in dag_structure["operators"]:
                 operator = Operator()
-                operator.name = op_dict.get("name", "unknown")
-                operator.id = op_dict.get("id", "unknown")
-                operator.uuid = op_dict.get("uuid", "unknown")
+                operator.name = op_dict.get("name", UNKNOWN)
+                operator.id = op_dict.get("id", UNKNOWN)
+                operator.uuid = op_dict.get("uuid", UNKNOWN)
 
                 # Add input dependencies if they exist
                 if "input_dependencies" in op_dict:
@@ -662,24 +661,18 @@ class _StatsActor:
                 if "sub_operators" in op_dict:
                     for sub_op_dict in op_dict["sub_operators"]:
                         sub_op = SubOperator()
-                        sub_op.name = sub_op_dict.get("name", "unknown")
-                        sub_op.id = sub_op_dict.get("id", "unknown")
+                        sub_op.name = sub_op_dict.get("name", UNKNOWN)
+                        sub_op.id = sub_op_dict.get("id", UNKNOWN)
                         operator.sub_operators.append(sub_op)
 
                 # Add the operator to the DAG
                 dag.operators.append(operator)
 
-        # Set the DAG in the metadata
+        # Populate the data metadata proto
         data_metadata.dag.CopyFrom(dag)
-
-        if "job_id" in dataset_metadata:
-            data_metadata.job_id = dataset_metadata["job_id"]
-
-        if "start_time" in dataset_metadata:
-            data_metadata.start_time = int(dataset_metadata["start_time"])
-
-        if "dataset_id" in dataset_metadata:
-            data_metadata.dataset_id = dataset_metadata["dataset_id"]
+        data_metadata.job_id = dataset_metadata.get("job_id", None)
+        data_metadata.start_time = dataset_metadata.get("start_time", None)
+        data_metadata.dataset_id = dataset_metadata.get("dataset_id", None)
 
         return data_metadata
 

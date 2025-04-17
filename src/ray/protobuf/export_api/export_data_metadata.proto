@@ -62,6 +62,6 @@ message ExportDataMetadata {
   // The job ID
   string job_id = 3;
 
-  // The timestamp when execution started (in milliseconds since epoch)
-  uint64 start_time = 4;
+  // The timestamp when execution started (in seconds since epoch)
+  double start_time = 4;
 }
