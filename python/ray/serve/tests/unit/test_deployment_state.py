@@ -4784,6 +4784,48 @@ class TestStopReplicasOnDrainingNodes:
             ],
         )
 
+    def test_stop_unallocated_replica(self, mock_deployment_state_manager):
+        """Test skipping graceful shutdown for unallocated replicas.
+
+        This test verifies that when a replica is still in PENDING_ALLOCATION state:
+        1. The system correctly detects this unallocated state
+        2. It skips calling replica.stop() which would hang on a non-existent actor
+        3. The replica still transitions properly to STOPPING state
+        4. The deployment cleanup continues normally
+
+        This prevents hanging when trying to gracefully shut down actors that
+        haven't been allocated by Ray yet.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        info1, v1 = deployment_info(version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+        replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+
+        # Override check_started to consistently return PENDING_ALLOCATION
+        def mock_check_started():
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        replica.check_started = mock_check_started
+
+        stop_called = False
+        original_stop = replica.stop
+
+        def mock_stop(graceful=True):
+            nonlocal stop_called
+            stop_called = True
+            return original_stop(graceful=graceful)
+
+        replica.stop = mock_stop
+
+        ds.stop_replicas([replica.replica_id])
+        assert not stop_called
+        check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, v1)])
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
