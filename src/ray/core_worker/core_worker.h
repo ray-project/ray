@@ -1895,7 +1895,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
   std::atomic<bool> is_exited_ = false;
-  /// Used to ensure that the `Shutdown` method is called at most once.
+  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
   std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
