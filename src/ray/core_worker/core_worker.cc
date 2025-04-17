@@ -1175,7 +1175,7 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  // Ensure that the shutdown logic runs at most once.
+  // Ensure that the exit logic runs at most once.
   bool expected = false;
   if (is_exited_.compare_exchange_strong(expected, /*desired=*/true)) {
     RAY_LOG(INFO) << "Exit was called multipled times, ignoring.";
