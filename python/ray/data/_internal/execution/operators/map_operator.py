@@ -481,7 +481,7 @@ class MapOperator(OneToOneOperator, ABC):
 
             # Interrupt all (still) running tasks immediately
             for task in tasks:
-                ray.cancel(task.get_waitable(), force=True)
+                task._cancel(force=True)
 
             # Wait for all tasks to get cancelled before returning
             for task in tasks:
