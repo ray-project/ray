@@ -8,7 +8,9 @@ import React, {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
+import { DebugSession, getDebugSessions } from "../../service/debug";
 import { FlameGraphData } from "../../service/flame-graph";
 import { PhysicalViewData } from "../../service/physical-view";
 import { colorScheme } from "./graphData";
@@ -168,12 +170,14 @@ const RayVisualization = forwardRef<
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const [activeDebugSessions, setActiveDebugSessions] = useState<
+      DebugSession[]
+    >([]);
 
     // Add refs for tracking the position of the main node
     const previousCenterXRef = useRef<number | null>(null);
     const previousCenterYRef = useRef<number | null>(null);
     const previousScaleRef = useRef<number | null>(null);
-
     // Add view state
 
     const svgRef = useRef<SVGSVGElement | null>(null);
@@ -204,7 +208,6 @@ const RayVisualization = forwardRef<
         const g = dagreGraphRef.current;
         // Try to find node data from graph structure
         const nodeData = g?.node(nodeId) as NodeData | undefined;
-        console.log("nodeData", nodeData);
 
         if (nodeData && nodeData.x && nodeData.y) {
           const svgWidth = parseInt(svg.style("width"));
@@ -398,9 +401,24 @@ const RayVisualization = forwardRef<
       // eslint-disable-next-line
     }, [selectedElementId, focusOnNode]);
 
+    const fetchActiveDebugSessions = useCallback(async () => {
+      if (jobId) {
+        try {
+          const sessions = await getDebugSessions(jobId, null, null, true);
+          setActiveDebugSessions(sessions);
+        } catch (error) {
+          console.error("Error fetching active debug sessions:", error);
+        }
+      }
+      // eslint-disable-next-line
+    }, [jobId, graphData]);
+
+    useEffect(() => {
+      fetchActiveDebugSessions();
+    }, [jobId, graphData, fetchActiveDebugSessions]);
+
     // Memoize the renderGraph function with useCallback
     const renderGraph = () => {
-      console.log("renderGraph");
       if (!svgRef.current) {
         return;
       }
@@ -454,6 +472,7 @@ const RayVisualization = forwardRef<
         svg,
         inner,
         zoom as ZoomBehavior<SVGSVGElement, unknown>,
+        activeDebugSessions,
       );
     };
 
@@ -462,6 +481,7 @@ const RayVisualization = forwardRef<
       svg: Selection<SVGSVGElement, unknown, null, undefined>,
       inner: Selection<SVGGElement, unknown, null, undefined>,
       zoom: ZoomBehavior<SVGSVGElement, unknown>,
+      activeDebugSessions: DebugSession[],
     ) => {
       // Function to check if a node matches the search term
       const nodeMatchesSearch = (node: any): boolean => {
@@ -495,6 +515,32 @@ const RayVisualization = forwardRef<
         }
 
         return false;
+      };
+
+      // Function to check if a node has an active debug session
+      const hasActiveDebugSession = (
+        activeDebugSessions: DebugSession[],
+        node: any,
+      ): boolean => {
+        if (!node || !activeDebugSessions.length) {
+          return false;
+        }
+
+        const nodeType =
+          node.type ||
+          (node.actorId ? "method" : node.language ? "function" : "actor");
+
+        return activeDebugSessions.some((session) => {
+          if (nodeType === "method") {
+            return (
+              node.actorName + ":" + node.actorId === session.className &&
+              node.name === session.funcName
+            );
+          } else if (nodeType === "function") {
+            return node.name === session.funcName;
+          }
+          return false;
+        });
       };
 
       // Find connected subgraphs (excluding main node)
@@ -846,7 +892,11 @@ const RayVisualization = forwardRef<
 
             // Add node to the subgraph
             subG.setNode(nodeId, {
-              label: label,
+              label:
+                label +
+                (hasActiveDebugSession(activeDebugSessions, nodeData)
+                  ? " 🐞"
+                  : ""),
               class: nodeType,
               style: style,
               rx: 5,
@@ -1082,6 +1132,7 @@ const RayVisualization = forwardRef<
             const matches = nodeMatchesSearch(node.originalData);
             const baseStyle = node.style || "";
             const opacity = searchTerm && !matches ? 0.3 : 1;
+
             node.style = baseStyle.replace(
               /fill: ([^;]+);/,
               `fill: $1; opacity: ${opacity};`,
@@ -1857,13 +1908,12 @@ const RayVisualization = forwardRef<
       }
     };
 
-    // Add an effect to re-render when searchTerm changes
     useEffect(() => {
       if (svgRef.current) {
         renderGraph();
       }
       // eslint-disable-next-line
-    }, [searchTerm, graphData]);
+    }, [graphData, searchTerm, activeDebugSessions]);
 
     return (
       <div ref={containerRef} className="ray-visualization-container">

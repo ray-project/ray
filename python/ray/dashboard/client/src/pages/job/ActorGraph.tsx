@@ -10,6 +10,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import DebugPanel from "../../components/DebugPanel";
 import ElementsPanel from "../../components/ray-visualization/ElementsPanel";
 import { FlameVisualization } from "../../components/ray-visualization/FlameVisualization";
 import { colorScheme } from "../../components/ray-visualization/graphData";
@@ -261,7 +262,8 @@ const ActorGraph = () => {
             dataFlows: [],
           }
         }
-      />{" "}
+      />
+      <DebugPanel jobId={currentJobId} selectedElement={infoCardData} />
       <Box
         sx={{
           flex: 1,

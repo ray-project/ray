@@ -690,6 +690,81 @@ Flow Insight is a powerful tool for understanding, debugging, and optimizing Ray
 providing insights into both the logical structure and physical deployment of your distributed workloads.
 
 
+Visual RDB View
+---------------
+
+.. image:: ./images/visual-rdb-view.gif
+    :align: center
+    :alt: Visual RDB View screenshot
+
+The Visual RDB View provides an integrated visual debugging experience for Ray applications, 
+allowing you to debug distributed actors and tasks through a familiar debugging interface 
+directly within the Ray Dashboard. This feature leverages the underlying ray rdb
+capability to provide real-time debugging of your distributed application components.
+
+Key Features
+~~~~~~~~~~~~
+
+- **Live Debugging:** Debug running Ray actors and tasks without stopping your application
+- **Source Code Navigation:** View and navigate through source code of your distributed components
+- **Breakpoint Management:** enable and disable breakpoints across your distributed codebase
+- **Variable Inspection:** Examine runtime values of variables in the current context
+- **Call Stack Navigation:** Navigate through the call stack to understand execution flow
+- **Step Controls:** Standard debugging controls (continue, pause, step over, step in, step out)
+- **Multi-thread Support:** Debug applications with multiple threads across distributed components
+
+Enabling Visual RDB
+~~~~~~~~~~~~~~~~~~~
+
+To enable Visual RDB debugging, you need to enable both Flow Insight and Visual RDB:
+
+1. Set the `RAY_VISUAL_RDB` environment variable to "1" before starting your Ray job:
+
+   .. code-block:: bash
+
+        ray job submit --runtime-env-json '{"env_vars":{"RAY_VISUAL_RDB": "1"}}' --working-dir ./ -- python entrypoint.py
+
+2. Visual debug must also have Flow Insight enabled to function properly:
+
+   .. code-block:: bash
+   
+       export RAY_FLOW_INSIGHT=1
+       ray start --head
+
+Accessing Visual RDB
+~~~~~~~~~~~~~~~~~~~~
+
+To access the Visual RDB view:
+
+1. Navigate to the Flow Insight view from the Jobs page by clicking on the "Insight" link
+2. In the Flow Insight view, when you select an actor method or task, then click on the "Debug" button, the Debug Panel will appear on the right side of the screen
+3. Click on any available debug session to begin debugging
+
+Debugging Interface
+~~~~~~~~~~~~~~~~~~~
+
+The Visual RDB interface consists of several key components:
+
+- **Source Code View:** Displays the source code of the selected component with the current execution line highlighted
+- **Controls Bar:** Contains debugging action buttons (continue, pause, step over, step into, step out)
+- **Threads List:** Shows available threads and allows switching between them
+- **Call Stack Panel:** Displays the current call stack, allowing navigation between frames
+- **Evaluation Console:** Allows evaluating expressions in the current context
+
+Working with Breakpoints
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+To set breakpoints:
+
+1. Click on a line number in the source code view to set a breakpoint
+2. Click an existing breakpoint to remove it
+
+
+The Visual RDB View transforms how you debug distributed applications by bringing traditional 
+debugging workflows to distributed systems, making it easier to understand complex behaviors 
+and resolve issues in Ray applications.
+
+
 .. _dash-overview:
 
 Overview view

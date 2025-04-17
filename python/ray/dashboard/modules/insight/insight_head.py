@@ -1,3 +1,5 @@
+import base64
+import json
 import logging
 import aiohttp.web
 import ray.dashboard.utils as dashboard_utils
@@ -12,6 +14,309 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 class InsightHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
+
+    @routes.get("/get_breakpoints")
+    async def get_breakpoints(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Return a list of breakpoints."""
+        job_id = req.query.get("job_id", "default_job")
+        task_id = req.query.get("task_id", "")
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/get_breakpoints",
+                    json={"job_id": job_id, "task_id": task_id},
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Breakpoints retrieved successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error retrieving breakpoints: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error retrieving breakpoints: {str(e)}"
+            )
+
+    @routes.get("/set_breakpoints")
+    async def set_breakpoints(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Set a list of breakpoints."""
+        job_id = req.query.get("job_id", "default_job")
+        task_id = req.query.get("task_id", "")
+        breakpoints_base64 = req.query.get("breakpoints", "")
+        breakpoints = json.loads(base64.b64decode(breakpoints_base64).decode("utf-8"))
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/set_breakpoints",
+                    json={
+                        "job_id": job_id,
+                        "task_id": task_id,
+                        "breakpoints": breakpoints,
+                    },
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Breakpoints set successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error setting breakpoints: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error setting breakpoints: {str(e)}"
+            )
+
+    @routes.get("/get_debug_sessions")
+    async def get_debug_sessions(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Return a list of active debug sessions."""
+        job_id = req.query.get("job_id", "default_job")
+        class_name = req.query.get("class_name", None)
+        func_name = req.query.get("func_name", None)
+        filter_active = req.query.get("filter_active", "false")
+        filter_active = True if filter_active == "true" else False
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/get_debug_sessions",
+                    json={
+                        "job_id": job_id,
+                        "class_name": class_name,
+                        "func_name": func_name,
+                        "filter_active": filter_active,
+                    },
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Debug sessions retrieved successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error retrieving debug sessions: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error retrieving debug sessions: {str(e)}"
+            )
+
+    @routes.get("/activate_debug_session")
+    async def activate_debug_session(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Activate a debug session."""
+        job_id = req.query.get("job_id", "default_job")
+        class_name = req.query.get("class_name", None)
+        func_name = req.query.get("func_name", None)
+        task_id = req.query.get("task_id", "")
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/activate_debug_session",
+                    json={
+                        "job_id": job_id,
+                        "class_name": class_name,
+                        "func_name": func_name,
+                        "task_id": task_id,
+                    },
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Debug session activated successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error activating debug session: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error activating debug session: {str(e)}"
+            )
+
+    @routes.get("/debug_cmd")
+    async def debug_cmd(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Send a debug command to the insight monitor."""
+        job_id = req.query.get("job_id", "default_job")
+        task_id = req.query.get("task_id", "")
+        command = req.query.get("command", "")
+        args_base64 = req.query.get("args", "")
+        args = base64.b64decode(args_base64).decode("utf-8")
+        args = json.loads(args)
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/debug_cmd",
+                    json={
+                        "job_id": job_id,
+                        "task_id": task_id,
+                        "command": command,
+                        "args": args,
+                    },
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Debug command sent successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error sending debug command: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error sending debug command: {str(e)}"
+            )
+
+    @routes.get("/deactivate_debug_session")
+    async def deactivate_debug_session(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Deactivate a debug session."""
+        job_id = req.query.get("job_id", "default_job")
+        task_id = req.query.get("task_id", "")
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"http://{host}:{port}/deactivate_debug_session",
+                    json={"job_id": job_id, "task_id": task_id},
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Debug session deactivated successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error deactivating debug session: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False, message=f"Error deactivating debug session: {str(e)}"
+            )
+
+    @routes.get("/get_active_debug_sessions")
+    async def get_active_debug_sessions(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Get a list of active debug sessions."""
+        job_id = req.query.get("job_id", "default_job")
+        address = await self.gcs_aio_client.internal_kv_get(
+            "insight_monitor_address",
+            namespace="flowinsight",
+            timeout=5,
+        )
+        if not address:
+            return dashboard_optional_utils.rest_response(
+                success=False, message="InsightMonitor address not found in KV store"
+            )
+        host, port = address.decode().split(":")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"http://{host}:{port}/get_active_debug_sessions?job_id={job_id}"
+                ) as response:
+                    if response.status != 200:
+                        return dashboard_optional_utils.rest_response(
+                            success=False,
+                            message=f"Error from insight monitor: {await response.text()}",
+                        )
+                    result = await response.json()
+                    return dashboard_optional_utils.rest_response(
+                        success=True,
+                        message="Active debug sessions retrieved successfully.",
+                        result=result,
+                    )
+        except Exception as e:
+            logger.error(f"Error retrieving active debug sessions: {str(e)}")
+            return dashboard_optional_utils.rest_response(
+                success=False,
+                message=f"Error retrieving active debug sessions: {str(e)}",
+            )
 
     @routes.get("/physical_view")
     async def get_physical_view(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
