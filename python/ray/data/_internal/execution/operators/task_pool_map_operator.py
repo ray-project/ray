@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, Optional
 
-import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
