@@ -1293,10 +1293,10 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   // workers:            job_id: 020000, root_detached_actor_id: ?????
   // pop_worker_request: job_id: ??????, root_detached_actor_id: A
 
-  RAY_LOG(ERROR) << "request root_detached_actor_id: " << pop_worker_request.root_detached_actor_id;
-  RAY_LOG(ERROR) << "worker root_detached_actor_id: " << worker.GetRootDetachedActorId();
-  RAY_LOG(ERROR) << "request job_id: " << pop_worker_request.job_id;
-  RAY_LOG(ERROR) << "worker job_id: " << worker.GetAssignedJobId();
+  RAY_LOG(DEBUG) << "request root_detached_actor_id: " << pop_worker_request.root_detached_actor_id;
+  RAY_LOG(DEBUG) << "worker root_detached_actor_id: " << worker.GetRootDetachedActorId();
+  RAY_LOG(DEBUG) << "request job_id: " << pop_worker_request.job_id;
+  RAY_LOG(DEBUG) << "worker job_id: " << worker.GetAssignedJobId();
 
   if (!IdMatches(pop_worker_request.root_detached_actor_id,
                  worker.GetRootDetachedActorId())) {
