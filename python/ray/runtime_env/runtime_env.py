@@ -643,6 +643,11 @@ class RuntimeEnv(dict):
             return None
         return self["container"].get("run_options", [])
 
+    def py_container_pip_list(self) -> List:
+        if not self.has_py_container():
+            return []
+        return self["container"].get("pip", [])
+
     def py_container_install_ray(self) -> bool:
         if not self.has_py_container():
             return False

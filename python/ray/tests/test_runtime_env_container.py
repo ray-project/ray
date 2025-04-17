@@ -513,6 +513,58 @@ class TestContainerRuntimeEnvCommandLine:
             lambda: check_logs_by_keyword(keyword2, log_file_pattern), timeout=20
         )
 
+    @pytest.mark.parametrize(
+        "runtime_env",
+        [
+            {
+                "container": {"image": "unknown_image", "pip": ["numpy"]},
+                "pip": ["pandas"],
+            },
+            {
+                "container": {
+                    "image": "unknown_image",
+                    "pip": ["numpy"],
+                    "install_ray": True,
+                },
+                "pip": ["pandas"],
+            },
+        ],
+    )
+    def test_container_command_with_container_pip_packages(
+        self, api_version, runtime_env, ray_start_regular
+    ):
+        a = Counter.options(
+            runtime_env=runtime_env,
+        ).remote()
+        try:
+            ray.get(a.increment.remote(), timeout=1)
+        except (ray.exceptions.RuntimeEnvSetupError, ray.exceptions.GetTimeoutError):
+            # ignore the exception because container mode don't work in common
+            # test environments.
+            pass
+        # Checkout the worker logs to ensure if the cgroup params is set correctly
+        # in the podman command.
+        log_file_pattern_1 = "raylet.err"
+        pip_packages = runtime_env.get("pip")
+        container_pip_packages = runtime_env.get("container").get("pip")
+        merge_pip_packages = list(dict.fromkeys(pip_packages + container_pip_packages))
+        json_dumps_container_pip_packages = base64.b64encode(
+            json.dumps(container_pip_packages).encode("utf-8")
+        ).decode("utf-8")
+        json_dumps_merge_pip_packages = base64.b64encode(
+            json.dumps(merge_pip_packages).encode("utf-8")
+        ).decode("utf-8")
+        keyword1 = f"\--packages {json_dumps_container_pip_packages}"
+        keyword2 = f"\--packages {json_dumps_merge_pip_packages}"
+        if runtime_env.get("container").get("install_ray", False):
+            wait_for_condition(
+                lambda: check_logs_by_keyword(keyword2, log_file_pattern_1), timeout=20
+            )
+        else:
+            wait_for_condition(
+                lambda: check_logs_by_keyword(keyword1, log_file_pattern_1), timeout=20
+            )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
