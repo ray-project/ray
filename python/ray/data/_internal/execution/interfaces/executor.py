@@ -84,4 +84,3 @@ class Executor(ContextManager, ABC):
 
     def __exit__(self, exc_type, exc_value, traceback, /):
         self.shutdown(exception=exc_value)
-

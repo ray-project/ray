@@ -535,9 +535,7 @@ class _ClosingIterator(OutputIterator):
 
         # Have to be BaseException to catch ``KeyboardInterrupt``
         except BaseException as e:
-            self._executor.shutdown(
-                e if not isinstance(e, StopIteration) else None
-            )
+            self._executor.shutdown(e if not isinstance(e, StopIteration) else None)
             raise
 
     def __del__(self):
