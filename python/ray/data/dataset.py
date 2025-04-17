@@ -5389,10 +5389,9 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        # Sync progress-bars first
+        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
         self._synchronize_progress_bar()
-        # Fetch iterator
-        iter_ref_bundles, _ = self._execute_to_iterator()
+
         return iter_ref_bundles
 
     @Deprecated
