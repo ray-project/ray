@@ -103,42 +103,26 @@ class ClusterState:
                 workers = json.loads(open(self.save_path).read())
                 return workers
 
-    def put(self, worker_id, info):
-        assert "tags" in info
-        assert "state" in info
-        with self._lock:
-            with self._file_lock:
-                workers = self.get()
-                workers[worker_id] = info
-                with open(self.save_path, "w") as f:
-                    logger.info(
-                        "ClusterState: "
-                        "Writing cluster state: {}".format(list(workers))
-                    )
-                    f.write(json.dumps(workers))
-
-    def get_for_update(self, worker_update_fn):
+    def get_for_update(self, update_fn):
         """Execute a function with the state locks held.
 
         Args:
-            worker_update_fn: A function that takes the current workers
+            update_fn: A function that takes the current workers
                  state as argument and returns the modified state.
 
         Returns:
-            The result of worker_update_fn.
+            The result of update_fn.
         """
         with self._lock:
             with self._file_lock:
                 workers = json.loads(open(self.save_path).read())
-                result = worker_update_fn(workers)
-                if result is not None:
-                    # Only write if the state was modified
-                    with open(self.save_path, "w") as f:
-                        logger.info(
-                            "ClusterState: "
-                            "Writing cluster state: {}".format(list(result))
-                        )
-                        f.write(json.dumps(result))
+                result = update_fn(workers)
+                with open(self.save_path, "w") as f:
+                    logger.info(
+                        "ClusterState: "
+                        "Writing cluster state: {}".format(list(result))
+                    )
+                    f.write(json.dumps(result))
                 return result
 
 
