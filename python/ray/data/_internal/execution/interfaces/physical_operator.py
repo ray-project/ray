@@ -66,7 +66,6 @@ class OpTask(ABC):
         )
 
 
-
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
 

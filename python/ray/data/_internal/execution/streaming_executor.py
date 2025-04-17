@@ -95,7 +95,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterator[RefBundle]:
+    ) -> OutputIterator:
         """Executes the DAG using a streaming execution strategy.
 
         We take an event-loop approach to scheduling. We block on the next scheduling
