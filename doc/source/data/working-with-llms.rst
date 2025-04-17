@@ -90,7 +90,7 @@ Each processor requires specific input columns. You can find more info by using 
     Required input columns:
             messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
 
-Some models may require a Hugging Face token to be specified. You can specify the token in the :attr:`runtime_env <ray.serve.llm.LLMConfig.runtime_env>` argument.
+Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
 .. testcode::
 
