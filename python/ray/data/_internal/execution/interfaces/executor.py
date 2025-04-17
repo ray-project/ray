@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Iterable, Iterator, Optional
 
 from .execution_options import ExecutionOptions
@@ -37,7 +38,7 @@ class OutputIterator(Iterator[RefBundle]):
         return self.get_next()
 
 
-class Executor:
+class Executor(ABC):
     """Abstract class for executors, which implement physical operator execution.
 
     Subclasses:
@@ -49,6 +50,7 @@ class Executor:
         options.validate()
         self._options = options
 
+    @abstractmethod
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> OutputIterator:
@@ -59,7 +61,7 @@ class Executor:
             initial_stats: The DatasetStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
         """
-        raise NotImplementedError
+        ...
 
     def shutdown(self, exception: Optional[Exception] = None):
         """Shutdown an executor, which may still be running.
@@ -72,10 +74,11 @@ class Executor:
         """
         pass
 
+    @abstractmethod
     def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.
 
         This is generally called after `execute` has completed, but may be called
         while iterating over `execute` results for streaming execution.
         """
-        raise NotImplementedError
+        ...
