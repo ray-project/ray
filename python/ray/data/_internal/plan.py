@@ -455,7 +455,7 @@ class ExecutionPlan:
         self,
         preserve_order: bool = False,
     ) -> RefBundle:
-        """Execute this plan.
+        """Executes this plan (eagerly).
 
         Args:
             preserve_order: Whether to preserve order in execution.
@@ -504,17 +504,19 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                executor = self.create_executor()
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
-                bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
+                # Make sure executor is properly shutdown
+                with self.create_executor() as executor:
+                    blocks = execute_to_legacy_block_list(
+                        executor,
+                        self,
+                        dataset_uuid=self._dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
+                    bundle = RefBundle(
+                        tuple(blocks.iter_blocks_with_metadata()),
+                        owns_blocks=blocks._owned_by_consumer,
+                    )
+
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
