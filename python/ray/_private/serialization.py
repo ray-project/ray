@@ -339,16 +339,13 @@ class SerializationContext:
 
                 # Print payload data in string and hex format
                 if data:
-                    # Print as hex
-                    print("\n=== Payload as hex ===")
-                    print(" ".join(f"{b:02x}" for b in data.to_pybytes()))
-
                     try:
                         # Print as string
-                        print("\n=== Payload as string ===")
-                        print(data.to_pybytes().decode("utf-8", errors="replace"))
+                        logger.info("\n=== Payload as string ===")
+                        logger.info(data.to_pybytes().decode("utf-8", errors="replace"))
+                        logger.info("\n=== Payload as string end ===")
                     except Exception as decode_err:
-                        print(f"Failed to decode as string: {decode_err}")
+                        logger.info(f"Failed to decode as string: {decode_err}")
 
                 raise Exception(
                     f"Can't deserialize object: {object_ref}, " f"metadata: {metadata}"
