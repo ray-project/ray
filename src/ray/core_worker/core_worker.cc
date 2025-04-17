@@ -1042,8 +1042,7 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  // Force task state events push before exiting the worker.
-  task_event_buffer_->FlushEvents(/* forced= */ true);
+  task_event_buffer_->FlushEvents(/*forced=*/ true);
   task_event_buffer_->Stop();
 
   io_service_.stop();
