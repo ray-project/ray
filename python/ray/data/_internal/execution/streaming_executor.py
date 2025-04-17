@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
@@ -76,7 +76,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
         self._topology: Optional[Topology] = None
-        self._output_node: Optional[OpState] = None
+        self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_id = dataset_id
@@ -145,7 +145,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._has_op_completed = {op: False for op in self._topology}
 
-        self._output_node: OpState = self._topology[dag]
+        self._output_node = dag, self._topology[dag]
+
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
@@ -241,8 +242,9 @@ class StreamingExecutor(Executor, threading.Thread):
             # Propagate it to the result iterator.
             exc = e
         finally:
-            # Signal end of results.
-            self._output_node.mark_finished(exc)
+            # Mark state of outputting operator as finished
+            _, state = self._output_node
+            state.mark_finished(exc)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -352,7 +354,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
-        return len(self._output_node.outqueue) == 0
+        _, state = self._output_node
+        return len(state.outqueue) == 0
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
@@ -514,19 +517,21 @@ class _ClosingIterator(OutputIterator):
           be closed manually by the caller!
     """
 
-    def __init__(self, executor: Executor):
+    def __init__(self, executor: StreamingExecutor):
         self._executor = executor
 
     def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
         try:
-            item = self._executor._output_node.get_output_blocking(
-                output_split_idx
-            )
+            op, state = self._executor._output_node
+            bundle = state.get_output_blocking(output_split_idx)
+
+            # Update progress-bars
             if self._executor._global_info:
                 self._executor._global_info.update(
-                    item.num_rows(), dag.num_output_rows_total()
+                    bundle.num_rows(), op.num_output_rows_total()
                 )
-            return item
+
+            return bundle
 
         # Have to be BaseException to catch ``KeyboardInterrupt``
         except BaseException as e:
