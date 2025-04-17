@@ -10,6 +10,7 @@ from ray_release.test import Test
 from ray_release.byod.build import (
     build_anyscale_custom_byod_image,
     build_anyscale_base_byod_images,
+    DATAPLANE_FILENAME,
     _get_ray_commit,
 )
 
@@ -40,6 +41,10 @@ def test_get_ray_commit() -> None:
 
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
+
+# Create a mock file to simulate the S3 download
+with open(DATAPLANE_FILENAME, "wb") as f:
+    f.write(b"abc123")
 
 
 def test_build_anyscale_custom_byod_image() -> None:
