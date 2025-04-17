@@ -53,6 +53,8 @@ from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
     _WandbLoggingActor,
+    RunDisabled,
+    setup_wandb,
 )
 from ray.air.tests.mocked_wandb_integration import (
     Trial,
@@ -539,6 +541,38 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
     external_hook = mock_load_class.return_value
     external_hook.assert_called_once_with(run)
     logging_process._wandb.finish.assert_called_once()
+
+
+def test_wandb_logger_rank_zero_only(trial, monkeypatch):
+    """Test that logging is disabled for non-rank-0 workers when rank_zero_only is True."""
+
+    mock_session = Mock()
+    mock_session.experiment_name = "test_project"
+    mock_session.trial_name = "trial_0"
+    mock_session.trial_id = "trial_0"
+
+    # Test case 1: rank_zero_only=True, rank 0
+    mock_session.world_rank = 0
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=True)
+        assert not isinstance(run, RunDisabled)
+
+    # Test case 2: rank_zero_only=True, non-rank-0
+    mock_session.world_rank = 1
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=True)
+        assert isinstance(run, RunDisabled)
+
+    # Test case 3: rank_zero_only=False, any rank
+    mock_session.world_rank = 1
+    with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
+        run = setup_wandb(project="test_project", rank_zero_only=False)
+        assert not isinstance(run, RunDisabled)
+
+    # Test case 4: rank_zero_only=True, no session
+    with patch("ray.air.integrations.wandb.get_session", return_value=None):
+        run = setup_wandb(project="test_project", rank_zero_only=True)
+        assert not isinstance(run, RunDisabled)
 
 
 if __name__ == "__main__":
