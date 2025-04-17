@@ -868,28 +868,28 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       gcs_client_, *actor_task_submitter_, *reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
-  object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
-                                               const ObjectLookupCallback &callback) {
-    std::vector<rpc::Address> locations;
-    const std::optional<absl::flat_hash_set<NodeID>> object_locations =
-        reference_counter_->GetObjectLocations(object_id);
-    if (object_locations.has_value()) {
-      locations.reserve(object_locations.value().size());
-      for (const auto &node_id : object_locations.value()) {
-        std::optional<rpc::Address> addr = node_addr_factory(node_id);
-        if (addr.has_value()) {
-          locations.emplace_back(std::move(addr.value()));
-          continue;
+      object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
+                                                   const ObjectLookupCallback &callback) {
+        std::vector<rpc::Address> locations;
+        const std::optional<absl::flat_hash_set<NodeID>> object_locations =
+            reference_counter_->GetObjectLocations(object_id);
+        if (object_locations.has_value()) {
+          locations.reserve(object_locations.value().size());
+          for (const auto &node_id : object_locations.value()) {
+            std::optional<rpc::Address> addr = node_addr_factory(node_id);
+            if (addr.has_value()) {
+              locations.emplace_back(std::move(addr.value()));
+              continue;
+            }
+            // We're getting potentially stale locations directly from the reference
+            // counter, so the location might be a dead node.
+            RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
+                << "Object location is dead, not using it in the recovery of object";
+          }
         }
-        // We're getting potentially stale locations directly from the reference
-        // counter, so the location might be a dead node.
-        RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
-            << "Object location is dead, not using it in the recovery of object";
-      }
-    }
         callback(object_id, std::move(locations));
-    return Status::OK();
-  };
+        return Status::OK();
+      };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
       raylet_client_factory,

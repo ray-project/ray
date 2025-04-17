@@ -134,23 +134,23 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 
   client->PinObjectIDs(
       rpc_address_,
-                       {object_id},
-                       /*generator_id=*/ObjectID::Nil(),
+      {object_id},
+      /*generator_id=*/ObjectID::Nil(),
       [this, object_id, other_locations = std::move(other_locations), node_id](
           const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
-                         if (status.ok() && reply.successes(0)) {
-                           // TODO(swang): Make sure that the node is still alive when
-                           // marking the object as pinned.
+        if (status.ok() && reply.successes(0)) {
+          // TODO(swang): Make sure that the node is still alive when
+          // marking the object as pinned.
           RAY_CHECK(in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                          object_id));
           reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
-                         } else {
-                           RAY_LOG(INFO).WithField(object_id)
+        } else {
+          RAY_LOG(INFO).WithField(object_id)
               << "Error pinning secondary copy of lost object due to " << status
               << ", trying again with other locations";
           PinOrReconstructObject(object_id, std::move(other_locations));
-                         }
-                       });
+        }
+      });
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
