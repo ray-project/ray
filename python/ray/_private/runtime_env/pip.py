@@ -332,7 +332,11 @@ class PipPlugin(RuntimeEnvPlugin):
         context: "RuntimeEnvContext",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        if not runtime_env.has_pip():
+        # if the runtime env doesn't have pip, or if runtime env container field has
+        # install ray, we don't need to create the pip env.
+        # Because when install ray is True, the pip packages will be installed in container
+        # with default python executable in the container.
+        if not runtime_env.has_pip() or runtime_env.py_container_install_ray():
             return 0
 
         protocol, hash_val = parse_uri(uri)
@@ -370,7 +374,11 @@ class PipPlugin(RuntimeEnvPlugin):
         context: "RuntimeEnvContext",  # noqa: F821
         logger: logging.Logger = default_logger,
     ):
-        if not runtime_env.has_pip():
+        # if the runtime env doesn't have pip, or if runtime env container field has
+        # install ray, we don't need to modify the context.
+        # Because when install ray is True, the pip packages will be installed in container
+        # with default python executable in the container.
+        if not runtime_env.has_pip() or runtime_env.py_container_install_ray():
             return
         # PipPlugin only uses a single URI.
         uri = uris[0]

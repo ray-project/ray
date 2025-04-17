@@ -1,5 +1,5 @@
 import sys
-
+import base64
 import pytest
 
 import ray
@@ -10,7 +10,8 @@ from ray._private.test_utils import (
     wait_for_condition,
     check_logs_by_keyword,
 )
-from ray._private.utils import get_pyenv_path
+from ray._private.utils import get_pyenv_path, get_ray_whl_dir
+from ray._private.runtime_env.constants import RAY_PODMAN_DEPENDENCIES_INSTALLER_PATH
 
 
 # NOTE(zcin): The actual test code are in python scripts under
@@ -420,6 +421,58 @@ class TestContainerRuntimeEnvCommandLine:
             wait_for_condition(
                 lambda: check_logs_by_keyword(keyword2, log_file_pattern), timeout=10
             )
+
+    @pytest.mark.parametrize(
+        "set_runtime_env_container_use_ray_whl_package",
+        ["true", "false"],
+        indirect=True,
+    )
+    def test_container_command_with_install_ray_or_pip_packages(
+        self,
+        api_version,
+        set_runtime_env_container_use_ray_whl_package,
+        ray_start_regular,
+    ):
+        use_ray_whl_package = set_runtime_env_container_use_ray_whl_package
+        runtime_env = {
+            api_version: {
+                "image": "unknown_image",
+                "install_ray": True,
+            },
+            "pip": ["requests"],
+        }
+
+        a = Counter.options(
+            runtime_env=runtime_env,
+        ).remote()
+        try:
+            ray.get(a.increment.remote(), timeout=1)
+        except (ray.exceptions.RuntimeEnvSetupError, ray.exceptions.GetTimeoutError):
+            # ignore the exception because container mode don't work in common
+            # test environments.
+            pass
+        # Checkout the worker logs to ensure if the cgroup params is set correctly
+        # in the podman command.
+        base64_pip_string = base64.b64encode(
+            json.dumps(runtime_env["pip"]).encode("utf-8")
+        ).decode("utf-8")
+        container_entrypoint_prefix = [
+            "python",
+            f"{RAY_PODMAN_DEPENDENCIES_INSTALLER_PATH}",
+        ]
+        if use_ray_whl_package.lower() == "true":
+            container_entrypoint_prefix.extend(["--whl-dir", get_ray_whl_dir()])
+        else:
+            container_entrypoint_prefix.extend(["--ray-version", ray.__version__])
+        keyword1 = " ".join(container_entrypoint_prefix)
+        keyword2 = f"\--packages {base64_pip_string}"
+        log_file_pattern = "raylet.err"
+        wait_for_condition(
+            lambda: check_logs_by_keyword(keyword1, log_file_pattern), timeout=20
+        )
+        wait_for_condition(
+            lambda: check_logs_by_keyword(keyword2, log_file_pattern), timeout=20
+        )
 
 
 if __name__ == "__main__":

@@ -52,9 +52,17 @@ CONTAINER_ENV_PLACEHOLDER = "$CONTAINER_ENV_PLACEHOLDER"
 RAY_JAVA_JARS_DIRS = "RAY_JAVA_JARS_DIRS"
 
 # Whether podman integrate nydus
-RAY_PODMAN_UES_NYDUS = env_bool("RAY_PODMAN_UES_NYDUS", True)
+RAY_PODMAN_UES_NYDUS = env_bool("RAY_PODMAN_UES_NYDUS", False)
 
 # Default mount points for Podman containers.
 # The format allows "{source_path}:{target_path}" for bind mounts
 # Entries are separated by semicolons (e.g., "A:A;B:C").
 RAY_PODMAN_DEFAULT_MOUNT_POINTS = os.environ.get("RAY_PODMAN_DEFAULT_MOUNT_POINTS", "")
+
+# Dependencies installer script path in container, default is `/tmp/scripts/dependencies_installer.py`
+RAY_PODMAN_DEPENDENCIES_INSTALLER_PATH = os.environ.get(
+    "RAY_DEPENDENCIES_INSTALLER_PATH", "/tmp/scripts/dependencies_installer.py"
+)
+
+# Whether to use ray whl when `install_ray` is True in the container.
+RAY_PODMAN_UES_WHL_PACKAGE = env_bool("RAY_PODMAN_UES_WHL_PACKAGE", False)

@@ -14,6 +14,9 @@ from ray._private.utils import (
     try_parse_default_mount_points,
     try_parse_container_run_options,
     try_update_runtime_env_vars,
+    get_ray_whl_dir,
+    get_dependencies_installer_path,
+    try_generate_entrypoint_args,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -55,6 +58,10 @@ def _modify_container_context_impl(
 
     # Use the user's python executable if py_executable is not None.
     py_executable = container_option.get("py_executable")
+    container_install_ray = runtime_env.py_container_install_ray()
+    podman_dependencies_installer_path = (
+        runtime_env_constants.RAY_PODMAN_DEPENDENCIES_INSTALLER_PATH
+    )
 
     container_driver = "podman"
     # todo add cgroup config
@@ -93,6 +100,18 @@ def _modify_container_context_impl(
         container_to_host_mount_dict
     )
 
+    pip_packages = runtime_env.pip_config().get("packages", [])
+    # NOTE(Jacky): When `install_ray` is True, generate `entrypoint_args` to install dependencies before starting the worker.
+    # These arguments will:
+    # 1. Use the Python interpreter inside the container to install the specified version of `ant-ray`.
+    # 2. Install additional user-specified Python packages via `pip_packages`.
+    # Example command structure:
+    #   python /tmp/scripts/dependencies_installer.py --ray-version=2.0.0 --packages "{base64_pip_packages}"
+    # The generated `entrypoint_args` are prefixed to the container's entrypoint, ensuring dependencies are installed
+    # before the worker process starts.
+    if container_install_ray:
+        entrypoint_args = try_generate_entrypoint_args(pip_packages, context)
+        context.container["entrypoint_prefix"] = entrypoint_args
     # we need 'sudo' and 'admin', mount logs
     container_command = ["sudo", "-E"] + container_command
     container_command.append("-u")
@@ -109,28 +128,36 @@ def _modify_container_context_impl(
         container_command.append(os.getcwd())
     container_command.append("--cap-add=AUDIT_WRITE")
 
-    # mount ray package site path
-    host_site_packages_path = get_ray_site_packages_path()
-
-    # If the user specifies a `py_executable` in the container
-    # and it starts with the ${PYENV_ROOT} environment variable (indicating a PYENV-managed executable),
-    # we define `redirected_pyenv_folder` as `ray/.pyenv`.
-    # This ensures that all .pyenv-related paths are redirected
-    # to avoid overwriting the container's internal PYENV environment
-    # (which defaults to `/home/admin/.pyenv`).
     redirected_pyenv_folder = None
-    if py_executable and py_executable.startswith(get_pyenv_path()):
-        redirected_pyenv_folder = "ray/.pyenv"
+    if container_install_ray:
+        container_to_host_mount_dict[
+            podman_dependencies_installer_path
+        ] = get_dependencies_installer_path()
+        if runtime_env_constants.RAY_PODMAN_UES_WHL_PACKAGE:
+            container_to_host_mount_dict[get_ray_whl_dir()] = get_ray_whl_dir()
 
-    host_pyenv_path = get_pyenv_path()
-    container_pyenv_path = host_pyenv_path
-    if redirected_pyenv_folder:
-        container_pyenv_path = host_pyenv_path.replace(
-            ".pyenv", redirected_pyenv_folder
-        )
-        context.container[redirected_pyenv_folder] = redirected_pyenv_folder
-    container_to_host_mount_dict[container_pyenv_path] = host_pyenv_path
-    container_to_host_mount_dict[host_site_packages_path] = host_site_packages_path
+    else:
+        # mount ray package site path
+        host_site_packages_path = get_ray_site_packages_path()
+
+        # If the user specifies a `py_executable` in the container
+        # and it starts with the ${PYENV_ROOT} environment variable (indicating a PYENV-managed executable),
+        # we define `redirected_pyenv_folder` as `ray/.pyenv`.
+        # This ensures that all .pyenv-related paths are redirected
+        # to avoid overwriting the container's internal PYENV environment
+        # (which defaults to `/home/admin/.pyenv`).
+        if py_executable and py_executable.startswith(get_pyenv_path()):
+            redirected_pyenv_folder = "ray/.pyenv"
+
+        host_pyenv_path = get_pyenv_path()
+        container_pyenv_path = host_pyenv_path
+        if redirected_pyenv_folder:
+            container_pyenv_path = host_pyenv_path.replace(
+                ".pyenv", redirected_pyenv_folder
+            )
+            context.container[redirected_pyenv_folder] = redirected_pyenv_folder
+        container_to_host_mount_dict[container_pyenv_path] = host_pyenv_path
+        container_to_host_mount_dict[host_site_packages_path] = host_site_packages_path
 
     # For loop `run options` and append each item to the command line of podman
     run_options = container_option.get("run_options")

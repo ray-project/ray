@@ -563,3 +563,9 @@ START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
 
 # The default pyenv root
 RAY_DEFAULT_PYENV_ROOT = "/home/admin/.pyenv"
+
+# Retrieve the directory path from the environment variable "RAY_WHL_DIR".
+# If "RAY_WHL_DIR" is not set in the environment, default to "/home/admin/build/whl".
+# This directory might be used for storing or accessing wheel (.whl) files for Ray.
+# Using the environment variable allows customization based on different deployment environments or settings.
+RAY_WHL_DIR = os.environ.get("RAY_WHL_DIR", "/home/admin/build/whl")

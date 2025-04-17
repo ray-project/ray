@@ -1496,9 +1496,17 @@ def random_ascii_file(request):
         yield fp
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def set_runtime_env_container_default_mount_points(request):
     default_mount_points = getattr(request, "param", "0")
     os.environ["RAY_PODMAN_DEFAULT_MOUNT_POINTS"] = default_mount_points
     yield default_mount_points
     os.environ.pop("RAY_PODMAN_DEFAULT_MOUNT_POINTS", None)
+
+
+@pytest.fixture(scope="function")
+def set_runtime_env_container_use_ray_whl_package(request):
+    use_ray_whl_package = getattr(request, "param", "0")
+    os.environ["RAY_PODMAN_UES_WHL_PACKAGE"] = use_ray_whl_package
+    yield use_ray_whl_package
+    os.environ.pop("RAY_PODMAN_UES_WHL_PACKAGE", None)
