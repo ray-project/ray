@@ -62,8 +62,6 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   /// On client connect/reconnect, find all the TASK that's known to be
   /// executed out of order. This ALWAYS RETURNS empty.
   std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;
-  /// On client connected, noop.
-  void OnClientConnected() override;
   /// Get the sequence number of the task to send.
   /// This is ignored by the receivier but only for debugging purpose.
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;

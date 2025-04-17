@@ -1,0 +1,75 @@
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+
+# Ray native pubsub module.
+ray_cc_library(
+    name = "publisher_lib",
+    srcs = ["publisher.cc"],
+    hdrs = ["publisher.h"],
+    deps = [
+        "//:pubsub_rpc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+# Subscriber module
+ray_cc_library(
+    name = "subscriber_lib",
+    srcs = ["subscriber.cc"],
+    hdrs = ["subscriber.h"],
+    deps = [
+        "//:pubsub_rpc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+# Combined PubSub Library
+ray_cc_library(
+    name = "pubsub_lib",
+    deps = [
+        ":publisher_lib",
+        ":subscriber_lib",
+    ],
+)
+
+ray_cc_test(
+    name = "pubsub_integration_test",
+    size = "small",
+    srcs = ["test/integration_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//:pubsub_cc_grpc",
+        ":pubsub_lib",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "publisher_test",
+    size = "small",
+    srcs = ["test/publisher_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":pubsub_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "subscriber_test",
+    size = "small",
+    srcs = [
+        "test/subscriber_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":pubsub_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

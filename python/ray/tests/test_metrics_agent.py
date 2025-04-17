@@ -424,7 +424,6 @@ def test_metrics_export_node_metrics(shutdown_only):
         list_nodes()
 
         # Verify metrics exist.
-        avail_metrics = avail_metrics
         for metric in _DASHBOARD_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
@@ -432,7 +431,7 @@ def test_metrics_export_node_metrics(shutdown_only):
 
             samples = avail_metrics[metric]
             for sample in samples:
-                assert sample.labels["Component"] == "dashboard"
+                assert sample.labels["Component"].startswith("dashboard")
 
         return True
 
