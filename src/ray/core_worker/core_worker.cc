@@ -868,8 +868,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       gcs_client_, *actor_task_submitter_, *reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
-      object_lookup_fn;
-
   object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                const ObjectLookupCallback &callback) {
     std::vector<rpc::Address> locations;
@@ -889,7 +887,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             << "Object location is dead, not using it in the recovery of object";
       }
     }
-    callback(object_id, locations);
+        callback(object_id, std::move(locations));
     return Status::OK();
   };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
@@ -903,9 +901,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
         RAY_LOG(DEBUG).WithField(object_id)
             << "Failed to recover object due to " << rpc::ErrorType_Name(reason);
-        // NOTE(swang): Failure here means the local raylet is probably dead.
-        // We do not assert failure though, because we should throw the object
-        // error to the application.
+        // We should throw the object error to the application.
         RAY_UNUSED(Put(RayObject(reason),
                        /*contained_object_ids=*/{},
                        object_id,
@@ -945,8 +941,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         if (!lost_objects.empty()) {
           // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
           RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
-                         << " lost objects by resubmitting their tasks. To disable "
-                         << "object reconstruction, set @ray.remote(max_retries=0).";
+                         << " lost objects by resubmitting their tasks or setting a new "
+                            "primary location from existing copies. To disable object "
+                            "reconstruction, set @ray.remote(max_retries=0).";
           // Delete the objects from the in-memory store to indicate that they are not
           // available. The object recovery manager will guarantee that a new value
           // will eventually be stored for the objects (either an
