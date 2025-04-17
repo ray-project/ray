@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Iterable, Iterator, Optional, ContextManager
+from typing import Iterator, Optional, ContextManager
 
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator

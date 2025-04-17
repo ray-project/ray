@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, List, Optional
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
