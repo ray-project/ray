@@ -7,6 +7,7 @@ import aiohttp  # noqa: F401
 import aiohttp.web  # noqa: F401
 import aiohttp_cors  # noqa: F401
 import grpc  # noqa: F401
+import tzlocal  # noqa: F401
 
 # These checks have to come first because aiohttp looks
 # for opencensus, too, and raises a different error otherwise.
