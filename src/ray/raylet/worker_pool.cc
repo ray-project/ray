@@ -1294,7 +1294,8 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   // pop_worker_request: job_id: ??????, root_detached_actor_id: A
 
   RAY_LOG(DEBUG) << "request root_detached_actor_id: " << pop_worker_request.root_detached_actor_id;
-  RAY_LOG(DEBUG) << "worker root_detached_actor_id: " << worker.GetRootDetachedActorId();
+  RAY_LOG(DEBUG) << "worker root_detached_actor_id: "
+                 << worker.GetRootDetachedActorId();
   RAY_LOG(DEBUG) << "request job_id: " << pop_worker_request.job_id;
   RAY_LOG(DEBUG) << "worker job_id: " << worker.GetAssignedJobId();
 
@@ -1321,7 +1322,8 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   }
   // Skip workers with a mismatched runtime_env.
   // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
-  // worker with a runtime_env because the task is expected to run in the base environment.
+  // worker with a runtime_env because the task is expected to run in the base
+  // environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash) {
     return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
@@ -1464,8 +1466,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   };
   auto &state = GetStateForLanguage(pop_worker_request.language);
   auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
-                                     idle_of_all_languages_.rend(),
-                                     worker_fits_for_task_fn);
+                                idle_of_all_languages_.rend(),
+                                worker_fits_for_task_fn);
   if (worker_it == idle_of_all_languages_.rend()) {
     RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
                    << debug_string(skip_reason_count);
