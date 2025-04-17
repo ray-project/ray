@@ -479,6 +479,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
+  RAY_LOG(ERROR) << "Start worker process for job " << job_id;
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -1293,12 +1294,13 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
                  worker.GetRootDetachedActorId())) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
-  // Only compare job id for actors not rooted to a detached actor.
-  if (pop_worker_request.root_detached_actor_id.IsNil()) {
-    if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
-      return WorkerUnfitForTaskReason::ROOT_MISMATCH;
-    }
+
+  // XXX.
+  const auto worker_job_id = worker.GetAssignedJobId();
+  if (!worker_job_id.IsNil() && !IdMatches(pop_worker_request.job_id, worker_job_id)) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
+
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
   if (!OptionalMatches(pop_worker_request.is_gpu, worker.GetIsGpu())) {
@@ -1309,8 +1311,9 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   if (!OptionalMatches(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  // TODO(clarng): consider re-using worker that has runtime envionrment
-  // if the task doesn't require one.
+  // Skip workers with a mismatched runtime_env.
+  // Even if the task doesn't have a runtime_env specified, we cannot schedule it to a
+  // worker with a runtime_env because the task is expected to run in the base environment.
   if (worker.GetRuntimeEnvHash() != pop_worker_request.runtime_env_hash) {
     return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
@@ -1452,21 +1455,28 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     return false;
   };
   auto &state = GetStateForLanguage(pop_worker_request.language);
-  auto good_worker_it = std::find_if(idle_of_all_languages_.rbegin(),
+  auto worker_it = std::find_if(idle_of_all_languages_.rbegin(),
                                      idle_of_all_languages_.rend(),
                                      worker_fits_for_task_fn);
-  if (good_worker_it != idle_of_all_languages_.rend()) {
-    state.idle.erase(good_worker_it->worker);
-    // We can't erase a reverse_iterator.
-    auto lit = good_worker_it.base();
-    lit--;
-    std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
-    idle_of_all_languages_.erase(lit);
-    return worker;
+  if (worker_it == idle_of_all_languages_.rend()) {
+    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
+                   << debug_string(skip_reason_count);
+    return nullptr;
   }
-  RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
-                 << debug_string(skip_reason_count);
-  return nullptr;
+
+  state.idle.erase(worker_it->worker);
+  // We can't erase a reverse_iterator.
+  auto lit = worker_it.base();
+  lit--;
+  std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
+  idle_of_all_languages_.erase(lit);
+
+  // Assigned workers should always match the request's job_id
+  // *except* if the task originates from a detached actor.
+  RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+            worker->GetAssignedJobId() == pop_worker_request.job_id ||
+            !pop_worker_request.root_detached_actor_id.IsNil());
+  return worker;
 }
 
 void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
@@ -1477,8 +1487,6 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
     StartNewWorker(pop_worker_request);
     return;
   }
-  RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
-            worker->GetAssignedJobId() == pop_worker_request->job_id);
   stats::NumWorkersStartedFromCache.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
 }
