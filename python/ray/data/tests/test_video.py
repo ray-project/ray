@@ -6,10 +6,10 @@ import ray
 
 def test_read_videos():
     uri = "s3://anonymous@ray-example-data/basketball.mp4"
-    ds = ray.data.read_videos(uri)
+    ds = ray.data.read_videos(uri, include_timestamps=True)
 
     assert ds.count() == 333
-    assert ds.schema().names == ["frame", "frame_index"]
+    assert ds.schema().names == ["frame", "frame_index", "frame_timestamp"]
 
     frame_indices = ds.select_columns(["frame_index"]).take_all()
     assert sorted(frame_indices, key=lambda item: item["frame_index"]) == [
