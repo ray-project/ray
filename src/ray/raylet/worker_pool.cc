@@ -479,7 +479,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
-  RAY_LOG(ERROR) << "Start worker process for job " << job_id;
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -1290,6 +1289,15 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
     return WorkerUnfitForTaskReason::OTHERS;
   }
 
+  // A: detached actor,  job_id: 010000
+  // workers:            job_id: 020000, root_detached_actor_id: ?????
+  // pop_worker_request: job_id: ??????, root_detached_actor_id: A
+
+  RAY_LOG(ERROR) << "request root_detached_actor_id: " << pop_worker_request.root_detached_actor_id;
+  RAY_LOG(ERROR) << "worker root_detached_actor_id: " << worker.GetRootDetachedActorId();
+  RAY_LOG(ERROR) << "request job_id: " << pop_worker_request.job_id;
+  RAY_LOG(ERROR) << "worker job_id: " << worker.GetAssignedJobId();
+
   if (!IdMatches(pop_worker_request.root_detached_actor_id,
                  worker.GetRootDetachedActorId())) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
@@ -1297,7 +1305,7 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
   // XXX.
   const auto worker_job_id = worker.GetAssignedJobId();
-  if (!worker_job_id.IsNil() && !IdMatches(pop_worker_request.job_id, worker_job_id)) {
+  if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
@@ -1487,6 +1495,8 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
     StartNewWorker(pop_worker_request);
     return;
   }
+  RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
+            worker->GetAssignedJobId() == pop_worker_request->job_id);
   stats::NumWorkersStartedFromCache.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
 }
