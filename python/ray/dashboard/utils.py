@@ -310,29 +310,46 @@ def get_all_modules(module_type):
     """
     Get all importable modules that are subclass of a given module type.
     """
-    logger.info(f"Get all modules by type: {module_type.__name__}")
-    import ray.dashboard.modules
 
+    def try_to_import_modules(pkg_path, should_only_load_minimal_modules):
+        try:
+            module = importlib.import_module(pkg_path)
+        except ModuleNotFoundError:
+            logger.info(
+                f"Package {pkg_path} cannot be imported."
+                "Use `pip install 'ray[default]'` for the full "
+                f"dashboard functionality."
+            )
+            return
+
+        for module_loader, name, ispkg in pkgutil.walk_packages(
+            module.__path__, module.__name__ + "."
+        ):
+            try:
+                importlib.import_module(name)
+            except ModuleNotFoundError as e:
+                logger.info(
+                    f"Module {name} cannot be loaded because "
+                    "we cannot import all dependencies. Install this module using "
+                    "`pip install 'ray[default]'` for the full "
+                    f"dashboard functionality. Error: {e}"
+                )
+                if not should_only_load_minimal_modules:
+                    logger.info(
+                        "Although `pip install 'ray[default]'` is downloaded, "
+                        "module couldn't be imported`"
+                    )
+                    raise e
+
+    logger.info(f"Get all modules by type: {module_type.__name__}")
     should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
 
-    for module_loader, name, ispkg in pkgutil.walk_packages(
-        ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
-    ):
-        try:
-            importlib.import_module(name)
-        except ModuleNotFoundError as e:
-            logger.info(
-                f"Module {name} cannot be loaded because "
-                "we cannot import all dependencies. Install this module using "
-                "`pip install 'ray[default]'` for the full "
-                f"dashboard functionality. Error: {e}"
-            )
-            if not should_only_load_minimal_modules:
-                logger.info(
-                    "Although `pip install 'ray[default]'` is downloaded, "
-                    "module couldn't be imported`"
-                )
-                raise e
+    pkg_paths = [
+        "ray.dashboard.modules",
+        "ray.train.dashboard",
+    ]
+    for pkg_path in pkg_paths:
+        try_to_import_modules(pkg_path, should_only_load_minimal_modules)
 
     imported_modules = []
     # module_type.__subclasses__() should contain modules that
