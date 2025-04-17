@@ -7,16 +7,14 @@ from .ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
 
 
-class OutputIterator(Iterator[RefBundle]):
+class OutputIterator(Iterator[RefBundle], ABC):
     """Iterator used to access the output of an Executor execution.
 
     This is a blocking iterator. Datasets guarantees that all its iterators are
     thread-safe (i.e., multiple threads can block on them at the same time).
     """
 
-    def __init__(self, base: Iterable[RefBundle]):
-        self._it = iter(base)
-
+    @abstractmethod
     def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
         """Can be used to pull outputs by a specified output index.
 
@@ -30,9 +28,7 @@ class OutputIterator(Iterator[RefBundle]):
         Raises:
             StopIteration if there are no more outputs to return.
         """
-        if output_split_idx is not None:
-            raise NotImplementedError()
-        return next(self._it)
+        ...
 
     def __next__(self) -> RefBundle:
         return self.get_next()
