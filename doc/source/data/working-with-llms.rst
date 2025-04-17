@@ -271,7 +271,7 @@ Ray Data LLM provides the following utility to help uploading models to remote o
         --model-source local/path/to/model \
         --bucket-uri s3://my-bucket/path/to/model_name
 
-And later you can use remote object store URI as :attr:`model_source <ray.data.llm.vLLMEngineProcessorConfig.model_source>` in the config.
+And later you can use remote object store URI as `model_source` in the config.
 
 .. testcode::
 
