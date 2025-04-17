@@ -156,31 +156,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self.start()
         self._execution_started = True
 
-        class StreamIterator(OutputIterator):
-            def __init__(self, executor: Executor):
-                self._executor = executor
-
-            def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
-                try:
-                    item = self._executor._output_node.get_output_blocking(
-                        output_split_idx
-                    )
-                    if self._executor._global_info:
-                        self._executor._global_info.update(
-                            item.num_rows(), dag.num_output_rows_total()
-                        )
-                    return item
-                # Have to be BaseException to catch ``KeyboardInterrupt``
-                except BaseException as e:
-                    self._executor.shutdown(
-                        e if not isinstance(e, StopIteration) else None
-                    )
-                    raise
-
-            def __del__(self):
-                self._executor.shutdown()
-
-        return StreamIterator(self)
+        return _ClosingIterator(self)
 
     def __del__(self):
         self.shutdown()
@@ -527,3 +503,36 @@ def _log_op_metrics(topology: Topology) -> None:
     for op in topology:
         log_str += f"{op.name}: {op.metrics.as_dict()}\n"
     logger.debug(log_str)
+
+
+class _ClosingIterator(OutputIterator):
+    """Iterator automatically shutting down executor upon exhausting the
+    iterable sequence.
+
+    NOTE: If this iterator isn't fully exhausted, executor still have to
+          be closed manually by the caller!
+    """
+
+    def __init__(self, executor: Executor):
+        self._executor = executor
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        try:
+            item = self._executor._output_node.get_output_blocking(
+                output_split_idx
+            )
+            if self._executor._global_info:
+                self._executor._global_info.update(
+                    item.num_rows(), dag.num_output_rows_total()
+                )
+            return item
+
+        # Have to be BaseException to catch ``KeyboardInterrupt``
+        except BaseException as e:
+            self._executor.shutdown(
+                e if not isinstance(e, StopIteration) else None
+            )
+            raise
+
+    def __del__(self):
+        self._executor.shutdown()
