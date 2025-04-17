@@ -57,6 +57,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
 logger = logging.getLogger(__name__)
@@ -445,10 +446,8 @@ def debug(address: str, verbose: bool):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
-    "of available system memory capped by "
-    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
-    "but can be set higher.",
+    "By default, this is 30% of available system memory capped by "
+    "the shm size and 200G but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -662,6 +661,46 @@ Windows powershell users need additional escaping:
     "Only one log monitor should be started per physical host to avoid log "
     "duplication on the driver process.",
 )
+@click.option(
+    "--enable-resource-isolation",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Enable resource isolation through cgroupv2 by reserving memory and cpu "
+    "resources for ray system processes. To use, only cgroupv2 (not cgroupv1) must "
+    "be enabled with read and write permissions for the raylet. Cgroup memory and "
+    "cpu controllers must also be enabled.",
+)
+@click.option(
+    "--system-reserved-cpu",
+    required=False,
+    type=float,
+    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
+    "fractional i.e. 0.5 means half a cpu core. "
+    "By default, the min of 20% and 1 core will be reserved."
+    "Must be >= 0.5 and < total number of available cores. "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--system-reserved-memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to reserve for ray system processes. "
+    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
+    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--cgroup-path",
+    required=False,
+    hidden=True,
+    type=str,
+    help="The path for the cgroup the raylet should use to enforce resource isolation. "
+    "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
+    "The raylet must have read/write permissions to this path. "
+    "Cgroup memory and cpu controllers be enabled for this cgroup. "
+    "This option only works if --enable-resource-isolation is set.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -711,10 +750,12 @@ def start(
     labels,
     labels_file,
     include_log_monitor,
+    enable_resource_isolation,
+    system_reserved_cpu,
+    system_reserved_memory,
+    cgroup_path,
 ):
     """Start Ray processes manually on the local machine."""
-    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
-    # all features implemented.
 
     if gcs_server_port is not None:
         cli_logger.error(
@@ -790,6 +831,13 @@ def start(
         )
         temp_dir = None
 
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+
     redirect_output = None if not no_redirect_output else True
 
     # no  client, no  port -> ok
@@ -847,8 +895,8 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
+        resource_isolation_config=resource_isolation_config,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
