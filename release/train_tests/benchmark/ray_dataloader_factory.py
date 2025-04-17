@@ -14,13 +14,14 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
 
-        assert isinstance(self.get_dataloader_config(), RayDataConfig), type(
-            self.get_dataloader_config()
-        )
+        dataloader_config = self.get_dataloader_config()
+        assert isinstance(dataloader_config, RayDataConfig), type(dataloader_config)
 
         # Configure Ray Data settings.
         data_context = ray.data.DataContext.get_current()
-        data_context.enable_operator_progress_bars = False
+        data_context.enable_operator_progress_bars = (
+            dataloader_config.enable_operator_progress_bars
+        )
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -55,17 +56,21 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 ),
                 collate_fn=self.collate_fn,
                 prefetch_batches=dataloader_config.prefetch_batches,
+                drop_last=True,
             )
         )
 
     def get_val_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
+        ds_iterator = self._ray_ds_iterators["valid"] = ray.train.get_dataset_shard(
+            "valid"
+        )
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
                 prefetch_batches=dataloader_config.prefetch_batches,
+                drop_last=True,
             )
         )
 

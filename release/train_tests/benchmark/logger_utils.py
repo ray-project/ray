@@ -42,7 +42,7 @@ class ContextLoggerAdapter(logging.LoggerAdapter):
 
             # Create the prefix with class and function context
             prefix = (
-                f"[{class_name.__name__}/{func_name}]"
+                f"[{class_name.__name__}.{func_name}]"
                 if class_name
                 else f"[{func_name}]"
             )
