@@ -356,6 +356,7 @@ class Stats:
         self._set_values(values)
 
         # Shift historic reduced valued by one in our hist-tuple.
+        # But don't ever put tensors into the history.
         if not torch or not torch.is_tensor(reduced):
             self._hist.append(reduced)
 
