@@ -191,6 +191,7 @@ class ActorPoolMapOperator(MapOperator):
         self._submit_metadata_task(
             res_ref,
             lambda: _task_done_callback(res_ref),
+            is_actor_task=True,
         )
         return actor, res_ref
 
@@ -245,7 +246,10 @@ class ActorPoolMapOperator(MapOperator):
             from functools import partial
 
             self._submit_data_task(
-                gen, bundle, partial(_task_done_callback, actor_to_return=actor)
+                gen,
+                bundle,
+                is_actor_task=True,
+                task_done_callback=partial(_task_done_callback, actor_to_return=actor),
             )
 
     def _refresh_actor_cls(self):

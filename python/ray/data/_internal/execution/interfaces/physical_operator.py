@@ -32,9 +32,12 @@ class OpTask(ABC):
     def __init__(
         self,
         task_index: int,
+        *,
+        is_actor_task: bool = False,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         self._task_index: int = task_index
+        self._is_actor_task: bool = is_actor_task
         self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
 
     def task_index(self) -> int:
@@ -59,6 +62,8 @@ class DataOpTask(OpTask):
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
+        *,
+        is_actor_task: bool = False,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """
@@ -130,6 +135,8 @@ class MetadataOpTask(OpTask):
         task_index: int,
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
+        *,
+        is_actor_task: bool = False,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """

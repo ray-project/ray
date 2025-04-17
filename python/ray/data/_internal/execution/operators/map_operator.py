@@ -365,6 +365,8 @@ class MapOperator(OneToOneOperator, ABC):
         self,
         gen: ObjectRefGenerator,
         inputs: RefBundle,
+        *,
+        is_actor_task: bool,
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
         """Submit a new data-handling task."""
@@ -423,7 +425,10 @@ class MapOperator(OneToOneOperator, ABC):
         )
 
     def _submit_metadata_task(
-        self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
+        self,
+        result_ref: ObjectRef,
+        task_done_callback: Callable[[], None],
+        is_actor_task: bool,
     ):
         """Submit a new metadata-handling task."""
         # TODO(hchen): Move this to the base PhyscialOperator class.
@@ -435,7 +440,10 @@ class MapOperator(OneToOneOperator, ABC):
             task_done_callback()
 
         self._metadata_tasks[task_index] = MetadataOpTask(
-            task_index, result_ref, _task_done_callback
+            task_index,
+            result_ref,
+            _task_done_callback,
+            is_actor_task=is_actor_task,
         )
 
     def get_active_tasks(self) -> List[OpTask]:
@@ -478,6 +486,8 @@ class MapOperator(OneToOneOperator, ABC):
             tasks: List[OpTask] = list(self._data_tasks.values()) + list(
                 self._metadata_tasks.values()
             )
+
+            force_cancel = not isinstance(ActorPoolMapOperator)
 
             # Interrupt all (still) running tasks immediately
             for task in tasks:
