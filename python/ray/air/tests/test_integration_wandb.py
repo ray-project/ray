@@ -546,6 +546,11 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
 def test_wandb_logger_rank_zero_only(trial, monkeypatch):
     """Test that logging is disabled for non-rank-0 workers when rank_zero_only is True."""
 
+    monkeypatch.setenv(
+        WANDB_ENV_VAR,
+        "abcde",
+    )
+
     mock_session = Mock()
     mock_session.experiment_name = "test_project"
     mock_session.trial_name = "trial_0"
