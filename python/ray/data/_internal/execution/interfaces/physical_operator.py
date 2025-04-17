@@ -47,7 +47,24 @@ class OpTask(ABC):
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or ObjectRefGenerator to wait on."""
-        pass
+        ...
+
+    def _cancel(self, force: bool):
+        object_ref = self.get_waitable()
+
+        # Get generator's `ObjectRef`
+        if isinstance(object_ref, ObjectRefGenerator):
+            object_ref = object_ref._generator_ref
+
+        is_actor_task = not object_ref.task_id().actor_id().is_nil()
+
+        ray.cancel(
+            object_ref,
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
 
 
 class DataOpTask(OpTask):
