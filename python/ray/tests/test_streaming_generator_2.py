@@ -338,6 +338,7 @@ def test_python_object_leak(shutdown_only):
     class AsyncActor:
         def __init__(self):
             self.gc_garbage_len = 0
+            gc.collect()
 
         def get_gc_garbage_len(self):
             return self.gc_garbage_len
@@ -366,6 +367,7 @@ def test_python_object_leak(shutdown_only):
     class A:
         def __init__(self):
             self.gc_garbage_len = 0
+            gc.collect()
 
         def get_gc_garbage_len(self):
             return self.gc_garbage_len
