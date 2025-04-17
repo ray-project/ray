@@ -356,7 +356,8 @@ class Stats:
         self._set_values(values)
 
         # Shift historic reduced valued by one in our hist-tuple.
-        self._hist.append(reduced)
+        if not torch or not torch.is_tensor(reduced):
+            self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
         # (from after the reduction). Also, set `self`'s values to empty.
@@ -563,7 +564,8 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
-    def _numpy_if_necessary(self, values):
+    @staticmethod
+    def _numpy_if_necessary(values):
         # Torch tensor handling. Convert to CPU/numpy first.
         if torch and len(values) > 0 and torch.is_tensor(values[0]):
             # Convert all tensors to numpy values.
@@ -725,16 +727,11 @@ class Stats:
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
+                # Only one item in the
+                if len(values) == 1:
+                    reduced = values[0]
+
+                elif len(values[0].shape) == 0:
                     reduced = values[0]
                 else:
                     reduce_meth = getattr(torch, "nan" + self._reduce_method)
