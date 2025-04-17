@@ -367,7 +367,7 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``.
+You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the :class:`LoraConfig <ray.serve.llm.LoraConfig>`.
 We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
 This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
 
