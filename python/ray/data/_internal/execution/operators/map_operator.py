@@ -474,25 +474,9 @@ class MapOperator(OneToOneOperator, ABC):
         return self._map_transformer
 
     def shutdown(self, force: bool = False):
-        if force:
-            tasks: List[OpTask] = list(self._data_tasks.values()) + list(
-                self._metadata_tasks.values()
-            )
-
-            # Interrupt all (still) running tasks immediately
-            for task in tasks:
-                task._cancel(force=True)
-
-            # Wait for all tasks to get cancelled before returning
-            for task in tasks:
-                try:
-                    ray.get(task.get_waitable())
-                except ray.exceptions.RayError:
-                    # Cancellation either succeeded, or the task might have already
-                    # failed with a different error, or cancellation failed.
-                    # In all cases, we swallow the exception.
-                    pass
-
+        # Invoke base-class sequence
+        super().shutdown(force)
+        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 

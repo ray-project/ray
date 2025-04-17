@@ -490,6 +490,23 @@ class PhysicalOperator(Operator):
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
+        elif force:
+            tasks: List[OpTask] = self.get_active_tasks()
+
+            # Interrupt all (still) running tasks immediately
+            for task in tasks:
+                task._cancel(force=True)
+
+            # Wait for all tasks to get cancelled before returning
+            for task in tasks:
+                try:
+                    ray.get(task.get_waitable())
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task might have already
+                    # failed with a different error, or cancellation failed.
+                    # In all cases, we swallow the exception.
+                    pass
+
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
         object store memory.
