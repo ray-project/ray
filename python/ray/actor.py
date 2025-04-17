@@ -874,7 +874,18 @@ class ActorClass:
                 updated_options["runtime_env"]
             )
 
+        actor = self
+
         class ActorOptionWrapper:
+            def options(self, **options):
+                return actor.options(
+                    **updated_options,
+                    # this goes second because we want to override
+                    **options,
+                )
+
+            options.__doc__ = actor.options.__doc__
+
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
