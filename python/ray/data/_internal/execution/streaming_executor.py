@@ -222,6 +222,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         Results are returned via the output node's outqueue.
         """
+        exc: Optional[Exception] = None
         try:
             # Run scheduling loop until complete.
             while True:
@@ -238,10 +239,10 @@ class StreamingExecutor(Executor, threading.Thread):
                     break
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.mark_finished(e)
+            exc = e
         finally:
             # Signal end of results.
-            self._output_node.mark_finished()
+            self._output_node.mark_finished(exc)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
