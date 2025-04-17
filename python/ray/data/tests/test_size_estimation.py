@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data.block import Block
 from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
