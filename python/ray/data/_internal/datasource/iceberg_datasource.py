@@ -8,6 +8,8 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+from packaging import version
+
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -34,21 +36,34 @@ def _get_read_task(
     limit: Optional[int],
     schema: "Schema",
 ) -> Iterable[Block]:
+    import pyiceberg
     from pyiceberg.io import pyarrow as pyi_pa_io
 
     # Use the PyIceberg API to read only a single task (specifically, a
     # FileScanTask) - note that this is not as simple as reading a single
     # parquet file, as there might be delete files, etc. associated, so we
     # must use the PyIceberg API for the projection.
-    yield pyi_pa_io.project_table(
-        tasks=tasks,
-        table_metadata=table_metadata,
-        io=table_io,
-        row_filter=row_filter,
-        projected_schema=schema,
-        case_sensitive=case_sensitive,
-        limit=limit,
-    )
+    if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
+        # Use ArrowScan for pyiceberg versions 0.9.0 and above
+        yield pyi_pa_io.ArrowScan(
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        ).to_table(tasks=tasks)
+    else:
+        # Fallback to project_table for pyiceberg versions prior to 0.9.0
+        yield pyi_pa_io.project_table(
+            tasks=tasks,
+            table_metadata=table_metadata,
+            io=table_io,
+            row_filter=row_filter,
+            projected_schema=schema,
+            case_sensitive=case_sensitive,
+            limit=limit,
+        )
 
 
 @DeveloperAPI
