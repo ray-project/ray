@@ -169,7 +169,8 @@ def test_callback_fail(ray_instance):
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
 
-    actor_def = ray.serve._private.controller.ServeController
+    serve_controller = ray.serve._private.controller.ServeController
+    actor_def = ray.actor._make_actor(serve_controller, {})
     handle = actor_def.remote(
         http_options=HTTPOptions(),
         global_logging_config=LoggingConfig(),
