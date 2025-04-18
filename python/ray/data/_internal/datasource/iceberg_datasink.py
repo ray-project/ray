@@ -11,6 +11,7 @@ from ray.data.block import BlockAccessor, Block
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.datasource.datasink import WriteResult
 import uuid
+from packaging import version
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -85,7 +86,15 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def on_write_start(self) -> None:
         """Prepare for the transaction"""
-        from pyiceberg.table import PropertyUtil, TableProperties
+        import pyiceberg
+        from pyiceberg.table import TableProperties
+
+        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
+            from pyiceberg.utils.properties import property_as_bool
+        else:
+            from pyiceberg.table import PropertyUtil
+
+            property_as_bool = PropertyUtil.property_as_bool
 
         catalog = self._get_catalog()
         table = catalog.load_table(self.table_identifier)
@@ -103,7 +112,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
                 f"Not all partition types are supported for writes. Following partitions cannot be written using pyarrow: {unsupported_partitions}."
             )
 
-        self._manifest_merge_enabled = PropertyUtil.property_as_bool(
+        self._manifest_merge_enabled = property_as_bool(
             self._table_metadata.properties,
             TableProperties.MANIFEST_MERGE_ENABLED,
             TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
