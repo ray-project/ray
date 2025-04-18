@@ -131,7 +131,9 @@ class SubprocessModule(abc.ABC):
 
         module_name = self.__class__.__name__
         if sys.platform == "win32":
-            named_pipe_path = get_named_pipe_path(module_name)
+            named_pipe_path = get_named_pipe_path(
+                module_name, self._config.session_name
+            )
             site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
             logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:

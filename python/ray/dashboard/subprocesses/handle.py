@@ -147,7 +147,7 @@ class SubprocessModuleHandle:
 
         module_name = self.module_cls.__name__
         self.http_client_session = get_http_session_to_module(
-            module_name, self.config.socket_dir
+            module_name, self.config.socket_dir, self.config.session_name
         )
 
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
