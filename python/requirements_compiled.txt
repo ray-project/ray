@@ -384,7 +384,7 @@ datasets==2.19.1
     #   -r python/requirements/ml/train-requirements.txt
     #   evaluate
     #   mosaicml
-debugpy==1.8.0
+debugpy==1.8.14
     # via ipykernel
 decorator==5.1.1
     # via

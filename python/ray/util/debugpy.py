@@ -20,9 +20,9 @@ def _try_import_debugpy():
         return debugpy
     except (ModuleNotFoundError, ImportError):
         log.error(
-            "Module 'debugpy>=1.8.0' cannot be loaded. "
-            "Ray Debugpy Debugger will not work without 'debugpy>=1.8.0' installed. "
-            "Install this module using 'pip install debugpy==1.8.0' "
+            "Module 'debugpy>=1.8.14' cannot be loaded. "
+            "Ray Debugpy Debugger will not work without 'debugpy>=1.8.14' installed. "
+            "Install this module using 'pip install debugpy==1.8.14' "
         )
         return None
 
