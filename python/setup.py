@@ -377,7 +377,6 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
