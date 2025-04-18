@@ -241,14 +241,34 @@ class ClickHouseDatasink(Datasink):
 
     def _table_exists(self, client) -> bool:
         try:
-            check_query = self._CHECK_TABLE_EXISTS_TEMPLATE.format(
-                table_name=self._table
+            result = client.query(
+                self._CHECK_TABLE_EXISTS_TEMPLATE.format(table_name=self._table)
             )
-            result = client.query(check_query)
-            # The result from 'EXISTS table_name' is [[1]] if it exists,
-            # or [[0]] if it does not.
-            if result and result.result_rows:
-                return result.result_rows[0][0] == 1
+            if result is None:
+                return False
+            for helper in ("scalar", "first_item", "first_value"):
+                _check_import(
+                    self, module="clickhouse_connect", package="clickhouse-connect"
+                )
+                from clickhouse_connect.driver.exceptions import Error as CHError
+
+                if hasattr(result, helper):
+                    try:
+                        return bool(getattr(result, helper)())
+                    except (TypeError, ValueError, CHError) as exc:
+                        # Helper exists but failed – continue probing.
+                        logger.debug(
+                            "Helper %s failed: %s; will try fallbacks", helper, exc
+                        )
+            # Fallback to inspecting common container attributes.
+            for attr in ("result_rows", "rows", "data"):
+                rows = getattr(result, attr, None)
+                if rows:
+                    first = rows[0]
+                    # Unwrap an extra layer if present (i.e. [[1]] or [(1,)])
+                    if isinstance(first, (list, tuple)):
+                        first = first[0] if first else 0
+                    return bool(first)
             return False
         except Exception as e:
             logger.warning(f"Could not verify if table {self._table} exists: {e}")
@@ -284,26 +304,48 @@ class ClickHouseDatasink(Datasink):
         try:
             client = self._init_client()
             table_exists = self._table_exists(client)
+            schema_required = (
+                # Overwrite always needs a schema because it recreates the table
+                self._mode == SinkMode.OVERWRITE
+                # For CREATE or APPEND we need a schema only when the table is
+                # absent and will therefore be created in this call.
+                or (
+                    self._mode in (SinkMode.CREATE, SinkMode.APPEND)
+                    and not table_exists
+                )
+            )
+            if schema_required and self._schema is None:
+                if self._mode == SinkMode.OVERWRITE:
+                    raise ValueError(
+                        f"Overwriting table {self._table} requires a user‑provided schema."
+                    )
+                else:
+                    raise ValueError(
+                        f"Table {self._table} does not exist in mode='{self._mode.name}' and "
+                        "no schema was provided. Cannot create the table without a schema."
+                    )
+            # OVERWRITE MODE
             if self._mode == SinkMode.OVERWRITE:
                 # If we plan to overwrite, drop the table if it exists,
                 # then re-create it using the user-provided schema.
                 if table_exists and self._table_settings.order_by is None:
+                    # Collect existing ORDER BY. This lets us preserve it if the user
+                    # hasn't specified one explicitly.
                     existing_order_by = self._get_existing_order_by(client)
                     if existing_order_by is not None:
                         self._table_settings.order_by = existing_order_by
                         logger.info(
-                            f"Reusing old ORDER BY from overwritten table: {existing_order_by}"
+                            f"Reusing old ORDER BY from overwritten table:"
+                            f" {existing_order_by}"
                         )
+                # DROP and CREATE the table.
                 drop_sql = self._DROP_TABLE_TEMPLATE.format(table_name=self._table)
                 logger.info(f"Mode=OVERWRITE => {drop_sql}")
                 client.command(drop_sql)
                 self._table_dropped = True
-                if self._schema is None:
-                    raise ValueError(
-                        f"Overwriting table {self._table} requires a user-provided schema."
-                    )
                 create_sql = self._generate_create_table_sql(self._schema)
                 client.command(create_sql)
+            # CREATE MODE
             elif self._mode == SinkMode.CREATE:
                 # If table already exists in CREATE mode, fail immediately.
                 if table_exists:
@@ -314,18 +356,12 @@ class ClickHouseDatasink(Datasink):
                     logger.error(msg)
                     raise ValueError(msg)
                 # Otherwise, create it (requires user-provided schema).
-                if not table_exists:
-                    if self._schema is None:
-                        raise ValueError(
-                            f"Table {self._table} does not exist and no schema was provided. "
-                            "Cannot CREATE without a schema."
-                        )
-                    create_sql = self._generate_create_table_sql(self._schema)
-                    client.command(create_sql)
-
+                create_sql = self._generate_create_table_sql(self._schema)
+                client.command(create_sql)
+            # APPEND MODE
             elif self._mode == SinkMode.APPEND:
-                # If table exists, we do not create it. Check for adopting existing order_by.
                 if table_exists:
+                    # Table exists – validate or adopt ORDER BY.
                     existing_order_by = self._get_existing_order_by(client)
                     user_order_by = self._table_settings.order_by
                     if user_order_by is not None:
@@ -337,19 +373,13 @@ class ClickHouseDatasink(Datasink):
                                 f"ORDER BY {user_order_by}. Please drop or overwrite the table, "
                                 f"or use the same ordering."
                             )
-                    else:
-                        if existing_order_by:
-                            self._table_settings.order_by = existing_order_by
-                            logger.info(
-                                f"Reusing existing ORDER BY for table {self._table}: {existing_order_by}"
-                            )
+                    elif existing_order_by:
+                        self._table_settings.order_by = existing_order_by
+                        logger.info(
+                            f"Reusing existing ORDER BY for table {self._table}: {existing_order_by}"
+                        )
                 else:
                     # Table doesn't exist, so create it with user schema
-                    if self._schema is None:
-                        raise ValueError(
-                            f"Table {self._table} does not exist in mode='APPEND' and "
-                            "no schema was provided. Cannot create the table without a schema."
-                        )
                     create_sql = self._generate_create_table_sql(self._schema)
                     client.command(create_sql)
 
@@ -378,20 +408,19 @@ class ClickHouseDatasink(Datasink):
                 row_count = arrow_table.num_rows
                 if self._schema is not None:
                     arrow_table = arrow_table.cast(self._schema, safe=True)
-                if (
-                    self._max_insert_block_rows
-                    and row_count > self._max_insert_block_rows
-                ):
-                    offset = 0
-                    while offset < row_count:
-                        slice_end = min(offset + self._max_insert_block_rows, row_count)
-                        chunk = arrow_table.slice(offset, slice_end - offset)
-                        client.insert_arrow(self._table, chunk)
-                        total_inserted += chunk.num_rows
-                        offset = slice_end
+                if self._max_insert_block_rows is not None:
+                    max_chunk_size = self._max_insert_block_rows
                 else:
-                    client.insert_arrow(self._table, arrow_table)
-                    total_inserted += row_count
+                    # If max_insert_block_rows is not set, insert all rows in one go
+                    max_chunk_size = row_count if row_count > 0 else 1
+                offsets = list(range(0, row_count, max_chunk_size))
+                offsets.append(row_count)
+                for i in range(len(offsets) - 1):
+                    start = offsets[i]
+                    end = offsets[i + 1]
+                    chunk = arrow_table.slice(start, end - start)
+                    client.insert_arrow(self._table, chunk)
+                    total_inserted += chunk.num_rows
         except Exception as e:
             logger.error(f"Failed to write block(s) to table {self._table}: {e}")
             raise e

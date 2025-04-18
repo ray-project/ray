@@ -518,9 +518,11 @@ class TestClickHouseDatasink:
             "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
         ):
             datasink.on_write_start()
+            # Build an empty table: 0 rows
             empty_table = pa.Table.from_batches([], schema=schema)
             datasink.write([empty_table], ctx=None)
-            mock_clickhouse_sink_client.insert_arrow.assert_called()
+            # Since we're skipping empty inserts now, we expect 0 calls:
+            mock_clickhouse_sink_client.insert_arrow.assert_not_called()
 
     @pytest.mark.parametrize(
         "ddl_str, expected_order_by",
