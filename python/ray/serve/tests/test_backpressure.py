@@ -12,6 +12,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 
 
 def test_handle_backpressure(serve_instance):
@@ -157,6 +159,60 @@ def test_model_composition_backpressure(serve_instance):
             self.child = child
 
         async def __call__(self):
+            return await self.child.remote()
+
+    def send_request():
+        return requests.get("http://localhost:8000/")
+
+    serve.run(Parent.bind(child=Child.bind()))
+    with ThreadPoolExecutor(max_workers=3) as exc:
+        # Send first request, wait for it to be blocked while executing.
+        executing_fut = exc.submit(send_request)
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+        done, _ = wait([executing_fut], timeout=0.1, return_when=FIRST_COMPLETED)
+        assert len(done) == 0
+
+        # Send second request, it should get queued.
+        queued_fut = exc.submit(send_request)
+        done, _ = wait(
+            [executing_fut, queued_fut], timeout=0.1, return_when=FIRST_COMPLETED
+        )
+        assert len(done) == 0
+
+        # Send third request, it should get rejected.
+        rejected_fut = exc.submit(send_request)
+        assert rejected_fut.result().status_code == 503
+
+        # Send signal, check the two requests succeed.
+        ray.get(signal_actor.send.remote(clear=False))
+        assert executing_fut.result().status_code == 200
+        assert executing_fut.result().text == "ok"
+        assert queued_fut.result().status_code == 200
+        assert queued_fut.result().text == "ok"
+
+    ray.get(signal_actor.send.remote(clear=True))
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
+
+def test_model_composition_backpressure_with_fastapi(serve_instance):
+    signal_actor = SignalActor.remote()
+
+    app = FastAPI()
+
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
+    class Child:
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return PlainTextResponse("ok")
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        @app.get("/")
+        async def f1(self):
             return await self.child.remote()
 
     def send_request():
