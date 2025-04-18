@@ -20,16 +20,16 @@ from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions, is_null
+from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
-    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -180,6 +180,13 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     def to_pylist(self) -> List[Any]:
         return self._column.to_list()
 
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """NOTE: Unlike Arrow, specifying `zero_copy_only=True` isn't a guarantee
+        that no copy will be made
+        """
+
+        return self._column.to_numpy(copy=not zero_copy_only)
+
     def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
         return self.to_pylist()
 
@@ -254,18 +261,10 @@ class PandasBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.columns
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
-
-        table = self._table.copy()
-        table[name] = data
-        return table
+        return self._table.assign(**{name: value})
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
@@ -541,7 +540,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(

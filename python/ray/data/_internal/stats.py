@@ -248,6 +248,14 @@ class _StatsActor:
             )
         )
 
+        # Actor related metrics
+        self.execution_metrics_actors = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
@@ -303,6 +311,11 @@ class _StatsActor:
         self.data_operator_estimated_total_rows = Gauge(
             "data_operator_estimated_total_rows",
             description="Total work units in rows for operator",
+            tag_keys=operator_tags,
+        )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
             tag_keys=operator_tags,
         )
         self.data_operator_state = Gauge(
@@ -418,6 +431,9 @@ class _StatsActor:
             ) in self.execution_metrics_obj_store_memory.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
+            for field_name, prom_metric in self.execution_metrics_actors.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
@@ -476,6 +492,7 @@ class _StatsActor:
                     "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
@@ -515,6 +532,9 @@ class _StatsActor:
             )
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
             )
 
             # Get state code directly from enum
@@ -1603,7 +1623,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1613,7 +1633,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),

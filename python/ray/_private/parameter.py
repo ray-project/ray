@@ -3,10 +3,10 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import (
-    validate_node_labels,
-    check_ray_client_dependencies_installed,
-)
+
+from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._private.label_utils import validate_node_labels
+from ray._private.utils import check_ray_client_dependencies_installed
 
 
 logger = logging.getLogger(__name__)
@@ -92,9 +92,6 @@ class RayParams:
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
             Defaults to 52365.
-        dashboard_grpc_port: The port for the dashboard head process to listen
-            for gRPC on.
-            Defaults to random available port.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
             Defaults to random available port.
@@ -130,9 +127,8 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
-        enable_physical_mode: Whether physical mode is enabled, which applies
-            constraint to tasks' resource consumption. As of now, only memory resource
-            is supported.
+        resource_isolation_config: settings for cgroupv2 based isolation of ray
+            system processes (defaults to no isolation if config not provided)
     """
 
     def __init__(
@@ -177,7 +173,6 @@ class RayParams:
             int
         ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         runtime_env_agent_port: Optional[int] = None,
-        dashboard_grpc_port: Optional[int] = None,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
         temp_dir: Optional[str] = None,
@@ -197,7 +192,7 @@ class RayParams:
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
-        enable_physical_mode: bool = False,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -234,7 +229,6 @@ class RayParams:
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
-        self.dashboard_grpc_port = dashboard_grpc_port
         self.runtime_env_agent_port = runtime_env_agent_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
@@ -262,7 +256,12 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
-        self.enable_physical_mode = enable_physical_mode
+
+        self.resource_isolation_config = resource_isolation_config
+        if not self.resource_isolation_config:
+            self.resource_isolation_config = ResourceIsolationConfig(
+                enable_resource_isolation=False
+            )
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
@@ -327,7 +326,6 @@ class RayParams:
             "dashboard": wrap_port(self.dashboard_port),
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
-            "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
             "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
