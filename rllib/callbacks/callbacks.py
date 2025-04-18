@@ -10,6 +10,9 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
+from ray.rllib.offline.offline_evaluation_runner_group import (
+    OfflineEvaluationRunnerGroup,
+)
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -186,6 +189,62 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
                 (located in `Algorithm.eval_env_runner_group`) or not.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_offline_eval_runners_recreated(
+        self,
+        *,
+        algorithm: "Algorithm",
+        offline_eval_runner_group: "OfflineEvaluationRunnerGroup",
+        offline_eval_runner_indices: List[int],
+        **kwargs,
+    ) -> None:
+        """Callback run after one or more OfflineEvaluationRunner actors have been recreated.
+
+        You can access and change the OfflineEvaluationRunners in question through the following code
+        snippet inside your custom override of this method:
+
+        .. testcode::
+            from ray.rllib.callbacks.callbacks import RLlibCallback
+
+            class MyCallbacks(RLlibCallback):
+                def on_offline_eval_runners_recreated(
+                    self,
+                    *,
+                    algorithm,
+                    offline_eval_runner_group,
+                    offline_eval_runner_indices,
+                    **kwargs,
+                ):
+                    # Define what you would like to do on the recreated EnvRunner:
+                    def func(offline_eval_runner):
+                        # Here, we just set some arbitrary property to 1.
+                        if is_evaluation:
+                            offline_eval_runner._custom_property_for_evaluation = 1
+                        else:
+                            offline_eval_runner._custom_property_for_training = 1
+
+                    # Use the `foreach_env_runner` method of the worker set and
+                    # only loop through those worker IDs that have been restarted.
+                    # Note that we set `local_worker=False` to NOT include it (local
+                    # workers are never recreated; if they fail, the entire Algorithm
+                    # fails).
+                    offline_eval_runner_group.foreach_runner(
+                        func,
+                        remote_worker_ids=offline_eval_runner_indices,
+                        local_runner=False,
+                    )
+
+        Args:
+            algorithm: Reference to the Algorithm instance.
+            offline_eval_runner_group: The OfflineEvaluationRunnerGroup object in which
+                the workers in question reside. You can use a `runner_group.foreach_runner(
+                remote_worker_ids=..., local_runner=False)` method call to execute
+                custom code on the recreated (remote) workers.
+            offline_eval_runner_indices: The list of (remote) worker IDs that have been
+                recreated.
         """
         pass
 

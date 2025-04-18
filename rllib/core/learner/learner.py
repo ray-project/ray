@@ -1206,7 +1206,7 @@ class Learner(Checkpointable):
         batch: Dict[str, Any],
         **kwargs,
     ) -> Tuple[Any, Any, Any]:
-        """Contains all logic for an in-graph/traceable update step.
+        """Contains all logic for an in-graph/traceable update ef update.
 
         Framework specific subclasses must implement this method. This should include
         calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
