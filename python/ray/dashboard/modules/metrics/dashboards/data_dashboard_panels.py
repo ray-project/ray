@@ -1,6 +1,4 @@
-# flake8: noqa E501
-import dataclasses
-from typing import Dict
+# ruff: noqa: E501
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
@@ -42,6 +40,7 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    # TODO(mowen): Determine if we actually need bytes allocated since its not being used.
     Panel(
         id=2,
         title="Bytes Allocated",
@@ -287,6 +286,38 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
+    Panel(
+        id=43,
+        title="Output Bytes from Finished Tasks / Second (by Node)",
+        description=(
+            "Byte size of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="Bps",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Bytes output / Second: {{dataset}}, {{node_ip}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=48,
+        title="Blocks from Finished Tasks / Second (by Node)",
+        description=(
+            "Number of output blocks from finished tasks per second, grouped by node."
+        ),
+        unit="blocks/s",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Blocks output / Second: {{dataset}}, {{node_ip}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
     # Ray Data Metrics (Tasks)
     Panel(
         id=29,
@@ -339,6 +370,20 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_num_tasks_finished{{{global_filters}}}) by (dataset, operator)",
                 legend="Finished Tasks: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=46,
+        title="Task Throughput (by Node)",
+        description="Number of finished tasks per second, grouped by node.",
+        unit="tasks/s",
+        targets=[
+            Target(
+                expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
+                legend="Finished Tasks: {{dataset}}, {{node_ip}}",
             )
         ],
         fill=0,
@@ -544,6 +589,10 @@ data_dashboard_config = DashboardConfig(
     name="DATA",
     default_uid="rayDataDashboard",
     panels=DATA_GRAFANA_PANELS,
-    standard_global_filters=['dataset=~"$DatasetID"', 'SessionName=~"$SessionName"'],
+    standard_global_filters=[
+        'dataset=~"$DatasetID"',
+        'SessionName=~"$SessionName"',
+        'ray_io_cluster=~"$Cluster"',
+    ],
     base_json_file_name="data_grafana_dashboard_base.json",
 )

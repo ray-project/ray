@@ -74,7 +74,7 @@ class MockInMemoryStoreClient : public InMemoryStoreClient {
                Postable<void(bool)> callback),
               (override));
 
-  MOCK_METHOD(int, GetNextJobID, (), (override));
+  MOCK_METHOD(Status, AsyncGetNextJobID, (Postable<void(int)> callback), (override));
 };
 
 }  // namespace gcs

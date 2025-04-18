@@ -4,7 +4,6 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import logging
-import math
 import threading
 import time
 from collections import defaultdict
@@ -17,7 +16,6 @@ from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    ExecutionResources,
     PhysicalOperator,
     RefBundle,
 )
@@ -255,6 +253,10 @@ class OpState:
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
+        active, restarting, pending = self.op.actor_info_counts()
+        self.op.metrics.num_alive_actors = active
+        self.op.metrics.num_restarting_actors = restarting
+        self.op.metrics.num_pending_actors = pending
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -270,7 +272,14 @@ class OpState:
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
         ):
-            desc += " [backpressured]"
+            backpressure_types = []
+            if self.op._in_task_submission_backpressure:
+                # The op is backpressured from submitting new tasks.
+                backpressure_types.append("tasks")
+            if self.op._in_task_output_backpressure:
+                # The op is backpressured from producing new outputs.
+                backpressure_types.append("outputs")
+            desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
         desc += self.op.actor_info_progress_str()
@@ -519,7 +528,7 @@ def update_operator_states(topology: Topology) -> None:
 
     # Traverse the topology in reverse topological order.
     # For each op, if all of its downstream operators have completed.
-    # call mark_execution_completed() to also complete this op.
+    # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
         if op.completed():
             continue
@@ -527,7 +536,7 @@ def update_operator_states(topology: Topology) -> None:
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
-            op.mark_execution_completed()
+            op.mark_execution_finished()
 
 
 def select_operator_to_run(
@@ -553,12 +562,10 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        if resource_manager.op_resource_allocator_enabled():
-            under_resource_limits = (
-                resource_manager.op_resource_allocator.can_submit_new_task(op)
-            )
-        else:
-            under_resource_limits = _execution_allowed(op, resource_manager)
+        assert resource_manager.op_resource_allocator_enabled(), topology
+        under_resource_limits = (
+            resource_manager.op_resource_allocator.can_submit_new_task(op)
+        )
         in_backpressure = not under_resource_limits or any(
             not p.can_add_input(op) for p in backpressure_policies
         )
@@ -609,73 +616,3 @@ def select_operator_to_run(
         topology[selected_op]._scheduling_status.selected = True
     autoscaler.try_trigger_scaling()
     return selected_op
-
-
-def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:
-    """Return whether an operator is allowed to execute given resource usage.
-
-    Operators are throttled globally based on CPU and GPU limits for the stream.
-
-    For an N operator DAG, we only throttle the kth operator (in the source-to-sink
-    ordering) on object store utilization if the cumulative object store utilization
-    for the kth operator and every operator downstream from it is greater than
-    k/N * global_limit; i.e., the N - k operator sub-DAG is using more object store
-    memory than it's share.
-
-    Args:
-        op: The operator to check.
-        resource_manager: The ResourceManager of the current dataset.
-
-    Returns:
-        Whether the op is allowed to run.
-    """
-    if op.throttling_disabled():
-        return True
-
-    global_usage = resource_manager.get_global_usage()
-    global_limits = resource_manager.get_global_limits()
-
-    # To avoid starvation problems when dealing with fractional resource types,
-    # convert all quantities to integer (0 or 1) for deciding admissibility. This
-    # allows operators with non-integral requests to slightly overshoot the limit.
-    global_floored = ExecutionResources(
-        cpu=math.floor(global_usage.cpu or 0),
-        gpu=math.floor(global_usage.gpu or 0),
-        object_store_memory=global_usage.object_store_memory,
-    )
-    inc = op.incremental_resource_usage()
-    if inc.cpu and inc.gpu:
-        raise NotImplementedError(
-            "Operator incremental resource usage cannot specify both CPU "
-            "and GPU at the same time, since it may cause deadlock."
-        )
-
-    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
-    # This ensures operators don't get starved due to the shape of their resource
-    # requests.
-    inc_indicator = ExecutionResources(
-        cpu=1 if inc.cpu else 0,
-        gpu=1 if inc.gpu else 0,
-        object_store_memory=0,
-    )
-
-    # Under global limits; always allow.
-    new_usage = global_floored.add(inc_indicator)
-    if new_usage.satisfies_limit(global_limits):
-        return True
-
-    # We're over global limits, but execution may still be allowed if memory is the
-    # only bottleneck and this wouldn't impact downstream memory limits. This avoids
-    # stalling the execution for memory bottlenecks that occur upstream.
-    # See for more context: https://github.com/ray-project/ray/pull/32673
-    global_limits_sans_memory = ExecutionResources.for_limits(
-        cpu=global_limits.cpu, gpu=global_limits.gpu
-    )
-    global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
-    downstream_memory = resource_manager.get_downstream_object_store_memory(op)
-    downstream_limit = global_limits.scale(resource_manager.get_downstream_fraction(op))
-    downstream_memory_ok = ExecutionResources(
-        object_store_memory=downstream_memory
-    ).satisfies_limit(downstream_limit)
-
-    return global_ok_sans_memory and downstream_memory_ok

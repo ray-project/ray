@@ -198,6 +198,11 @@ def test_bin_pack():
         [{"GPU": 1}],
         [{"GPU": 2}],
     )
+    arg = [{"GPU": 2}, {"GPU": 0.5}, {"GPU": 2}, {"GPU": 3}]
+    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == (
+        [],  # the below output order should not be changed.
+        [{"GPU": 1}, {"GPU": 0.5}, {"GPU": 1}, {"GPU": 3}],
+    )
 
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
     assert (
@@ -2226,7 +2231,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2236,7 +2240,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             2,
         )
@@ -2277,7 +2280,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: "head",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_USER_NODE_TYPE: "p2.xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )
@@ -2323,7 +2325,6 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
                 TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_NODE_KIND: "head",
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             },
             1,
         )
@@ -3917,9 +3918,9 @@ def _lexical_scorer_plugin(
 
 @pytest.fixture
 def lexical_score_plugin():
-    os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
-        "ray.tests.test_resource_demand_scheduler." "_lexical_scorer_plugin"
-    )
+    os.environ[
+        AUTOSCALER_UTILIZATION_SCORER_KEY
+    ] = "ray.tests.test_resource_demand_scheduler._lexical_scorer_plugin"
     try:
         yield None
     finally:

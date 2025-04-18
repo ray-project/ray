@@ -27,6 +27,14 @@ struct function_traits_helper : public boost::function_traits<T> {
   using type = T;
 };
 
+template <typename NewR, typename T>
+struct rebind_result;
+
+template <typename NewR, typename R, typename... Args>
+struct rebind_result<NewR, R(Args...)> {
+  using type = NewR(Args...);
+};
+
 }  // namespace internal
 
 // Generalized boost::function_traits to support more callable types.
@@ -41,24 +49,26 @@ struct function_traits;
 
 // Specialization for function pointers
 template <typename R, typename... Args>
-struct function_traits<R (*)(Args...)> : internal::function_traits_helper<R(Args...)> {};
+struct function_traits<R (*)(Args...)>
+    : ::ray::internal::function_traits_helper<R(Args...)> {};
 
 template <typename R, typename... Args>
-struct function_traits<R(Args...)> : internal::function_traits_helper<R(Args...)> {};
+struct function_traits<R(Args...)> : ::ray::internal::function_traits_helper<R(Args...)> {
+};
 
 // Specialization for member function pointers
 template <typename C, typename R, typename... Args>
-struct function_traits<R (C::*)(Args...)> : internal::function_traits_helper<R(Args...)> {
-};
+struct function_traits<R (C::*)(Args...)>
+    : ::ray::internal::function_traits_helper<R(Args...)> {};
 
 // Specialization for const member function pointers
 template <typename C, typename R, typename... Args>
 struct function_traits<R (C::*)(Args...) const>
-    : internal::function_traits_helper<R(Args...)> {};
+    : ::ray::internal::function_traits_helper<R(Args...)> {};
 
 template <typename C, typename R, typename... Args>
 struct function_traits<R (C::*)(Args...) &&>
-    : internal::function_traits_helper<R(Args...)> {};
+    : ::ray::internal::function_traits_helper<R(Args...)> {};
 
 // Specialization for callable objects (e.g., std::function, lambdas and functors)
 template <typename T>
@@ -72,4 +82,8 @@ struct function_traits<T &> : function_traits<T> {};
 template <typename T>
 struct function_traits<T &&> : function_traits<T> {};
 
+// Because you can't manipulate argument packs easily, we need to do rebind to instead
+// manipulate the result type.
+template <typename NewR, typename T>
+using rebind_result_t = typename ::ray::internal::rebind_result<NewR, T>::type;
 }  // namespace ray

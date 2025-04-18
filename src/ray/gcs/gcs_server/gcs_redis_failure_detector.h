@@ -15,15 +15,16 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <memory>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/gcs/redis_client.h"
 
 namespace ray {
-
 namespace gcs {
-class RedisGcsClient;
+
+// Forward declaration.
+class RedisClient;
 
 /// GcsRedisFailureDetector is responsible for monitoring redis and binding GCS server and
 /// redis life cycle together. GCS client subscribes to redis messages and it cannot sense

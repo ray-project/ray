@@ -73,12 +73,10 @@ def test_caller_death(monkeypatch, shutdown_only):
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])
-def test_ray_datasetlike_mini_stress_test(
+def test_many_tasks_lineage_reconstruction_mini_stress_test(
     monkeypatch, ray_start_cluster, backpressure, delay_latency, threshold
 ):
-    """
-    Test a workload that's like ray dataset + lineage reconstruction.
-    """
+    """Test a workload that spawns many tasks and relies on lineage reconstruction."""
     if not backpressure:
         if delay_latency == 0.1 and threshold == 1:
             return

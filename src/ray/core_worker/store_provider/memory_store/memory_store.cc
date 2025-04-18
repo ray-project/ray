@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
+
+#include <algorithm>
 #include <condition_variable>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace core {
@@ -75,11 +78,11 @@ class GetRequest {
 GetRequest::GetRequest(absl::flat_hash_set<ObjectID> object_ids,
                        size_t num_objects,
                        bool remove_after_get,
-                       bool abort_if_any_object_is_exception_)
+                       bool abort_if_any_object_is_exception)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
       remove_after_get_(remove_after_get),
-      abort_if_any_object_is_exception_(abort_if_any_object_is_exception_) {
+      abort_if_any_object_is_exception_(abort_if_any_object_is_exception) {
   RAY_CHECK(num_objects_ <= object_ids_.size());
 }
 
@@ -267,7 +270,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                  ctx,
                  remove_after_get,
                  results,
-                 /*abort_if_any_object_is_exception=*/true);
+                 /*abort_if_any_object_is_exception=*/true,
+                 /*at_most_num_objects=*/true);
 }
 
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
@@ -276,11 +280,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       const WorkerContext &ctx,
                                       bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
-                                      bool abort_if_any_object_is_exception) {
+                                      bool abort_if_any_object_is_exception,
+                                      bool at_most_num_objects) {
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
-  int count = 0;
+  int num_found = 0;
 
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
@@ -289,7 +294,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
     absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
-    for (size_t i = 0; i < object_ids.size() && count < num_objects; i++) {
+    for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
@@ -300,13 +305,17 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
         }
-        count += 1;
+        num_found += 1;
         if (abort_if_any_object_is_exception && iter->second->IsException() &&
             !iter->second->IsInPlasmaError()) {
           existing_objects_has_exception = true;
         }
       } else {
         remaining_ids.insert(object_id);
+      }
+      // Only wait sets at_most_num_objects to false.
+      if (num_found >= num_objects && at_most_num_objects) {
+        break;
       }
     }
 
@@ -319,11 +328,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
     // Return if all the objects are obtained, or any existing objects are known to have
     // exception.
-    if (remaining_ids.empty() || count >= num_objects || existing_objects_has_exception) {
+    if (remaining_ids.empty() || num_found >= num_objects ||
+        existing_objects_has_exception) {
       return Status::OK();
     }
 
-    size_t required_objects = num_objects - (object_ids.size() - remaining_ids.size());
+    size_t required_objects = num_objects - num_found;
 
     // Otherwise, create a GetRequest to track remaining objects.
     get_request = std::make_shared<GetRequest>(std::move(remaining_ids),
@@ -340,7 +350,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
   }
 
   bool done = false;
@@ -349,8 +359,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       timeout_ms == -1
-          ? RayConfig::instance().get_timeout_milliseconds()
-          : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+          ? RayConfig::instance().get_check_signal_interval_milliseconds()
+          : std::min(timeout_ms,
+                     RayConfig::instance().get_check_signal_interval_milliseconds());
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are
@@ -441,7 +452,8 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
                                    int num_objects,
                                    int64_t timeout_ms,
                                    const WorkerContext &ctx,
-                                   absl::flat_hash_set<ObjectID> *ready) {
+                                   absl::flat_hash_set<ObjectID> *ready,
+                                   absl::flat_hash_set<ObjectID> *plasma_object_ids) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
@@ -451,18 +463,21 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
                         ctx,
                         false,
                         &result_objects,
-                        /*abort_if_any_object_is_exception=*/false);
+                        /*abort_if_any_object_is_exception=*/false,
+                        /*at_most_num_objects=*/false);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);
   }
-
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
-      ready->insert(id_vector[i]);
+      if (result_objects[i]->IsInPlasmaError()) {
+        plasma_object_ids->insert(id_vector[i]);
+      } else if (ready->size() < static_cast<size_t>(num_objects)) {
+        ready->insert(id_vector[i]);
+      }
     }
   }
-
   return Status::OK();
 }
 

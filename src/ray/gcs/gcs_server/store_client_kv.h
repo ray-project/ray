@@ -13,8 +13,13 @@
 // limitations under the License.
 
 #pragma once
-#include <memory>
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ray/common/asio/postable.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/store_client/store_client.h"
 
@@ -27,41 +32,39 @@ namespace gcs {
 /// of public APIs.
 class StoreClientInternalKV : public InternalKVInterface {
  public:
-  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client,
-                                 instrumented_io_context &io_context);
+  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client);
 
   void Get(const std::string &ns,
            const std::string &key,
-           std::function<void(std::optional<std::string>)> callback) override;
+           Postable<void(std::optional<std::string>)> callback) override;
 
-  void MultiGet(const std::string &ns,
-                const std::vector<std::string> &keys,
-                std::function<void(absl::flat_hash_map<std::string, std::string>)>
-                    callback) override;
+  void MultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   void Put(const std::string &ns,
            const std::string &key,
            std::string value,
            bool overwrite,
-           std::function<void(bool)> callback) override;
+           Postable<void(bool)> callback) override;
 
   void Del(const std::string &ns,
            const std::string &key,
            bool del_by_prefix,
-           std::function<void(int64_t)> callback) override;
+           Postable<void(int64_t)> callback) override;
 
   void Exists(const std::string &ns,
               const std::string &key,
-              std::function<void(bool)> callback) override;
+              Postable<void(bool)> callback) override;
 
   void Keys(const std::string &ns,
             const std::string &prefix,
-            std::function<void(std::vector<std::string>)> callback) override;
+            Postable<void(std::vector<std::string>)> callback) override;
 
  private:
   std::unique_ptr<StoreClient> delegate_;
   const std::string table_name_;
-  instrumented_io_context &io_context_;
 };
 }  // namespace gcs
 }  // namespace ray

@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -49,9 +49,9 @@ CLEANABLE_SUBDIRS = [
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda-forge
+# replaced with junctions in Windows. This variable is set in our conda-forge
 # feedstock.
-is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
+is_conda_forge_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
@@ -231,6 +231,7 @@ if setup_spec.type == SetupType.RAY:
         "pyarrow >= 9.0.0",
         "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -238,9 +239,8 @@ if setup_spec.type == SetupType.RAY:
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
-            "grpcio != 1.56.0"
-            if sys.platform == "darwin"
-            else "grpcio",
+            "grpcio != 1.56.0; sys_platform == 'darwin'",
+            "grpcio",
         ],
         "data": [
             numpy_dep,
@@ -260,7 +260,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -320,7 +320,7 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"]
+    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -332,6 +332,12 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
     # "all" will not include "cpp" anymore. It is a big depedendency
     # that most people do not need.
     #
@@ -345,6 +351,31 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["all-cpp"] = list(
             set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
         )
+
+    # "llm" is not included in all, by design. vllm's dependency set is very
+    # large and specific, will likely run into dependency conflicts with other
+    # ML libraries. As a result, it is an "extra-extra" that is not part
+    # ray[all].
+    #
+    # ray[llm] depends on ray[data].
+    #
+    # Keep this in sync with python/requirements/llm/llm-requirements.txt
+    #
+    setup_spec.extras["llm"] = list(
+        set(
+            [
+                "vllm>=0.8.2",
+                "jsonref>=1.1.0",
+                "jsonschema",
+                "ninja",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
+                "typer",
+            ]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
@@ -362,8 +393,6 @@ if setup_spec.type == SetupType.RAY:
         "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
-        "aiosignal",
-        "frozenlist",
         "requests",
     ]
 
@@ -491,7 +520,7 @@ def replace_symlinks_with_junctions():
             )
 
 
-if is_automated_build and is_native_windows_or_msys():
+if is_conda_forge_build and is_native_windows_or_msys():
     # Automated replacements should only happen in automatic build
     # contexts for now
     patch_isdir()
@@ -540,7 +569,7 @@ def build(build_python, build_java, build_cpp):
     # version of Python to build packages inside the build.sh script. Note
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
-    if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
+    if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
@@ -555,19 +584,20 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
-    # runtime env agent dependenceis
-    runtime_env_agent_pip_packages = ["aiohttp"]
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
-        ]
-        + runtime_env_agent_pip_packages
-    )
+        # runtime env agent dependenceis
+        runtime_env_agent_pip_packages = ["aiohttp"]
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--target="
+                + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+            ]
+            + runtime_env_agent_pip_packages
+        )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -582,7 +612,7 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if is_automated_build:
+    if is_conda_forge_build:
         src_dir = os.environ.get("SRC_DIR", False) or os.getcwd()
         src_dir = os.path.abspath(src_dir)
         if is_native_windows_or_msys():
@@ -604,6 +634,14 @@ def build(build_python, build_java, build_cpp):
         ]
     else:
         bazel_precmd_flags = []
+        # Using --incompatible_strict_action_env so that the build is more
+        # cache-able We cannot turn this on for Python tests yet, as Ray's
+        # Python bazel tests are not hermetic.
+        #
+        # And we put it here so that does not change behavior of
+        # conda-forge build.
+        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
+            bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
@@ -611,11 +649,11 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
-        bazel_flags.extend(["--config", "debug"])
+        bazel_flags.append("--config=debug")
     if setup_spec.build_type == BuildType.ASAN:
-        bazel_flags.extend(["--config=asan-build"])
+        bazel_flags.append("--config=asan-build")
     if setup_spec.build_type == BuildType.TSAN:
-        bazel_flags.extend(["--config=tsan"])
+        bazel_flags.append("--config=tsan")
 
     return bazel_invoke(
         subprocess.check_call,
@@ -790,18 +828,21 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.32", "wheel"],
+    setup_requires=["cython >= 3.0.12", "pip", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": [
+            "includes/*.pxd",
+            "*.pxd",
+            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+        ],
     },
     include_package_data=True,
     exclude_package_data={

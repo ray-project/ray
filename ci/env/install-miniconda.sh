@@ -85,6 +85,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda remove --force -y anaconda-anon-usage
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
@@ -95,9 +96,9 @@ install_miniconda() {
     )
   fi
 
-  if [[ "${PYTHON-}" != "3.12" ]]; then
-    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not 
-    # available for Python 3.12
+  if [[ "${PYTHON-}" != "3.12" && "${PYTHON-}" != "3.13" ]]; then
+    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not
+    # available for Python 3.12 or 3.13
     "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
   fi
 
@@ -105,11 +106,10 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then 
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   set -exuo pipefail
 
   SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
   WORKSPACE_DIR="${SCRIPT_DIR}/../.."
   install_miniconda
 fi
-

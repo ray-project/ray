@@ -6,13 +6,13 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig
+from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig, UserCallback
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -65,10 +65,9 @@ def test_result_output(tmp_path):
     assert isinstance(result.filesystem, pyarrow.fs.FileSystem)
 
 
-def test_no_report():
-    trainer = DataParallelTrainer(
-        lambda: "not used", scaling_config=ScalingConfig(num_workers=2)
-    )
+def test_no_optional_arguments():
+    """Check that the DataParallelTrainer can be instantiated without optional arguments."""
+    trainer = DataParallelTrainer(lambda: "not used")
     trainer.fit()
 
 
@@ -152,7 +151,6 @@ def test_error(tmp_path):
     )
     with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
@@ -179,6 +177,37 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
         run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
     )
     trainer.fit()
+
+
+def test_user_callback(tmp_path):
+    """Test end to end usage of user callbacks."""
+    num_workers = 2
+
+    class MyUserCallback(UserCallback):
+        def after_report(self, run_context, metrics, checkpoint):
+            assert len(metrics) == num_workers
+            assert not checkpoint
+
+        def after_exception(self, run_context, worker_exceptions):
+            assert len(worker_exceptions) == 1
+            assert worker_exceptions.get(0) is not None
+
+    def _train_fn(config):
+        ray.train.report(metrics={"rank": ray.train.get_context().get_world_rank()})
+        if ray.train.get_context().get_world_rank() == 0:
+            raise ValueError("error")
+
+    trainer = DataParallelTrainer(
+        _train_fn,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[MyUserCallback()],
+        ),
+    )
+    # The error should NOT be an assertion error from the user callback.
+    with pytest.raises(TrainingFailedError):
+        trainer.fit()
 
 
 if __name__ == "__main__":

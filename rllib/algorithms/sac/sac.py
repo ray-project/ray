@@ -116,6 +116,8 @@ class SACConfig(AlgorithmConfig):
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
+
+        # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
@@ -511,7 +513,7 @@ class SACConfig(AlgorithmConfig):
             return RLModuleSpec(module_class=DefaultSACTorchRLModule)
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)
@@ -522,7 +524,7 @@ class SACConfig(AlgorithmConfig):
             return SACTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+                f"The framework {self.framework_str} is not supported. Use `torch`."
             )
 
     @override(AlgorithmConfig)

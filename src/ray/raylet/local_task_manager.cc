@@ -16,30 +16,20 @@
 
 #include <google/protobuf/map.h>
 
+#include <algorithm>
 #include <boost/range/join.hpp>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
-
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
-  // Check whether the resource is CPU resource or CPU resource inside PG.
-  if (resource_id == ResourceID::CPU()) {
-    return true;
-  }
-
-  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                       /*for_wildcard_resource*/ true,
-                                                       /*for_indexed_resource*/ true);
-  if (possible_pg_resource.has_value() &&
-      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
-    return true;
-  }
-
-  return false;
-}
 
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
@@ -56,6 +46,7 @@ LocalTaskManager::LocalTaskManager(
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
+      self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
       is_owner_alive_(is_owner_alive),
@@ -75,6 +66,18 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
   RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  // The local node must be feasible if the cluster task manager decides to run the task
+  // locally.
+  RAY_CHECK(cluster_resource_scheduler_.GetClusterResourceManager().HasFeasibleResources(
+      self_scheduling_node_id_,
+      ResourceMapToResourceRequest(work->task.GetTaskSpecification()
+                                       .GetRequiredPlacementResources()
+                                       .GetResourceMap(),
+                                   /*requires_object_store_memory=*/false)))
+      << work->task.GetTaskSpecification().DebugString() << " "
+      << cluster_resource_scheduler_.GetClusterResourceManager()
+             .GetNodeResources(self_scheduling_node_id_)
+             .DebugString();
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
@@ -183,14 +186,14 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // requests.
     size_t num_classes_with_cpu = 0;
     for (const auto &entry : tasks_to_dispatch_) {
-      const auto &dispatch_queue = entry.second;
-      for (const auto &work : dispatch_queue) {
+      const auto &cur_dispatch_queue = entry.second;
+      for (const auto &work : cur_dispatch_queue) {
         const auto &task_spec = work->task.GetTaskSpecification();
         auto cpu_request_ =
             task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
         if (cpu_request_ > 0) {
           num_classes_with_cpu++;
-          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
+          total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
           break;
         }
       }
@@ -212,9 +215,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       size_t total_cpu_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
-        const auto &sched_cls_desc =
+        const auto &cur_sched_cls_desc =
             TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
+        if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
+            0) {
           total_cpu_running_tasks += entry.second.running_tasks.size();
         }
       }
@@ -386,6 +390,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
+              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
+              // able to get physical execution context.
+              //
+              // ownership chain: raylet has-a node manager, node manager has-a local task
+              // manager.
+              //
+              // - PID: could get from available worker
+              // - Attempt id: could pass a global attempt id generator from raylet
+              // - Cgroup application folder: could pass from raylet
+
               return PoppedWorkerHandler(worker,
                                          status,
                                          task_id,
@@ -463,11 +477,10 @@ void LocalTaskManager::SpillWaitingTasks() {
       // If scheduling strategy is spread, we prefer honoring spread decision
       // and waiting for task dependencies to be pulled
       // locally than spilling back and causing uneven spread.
-      scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+      scheduling_node_id = self_scheduling_node_id_;
     }
 
-    if (!scheduling_node_id.IsNil() &&
-        scheduling_node_id.Binary() != self_node_id_.Binary()) {
+    if (!scheduling_node_id.IsNil() && scheduling_node_id != self_scheduling_node_id_) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
       if (!spec.GetDependencies().empty()) {
@@ -506,7 +519,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
-      scheduling_node_id.Binary() == self_node_id_.Binary()) {
+      scheduling_node_id == self_scheduling_node_id_) {
     return false;
   }
 
@@ -728,6 +741,8 @@ void LocalTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
   auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
+    // TODO(hjiang): After remove the task id from `running_tasks`, corresponding cgroup
+    // will be updated.
     it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
     if (it->second.running_tasks.size() == 0) {
       info_by_sched_cls_.erase(it);
@@ -811,13 +826,12 @@ void LocalTaskManager::PinTaskArgs(const TaskSpecification &spec,
   // TODO(swang): This should really be an assertion, but we can sometimes
   // receive a duplicate task request if there is a failure and the original
   // version of the task has not yet been canceled.
-  auto inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
-  if (inserted) {
+  auto executed_task_inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
+  if (executed_task_inserted) {
     for (size_t i = 0; i < deps.size(); i++) {
-      auto inserted =
+      auto [it, pinned_task_inserted] =
           pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      auto it = inserted.first;
-      if (inserted.second) {
+      if (pinned_task_inserted) {
         // This is the first task that needed this argument.
         pinned_task_arguments_bytes_ += it->second.first->GetSize();
       }

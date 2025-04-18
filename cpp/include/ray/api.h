@@ -79,7 +79,7 @@ std::vector<std::shared_ptr<T>> Get(const std::vector<ray::ObjectRef<T>> &object
 /// This method will be blocked until the object is ready.
 ///
 /// \param[in] object The object reference which should be returned.
-/// \param[in] timeout_ms The maximum amount of time in miliseconds to wait before
+/// \param[in] timeout_ms The maximum amount of time in milliseconds to wait before
 /// returning.
 /// \return shared pointer of the result.
 template <typename T>
@@ -89,7 +89,7 @@ std::shared_ptr<T> Get(const ray::ObjectRef<T> &object, const int &timeout_ms);
 /// This method will be blocked until all the objects are ready.
 ///
 /// \param[in] objects The object array which should be got.
-/// \param[in] timeout_ms The maximum amount of time in miliseconds to wait before
+/// \param[in] timeout_ms The maximum amount of time in milliseconds to wait before
 /// returning.
 /// \return shared pointer array of the result.
 template <typename T>

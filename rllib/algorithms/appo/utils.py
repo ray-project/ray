@@ -4,9 +4,10 @@ Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
 from collections import deque
-import random
 import threading
 import time
+
+import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -32,65 +33,67 @@ class CircularBuffer:
         # K ("replay coefficient") from the paper.
         self.iterations_per_batch = iterations_per_batch
 
-        self._buffer = deque(maxlen=self.num_batches)
+        self._NxK = self.num_batches * self.iterations_per_batch
+        self._num_added = 0
+
+        self._buffer = deque([None for _ in range(self._NxK)], maxlen=self._NxK)
+        self._indices = set()
+        self._offset = self._NxK
         self._lock = threading.Lock()
 
-        # The number of valid (not expired) entries in this buffer.
-        self._num_valid_batches = 0
+        self._rng = np.random.default_rng()
 
     def add(self, batch):
-        dropped_entry = None
-        dropped_ts = 0
-
         # Add buffer and k=0 information to the deque.
         with self._lock:
-            len_ = len(self._buffer)
-            if len_ == self.num_batches:
-                dropped_entry = self._buffer[0]
-            self._buffer.append([batch, 0])
-            self._num_valid_batches += 1
+            dropped_entry = self._buffer[0]
+            for _ in range(self.iterations_per_batch):
+                self._buffer.append(batch)
+                self._indices.add(self._offset)
+                self._indices.discard(self._offset - self._NxK)
+                self._offset += 1
+            self._num_added += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
-        if dropped_entry is not None and dropped_entry[0] is not None:
-            dropped_ts += dropped_entry[0].env_steps() * (
-                self.iterations_per_batch - dropped_entry[1]
-            )
-            self._num_valid_batches -= 1
+        dropped_ts = 0
+        if dropped_entry is not None:
+            dropped_ts = dropped_entry.env_steps()
 
         return dropped_ts
 
     def sample(self):
-        k = entry = batch = None
+        # Only initially, the buffer may be empty -> Just wait for some time.
+        while len(self) == 0:
+            time.sleep(0.0001)
 
-        while True:
-            # Only initially, the buffer may be empty -> Just wait for some time.
-            if len(self) == 0:
-                time.sleep(0.001)
-                continue
-            # Sample a random buffer index.
-            with self._lock:
-                entry = self._buffer[random.randint(0, len(self._buffer) - 1)]
-            batch, k = entry
-            # Ignore batches that have already been invalidated.
-            if batch is not None:
-                break
-
-        # Increase k += 1 for this batch.
-        assert k is not None
-        entry[1] += 1
-
-        # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
-        if k == self.iterations_per_batch - 1:
-            entry[0] = None
-            entry[1] = None
-            self._num_valid_batches += 1
+        # Sample a random buffer index.
+        with self._lock:
+            idx = self._rng.choice(list(self._indices))
+            actual_buffer_idx = idx - self._offset + self._NxK
+            batch = self._buffer[actual_buffer_idx]
+            assert batch is not None, (
+                idx,
+                actual_buffer_idx,
+                self._offset,
+                self._indices,
+                [b is None for b in self._buffer],
+            )
+            self._buffer[actual_buffer_idx] = None
+            self._indices.discard(idx)
 
         # Return the sampled batch.
         return batch
 
+    @property
+    def filled(self):
+        """Whether the buffer has been filled once with at least `self.num_batches`."""
+        with self._lock:
+            return self._num_added >= self.num_batches
+
     def __len__(self) -> int:
         """Returns the number of actually valid (non-expired) batches in the buffer."""
-        return self._num_valid_batches
+        with self._lock:
+            return len(self._indices)
 
 
 @OldAPIStack

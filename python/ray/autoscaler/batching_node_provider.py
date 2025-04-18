@@ -18,8 +18,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 
-provider_exists = False
-
 logger = logging.getLogger(__name__)
 
 
@@ -87,17 +85,9 @@ class BatchingNodeProvider(NodeProvider):
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ) -> None:
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.node_data_dict: Dict[NodeID, NodeData] = {}
-
-        # Disallow multiple node providers, unless explicitly allowed for testing.
-        global provider_exists
-        if not _allow_multiple:
-            assert (
-                not provider_exists
-            ), "Only one BatchingNodeProvider allowed per process."
 
         # These flags enforce correct behavior for single-threaded node providers
         # which interact with external cluster managers:

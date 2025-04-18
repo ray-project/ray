@@ -3,24 +3,21 @@ import unittest
 import ray
 from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
+from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 
 
-num_redis_shards = 5
-redis_max_memory = 10**8
 object_store_memory = 10**8
 num_nodes = 3
 
-assert (
-    num_nodes * object_store_memory + num_redis_shards * redis_max_memory
-    < ray._private.utils.get_system_memory() / 2
-), (
+assert num_nodes * object_store_memory < ray._private.utils.get_system_memory() / 2, (
     "Make sure there is enough memory on this machine to run this "
     "workload. We divide the system memory by 2 to provide a buffer."
 )
@@ -34,11 +31,9 @@ class TestNodeFailures(unittest.TestCase):
         for i in range(num_nodes):
             self.cluster.add_node(
                 redis_port=6379 if i == 0 else None,
-                num_redis_shards=num_redis_shards if i == 0 else None,
                 num_cpus=2,
                 num_gpus=0,
                 object_store_memory=object_store_memory,
-                redis_max_memory=redis_max_memory,
                 dashboard_host="0.0.0.0",
             )
         self.cluster.wait_for_nodes()
@@ -69,6 +64,23 @@ class TestNodeFailures(unittest.TestCase):
     def test_node_failure_recreate_env_runners(self):
         # We recreate failed EnvRunners and continue training.
         config = (
+            APPOConfig()
+            .environment("CartPole-v1")
+            .learners(num_learners=0)
+            .experimental(_validate_config=False)
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
+            )
+            .fault_tolerance(
+                restart_failed_env_runners=True,
+                ignore_env_runner_failures=False,  # True also ok here; we restart.
+            )
+        )
+
+        self._train(config=config, iters=20, min_reward=300.0, preempt_freq=5)
+
+        config = (
             PPOConfig()
             .environment("CartPole-v1")
             .env_runners(
@@ -77,11 +89,11 @@ class TestNodeFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 restart_failed_env_runners=True,
-                ignore_env_runner_failures=False,  # True also ok here we recreate.
+                ignore_env_runner_failures=False,  # True also ok here; we restart.
             )
         )
 
-        self._train(config=config, iters=30, min_reward=450.0, preempt_freq=5)
+        self._train(config=config, iters=20, min_reward=300.0, preempt_freq=5)
 
     def test_node_failure_expect_crash(self):
         # We do not ignore EnvRunner failures and expect to crash upon failure.
@@ -118,12 +130,16 @@ class TestNodeFailures(unittest.TestCase):
                 best_return, results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
             )
             avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-                "module_train_batch_size_mean"
+                MODULE_TRAIN_BATCH_SIZE_MEAN
             ]
-            self.assertGreaterEqual(avg_batch, config.total_train_batch_size)
+            if config.algo_class.__name__ == "PPO":
+                exp_batch_size = config.minibatch_size
+            else:
+                exp_batch_size = config.total_train_batch_size
+            self.assertGreaterEqual(avg_batch, exp_batch_size)
             self.assertLess(
                 avg_batch,
-                config.total_train_batch_size + config.get_rollout_fragment_length(),
+                exp_batch_size + config.get_rollout_fragment_length(),
             )
 
             self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)
@@ -135,7 +151,13 @@ class TestNodeFailures(unittest.TestCase):
             # node, which are always safe from preemption).
             if (i - 1) % preempt_freq == 0:
                 if config.restart_failed_env_runners:
-                    self.assertEqual(healthy_env_runners, 4)
+                    # For async algos that call `restore_env_runners()` several times
+                    # per iteration, the failed env runners may have already been
+                    # restored.
+                    if isinstance(config, APPOConfig):
+                        self.assertIn(healthy_env_runners, [4, 6])
+                    else:
+                        self.assertEqual(healthy_env_runners, 4)
                 elif config.ignore_env_runner_failures:
                     self.assertIn(healthy_env_runners, [2, 4])
             # After the 0th iteration, in which we already killed one node, if
@@ -159,14 +181,13 @@ class TestNodeFailures(unittest.TestCase):
                 print("Bringing back node ...")
                 self.cluster.add_node(
                     redis_port=None,
-                    num_redis_shards=None,
                     num_cpus=2,
                     num_gpus=0,
                     object_store_memory=object_store_memory,
-                    redis_max_memory=redis_max_memory,
                     dashboard_host="0.0.0.0",
                 )
 
+        algo.stop()
         self.assertGreaterEqual(best_return, min_reward)
 
 

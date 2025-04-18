@@ -18,11 +18,12 @@ import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
+from ray.data.context import DataContext
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ class _IterableFromIterator(Iterable[T]):
         return self.iterator_gen()
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class DataIterator(abc.ABC):
     """An iterator for reading records from a :class:`~Dataset`.
 
@@ -88,9 +89,9 @@ class DataIterator(abc.ABC):
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
-        raise NotImplementedError
+        ...
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def iter_batches(
         self,
         *,
@@ -187,6 +188,7 @@ class DataIterator(abc.ABC):
     def _get_dataset_tag(self) -> str:
         return "unknown_dataset"
 
+    @PublicAPI
     def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
@@ -218,17 +220,21 @@ class DataIterator(abc.ABC):
         return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
-        raise NotImplementedError
+        ...
 
     @abc.abstractmethod
     def schema(self) -> "Schema":
         """Return the schema of the dataset iterated over."""
-        raise NotImplementedError
+        ...
 
-    @PublicAPI(stability="beta")
+    @abc.abstractmethod
+    def get_context(self) -> DataContext:
+        ...
+
+    @PublicAPI
     def iter_torch_batches(
         self,
         *,
@@ -645,7 +651,7 @@ class DataIterator(abc.ABC):
 
         return TorchIterableDataset(make_generator)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -896,7 +902,7 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
-    @PublicAPI(stability="beta")
+    @PublicAPI
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 
@@ -911,7 +917,7 @@ class DataIterator(abc.ABC):
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats)
+        execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
             execution_plan._context,

@@ -112,11 +112,11 @@ if __name__ == "__main__":
     as_test = args.as_test
 
     # Override these criteria for the pre-training run.
-    setattr(args, "stop_iters", 10000)
-    setattr(args, "stop_timesteps", 100000000)
-    setattr(args, "stop_reward", args.stop_reward_pretraining)
-    setattr(args, "num_agents", 0)
-    setattr(args, "as_test", False)
+    args.stop_iters = 10000
+    args.stop_timesteps = 100000000
+    args.stop_reward = args.stop_reward_pretraining
+    args.num_agents = 0
+    args.as_test = False
 
     # Define out pre-training single-agent algorithm. We will use the same module
     # configuration for the pre-training and the training.
@@ -142,11 +142,11 @@ if __name__ == "__main__":
     assert module_chkpt_path.is_dir()
 
     # Restore the user's stopping criteria for the training run.
-    setattr(args, "stop_iters", stop_iters)
-    setattr(args, "stop_timesteps", stop_timesteps)
-    setattr(args, "stop_reward", stop_reward)
-    setattr(args, "num_agents", num_agents)
-    setattr(args, "as_test", as_test)
+    args.stop_iters = stop_iters
+    args.stop_timesteps = stop_timesteps
+    args.stop_reward = stop_reward
+    args.num_agents = num_agents
+    args.as_test = as_test
 
     # Create a new MultiRLModule using the pre-trained module for policy 0.
     env = gym.make("CartPole-v1")

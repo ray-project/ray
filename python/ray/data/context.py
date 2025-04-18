@@ -1,3 +1,5 @@
+import copy
+import enum
 import logging
 import os
 import threading
@@ -22,6 +24,15 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+@DeveloperAPI(stability="alpha")
+class ShuffleStrategy(str, enum.Enum):
+    """Shuffle strategy determines shuffling algorithm employed by operations
+    like aggregate, repartition, etc"""
+
+    SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
+    SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+
+
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM
 # * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
@@ -40,6 +51,12 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_num_rows_per_block. We will warn the user if slicing fails and we produce
+# blocks with more rows than this threshold.
+MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
+
+
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,
@@ -56,6 +73,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
+DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -70,9 +91,12 @@ DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    True,
+)
 
 # NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
 #       total cumulative size (due to it internally utilizing int32 offsets)
@@ -145,8 +169,8 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
-# Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 1024
+# The default batch size for batch transformations before it was changed to `None`.
+LEGACY_DEFAULT_BATCH_SIZE = 1024
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
@@ -165,12 +189,36 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
 )
 
+# Enable per node metrics reporting for Ray Data, disabled by default.
+DEFAULT_ENABLE_PER_NODE_METRICS = bool(
+    int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
+)
+
 
 def _execution_options_factory() -> "ExecutionOptions":
     # Lazily import to avoid circular dependencies.
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
     return ExecutionOptions()
+
+
+def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
+    if DEFAULT_USE_PUSH_BASED_SHUFFLE:
+        logger.warning(
+            "RAY_DATA_PUSH_BASED_SHUFFLE is deprecated, please use "
+            "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY to set shuffling strategy"
+        )
+
+        return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+    else:
+        vs = [s for s in ShuffleStrategy]  # noqa: C416
+
+        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
+            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
+            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+        )
+
+        return DEFAULT_SHUFFLE_STRATEGY
 
 
 @DeveloperAPI
@@ -277,6 +325,10 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
+            disabled by default.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
+            map tasks won't record memory stats.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -285,8 +337,19 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    ################################################################
+    # Sort-based shuffling configuration
+    ################################################################
+
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+
+    _shuffle_strategy: ShuffleStrategy = _deduce_default_shuffle_algorithm()
+
     pipeline_push_based_shuffle_reduce_tasks: bool = True
+
+    ################################################################
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -336,8 +399,9 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
-
+    enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
+    memory_usage_poll_interval_s: Optional[float] = 1
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -384,6 +448,12 @@ class DataContext:
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated. Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+        elif name == "use_push_based_shuffle":
+            warnings.warn(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
 
@@ -436,6 +506,22 @@ class DataContext:
         global _default_context
         _default_context = context
 
+    @property
+    def shuffle_strategy(self) -> ShuffleStrategy:
+        if self.use_push_based_shuffle:
+            logger.warning(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+            )
+
+            return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+
+        return self._shuffle_strategy
+
+    @shuffle_strategy.setter
+    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
+        self._shuffle_strategy = value
+
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
 
@@ -462,6 +548,10 @@ class DataContext:
             key: The key of the config.
         """
         self._kv_configs.pop(key, None)
+
+    def copy(self) -> "DataContext":
+        """Create a copy of the current DataContext."""
+        return copy.deepcopy(self)
 
 
 # Backwards compatibility alias.

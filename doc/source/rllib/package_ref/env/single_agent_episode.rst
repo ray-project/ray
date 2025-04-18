@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _single-agent-episode-reference-docs:
 
 SingleAgentEpisode API
 ======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 rllib.env.single_agent_episode.SingleAgentEpisode
 -------------------------------------------------
@@ -33,7 +33,7 @@ Getting basic information
     ~SingleAgentEpisode.get_return
     ~SingleAgentEpisode.get_duration_s
     ~SingleAgentEpisode.is_done
-    ~SingleAgentEpisode.is_finalized
+    ~SingleAgentEpisode.is_numpy
     ~SingleAgentEpisode.env_steps
 
 Getting environment data
@@ -68,4 +68,4 @@ Creating and handling episode chunks
     ~SingleAgentEpisode.cut
     ~SingleAgentEpisode.slice
     ~SingleAgentEpisode.concat_episode
-    ~SingleAgentEpisode.finalize
+    ~SingleAgentEpisode.to_numpy

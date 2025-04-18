@@ -60,14 +60,21 @@ class ListifyDataForVectorEnv(ConnectorV2):
         for column, column_data in batch.copy().items():
             # Multi-agent case: Create lists of multi-agent dicts under each column.
             if isinstance(episodes[0], MultiAgentEpisode):
-                # TODO (sven): Support vectorized MultiAgentEnv
-                assert len(episodes) == 1
-                new_column_data = [{}]
-
+                # For each environment/episode one entry.
+                new_column_data = [{} for _ in episodes]
+                episode_map_structure = shared_data.get("old_episode_ids", {})
                 for key, value in batch[column].items():
                     assert len(value) == 1
                     eps_id, agent_id, module_id = key
-                    new_column_data[0][agent_id] = value[0]
+                    # Get the episode index that corresponds to the ID in the batch.
+                    # Note, the order in the `EnvRunner`s episode list needs to be
+                    # kept for each batch column.
+                    eps_id = episode_map_structure.get(eps_id, eps_id)
+                    eps_index = next(
+                        (i for i, eps in enumerate(episodes) if eps.id_ == eps_id), 0
+                    )
+
+                    new_column_data[eps_index][agent_id] = value[0]
                 batch[column] = new_column_data
             # Single-agent case: Create simple lists under each column.
             else:

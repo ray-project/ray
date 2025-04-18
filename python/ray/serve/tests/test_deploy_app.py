@@ -929,6 +929,12 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
         == ApplicationStatus.DEPLOY_FAILED
     )
 
+    # Ensure the request doesn't hang and actually returns a 503 error.
+    # The timeout is there to prevent the test from hanging and blocking
+    # the test suite if it does fail.
+    r = requests.post("http://localhost:8000/app2", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text
+
 
 def test_deploy_with_route_prefix_conflict(client: ServeControllerClient):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"

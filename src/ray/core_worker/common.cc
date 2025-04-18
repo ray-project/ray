@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/common.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 

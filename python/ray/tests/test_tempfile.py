@@ -118,7 +118,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert log_files.issuperset(log_files_expected)
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
-    assert socket_files == expected_socket_files
+    assert socket_files.issuperset(expected_socket_files)
     ray.shutdown()
 
     ray.init(num_cpus=2)

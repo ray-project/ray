@@ -619,7 +619,6 @@ py_test(
     ],
     deps = [
         ":ray_release",
-        bk_require("freezegun"),
         bk_require("pytest"),
     ],
 )

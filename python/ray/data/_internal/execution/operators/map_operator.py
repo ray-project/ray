@@ -44,8 +44,17 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
+from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+    BlockStats,
+    to_stats,
+)
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -57,6 +66,11 @@ class MapOperator(OneToOneOperator, ABC):
 
     This operator implements the distributed map operation, supporting both task
     and actor compute strategies.
+    """
+
+    MAP_UDF_WARN_SIZE_THRESHOLD = 100 * 1024**2
+    """
+    Warn if the size of the map UDF exceeds this threshold.
     """
 
     def __init__(
@@ -88,7 +102,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: _OutputQueue = None
         # Output metadata, added to on get_next().
-        self._output_metadata: List[BlockMetadata] = []
+        self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
@@ -264,6 +278,21 @@ class MapOperator(OneToOneOperator, ABC):
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(map_transformer)
+        self._warn_large_udf()
+
+    def _warn_large_udf(self):
+        """Print a warning if the UDF is too large."""
+        udf_size = ray.experimental.get_local_object_locations(
+            [self._map_transformer_ref]
+        )[self._map_transformer_ref]["object_size"]
+        if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
+            logger.warning(
+                f"The UDF of operator {self.name} is too large "
+                f"(size = {memory_string(udf_size)}). "
+                "Check if the UDF has accidentally captured large objects. "
+                "Load the large objects in the __init__ method "
+                "or pass them as ObjectRefs instead."
+            )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
@@ -428,7 +457,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        self._output_metadata.extend(bundle.metadata)
+        self._output_blocks_stats.extend(to_stats(bundle.metadata))
         return bundle
 
     @abstractmethod
@@ -439,12 +468,15 @@ class MapOperator(OneToOneOperator, ABC):
         return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
     def get_stats(self) -> StatsDict:
-        return {self._name: self._output_metadata}
+        return {self._name: self._output_blocks_stats}
 
     def get_map_transformer(self) -> MapTransformer:
         return self._map_transformer
 
-    def shutdown(self):
+    def shutdown(self, force: bool = False):
+        # Invoke base-class sequence
+        super().shutdown(force)
+        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
@@ -502,17 +534,23 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+    TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
-        # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata()
-        m_out.exec_stats = stats.build()
-        m_out.exec_stats.udf_time_s = map_transformer.udf_time()
-        m_out.exec_stats.task_idx = ctx.task_idx
-        yield b_out
-        yield m_out
-        stats = BlockExecStats.builder()
+    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+        for b_out in map_transformer.apply_transform(iter(blocks), ctx):
+            # TODO(Clark): Add input file propagation from input blocks.
+            m_out = BlockAccessor.for_block(b_out).get_metadata()
+            m_out.exec_stats = stats.build()
+            m_out.exec_stats.udf_time_s = map_transformer.udf_time()
+            m_out.exec_stats.task_idx = ctx.task_idx
+            m_out.exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+            yield b_out
+            yield m_out
+            stats = BlockExecStats.builder()
+            profiler.reset()
+
+    TaskContext.reset_current()
 
 
 class _BlockRefBundler:

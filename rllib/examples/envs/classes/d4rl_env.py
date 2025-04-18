@@ -9,7 +9,7 @@ import gymnasium as gym
 try:
     import d4rl
 
-    d4rl.__name__  # Fool LINTer.
+    _ = d4rl.__name__  # Fool LINTer.
 except ImportError:
     d4rl = None
 

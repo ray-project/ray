@@ -43,8 +43,8 @@ class ExecutionResources:
     ):
         """Create an ExecutionResources object from a resource dict."""
         return ExecutionResources(
-            cpu=resource_dict.get("CPU", None),
-            gpu=resource_dict.get("GPU", None),
+            cpu=resource_dict.get("CPU", None) or resource_dict.get("num_cpus", None),
+            gpu=resource_dict.get("GPU", None) or resource_dict.get("num_gpus", None),
             object_store_memory=resource_dict.get("object_store_memory", None),
             default_to_inf=default_to_inf,
         )
@@ -181,15 +181,28 @@ class ExecutionResources:
             ),
         )
 
-    def satisfies_limit(self, limit: "ExecutionResources") -> bool:
+    def satisfies_limit(
+        self,
+        limit: "ExecutionResources",
+        *,
+        ignore_object_store_memory=False,
+    ) -> bool:
         """Return if this resource struct meets the specified limits.
 
         Note that None for a field means no limit.
+
+        Args:
+            limit: The resource limits to check against.
+            ignore_object_store_memory: If True, ignore the object store memory
+                limit when checking if this resource struct meets the limits.
         """
         return (
             self.cpu <= limit.cpu
             and self.gpu <= limit.gpu
-            and self.object_store_memory <= limit.object_store_memory
+            and (
+                ignore_object_store_memory
+                or self.object_store_memory <= limit.object_store_memory
+            )
         )
 
     def scale(self, f: float) -> "ExecutionResources":

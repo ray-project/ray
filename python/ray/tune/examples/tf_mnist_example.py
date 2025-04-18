@@ -15,7 +15,7 @@ import sys
 
 from filelock import FileLock
 
-from ray import train, tune
+from ray import tune
 
 MAX_TRAIN_BATCH = 10
 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
             metric="test_loss",
             mode="min",
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={"training_iteration": 5 if args.smoke_test else 50},
             verbose=1,
         ),

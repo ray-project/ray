@@ -14,6 +14,11 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -97,7 +102,7 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   const auto &owner_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
   RayTask task(actor->GetCreationTaskSpecification(),
                owner_node.has_value() ? actor->GetOwnerNodeID().Binary() : std::string());
-  cluster_task_manager_.QueueAndScheduleTask(task,
+  cluster_task_manager_.QueueAndScheduleTask(std::move(task),
                                              /*grant_or_reject*/ false,
                                              /*is_selected_based_on_locality*/ false,
                                              /*reply*/ reply.get(),
@@ -161,8 +166,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
   int key_index = distribution(gen_);
   int index = 0;
   auto iter = alive_nodes.begin();
-  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
-    ;
+  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter) {
+  }
   return iter->second;
 }
 
@@ -414,15 +419,16 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(),
                                       actor->GetActorTableData(),
-                                      [this, actor, leased_worker](Status status) {
-                                        RAY_CHECK_OK(status);
-                                        if (actor->GetState() ==
-                                            rpc::ActorTableData::DEAD) {
-                                          // Actor has already been killed.
-                                          return;
-                                        }
-                                        CreateActorOnWorker(actor, leased_worker);
-                                      }));
+                                      {[this, actor, leased_worker](Status status) {
+                                         RAY_CHECK_OK(status);
+                                         if (actor->GetState() ==
+                                             rpc::ActorTableData::DEAD) {
+                                           // Actor has already been killed.
+                                           return;
+                                         }
+                                         CreateActorOnWorker(actor, leased_worker);
+                                       },
+                                       io_context_}));
   }
 }
 
@@ -448,7 +454,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   RAY_LOG(INFO) << "Start creating actor " << actor->GetActorID() << " on worker "
                 << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                 << ", job id = " << actor->GetActorID().JobId();
-  std::unique_ptr<rpc::PushTaskRequest> request(new rpc::PushTaskRequest());
+  auto request = std::make_unique<rpc::PushTaskRequest>();
   request->set_intended_worker_id(worker->GetWorkerID().Binary());
   request->mutable_task_spec()->CopyFrom(
       actor->GetCreationTaskSpecification().GetMessage());

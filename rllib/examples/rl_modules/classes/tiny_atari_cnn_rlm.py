@@ -1,7 +1,12 @@
 from typing import Any, Dict, Optional
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+from ray.rllib.core.learner.utils import make_target_network
+from ray.rllib.core.rl_module.apis import (
+    TargetNetworkAPI,
+    ValueFunctionAPI,
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+)
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.misc import (
     normc_initializer,
@@ -15,7 +20,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
+class TinyAtariCNN(TorchRLModule, ValueFunctionAPI, TargetNetworkAPI):
     """A tiny CNN stack for fast-learning of Atari envs.
 
     The architecture here is the exact same as the one used by the old API stack as
@@ -26,27 +31,29 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
     Simple reshaping (no flattening or extra linear layers necessary) lead to the
     action logits, which can directly be used inside a distribution or loss.
 
+    .. testcode::
+
         import numpy as np
-    import gymnasium as gym
+        import gymnasium as gym
 
-    my_net = TinyAtariCNN(
-        observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
-        action_space=gym.spaces.Discrete(4),
-    )
+        my_net = TinyAtariCNN(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
+            action_space=gym.spaces.Discrete(4),
+        )
 
-    B = 10
-    w = 42
-    h = 42
-    c = 4
-    data = torch.from_numpy(
-        np.random.random_sample(size=(B, w, h, c)).astype(np.float32)
-    )
-    print(my_net.forward_inference({"obs": data}))
-    print(my_net.forward_exploration({"obs": data}))
-    print(my_net.forward_train({"obs": data}))
+        B = 10
+        w = 42
+        h = 42
+        c = 4
+        data = torch.from_numpy(
+            np.random.random_sample(size=(B, w, h, c)).astype(np.float32)
+        )
+        print(my_net.forward_inference({"obs": data}))
+        print(my_net.forward_exploration({"obs": data}))
+        print(my_net.forward_train({"obs": data}))
 
-    num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
-    print(f"num params = {num_all_params}")
+        num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
+        print(f"num params = {num_all_params}")
     """
 
     @override(TorchRLModule)
@@ -140,6 +147,27 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.EMBEDDINGS: embeddings,
         }
+
+    # We implement this RLModule as a TargetNetworkAPI RLModule, so it can be used
+    # by the APPO algorithm.
+    @override(TargetNetworkAPI)
+    def make_target_networks(self) -> None:
+        self._target_base_cnn_stack = make_target_network(self._base_cnn_stack)
+        self._target_logits = make_target_network(self._logits)
+
+    @override(TargetNetworkAPI)
+    def get_target_network_pairs(self):
+        return [
+            (self._base_cnn_stack, self._target_base_cnn_stack),
+            (self._logits, self._target_logits),
+        ]
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch, **kw):
+        obs = batch[Columns.OBS].permute(0, 3, 1, 2)
+        embeddings = self._target_base_cnn_stack(obs)
+        logits = self._target_logits(embeddings)
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: torch.squeeze(logits, dim=[-1, -2])}
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.

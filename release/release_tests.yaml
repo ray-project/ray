@@ -711,128 +711,6 @@
     timeout: 4700
     script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
-#####################################
-# Workspace templates release tests #
-#####################################
-
-- name: workspace_template_batch_inference
-  group: Workspace templates
-  working_dir: workspace_templates/01_batch_inference
-  frequency: nightly-3x
-  team: data
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
-
-
-- name: workspace_template_many_model_training
-  group: Workspace templates
-  working_dir: workspace_templates/02_many_model_training
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ../testing/compute_configs/cpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/cpu/gce.yaml
-
-
-- name: workspace_template_serving_stable_diffusion
-  group: Workspace templates
-  working_dir: workspace_templates/03_serving_stable_diffusion
-  frequency: nightly-3x
-  team: serve
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_stable_diffusion.sh
-    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
-
-  run:
-    timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py && serve run app:entrypoint --non-blocking && python query.py
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
-
-- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b
-  group: Workspace templates
-  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: cu123
-      # This needs to be in sync with requirements under go/llm-forge.
-      post_build_script: byod_finetune_llvms.sh
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
-
-  run:
-    timeout: 1000
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
-
-- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b_lora
-  group: Workspace templates
-  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
-  frequency: nightly-3x
-  team: ml
-  cluster:
-    byod:
-      type: cu123
-      # This needs to be in sync with requirements under go/llm-forge.
-      post_build_script: byod_finetune_llvms.sh
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
-
-  run:
-    timeout: 1000
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --lora --as-test
-
-  variations:
-      - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
-
 #######################
 # ML user tests
 #######################
@@ -910,7 +788,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_TRAIN_V2_ENABLED=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -2095,6 +1973,7 @@
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2117,6 +1996,7 @@
     byod: {}
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2147,6 +2027,7 @@
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2169,6 +2050,7 @@
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2197,6 +2079,7 @@
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2216,6 +2099,67 @@
 ########################
 # Train tests
 ########################
+
+- name: training_ingest_benchmark-task=image_classification
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
+
+  variations:
+    - __suffix__: full_training.parquet
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training.parquet.torch_dataloader
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16
+
+    - __suffix__: skip_training.parquet
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.parquet.torch_dataloader
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=torch --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.parquet.fault_tolerance
+      run:
+        timeout: 2700
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_parquet --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
+        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
+      cluster:
+        cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
+
+    - __suffix__: full_training.jpeg
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: full_training.jpeg.torch_dataloader
+      run:
+        timeout: 2000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16
+
+    - __suffix__: skip_training.jpeg
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.jpeg.torch_dataloader
+      run:
+        timeout: 1200
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
 
 - name: train_horovod_multi_node_test
   group: Train tests
@@ -2449,7 +2393,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  # https://github.com/ray-project/ray/issues/41984
+  frequency: manual
   team: rllib
   stable: False
 
@@ -2527,7 +2472,9 @@
 
   stable: true
 
-  frequency: nightly
+  # frequency was nightly.
+  # TODO(#50217): re-enable after fixing the flakiness.
+  frequency: manual
   team: rllib
   cluster:
     byod:
@@ -2593,6 +2540,7 @@
 
   stable: false
 
+  # https://github.com/ray-project/ray/issues/46612
   frequency: weekly
   team: rllib
   cluster:
@@ -2853,56 +2801,6 @@
     - __suffix__: aws.py312
       frequency: weekly
       python: "3.12"
-
-- name: microbenchmark_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
-
-- name: microbenchmark_gpu_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py
-
-- name: microbenchmark_gpu_multinode_unstable
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
-
-  run:
-    timeout: 1800
-    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
 
 - name: compiled_graphs
   group: core-daily-test
@@ -4145,3 +4043,208 @@
   run:
     timeout: 1800
     script: python run.py
+
+
+##############
+# LLM Serve
+##############
+
+- name: llm_serve_llama_3dot1_8B_quantized_tp_1
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml
+
+- name: llm_serve_llama_3dot1_8B_tp_2
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml
+
+- name: llm_serve_llama_3dot2_1B_no_accelerator
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_g5-4xlarge.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_no_accelerator.yaml
+
+
+- name: llm_serve_llama_3dot1_8B_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+
+- name: llm_serve_llama_3dot2_1B_s3
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_release_tests.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --run-perf-profiler false --skip-hf-token true
+
+
+##############
+# LLM Batch
+##############
+
+- name: llm_batch_vllm_v1_llama_tp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --tp-size 2 --concurrency 2 --vllm-use-v1
+
+- name: llm_batch_vllm_llama_pp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --pp-size 2 --concurrency 2
+
+- name: llm_batch_vllm_llama_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --model-source s3://air-example-data/llama-3.2-216M-dummy/
+      --dynamic-lora-loading-path s3://air-example-data/
+      --lora-name llama-3.2-216M-lora-dummy
+      --max-lora-rank 32
+
+- name: llm_batch_vllm_v1_llava_tp1dp1
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_vision_language_model.py
+      --tp-size 1 --concurrency 1 --vllm-use-v1
+
+- name: llm_batch_vllm_v1_pixtral_tp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_vision_language_model.py
+      --model-source mistral-community/pixtral-12b
+      --tp-size 2 --concurrency 2 --vllm-use-v1

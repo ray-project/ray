@@ -14,7 +14,13 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_format.h"
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -188,7 +194,7 @@ void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   // semaphores below. As the two semaphores have already been unlinked by the first
   // instance, the sem_unlink() calls below will both fail with ENOENT.
   int ret = sem_unlink(GetSemaphoreHeaderName(name).c_str());
-  // TODO (dayshah): use macro with [[likely]] here vs. just RAY_CHECK(false) below
+  // TODO(dayshah): use macro with [[likely]] here vs. just RAY_CHECK(false) below
   if (ret != 0) {
     RAY_CHECK_EQ(errno, ENOENT);
   }
@@ -318,10 +324,15 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
+  auto check_signal_interval = std::chrono::milliseconds(
+      RayConfig::instance().get_check_signal_interval_milliseconds());
+  auto last_signal_check_time = std::chrono::steady_clock::now();
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
-    if (check_signals_) {
+    if (check_signals_ && std::chrono::steady_clock::now() - last_signal_check_time >=
+                              check_signal_interval) {
       RAY_RETURN_NOT_OK(check_signals_());
+      last_signal_check_time = std::chrono::steady_clock::now();
     }
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.

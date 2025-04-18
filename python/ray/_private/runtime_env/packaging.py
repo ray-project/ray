@@ -17,6 +17,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+    GRPC_CPP_MAX_MESSAGE_SIZE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
@@ -34,7 +35,7 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 
@@ -215,7 +216,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-            disallowed_chars = ["/", ":", "@", "+", " "]
+            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 
@@ -628,6 +629,7 @@ def upload_package_if_needed(
     package_file = package_file.with_name(
         f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
     )
+
     create_package(
         module_path,
         package_file,
@@ -656,6 +658,7 @@ async def download_and_unpack_package(
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
+    overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -668,6 +671,7 @@ async def download_and_unpack_package(
             directory for the unpacked files.
         gcs_aio_client: Client to use for downloading from the GCS.
         logger: The logger to use.
+        overwrite: If True, overwrite the existing package.
 
     Returns:
         Path to the local directory containing the unpacked package files.
@@ -695,10 +699,21 @@ async def download_and_unpack_package(
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
+
+        download_package: bool = True
+        if local_dir.exists() and not overwrite:
+            download_package = False
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
-        else:
+        elif local_dir.exists():
+            logger.info(f"Removing {local_dir} with pkg_file {pkg_file}")
+            shutil.rmtree(local_dir)
+
+        if download_package:
             protocol, _ = parse_uri(pkg_uri)
+            logger.info(
+                f"Downloading package from {pkg_uri} to {pkg_file} "
+                f"with protocol {protocol}"
+            )
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
                     raise ValueError(

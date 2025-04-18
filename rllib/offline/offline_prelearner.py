@@ -1,16 +1,16 @@
+import copy
 import gymnasium as gym
 import logging
 import numpy as np
+import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
-from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import flatten_dict
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -72,9 +72,7 @@ class OfflinePreLearner:
     batches and make them 'Learner'-ready. When deriving from this class
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
-    for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be used to also compute values and advantages see
-    `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
+    for converting to episodes only ('_map_to_episodes`).
 
     Custom `OfflinePreLearner` classes can be passed into
     `AlgorithmConfig.offline`'s `prelearner_class`. The `OfflineData` class
@@ -86,28 +84,21 @@ class OfflinePreLearner:
         self,
         *,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
         **kwargs: Dict[str, Any],
     ):
 
-        self.config = config
-        self.input_read_episodes = self.config.input_read_episodes
-        self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+        self.config: AlgorithmConfig = config
+        self.input_read_episodes: bool = self.config.input_read_episodes
+        self.input_read_sample_batches: bool = self.config.input_read_sample_batches
+        # Build the module from spec.
+        self._module: MultiRLModule = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
+        # TODO (simon): Check here if we already have a list.
+        # self._set_device(device_strings)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
@@ -121,9 +112,9 @@ class OfflinePreLearner:
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
-        self._is_multi_agent = config.is_multi_agent
+        self._is_multi_agent: bool = config.is_multi_agent
         # Set the counter to zero.
-        self.iter_since_last_module_update = 0
+        self.iter_since_last_module_update: int = 0
         # self._future = None
 
         # Set up an episode buffer, if the module is stateful or we sample from
@@ -148,7 +139,7 @@ class OfflinePreLearner:
             )
 
     @OverrideToImplementCustomLogic
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """Prepares plain data batches for training with `Learner`'s.
 
         Args:
@@ -166,7 +157,7 @@ class OfflinePreLearner:
             import msgpack_numpy as mnp
 
             # Read the episodes and decode them.
-            episodes = [
+            episodes: List[SingleAgentEpisode] = [
                 SingleAgentEpisode.from_state(
                     msgpack.unpackb(state, object_hook=mnp.decode)
                 )
@@ -186,17 +177,21 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                finalize=True,
+                to_numpy=True,
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
-            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+            episodes: List[
+                SingleAgentEpisode
+            ] = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                finalize=True,
+                to_numpy=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
-            )["episodes"]
+            )[
+                "episodes"
+            ]
             # Ensure that all episodes are done and no duplicates are in the batch.
             episodes = self._validate_episodes(episodes)
             # Add the episodes to the buffer.
@@ -211,15 +206,15 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
-                finalize=True,
+                to_numpy=True,
             )
         # Otherwise we map the batch to episodes.
         else:
-            episodes = self._map_to_episodes(
+            episodes: List[SingleAgentEpisode] = self._map_to_episodes(
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                finalize=True,
+                to_numpy=False,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -262,28 +257,14 @@ class OfflinePreLearner:
             #  LearnerConnector pipeline.
             metrics=None,
         )
-        # Convert to `MultiAgentBatch`.
-        batch = MultiAgentBatch(
-            {
-                module_id: SampleBatch(module_data)
-                for module_id, module_data in batch.items()
-            },
-            # TODO (simon): This can be run once for the batch and the
-            # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes),
-        )
         # Remove all data from modules that should not be trained. We do
-        # not want to pass around more data than necessaty.
-        for module_id in list(batch.policy_batches.keys()):
+        # not want to pass around more data than necessary.
+        for module_id in batch:
             if not self._should_module_be_updated(module_id, batch):
-                del batch.policy_batches[module_id]
+                del batch[module_id]
 
-        # TODO (simon): Log steps trained for metrics (how?). At best in learner
-        # and not here. But we could precompute metrics here and pass it to the learner
-        # for logging. Like this we do not have to pass around episode lists.
-
-        # TODO (simon): episodes are only needed for logging here.
-        return {"batch": [batch]}
+        # Flatten the dictionary to increase serialization performance.
+        return flatten_dict(batch)
 
     @property
     def default_prelearner_buffer_class(self) -> ReplayBuffer:
@@ -361,8 +342,9 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
+        ignore_final_observation: Optional[bool] = False,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         **kwargs: Dict[str, Any],
@@ -404,19 +386,21 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
-                # Build a single-agent episode with a single row of the batch.
-                episode = SingleAgentEpisode(
-                    id_=str(batch[schema[Columns.EPS_ID]][i]),
-                    agent_id=agent_id,
-                    # Observations might be (a) serialized and/or (b) converted
-                    # to a JSONable (when a composite space was used). We unserialize
-                    # and then reconvert from JSONable to space sample.
-                    observations=[
-                        convert(unpack_if_needed(obs), observation_space)
-                        if Columns.OBS in input_compress_columns
-                        else convert(obs, observation_space),
+                # Unpack observations, if needed.
+                unpacked_obs = (
+                    convert(unpack_if_needed(obs), observation_space)
+                    if Columns.OBS in input_compress_columns
+                    else convert(obs, observation_space)
+                )
+                # Set the next observation.
+                if ignore_final_observation:
+                    unpacked_next_obs = tree.map_structure(
+                        lambda x: 0 * x, copy.deepcopy(unpacked_obs)
+                    )
+                else:
+                    unpacked_next_obs = (
                         convert(
                             unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
                             observation_space,
@@ -424,8 +408,18 @@ class OfflinePreLearner:
                         if Columns.OBS in input_compress_columns
                         else convert(
                             batch[schema[Columns.NEXT_OBS]][i], observation_space
-                        ),
-                    ],
+                        )
+                    )
+                # Build a single-agent episode with a single row of the batch.
+                episode = SingleAgentEpisode(
+                    id_=str(batch[schema[Columns.EPS_ID]][i])
+                    if schema[Columns.EPS_ID] in batch
+                    else uuid.uuid4().hex,
+                    agent_id=agent_id,
+                    # Observations might be (a) serialized and/or (b) converted
+                    # to a JSONable (when a composite space was used). We unserialize
+                    # and then reconvert from JSONable to space sample.
+                    observations=[unpacked_obs, unpacked_next_obs],
                     infos=[
                         {},
                         batch[schema[Columns.INFOS]][i]
@@ -476,8 +470,8 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
@@ -488,7 +482,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
+        to_numpy: bool = False,
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps an old stack `SampleBatch` to new stack episodes."""
@@ -521,7 +515,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                NotImplementedError
+                pass
             else:
                 # Unpack observations, if needed. Note, observations could
                 # be either compressed by their entirety (the complete batch
@@ -637,11 +631,11 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
-                # Finalize, if necessary.
+                # Numpy'ized, if necessary.
                 # TODO (simon, sven): Check, if we should convert all data to lists
                 # before. Right now only obs are lists.
-                if finalize:
-                    episode.finalize()
+                if to_numpy:
+                    episode.to_numpy()
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

@@ -19,10 +19,11 @@
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_split.h"
-#include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
