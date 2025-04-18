@@ -211,6 +211,13 @@ _task_only_options = {
             "whenever `next` is called). Use -1 to disable this feature. "
         ),
     ),
+    "priority": Option(
+        (int, type(None)),
+        lambda x: None
+        if x >= 0
+        else ("priority < 0 is not allowed. Use a value >= 0."),
+        default_value=0,
+    ),
 }
 
 _actor_only_options = {

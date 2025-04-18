@@ -30,61 +30,63 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
-    // NOTE: task_spec here is capture copied (from a stack variable) and also
-    // mutable. (Mutations to the variable are expected to be shared inside and
-    // outside of this closure).
-    task_finisher_.MarkDependenciesResolved(task_spec.TaskId());
-    if (!status.ok()) {
-      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
-      return;
-    }
-    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-
-    {
-      absl::MutexLock lock(&mu_);
-      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
-      if (task_iter != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_iter);
-        return;
-      }
-
-      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-          current_sys_time_ms());
-      // Note that the dependencies in the task spec are mutated to only contain
-      // plasma dependencies after ResolveDependencies finishes.
-      const SchedulingKey scheduling_key(
-          task_spec.GetSchedulingClass(),
-          task_spec.GetDependencyIds(),
-          task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-          task_spec.GetRuntimeEnvHash());
-      auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      scheduling_key_entry.task_queue.push_back(task_spec);
-      scheduling_key_entry.resource_spec = std::move(task_spec);
-
-      if (!scheduling_key_entry.AllWorkersBusy()) {
-        // There are idle workers, so we don't need more
-        // workers.
-        for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-          auto iter = worker_to_lease_entry_.find(active_worker_addr);
-          RAY_CHECK(iter != worker_to_lease_entry_.end());
-          auto &lease_entry = iter->second;
-          if (!lease_entry.is_busy) {
-            OnWorkerIdle(active_worker_addr,
-                         scheduling_key,
-                         /*was_error*/ false,
-                         /*error_detail*/ "",
-                         /*worker_exiting*/ false,
-                         lease_entry.assigned_resources);
-            break;
-          }
+  resolver_.ResolveDependencies(
+      task_spec, [this, task_spec = std::move(task_spec)](Status status) mutable {
+        // NOTE: task_spec here is capture copied (from a stack variable) and also
+        // mutable. (Mutations to the variable are expected to be shared inside and
+        // outside of this closure).
+        task_finisher_.MarkDependenciesResolved(task_spec.TaskId());
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
+          RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+              task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+          return;
         }
-      }
-      RequestNewWorkerIfNeeded(scheduling_key);
-    }
-  });
+        RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+
+        {
+          absl::MutexLock lock(&mu_);
+          auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+          if (task_iter != cancelled_tasks_.end()) {
+            cancelled_tasks_.erase(task_iter);
+            return;
+          }
+
+          task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+              current_sys_time_ms());
+          // Note that the dependencies in the task spec are mutated to only contain
+          // plasma dependencies after ResolveDependencies finishes.
+          const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                             task_spec.GetDependencyIds(),
+                                             task_spec.IsActorCreationTask()
+                                                 ? task_spec.ActorCreationId()
+                                                 : ActorID::Nil(),
+                                             task_spec.GetRuntimeEnvHash());
+          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          scheduling_key_entry.task_queue.push_back(task_spec);
+          scheduling_key_entry.resource_spec = std::move(task_spec);
+
+          if (!scheduling_key_entry.AllWorkersBusy()) {
+            // There are idle workers, so we don't need more
+            // workers.
+            for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
+              auto iter = worker_to_lease_entry_.find(active_worker_addr);
+              RAY_CHECK(iter != worker_to_lease_entry_.end());
+              auto &lease_entry = iter->second;
+              if (!lease_entry.is_busy) {
+                OnWorkerIdle(active_worker_addr,
+                             scheduling_key,
+                             /*was_error*/ false,
+                             /*error_detail*/ "",
+                             /*worker_exiting*/ false,
+                             lease_entry.assigned_resources);
+                break;
+              }
+            }
+          }
+          RequestNewWorkerIfNeeded(scheduling_key);
+        }
+      });
   return Status::OK();
 }
 
@@ -156,9 +158,8 @@ void NormalTaskSubmitter::OnWorkerIdle(
   // Return the worker if there was an error executing the previous task,
   // the lease is expired; Return the worker if there are no more applicable
   // queued tasks.
-  if ((was_error || worker_exiting ||
-       current_time_ms() > lease_entry.lease_expiration_time) ||
-      current_queue.empty()) {
+  if (was_error || worker_exiting ||
+      current_time_ms() > lease_entry.lease_expiration_time || current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
     // Return the worker only if there are no tasks to do.
