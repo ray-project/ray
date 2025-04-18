@@ -65,7 +65,7 @@ TESTS=(
   "getting-started/raycluster-quick-start.ipynb"
   "getting-started/rayjob-quick-start.ipynb"
   "getting-started/rayservice-quick-start.ipynb"
-  "user-guilds/kuberay-gcs-ft.ipynb"
+  "user-guides/kuberay-gcs-ft.ipynb"
 )
 for test in "${TESTS[@]}"; do
   echo "Running test: ${test}"
