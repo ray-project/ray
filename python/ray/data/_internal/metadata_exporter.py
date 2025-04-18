@@ -3,7 +3,8 @@
 from abc import ABC, abstractmethod
 import logging
 import os
-from typing import Any, Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 
 import ray
 from ray._private.event.export_event_logger import (
@@ -14,23 +15,131 @@ from ray._private.event.export_event_logger import (
 
 UNKNOWN = "unknown"
 
+@dataclass
+class SubOperator:
+    """Represents a sub-operator within a main operator in the DAG.
+    
+    Attributes:
+        name: The name of the sub-operator.
+        id: The unique identifier of the sub-operator.
+    """
+    name: str
+    id: str
+
+
+@dataclass
+class Operator:
+    """Represents a data processing operator in the DAG.
+    
+    Attributes:
+        name: The name of the operator.
+        id: The unique identifier of the operator.
+        uuid: The UUID for the operator.
+        input_dependencies: List of operator IDs that this operator depends on for input.
+        sub_operators: List of sub-operators contained within this operator.
+    """
+    name: str
+    id: str
+    uuid: str
+    input_dependencies: List[str] = field(default_factory=list)
+    sub_operators: List[SubOperator] = field(default_factory=list)
+
+
+@dataclass
+class OperatorDAG:
+    """Represents the complete structure of the operator DAG.
+    
+    Attributes:
+        operators: List of all operators in the DAG.
+    """
+    operators: List[Operator] = field(default_factory=list)
+
+
+@dataclass
+class DatasetMetadata:
+    """Metadata about a Ray Data dataset.
+    
+    This class represents the metadata associated with a dataset, including its provenance
+    information and execution details.
+    
+    Attributes:
+        job_id: The ID of the job running this dataset.
+        dag_structure: The structure of the dataset's operator DAG.
+        dataset_id: The unique ID of the dataset.
+        start_time: The timestamp when the dataset execution started.
+    """
+    job_id: str
+    dag_structure: OperatorDAG
+    dataset_id: str
+    start_time: float
+
+def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
+    """Convert the dataset metadata to a protobuf message.
+
+    Args:
+        dataset_metadata: DatasetMetadata object containing the dataset's 
+            information and DAG structure.
+
+    Returns:
+        The protobuf message representing the dataset metadata.
+    """
+    from ray.core.generated.export_data_metadata_pb2 import (
+        ExportDataMetadata,
+        OperatorDAG as ProtoOperatorDAG,
+        Operator as ProtoOperator,
+        SubOperator as ProtoSubOperator,
+    )
+
+    # Create the protobuf message
+    data_metadata = ExportDataMetadata()
+    proto_dag = ProtoOperatorDAG()
+
+    # Add operators to the DAG
+    for op in dataset_metadata.dag_structure.operators:
+        proto_operator = ProtoOperator()
+        proto_operator.name = op.name
+        proto_operator.id = op.id
+        proto_operator.uuid = op.uuid
+
+        # Add input dependencies
+        for dep_id in op.input_dependencies:
+            proto_operator.input_dependencies.append(dep_id)
+
+        # Add sub-operators
+        for sub_op in op.sub_operators:
+            proto_sub_op = ProtoSubOperator()
+            proto_sub_op.name = sub_op.name
+            proto_sub_op.id = sub_op.id
+            proto_operator.sub_operators.append(proto_sub_op)
+
+        # Add the operator to the DAG
+        proto_dag.operators.append(proto_operator)
+
+    # Populate the data metadata proto
+    data_metadata.dag.CopyFrom(proto_dag)
+    data_metadata.job_id = dataset_metadata.job_id
+    data_metadata.start_time = dataset_metadata.start_time
+    data_metadata.dataset_id = dataset_metadata.dataset_id
+
+    return data_metadata
+
+
 class DataMetadataExporter(ABC):
     """Abstract base class for data metadata exporters.
     
     Implementations of this interface can export Ray Data metadata to various destinations
     like log files, databases, or monitoring systems.
     """
-    
+
     @abstractmethod
-    def export_dataset_metadata(self, dataset_metadata: Dict[str, Any]) -> None:
+    def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
         """Export dataset metadata to the destination.
         
         Args:
-            dataset_metadata: Dictionary containing dataset metadata.
-                Expected to have fields like job_id, dataset_id, start_time, and dag_structure.
+            dataset_metadata: DatasetMetadata object containing dataset information.
         """
         pass
-    
+
     @classmethod
     @abstractmethod
     def create_if_enabled(cls) -> Optional["DataMetadataExporter"]:
@@ -47,26 +156,25 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
     
     This exporter writes dataset metadata to log files using Ray's export event system.
     """
-    
+
     def __init__(self, logger: logging.Logger):
         """Initialize with a configured export event logger.
         
         Args:
             logger: The export event logger to use for writing events.
-            is_enabled: Whether this exporter is enabled.
         """
         self._export_logger = logger
-    
-    def export_dataset_metadata(self, dataset_metadata: Dict[str, Any]) -> None:
+
+    def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
         """Export dataset metadata using the export event logger.
         
         Args:
-            dataset_metadata: Dictionary containing dataset metadata.
+            dataset_metadata: DatasetMetadata object containing dataset information.
         """
-        data_metadata_proto = self._dataset_metadata_to_proto(dataset_metadata)
+        data_metadata_proto = dataset_metadata_to_proto(dataset_metadata)
         self._export_logger.send_event(data_metadata_proto)
-    
-    
+
+
     @classmethod
     def create_if_enabled(cls) -> Optional["LoggerDataMetadataExporter"]:
         """Create a logger-based exporter if the export API is enabled.
@@ -76,18 +184,18 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
         """
         # Proto schemas should be imported here to prevent serialization errors
         from ray.core.generated.export_event_pb2 import ExportEvent
-        
+
         is_data_metadata_export_api_enabled = check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_DATA_METADATA
         )
         if not is_data_metadata_export_api_enabled:
             # The export API is not enabled, so we shouldn't create an exporter
             return None
-        
+
         log_directory = os.path.join(
             ray._private.worker._global_node.get_session_dir_path(), "logs"
         )
-        
+
         logger = None
         try:
             logger = get_export_event_logger(
@@ -104,57 +212,3 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
             return None
 
         return LoggerDataMetadataExporter(logger)
-    
-    def _dataset_metadata_to_proto(self, dataset_metadata: Dict[str, Any]) -> Any:
-        """Convert the DAG structure dictionary to a protobuf message.
-
-        Args:
-            dag_structure: Dictionary representation of the DAG structure. This
-            is passed as a dictionary to avoid serializing the protobuf message.
-
-        Returns:
-            The protobuf message representing the DAG structure.
-        """
-        from ray.core.generated.export_data_metadata_pb2 import (
-            ExportDataMetadata,
-            OperatorDAG,
-            Operator,
-            SubOperator,
-        )
-
-        # Create the protobuf message
-        data_metadata = ExportDataMetadata()
-        dag = OperatorDAG()
-
-        # Add operators to the DAG
-        dag_structure = dataset_metadata["dag_structure"]
-        if "operators" in dag_structure:
-            for op_dict in dag_structure["operators"]:
-                operator = Operator()
-                operator.name = op_dict.get("name", UNKNOWN)
-                operator.id = op_dict.get("id", UNKNOWN)
-                operator.uuid = op_dict.get("uuid", UNKNOWN)
-
-                # Add input dependencies if they exist
-                if "input_dependencies" in op_dict:
-                    for dep_id in op_dict["input_dependencies"]:
-                        operator.input_dependencies.append(dep_id)
-
-                # Add sub-operators if they exist
-                if "sub_operators" in op_dict:
-                    for sub_op_dict in op_dict["sub_operators"]:
-                        sub_op = SubOperator()
-                        sub_op.name = sub_op_dict.get("name", UNKNOWN)
-                        sub_op.id = sub_op_dict.get("id", UNKNOWN)
-                        operator.sub_operators.append(sub_op)
-
-                # Add the operator to the DAG
-                dag.operators.append(operator)
-
-        # Populate the data metadata proto
-        data_metadata.dag.CopyFrom(dag)
-        data_metadata.job_id = dataset_metadata.get("job_id", None)
-        data_metadata.start_time = dataset_metadata.get("start_time", None)
-        data_metadata.dataset_id = dataset_metadata.get("dataset_id", None)
-
-        return data_metadata

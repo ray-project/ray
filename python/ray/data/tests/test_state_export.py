@@ -2,8 +2,10 @@ import os
 import ray
 import pytest
 import json
+from dataclasses import asdict
 
 from ray.data._internal.stats import _get_or_create_stats_actor
+from ray.data._internal.metadata_exporter import OperatorDAG, Operator
 
 STUB_JOB_ID = "stub_job_id"
 STUB_DATASET_ID = "stub_dataset_id"
@@ -52,25 +54,26 @@ def enable_export_api_write(shutdown_only):
 
 @pytest.fixture
 def dummy_dataset_dag_structure():
-    """Create a dummy dataset DAG structure."""
-    return {
-        "operators": [
-            {
-                "name": "Input",
-                "id": "Input_0",
-                "uuid": "uuid_0",
-                "input_dependencies": [],
-                "sub_operators": [],
-            },
-            {
-                "name": "ReadRange->Map(<lambda>)->Filter(<lambda>)",
-                "id": "ReadRange->Map(<lambda>)->Filter(<lambda>)_1",
-                "uuid": "uuid_1",
-                "input_dependencies": ["Input_0"],
-                "sub_operators": [],
-            },
-        ]
-    }
+    """Create a dummy OperatorDAG."""
+    dummy_dag_structure = OperatorDAG(
+        operators=[
+            Operator(
+                name="Input",
+                id="Input_0",
+                uuid="uuid_0",
+                input_dependencies=[],
+                sub_operators=[],
+            ),
+            Operator(
+                name="ReadRange->Map(<lambda>)->Filter(<lambda>)",
+                id="ReadRange->Map(<lambda>)->Filter(<lambda>)_1",
+                uuid="uuid_1",
+                input_dependencies=["Input_0"],
+                sub_operators=[],
+            ),
+        ],
+    )
+    return dummy_dag_structure
 
 
 def test_export_disabled(ray_start_regular, dummy_dataset_dag_structure):
@@ -110,7 +113,7 @@ def _test_data_metadata_export(dag_structure):
     data = _get_exported_data()
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_DATA_METADATA"
-    assert data[0]["event_data"]["dag"] == dag_structure
+    assert data[0]["event_data"]["dag"] == asdict(dag_structure)
     assert data[0]["event_data"]["dataset_id"] == STUB_DATASET_ID
     assert data[0]["event_data"]["job_id"] == STUB_JOB_ID
     assert data[0]["event_data"]["start_time"] is not None

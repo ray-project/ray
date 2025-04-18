@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
@@ -34,6 +34,7 @@ from ray.data._internal.logging import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.data._internal.metadata_exporter import OperatorDAG, Operator, SubOperator
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class StreamingExecutor(Executor, threading.Thread):
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
-            self._dump_dag_structure(dag),
+            self._create_operator_dag_metadata(dag),
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
@@ -432,19 +433,18 @@ class StreamingExecutor(Executor, threading.Thread):
             force_update=force_update,
         )
 
-    def _dump_dag_structure(self, dag: PhysicalOperator) -> Dict[str, Any]:
-        """Dump the DAG structure as a dictionary that can be converted to JSON.
+    def _create_operator_dag_metadata(self, dag: PhysicalOperator) -> OperatorDAG:
+        """Create an OperatorDAG structure from the physical operator DAG.
 
         Args:
             dag: The operator DAG to analyze.
 
         Returns:
-            A dictionary with the DAG structure, containing operator names,
-            IDs, dependencies, and sub-operators where applicable.
+            An OperatorDAG object representing the operator DAG structure.
         """
-        # Return an empty dict if the topology isn't initialized yet
+        # Return an empty DAG if the topology isn't initialized yet
         if not self._topology:
-            return {}
+            return OperatorDAG()
 
         # Create a mapping of operators to their IDs
         op_to_id = {
@@ -452,9 +452,7 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
         # Create the result structure
-        result = {
-            "operators": [],
-        }
+        result = OperatorDAG()
 
         # Add detailed operator information with dependencies
         for op in dag.post_order_iter():
@@ -463,25 +461,26 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
 
             op_id = op_to_id[op]
-            op_entry = {
-                "name": op.name,
-                "id": op_id,
-                "uuid": op.id,
-                "input_dependencies": [
+
+            # Create operator object
+            operator = Operator(
+                name=op.name,
+                id=op_id,
+                uuid=op.id,
+                input_dependencies=[
                     op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
                 ],
-                "sub_operators": [],
-            }
+            )
 
             # Add sub-operators if they exist
             if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
                 for j, sub_name in enumerate(op._sub_progress_bar_names):
                     sub_op_id = f"{op_id}_sub_{j}"
-                    op_entry["sub_operators"].append(
-                        {"name": sub_name, "id": sub_op_id}
+                    operator.sub_operators.append(
+                        SubOperator(name=sub_name, id=sub_op_id)
                     )
 
-            result["operators"].append(op_entry)
+            result.operators.append(operator)
 
         return result
 

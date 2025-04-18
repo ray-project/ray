@@ -483,7 +483,7 @@ class _StatsActor:
         job_id: str,
         dataset_tag: str,
         operator_tags: List[str],
-        dag_structure: Dict[str, Any],
+        dag_structure: "OperatorDAG",
     ):
         start_time = time.time()
         self.datasets[dataset_tag] = {
@@ -503,13 +503,15 @@ class _StatsActor:
                 for operator in operator_tags
             },
         }
-        dataset_metadata = {
-            "job_id": job_id,
-            "dag_structure": dag_structure,
-            "dataset_id": dataset_tag,
-            "start_time": start_time,
-        }
         if self._metadata_exporter is not None:
+            from ray.data._internal.metadata_exporter import DatasetMetadata
+
+            dataset_metadata = DatasetMetadata(
+                job_id=job_id,
+                dag_structure=dag_structure,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+            )
             self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
@@ -784,7 +786,7 @@ class _StatsManager:
         Args:
             dataset_tag: Tag for the dataset
             operator_tags: List of operator tags
-            dag_structure: Optional DAG structure to export
+            dag_structure: Optional OperatorDAG representing the DAG structure to export
         """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
