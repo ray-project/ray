@@ -112,9 +112,13 @@ class RunConfig(RunConfigV1):
         checkpoint_config: Checkpointing configuration.
         callbacks: [DeveloperAPI] A list of callbacks that the Ray Train controller
             will invoke during training.
+        worker_runtime_env: [DeveloperAPI] Runtime environment configuration
+            for each Ray Train worker actor.
     """
 
     callbacks: Optional[List["UserCallback"]] = None
+    worker_runtime_env: Optional[dict] = None
+
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
     stop: str = _DEPRECATED
@@ -150,6 +154,7 @@ class RunConfig(RunConfigV1):
             self.name = f"ray_train_run-{date_str()}"
 
         self.callbacks = self.callbacks or []
+        self.worker_runtime_env = self.worker_runtime_env or {}
 
         from ray.train.v2.api.callback import RayTrainCallback
 
