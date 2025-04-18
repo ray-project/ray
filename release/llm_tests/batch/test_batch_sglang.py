@@ -79,7 +79,7 @@ def test_chat_template():
 def test_sglang_llama_parallel(tp_size, dp_size, concurrency):
     """Test SGLang with Llama model using different parallelism configurations."""
     runtime_env = {}
-    
+
     processor_config = SGLangEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
@@ -116,7 +116,7 @@ def test_sglang_llama_parallel(tp_size, dp_size, concurrency):
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
     ds = processor(ds)
     ds = ds.materialize()
-    
+
     # Verify results
     outs = ds.take_all()
     assert len(outs) == 120

@@ -73,7 +73,7 @@ def mock_sgl_engine():
             max_pending_requests = getattr(mock_generate, "max_pending_requests", -1)
             if max_pending_requests > 0:
                 assert num_running_requests <= max_pending_requests
-                
+
             await asyncio.sleep(0.1)  # Reduced sleep time for faster tests
 
             async with request_lock:
@@ -182,10 +182,12 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("max_pending_requests,batch_size", [(2, 10), (-1, 5)])
-async def test_sglang_wrapper(mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size):
+async def test_sglang_wrapper(
+    mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size
+):
     """Test the SGLang wrapper with different configurations."""
     _, mock_generate_async = mock_sgl_engine
-    
+
     # Set the max_pending_requests for assertion in the mock
     mock_generate_async.side_effect.max_pending_requests = max_pending_requests
 
@@ -215,7 +217,7 @@ async def test_sglang_wrapper(mock_sgl_engine, model_llama_3_2_216M, max_pending
 
     # Verify all requests were processed
     assert mock_generate_async.call_count == batch_size
-    
+
     # Verify the outputs match expected values
     for i, (request, output) in enumerate(results):
         assert output["prompt"] == f"Test {i}"
@@ -241,17 +243,19 @@ async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
         idx_in_batch_column="__idx_in_batch",
         task=SGLangTaskType.GENERATE,
     )
-    
+
     # Create a task type that doesn't exist in the prepare_llm_request method
     invalid_task_type = "invalid_task"
     wrapper.task_type = invalid_task_type
-    
+
     with pytest.raises(ValueError, match=f"Unsupported task type: {invalid_task_type}"):
-        await wrapper._prepare_llm_request({
-            "prompt": "Hello",
-            "sampling_params": {"temperature": 0.7},
-            "__idx_in_batch": 0,
-        })
+        await wrapper._prepare_llm_request(
+            {
+                "prompt": "Hello",
+                "sampling_params": {"temperature": 0.7},
+                "__idx_in_batch": 0,
+            }
+        )
 
 
 if __name__ == "__main__":

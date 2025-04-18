@@ -3,7 +3,6 @@ import sys
 
 import pytest
 
-import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.sglang_engine_proc import (
     SGLangEngineProcessorConfig,

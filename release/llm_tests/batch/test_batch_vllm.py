@@ -112,7 +112,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency, vllm_use_v1):
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
     ds = processor(ds)
     ds = ds.materialize()
-    
+
     # Verify results
     outs = ds.take_all()
     assert len(outs) == 120
