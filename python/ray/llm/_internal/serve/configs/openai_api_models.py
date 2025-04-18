@@ -672,6 +672,54 @@ class CompletionStreamResponse(BaseModel):
     usage: Optional[UsageInfo] = Field(default=None)
 
 
+class EmbeddingCompletionRequest(BaseModel):
+    model: Optional[str] = None
+    input: Union[List[int], List[List[int]], str, List[str]]
+    encoding_format: Literal["float", "base64"] = "float"
+    dimensions: Optional[int] = None
+    user: Optional[str] = None
+    truncate_prompt_tokens: Optional[Annotated[int, Field(ge=1)]] = None
+
+    additional_data: Optional[Any] = None
+    add_special_tokens: bool = Field(
+        default=True,
+        description=(
+            "If true (the default), special tokens (e.g. BOS) will be added to "
+            "the prompt."
+        ),
+    )
+    priority: int = Field(
+        default=0,
+        description=(
+            "The priority of the request (lower means earlier handling; "
+            "default: 0). Any priority other than 0 will raise an error "
+            "if the served model does not use priority scheduling."
+        ),
+    )
+
+
+EmbeddingRequest = EmbeddingCompletionRequest
+
+
+class EmbeddingResponseData(BaseModel):
+    index: int
+    object: str = "embedding"
+    embedding: Union[List[float], str]
+
+
+class EmbeddingResponse(BaseModel):
+    id: str = Field(default_factory=lambda: f"embd-{generate_request_id()}")
+    object: str = "list"
+    created: int = Field(default_factory=lambda: int(time.time()))
+    model: str
+    data: list[EmbeddingResponseData]
+    usage: UsageInfo
+
+
+LLMEmbeddingsResponse = Union[
+    AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None],
+]
+
 LLMChatResponse = Union[
     AsyncGenerator[
         Union[ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse], None
