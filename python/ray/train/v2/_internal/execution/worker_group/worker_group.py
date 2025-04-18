@@ -348,16 +348,18 @@ class WorkerGroup:
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
-        worker_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            self._worker_cls
-        )
+        worker_actor_cls = ray.remote(
+            runtime_env=self._get_worker_runtime_env(
+                custom_runtime_env=self._train_run_context.run_config.runtime_env
+            ),
+            **bundle_to_remote_args(resources_per_worker),
+        )(self._worker_cls)
 
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=placement_group, placement_group_bundle_index=i
                 ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
             for i in range(num_workers)
         ]
@@ -777,3 +779,15 @@ class WorkerGroup:
         for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
         return sorted_workers
+
+    @staticmethod
+    def _get_worker_runtime_env(custom_runtime_env: Dict) -> Dict:
+        """Update custom runtime env with internal Ray Train env vars
+        that should be propagated from the driver to worker processes.
+
+        Args:
+            The custom runtime env dict passed in by the user.
+        """
+        return custom_runtime_env.setdefault("env_vars", {}).update(
+            {"env_vars": get_env_vars_to_propagate()}
+        )

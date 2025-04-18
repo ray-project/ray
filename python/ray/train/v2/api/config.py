@@ -115,6 +115,8 @@ class RunConfig(RunConfigV1):
     """
 
     callbacks: Optional[List["UserCallback"]] = None
+    runtime_env: Optional[dict] = None
+
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
     stop: str = _DEPRECATED
@@ -150,6 +152,7 @@ class RunConfig(RunConfigV1):
             self.name = f"ray_train_run-{date_str()}"
 
         self.callbacks = self.callbacks or []
+        self.runtime_env = self.runtime_env or {}
 
         from ray.train.v2.api.callback import RayTrainCallback
 
