@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Union
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import calculate_remaining_timeout
+from ray.serve.exceptions import RequestCancelledError
 from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -54,6 +55,13 @@ class _ProxyResponseGeneratorBase(ABC):
     def stop_checking_for_disconnect(self):
         """Once this is called, the disconnected_task will be ignored."""
         self._disconnected_task = None
+
+
+def swallow_cancelled(task: asyncio.Task):
+    try:
+        task.result()
+    except (RequestCancelledError, asyncio.CancelledError):
+        pass
 
 
 class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
@@ -134,10 +142,12 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
             return next_result_task.result()
         elif self._disconnected_task in done:
             next_result_task.cancel()
+            next_result_task.add_done_callback(swallow_cancelled)
             self._response.cancel()
             raise asyncio.CancelledError()
         else:
             next_result_task.cancel()
+            next_result_task.add_done_callback(swallow_cancelled)
             self._response.cancel()
             raise TimeoutError()
 
