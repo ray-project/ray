@@ -378,23 +378,6 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
-    # SGLang has dependencies on vllm, so we need to include it in a separate extra.
-    # Keep this in sync with python/requirements/llm/llm-sglang-requirements.txt
-    setup_spec.extras["llm-sglang"] = list(
-        set(
-            [
-                "sglang[all]>=0.4.4.post1",
-                "jsonref>=1.1.0",
-                "jsonschema",
-                "ninja",
-                # async-timeout is a backport of asyncio.timeout for python < 3.11
-                "async-timeout; python_version < '3.11'",
-                "typer",
-            ]
-            + setup_spec.extras["data"]
-            + setup_spec.extras["serve"]
-        )
-    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
