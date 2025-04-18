@@ -27,7 +27,6 @@ def train_breast_cancer(config: dict):
         train_set,
         valid_sets=[test_set],
         valid_names=["eval"],
-        verbose_eval=False,
         callbacks=[
             TuneReportCheckpointCallback(
                 {
@@ -52,7 +51,6 @@ def train_breast_cancer_cv(config: dict):
     lgb.cv(
         config,
         train_set,
-        verbose_eval=False,
         stratified=True,
         # Checkpointing is not supported for CV
         # LightGBM aggregates metrics over folds automatically
