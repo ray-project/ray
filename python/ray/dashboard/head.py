@@ -5,6 +5,7 @@ import os
 import psutil
 from pathlib import Path
 from typing import Optional, Set, List, Tuple, TYPE_CHECKING
+import subprocess
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -394,6 +395,8 @@ class DashboardHead:
         )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
+        output = subprocess.check_output(["df", "-h"])
+        logger.info(f"ABC: Disk usage:\n {output.decode('utf-8')}")
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
             self._modules_to_load
         )
