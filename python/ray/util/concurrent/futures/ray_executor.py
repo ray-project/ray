@@ -647,8 +647,7 @@ class RayExecutor(Executor):
 
         if wait:
             for future in self.futures:
-                if future.running():
-                    _ = future.result()
+                _ = future.result()
 
         ray.shutdown()
         return
