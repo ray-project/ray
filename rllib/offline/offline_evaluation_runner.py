@@ -19,8 +19,8 @@ from ray.rllib.utils import unflatten_dict
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics import (
-    DATASET_NUM_ITERS_TRAINED,
-    DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    DATASET_NUM_ITERS_EVALUATED,
+    DATASET_NUM_ITERS_EVALUATED_LIFETIME,
     MODULE_SAMPLE_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -76,7 +76,9 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             )
 
         if not self._batch_iterator:
-            self.__batch_iterator = self._create_batch_iterator()
+            self.__batch_iterator = self._create_batch_iterator(
+                **self.config.iter_batches_kwargs
+            )
 
         # Log current weight seq no.
         self.metrics.log_value(
@@ -169,13 +171,13 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         # Record the number of batches pulled from the dataset.
         self.metrics.log_value(
             # TODO (simon): Create extra eval metrics.
-            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
+            (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED),
             iteration + 1,
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
-            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
+            (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
             iteration + 1,
             reduce="sum",
         )

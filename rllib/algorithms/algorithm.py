@@ -44,6 +44,7 @@ from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORI
 from ray.rllib.algorithms.utils import (
     AggregatorActor,
     _get_env_runner_bundles,
+    _get_offline_eval_runner_bundles,
     _get_learner_bundles,
     _get_main_process_bundle,
 )
@@ -1642,11 +1643,11 @@ class Algorithm(Checkpointable, Trainable):
     def _evaluate_offline_with_fixed_duration(self) -> None:
         # How many batches do we need to run?
         num_workers = self.config.num_offline_eval_runners
-        time_out = self.config.offline_evaluation_sample_timeout_s
+        time_out = self.config.offline_evaluation_timeout_s
 
-        def _offline_eval_runner_remote(runner, num, iter):
+        def _offline_eval_runner_remote(runner, iter):
 
-            metrics = runner.run(num_samples=num)
+            metrics = runner.run()
 
             return metrics, iter
 
@@ -1667,21 +1668,17 @@ class Algorithm(Checkpointable, Trainable):
         # In case all the remote evaluation workers die during a round of
         # evaluation, we need to stop.
         while num_healthy_workers > 0:
-            units_left_to_do = self.config.offline_evaluation_duration - num_units_done
+            units_left_to_do = (
+                self.config.offline_evaluation_duration * num_workers - num_units_done
+            )
             if units_left_to_do <= 0:
                 break
 
             _round += 1
 
-            _num = [  # [None]: skip idx=0 (local worker)
-                (units_left_to_do // num_healthy_workers)
-                + bool(i <= (units_left_to_do % num_healthy_workers))
-                for i in range(1, num_workers + 1)
-            ]
             self.offline_eval_runner_group.foreach_runner_async(
                 func=functools.partial(
                     _offline_eval_runner_remote,
-                    num=_num,
                     iter=algo_iteration,
                 ),
             )
@@ -1700,8 +1697,8 @@ class Algorithm(Checkpointable, Trainable):
                     continue
                 all_metrics.append(met)
                 num_units_done += (
-                    met[DATASET_NUM_ITERS_EVALUATED].peek()
-                    if DATASET_NUM_ITERS_EVALUATED in met
+                    met[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED].peek()
+                    if DATASET_NUM_ITERS_EVALUATED in met[ALL_MODULES]
                     else 0
                 )
 
@@ -3095,6 +3092,11 @@ class Algorithm(Checkpointable, Trainable):
         else:
             eval_env_runner_bundles = []
 
+        if cls._should_create_offline_evaluation_runners(eval_config):
+            offline_eval_runner_bundles = _get_offline_eval_runner_bundles(eval_config)
+        else:
+            offline_eval_runner_bundles = []
+
         learner_bundles = []
         if config.enable_rl_module_and_learner:
             learner_bundles = _get_learner_bundles(config)
@@ -3103,6 +3105,7 @@ class Algorithm(Checkpointable, Trainable):
             [main_process]
             + env_runner_bundles
             + eval_env_runner_bundles
+            + offline_eval_runner_bundles
             + learner_bundles
         )
 
@@ -3483,14 +3486,14 @@ class Algorithm(Checkpointable, Trainable):
         if self.offline_eval_runner_group is not None:
             # Add number of healthy evaluation workers after this iteration.
             eval_results[
-                "num_healthy_workers"
+                "num_healthy_offline_eval_workers"
             ] = self.offline_eval_runner_group.num_healthy_remote_runners
             eval_results[
-                "actor_manager_num_outstanding_async_reqs"
+                "offline_runners_actor_manager_num_outstanding_async_reqs"
             ] = self.offline_eval_runner_group.num_in_flight_async_reqs
             eval_results[
-                "num_remote_worker_restarts"
-            ] = self.offline_eval_runner_group.num_remote_worker_restarts
+                "num_remote_offline_eval_runners_restarts"
+            ] = self.offline_eval_runner_group.num_remote_runner_restarts
 
         return {EVALUATION_RESULTS: eval_results}
 
