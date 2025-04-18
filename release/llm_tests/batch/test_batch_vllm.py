@@ -1,5 +1,4 @@
 import sys
-import os
 
 import pytest
 
@@ -126,7 +125,7 @@ def test_vllm_llama_lora():
     lora_path = "s3://air-example-data/"
     lora_name = "llama-3.2-216M-lora-dummy"
     max_lora_rank = 32
-    
+
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
         dynamic_lora_loading_path=lora_path,
@@ -144,7 +143,7 @@ def test_vllm_llama_lora():
             "env_vars": {
                 "VLLM_USE_V1": "0",
             }
-        }
+        },
     )
 
     processor = build_llm_processor(
@@ -161,7 +160,6 @@ def test_vllm_llama_lora():
                 max_tokens=50,
                 detokenize=False,
             ),
-
         ),
         postprocess=lambda row: {
             "resp": row["generated_text"],
@@ -187,8 +185,10 @@ def test_vllm_llama_lora():
     ],
 )
 @pytest.mark.parametrize("vllm_use_v1", [True, False])
-def test_vllm_vision_language_models(model_source, tp_size, pp_size, concurrency, sample_size, vllm_use_v1):
-    """Test vLLM with vision language models using different configurations."""    
+def test_vllm_vision_language_models(
+    model_source, tp_size, pp_size, concurrency, sample_size, vllm_use_v1
+):
+    """Test vLLM with vision language models using different configurations."""
 
     if vllm_use_v1:
         runtime_env = dict(
@@ -205,7 +205,7 @@ def test_vllm_vision_language_models(model_source, tp_size, pp_size, concurrency
         runtime_env = {}
         tokenize = True
         detokenize = True
-        
+
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
         task_type="generate",
