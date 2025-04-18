@@ -559,24 +559,24 @@ def test_wandb_logger_rank_zero_only(trial, monkeypatch):
     # Test case 1: rank_zero_only=True, rank 0
     mock_session.world_rank = 0
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=True)
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
         assert not isinstance(run, RunDisabled)
 
     # Test case 2: rank_zero_only=True, non-rank-0
     mock_session.world_rank = 1
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=True)
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
         assert isinstance(run, RunDisabled)
 
     # Test case 3: rank_zero_only=False, any rank
     mock_session.world_rank = 1
     with patch("ray.air.integrations.wandb.get_session", return_value=mock_session):
-        run = setup_wandb(project="test_project", rank_zero_only=False)
+        run = setup_wandb(project="test_project", rank_zero_only=False, _wandb=Mock())
         assert not isinstance(run, RunDisabled)
 
     # Test case 4: rank_zero_only=True, no session
     with patch("ray.air.integrations.wandb.get_session", return_value=None):
-        run = setup_wandb(project="test_project", rank_zero_only=True)
+        run = setup_wandb(project="test_project", rank_zero_only=True, _wandb=Mock())
         assert not isinstance(run, RunDisabled)
 
 
