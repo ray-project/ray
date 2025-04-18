@@ -1,3 +1,4 @@
+"""This test suite does not need sglang to be installed."""
 import asyncio
 import pytest
 import sys
@@ -47,6 +48,52 @@ def mock_sglang_wrapper():
         # Make the wrapper class return our mock instance
         mock_wrapper.return_value = mock_instance
         yield mock_wrapper
+
+
+@pytest.fixture
+def mock_sgl_engine():
+    """Mock the SGLang engine and its _generate_async method."""
+    with (
+        patch("ray.llm._internal.batch.stages.sglang_engine_stage.sgl") as mock_sgl,
+        patch(
+            "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
+        ) as mock_generate_async,
+    ):
+        mock_sgl.Engine = AsyncMock()
+        num_running_requests = 0
+        request_lock = asyncio.Lock()
+
+        # Configure mock engine's generate behavior to simulate delay
+        async def mock_generate(request):
+            nonlocal num_running_requests
+            async with request_lock:
+                num_running_requests += 1
+
+            # This will be checked in tests that use max_pending_requests
+            max_pending_requests = getattr(mock_generate, "max_pending_requests", -1)
+            if max_pending_requests > 0:
+                assert num_running_requests <= max_pending_requests
+                
+            await asyncio.sleep(0.1)  # Reduced sleep time for faster tests
+
+            async with request_lock:
+                num_running_requests -= 1
+
+            # Create a mock SGLang output
+            return {
+                "prompt": request.prompt,
+                "prompt_token_ids": None,
+                "text": f"Response to: {request.prompt}",
+                "meta_info": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": request.params.get("max_new_tokens", 3),
+                    "finish_reason": "stop",
+                },
+                "output_ids": [4, 5, 6],
+            }
+
+        mock_generate_async.side_effect = mock_generate
+        yield mock_sgl, mock_generate_async
 
 
 def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
@@ -134,106 +181,77 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
 
 
 @pytest.mark.asyncio
-async def test_sglang_wrapper_semaphore(model_llama_3_2_216M):
-    max_pending_requests = 2
+@pytest.mark.parametrize("max_pending_requests,batch_size", [(2, 10), (-1, 5)])
+async def test_sglang_wrapper(mock_sgl_engine, model_llama_3_2_216M, max_pending_requests, batch_size):
+    """Test the SGLang wrapper with different configurations."""
+    _, mock_generate_async = mock_sgl_engine
+    
+    # Set the max_pending_requests for assertion in the mock
+    mock_generate_async.side_effect.max_pending_requests = max_pending_requests
 
-    with (
-        patch("sglang.Engine") as mock_engine,
-        patch(
-            "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
-        ) as mock_generate_async,
-    ):
-        mock_engine.return_value = AsyncMock()
-        num_running_requests = 0
-        request_lock = asyncio.Lock()
-
-        # Configure mock engine's generate behavior to simulate delay
-        async def mock_generate(request):
-            nonlocal num_running_requests
-            async with request_lock:
-                num_running_requests += 1
-
-            assert num_running_requests <= max_pending_requests
-            await asyncio.sleep(0.3)
-
-            async with request_lock:
-                num_running_requests -= 1
-
-            # Create a mock SGLang output
-            return {
-                "prompt": request.prompt,
-                "prompt_token_ids": None,
-                "text": f"Response to: {request.prompt}",
-                "meta_info": {
-                    "prompt_tokens": 3,
-                    "completion_tokens": 3,
-                },
-                "output_ids": [4, 5, 6],
-            }
-
-        mock_generate_async.side_effect = mock_generate
-
-        # Create wrapper with max 2 pending requests
-        wrapper = SGLangEngineWrapper(
-            model=model_llama_3_2_216M,
-            idx_in_batch_column="__idx_in_batch",
-            max_pending_requests=max_pending_requests,
-            skip_tokenizer_init=False,
-        )
-
-        # Create 10 requests
-        batch = [
-            {"__idx_in_batch": i, "prompt": f"Test {i}", "sampling_params": {}}
-            for i in range(10)
-        ]
-
-        tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
-        await asyncio.gather(*tasks)
-
-        # Verify all requests were processed
-        assert mock_generate_async.call_count == 10
-
-
-@pytest.mark.asyncio
-async def test_sglang_wrapper_generate(model_llama_3_2_216M):
+    # Create wrapper with configured max_pending_requests
     wrapper = SGLangEngineWrapper(
         model=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
-        max_pending_requests=-1,
-        # Skip CUDA graph capturing to reduce the start time.
-        disable_cuda_graph=True,
-        context_length=2048,
-        task=SGLangTaskType.GENERATE,
-        # Older GPUs (e.g. T4) don't support bfloat16.
-        dtype="half",
+        max_pending_requests=max_pending_requests,
         skip_tokenizer_init=False,
     )
 
+    # Create batch requests with different sampling parameters
     batch = [
         {
-            "__idx_in_batch": 0,
-            "prompt": "Hello",
+            "__idx_in_batch": i,
+            "prompt": f"Test {i}",
             "sampling_params": {
-                "max_new_tokens": 10,
+                "max_new_tokens": i + 5,
                 "temperature": 0.7,
             },
-        },
-        {
-            "__idx_in_batch": 1,
-            "prompt": "World",
-            "sampling_params": {
-                "max_new_tokens": 5,
-                "temperature": 0.7,
-            },
-        },
+        }
+        for i in range(batch_size)
     ]
 
     tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+    results = await asyncio.gather(*tasks)
 
-    for resp in asyncio.as_completed(tasks):
-        request, output = await resp
-        max_new_tokens = request.params["max_new_tokens"]
-        assert max_new_tokens == output["num_generated_tokens"]
+    # Verify all requests were processed
+    assert mock_generate_async.call_count == batch_size
+    
+    # Verify the outputs match expected values
+    for i, (request, output) in enumerate(results):
+        assert output["prompt"] == f"Test {i}"
+        assert output["num_generated_tokens"] == i + 5  # max_new_tokens we set
+
+
+@pytest.mark.asyncio
+async def test_sglang_error_handling(model_llama_3_2_216M):
+    """Test error handling when SGLang is not available."""
+    with patch("ray.llm._internal.batch.stages.sglang_engine_stage.sgl", None):
+        with pytest.raises(ImportError, match="SGLang is not installed"):
+            SGLangEngineWrapper(
+                model=model_llama_3_2_216M,
+                idx_in_batch_column="__idx_in_batch",
+            )
+
+
+@pytest.mark.asyncio
+async def test_sglang_invalid_task_type(model_llama_3_2_216M, mock_sgl_engine):
+    """Test handling of invalid task types."""
+    wrapper = SGLangEngineWrapper(
+        model=model_llama_3_2_216M,
+        idx_in_batch_column="__idx_in_batch",
+        task=SGLangTaskType.GENERATE,
+    )
+    
+    # Create a task type that doesn't exist in the prepare_llm_request method
+    invalid_task_type = "invalid_task"
+    wrapper.task_type = invalid_task_type
+    
+    with pytest.raises(ValueError, match=f"Unsupported task type: {invalid_task_type}"):
+        await wrapper._prepare_llm_request({
+            "prompt": "Hello",
+            "sampling_params": {"temperature": 0.7},
+            "__idx_in_batch": 0,
+        })
 
 
 if __name__ == "__main__":

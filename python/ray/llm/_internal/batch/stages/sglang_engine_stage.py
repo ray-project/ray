@@ -122,7 +122,7 @@ class SGLangEngineWrapper:
         if sgl is None:
             raise ImportError(
                 "SGLang is not installed or failed to import. Please run "
-                "`pip install ray[llm-sglang]` to install required dependencies."
+                "`pip install sglang[all]` to install required dependencies."
             )
 
         # Initialize the SGLang engine
