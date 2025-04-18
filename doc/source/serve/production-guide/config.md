@@ -28,6 +28,7 @@ http_options:
 grpc_options:
   port: ...
   grpc_servicer_functions: ...
+  request_timeout_s: ...
 
 logging_config:
   log_level: ...
@@ -66,6 +67,7 @@ The `grpc_options` are as follows. Note that the gRPC config is global to your R
 - **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is
   set to `9000`.
 - **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
+- **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, the Serve gRPC proxy retries up to `10` times when a response is not received due to failures (for example, network disconnect, request timeout, etc.) By default, there is no request timeout.
 
 The `logging_config` is global config, you can configure controller & proxy & replica logs. Note that you can also set application and deployment level logging config, which will take precedence over the global config. See logging config API [here](../../serve/api/doc/ray.serve.schema.LoggingConfig.rst) for more details.
 
@@ -191,6 +193,3 @@ deployments:
       user_config:
         threshold: 1.5
 ```
-
-
-
