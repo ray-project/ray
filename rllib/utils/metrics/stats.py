@@ -357,7 +357,17 @@ class Stats:
 
         # Shift historic reduced valued by one in our hist-tuple.
         # But don't ever put tensors into the history.
-        if not torch or not torch.is_tensor(reduced):
+        if not (
+            torch
+            and (
+                (
+                    self._reduce_method is None
+                    and len(reduced) > 0
+                    and torch.is_tensor(reduced[0])
+                )
+                or (self._reduce_method is not None and torch.is_tensor(reduced))
+            )
+        ):
             self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
