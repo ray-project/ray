@@ -231,7 +231,7 @@ py_test(
 
 py_test(
     name = "test_state",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -247,7 +247,7 @@ py_test(
 
 py_test(
     name = "test_state_export",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state_export.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -281,6 +281,22 @@ py_test(
     name = "test_sync_actor",
     size = "small",
     srcs = ["tests/test_sync_actor.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_telemetry",
+    size = "medium",
+    srcs = ["tests/test_telemetry.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

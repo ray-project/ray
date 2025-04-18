@@ -1,3 +1,9 @@
+import os
+
+# CI environment is slow, set the timeout to 60 seconds
+os.environ["RAY_CGRAPH_get_timeout"] = "60"
+os.environ["RAY_CGRAPH_submit_timeout"] = "60"
+
 # __cgraph_cpu_to_gpu_actor_start__
 import torch
 import ray

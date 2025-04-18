@@ -768,7 +768,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 
 ### Blog and Press
 
-- [Modern Parallel and Distributed Python: A Quick Tutorial on Ray](https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8)
+- [Modern Parallel and Distributed Python: A Quick Tutorial on Ray](https://medium.com/data-science/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8)
 - [Why Every Python Developer Will Love Ray](https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/)
 - [Ray: A Distributed System for AI (Berkeley Artificial Intelligence Research, BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
 - [10x Faster Parallel Python Without Python Multiprocessing](https://towardsdatascience.com/10x-faster-parallel-python-without-python-multiprocessing-e5017c93cce1)
@@ -782,7 +782,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 - [Scaling Multi Agent Reinforcement Learning](http://bair.berkeley.edu/blog/2018/12/12/rllib/)
 - [Functional RL with Keras and Tensorflow Eager](https://bair.berkeley.edu/blog/2019/10/14/functional-rl/)
 - [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
-- [Quick Tip—Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
+- [Quick Tip—Speed up Pandas using Modin](https://ericbrown.com/quick-tip-speed-up-pandas-using-modin.htm)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
 
 ### Videos

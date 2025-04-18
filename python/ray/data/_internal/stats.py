@@ -1,4 +1,5 @@
 import collections
+import enum
 import logging
 import threading
 import time
@@ -7,7 +8,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
-import enum
 
 import numpy as np
 
@@ -248,6 +248,14 @@ class _StatsActor:
             )
         )
 
+        # Actor related metrics
+        self.execution_metrics_actors = (
+            self._create_prometheus_metrics_for_execution_metrics(
+                metrics_group=MetricsGroup.ACTORS,
+                tag_keys=op_tags_keys,
+            )
+        )
+
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
@@ -416,6 +424,9 @@ class _StatsActor:
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
+                prom_metric.set(stats.get(field_name, 0), tags)
+
+            for field_name, prom_metric in self.execution_metrics_actors.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_misc.items():
@@ -1301,7 +1312,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round((e.max_uss_bytes or 0) / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),
@@ -1603,7 +1614,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1613,7 +1624,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),

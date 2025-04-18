@@ -71,7 +71,6 @@ py_test_module_list(
         "test_controller_recovery.py",
         "test_deployment_scheduler.py",
         "test_failure.py",
-        "test_grpc.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
@@ -128,6 +127,7 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_deploy_2.py",
+        "test_grpc.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_telemetry_1.py",
@@ -292,78 +292,6 @@ py_test(
     tags = [
         "autoscaling",
         "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests disabling queue len caching feature flag.
-# TODO(edoakes): remove this after the FF is removed.
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_handle_1.py",
-        "test_handle_2.py",
-        "test_handle_cancellation.py",
-        "test_handle_streaming.py",
-        "test_http_cancellation.py",
-        "test_multiplex.py",
-        "test_request_timeout.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests autoscaling when queue len caching is disabled.
-py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_autoscaling_policy.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Test old stop-fully-then-start behavior.
-# TODO(zcin): remove this after the old behavior is completely removed
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS": "0"},
-    files = [
-        "test_controller_recovery.py",
-        "test_deploy.py",
-        "test_max_replicas_per_node.py",
-    ],
-    name_suffix = "_with_stop_fully_then_start_behavior",
-    tags = [
-        "exclusive",
-        "no_windows",
         "team:serve",
     ],
     deps = [

@@ -29,6 +29,7 @@ from ray.util.state.common import (
     PredicateType,
     SupportedFilterType,
 )
+import ray._private.test_utils as test_utils
 
 
 @dataclass
@@ -111,6 +112,16 @@ def invoke_state_api(
         state_stats.pending_calls -= 1
 
     return res
+
+
+def invoke_state_api_n(*args, **kwargs):
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
+            invoke_state_api(*args, **kwargs)
+        return True
+
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):

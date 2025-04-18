@@ -30,7 +30,7 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
@@ -331,7 +331,7 @@ struct GcsServerMocker {
 
     /// ShutdownRaylet
     void ShutdownRaylet(
-        const NodeID &node_id,
+        const NodeID &raylet_node_id,
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 

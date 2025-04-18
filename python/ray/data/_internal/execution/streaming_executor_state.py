@@ -253,6 +253,10 @@ class OpState:
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
+        active, restarting, pending = self.op.actor_info_counts()
+        self.op.metrics.num_alive_actors = active
+        self.op.metrics.num_restarting_actors = restarting
+        self.op.metrics.num_pending_actors = pending
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
@@ -268,7 +272,14 @@ class OpState:
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
         ):
-            desc += " [backpressured]"
+            backpressure_types = []
+            if self.op._in_task_submission_backpressure:
+                # The op is backpressured from submitting new tasks.
+                backpressure_types.append("tasks")
+            if self.op._in_task_output_backpressure:
+                # The op is backpressured from producing new outputs.
+                backpressure_types.append("outputs")
+            desc += f" [backpressured:{','.join(backpressure_types)}]"
 
         # Actors info
         desc += self.op.actor_info_progress_str()
@@ -517,7 +528,7 @@ def update_operator_states(topology: Topology) -> None:
 
     # Traverse the topology in reverse topological order.
     # For each op, if all of its downstream operators have completed.
-    # call mark_execution_completed() to also complete this op.
+    # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
         if op.completed():
             continue
@@ -525,7 +536,7 @@ def update_operator_states(topology: Topology) -> None:
             dep.completed() for dep in op.output_dependencies
         )
         if dependents_completed:
-            op.mark_execution_completed()
+            op.mark_execution_finished()
 
 
 def select_operator_to_run(

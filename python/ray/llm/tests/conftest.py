@@ -5,6 +5,7 @@ import pytest
 from typing import Generator, List
 
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
+S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"
 
 
 def download_model_from_s3(
@@ -65,6 +66,27 @@ def model_llava_354m():
         "tokenizer.json",
         "tokenizer.model",
         "tokenizer_config.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
+def model_smolvlm_256m():
+    """The vision language model for testing."""
+    REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}smolvlm-256m-instruct/"
+    FILE_LIST = [
+        "added_tokens.json",
+        "chat_template.json",
+        "config.json",
+        "generation_config.json",
+        "merges.txt",
+        "model.safetensors",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
     ]
     yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
 

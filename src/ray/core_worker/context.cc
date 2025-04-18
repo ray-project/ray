@@ -16,6 +16,9 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <memory>
+#include <string>
+
 #include "ray/common/runtime_env_common.h"
 
 namespace ray {
@@ -224,7 +227,7 @@ const TaskID &WorkerContext::GetCurrentInternalTaskId() const {
   return GetThreadContext().GetCurrentInternalTaskId();
 }
 
-const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
+PlacementGroupID WorkerContext::GetCurrentPlacementGroupId() const {
   absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
@@ -345,12 +348,24 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
+// TODO(dayshah): Fixing thread-safety-reference-return here causes Java test failures.
+// Fix in follow up.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wthread-safety-reference-return"
+#endif
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
 }
+#ifdef __clang__
+#pragma clang diagnostic pop
+#pragma clang diagnostic pop
+#endif
 
-const ActorID &WorkerContext::GetRootDetachedActorID() const {
+ActorID WorkerContext::GetRootDetachedActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return root_detached_actor_id_;
 }

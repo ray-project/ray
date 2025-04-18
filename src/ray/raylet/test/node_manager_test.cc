@@ -14,6 +14,11 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "mock/ray/raylet/local_task_manager.h"
 #include "mock/ray/raylet/worker_pool.h"

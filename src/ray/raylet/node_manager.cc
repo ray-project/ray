@@ -14,6 +14,7 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <algorithm>
 #include <cctype>
 #include <csignal>
 #include <cstddef>
@@ -21,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -150,7 +152,8 @@ NodeManager::NodeManager(
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::Now(); }),
+          /*get_time=*/[]() { return absl::Now(); },
+          config.enable_resource_isolation),
       client_call_manager_(io_service),
       worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
@@ -237,7 +240,6 @@ NodeManager::NodeManager(
       store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
-      temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
       wait_manager_(/*is_object_local*/
@@ -263,7 +265,6 @@ NodeManager::NodeManager(
           worker_pool_,
           worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
-          /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
@@ -1016,7 +1017,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
       scheduling::NodeID(node_id.Binary()), labels);
 
-  // TODO: Always use the message from ray syncer.
+  // TODO: Always use the message from ray syncer.  // NOLINT
   ResourceRequest resources;
   for (auto &resource_entry : node_info.resources_total()) {
     resources.Set(scheduling::ResourceID(resource_entry.first),
@@ -1851,47 +1852,45 @@ void NodeManager::ProcessWaitRequestMessage(
     } else {
       // We failed to write to the client, so disconnect the client.
       std::ostringstream stream;
-      stream << "Failed to write WaitReply to the client. Status " << status
-             << ", message: " << status.message();
+      stream << "Failed to write WaitReply to the client. Status " << status;
       DisconnectClient(
           client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
-  wait_manager_.Wait(object_ids,
-                     message->timeout(),
-                     num_required_objects,
-                     [this, resolve_objects, client, current_task_id](
-                         std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
-                       // Write the data.
-                       flatbuffers::FlatBufferBuilder fbb;
-                       flatbuffers::Offset<protocol::WaitReply> wait_reply =
-                           protocol::CreateWaitReply(
-                               fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
-                       fbb.Finish(wait_reply);
+  wait_manager_.Wait(
+      object_ids,
+      message->timeout(),
+      num_required_objects,
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> ready,
+                                                       std::vector<ObjectID> remaining) {
+        // Write the data.
+        flatbuffers::FlatBufferBuilder fbb;
+        flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
+        fbb.Finish(wait_reply);
 
-                       auto status = client->WriteMessage(
-                           static_cast<int64_t>(protocol::MessageType::WaitReply),
-                           fbb.GetSize(),
-                           fbb.GetBufferPointer());
-                       if (status.ok()) {
-                         // The client is unblocked now because the wait call has
-                         // returned.
-                         if (resolve_objects) {
-                           AsyncResolveObjectsFinish(client, current_task_id);
-                         }
-                       } else {
-                         // We failed to write to the client, so disconnect the client.
-                         std::ostringstream stream;
-                         stream << "Failed to write WaitReply to the client. Status "
-                                << status << ", message: " << status.message();
-                         DisconnectClient(client,
-                                          /*graceful=*/false,
-                                          rpc::WorkerExitType::SYSTEM_ERROR,
-                                          stream.str());
-                       }
-                     });
+        auto status =
+            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                                 fbb.GetSize(),
+                                 fbb.GetBufferPointer());
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has
+          // returned.
+          if (resolve_objects) {
+            AsyncResolveObjectsFinish(client, current_task_id);
+          }
+        } else {
+          // We failed to write to the client, so disconnect the client.
+          std::ostringstream stream;
+          stream << "Failed to write WaitReply to the client. Status " << status;
+          DisconnectClient(client,
+                           /*graceful=*/false,
+                           rpc::WorkerExitType::SYSTEM_ERROR,
+                           stream.str());
+        }
+      });
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
@@ -2445,7 +2444,7 @@ void NodeManager::AsyncResolveObjectsFinish(
 }
 
 bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &worker_ptr) {
-  // TODO (Alex): We should standardize to pass
+  // TODO(Alex): We should standardize to pass
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
@@ -2656,11 +2655,6 @@ std::string NodeManager::DebugString() const {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
-  }
-
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
   }
 
   // Event stats.
@@ -3346,20 +3340,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
     agent_command_line.push_back("--disable-metrics-collection");
   }
 
-  // Create a non-zero random agent_id to pass to the child process.
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  std::string agent_name = "dashboard_agent";
   // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
   // dashboard agent crash no longer lead to a raylet crash.
   auto options = AgentManager::Options({self_node_id,

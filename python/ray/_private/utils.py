@@ -1,4 +1,3 @@
-import asyncio
 import binascii
 import random
 import string
@@ -32,7 +31,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    Coroutine,
     List,
     Mapping,
 )
@@ -350,7 +348,7 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
     """
@@ -1685,39 +1683,6 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
-    """Get a running async event loop if one exists, otherwise create one.
-
-    This function serves as a proxy for the deprecating get_event_loop().
-    It tries to get the running loop first, and if no running loop
-    could be retrieved:
-    - For python version <3.10: it falls back to the get_event_loop
-        call.
-    - For python version >= 3.10: it uses the same python implementation
-        of _get_event_loop() at asyncio/events.py.
-
-    Ideally, one should use high level APIs like asyncio.run() with python
-    version >= 3.7, if not possible, one should create and manage the event
-    loops explicitly.
-    """
-    vers_info = sys.version_info
-    if vers_info.major >= 3 and vers_info.minor >= 10:
-        # This follows the implementation of the deprecating `get_event_loop`
-        # in python3.10's asyncio. See python3.10/asyncio/events.py
-        # _get_event_loop()
-        try:
-            loop = asyncio.get_running_loop()
-            assert loop is not None
-            return loop
-        except RuntimeError as e:
-            # No running loop, relying on the error message as for now to
-            # differentiate runtime errors.
-            assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
-
-    return asyncio.get_event_loop()
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1802,38 +1767,6 @@ class DeferSigint(contextlib.AbstractContextManager):
             return False
 
 
-background_tasks = set()
-
-
-def run_background_task(coroutine: Coroutine) -> asyncio.Task:
-    """Schedule a task reliably to the event loop.
-
-    This API is used when you don't want to cache the reference of `asyncio.Task`.
-    For example,
-
-    ```
-    get_event_loop().create_task(coroutine(*args))
-    ```
-
-    The above code doesn't guarantee to schedule the coroutine to the event loops
-
-    When using create_task in a  "fire and forget" way, we should keep the references
-    alive for the reliable execution. This API is used to fire and forget
-    asynchronous execution.
-
-    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
-    """
-    task = get_or_create_event_loop().create_task(coroutine)
-    # Add task to the set. This creates a strong reference.
-    background_tasks.add(task)
-
-    # To prevent keeping references to finished tasks forever,
-    # make each task remove its own reference from the set after
-    # completion:
-    task.add_done_callback(background_tasks.discard)
-    return task
-
-
 def try_import_each_module(module_names_to_import: List[str]) -> None:
     """
     Make a best-effort attempt to import each named Python module.
@@ -1868,43 +1801,6 @@ def update_envs(env_vars: Dict[str, str]):
         # Replace non-existant env vars with an empty string.
         result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
         os.environ[key] = result
-
-
-def parse_node_labels_json(
-    labels_json: str, cli_logger, cf, command_arg="--labels"
-) -> Dict[str, str]:
-    try:
-        labels = json.loads(labels_json)
-        if not isinstance(labels, dict):
-            raise ValueError(
-                "The format after deserialization is not a key-value pair map"
-            )
-        for key, value in labels.items():
-            if not isinstance(key, str):
-                raise ValueError("The key is not string type.")
-            if not isinstance(value, str):
-                raise ValueError(f'The value of the "{key}" is not string type')
-    except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid JSON string, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"{command_arg}={labels_json}"),
-            str(e),
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
-        )
-    return labels
-
-
-def validate_node_labels(labels: Dict[str, str]):
-    if labels is None:
-        return
-    for key in labels.keys():
-        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
-            raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
-                f"This is reserved for Ray defined labels."
-            )
 
 
 def parse_pg_formatted_resources_to_original(
@@ -1992,3 +1888,35 @@ def get_current_node_cpu_model_name() -> Optional[str]:
     except Exception:
         logger.debug("Failed to get CPU model name", exc_info=True)
         return None
+
+
+def validate_socket_filepath(filepath: str):
+    """
+    Validate the provided filename is a valid Unix socket filename.
+    """
+    # Don't check for Windows as it doesn't support Unix sockets.
+    if sys.platform == "win32":
+        return
+    is_mac = sys.platform.startswith("darwin")
+    maxlen = (104 if is_mac else 108) - 1
+    if len(filepath.encode("utf-8")) > maxlen:
+        raise OSError(
+            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
+        )
+
+
+# Whether we're currently running in a test, either local or CI.
+in_test = None
+
+
+def is_in_test():
+    global in_test
+
+    if in_test is None:
+        in_test = any(
+            env_var in os.environ
+            # These environment variables are always set by pytest and Buildkite,
+            # respectively.
+            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
+        )
+    return in_test

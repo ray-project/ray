@@ -141,7 +141,7 @@ def test_log_file_exists(shutdown_only):
     # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_component = [
-        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
+        (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
         (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
@@ -363,23 +363,6 @@ def test_log_rotation(shutdown_only, monkeypatch):
             f"backup count {backup_count}, file count: {file_cnt}"
         )
 
-    # Test dashboard agent output file, which starts with `agent-`.
-    # Should be tested separately with other components since "agent" is a substring of "dashboard-agent".
-    #
-    # Check file count.
-    dashboard_stdout_paths = []
-    for path in paths:
-        if path.stem.startswith("agent-") and re.search(r".*\.out(\.\d+)?", str(path)):
-            dashboard_stdout_paths.append(path)
-    # For this unit test, we should only have 1 output file for dashboard agent.
-    assert len(dashboard_stdout_paths) == 1, dashboard_stdout_paths
-
-    # Check file content, each file should have one line.
-    for cur_path in dashboard_stdout_paths:
-        with cur_path.open() as f:
-            lines = f.readlines()
-            assert len(lines) <= 1, lines
-
     # Test application log, which starts with `worker-`.
     # Should be tested separately with other components since "worker" is a substring of "python-core-worker".
     #
@@ -526,8 +509,9 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 def test_log_redirect_to_stderr(shutdown_only):
     log_components = {
-        ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
-        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
+        ray_constants.PROCESS_TYPE_DASHBOARD: "Starting dashboard metrics server on port",
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
+        ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT: "Starting runtime env agent",
         ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
         ray_constants.PROCESS_TYPE_LOG_MONITOR: "",

@@ -14,15 +14,15 @@ from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-
     from ray.data._internal.execution.interfaces import Executor
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import Dataset
 
 
@@ -48,8 +48,7 @@ class ExecutionPlan:
     def __init__(
         self,
         stats: DatasetStats,
-        *,
-        data_context: Optional[DataContext] = None,
+        data_context: DataContext,
     ):
         """Create a plan with no transformation operators.
 
@@ -79,17 +78,30 @@ class ExecutionPlan:
         self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
+        # Index of the current execution.
+        self._run_index = -1
 
         self._dataset_name = None
 
         self._has_started_execution = False
 
-        if data_context is None:
-            # Snapshot the current context, so that the config of Datasets is always
-            # determined by the config at the time it was created.
-            self._context = copy.deepcopy(DataContext.get_current())
-        else:
-            self._context = data_context
+        self._context = data_context
+
+    def get_dataset_id(self) -> str:
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return (
+            f"{self._dataset_name or 'dataset'}_{self._dataset_uuid}_{self._run_index}"
+        )
+
+    def create_executor(self) -> "StreamingExecutor":
+        """Create an executor for this plan."""
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+        self._run_index += 1
+        executor = StreamingExecutor(self._context, self.get_dataset_id())
+        return executor
 
     def __repr__(self) -> str:
         return (
@@ -164,7 +176,10 @@ class ExecutionPlan:
                     count = None
                 else:
                     assert len(sources) == 1
-                    plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
+                    plan = ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None),
+                        self._context,
+                    )
                     plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
@@ -310,7 +325,10 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(copy.copy(self._in_stats))
+        plan_copy = ExecutionPlan(
+            copy.copy(self._in_stats),
+            data_context=self._context.copy(),
+        )
         if self._snapshot_bundle:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)
@@ -342,31 +360,26 @@ class ExecutionPlan:
             return self._schema
 
         schema = None
+
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+
         elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
-        elif fetch_if_missing:
-            iter_ref_bundles, _, _ = self.execute_to_iterator()
-            for ref_bundle in iter_ref_bundles:
-                for metadata in ref_bundle.metadata:
-                    if metadata.schema is not None and (
-                        metadata.num_rows is None or metadata.num_rows > 0
-                    ):
-                        schema = metadata.schema
-                        break
-        elif self.is_read_only():
+
+        elif fetch_if_missing or self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-            iter_ref_bundles, _, _ = self.execute_to_iterator()
-            try:
-                ref_bundle = next(iter(iter_ref_bundles))
-                for metadata in ref_bundle.metadata:
-                    if metadata.schema is not None:
-                        schema = metadata.schema
-                        break
-            except StopIteration:  # Empty dataset.
-                schema = None
+
+            iter_ref_bundles, _, executor = self.execute_to_iterator()
+
+            # Make sure executor is fully shutdown upon exiting
+            with executor:
+                for ref_bundle in iter_ref_bundles:
+                    for metadata in ref_bundle.metadata:
+                        if metadata.schema is not None:
+                            schema = metadata.schema
+                            break
 
         self._schema = schema
         return self._schema
@@ -402,13 +415,15 @@ class ExecutionPlan:
 
         This will use streaming execution to generate outputs.
 
+        NOTE: Executor will be shutdown upon either of the 2 following conditions:
+
+            - Iterator is fully exhausted (ie until StopIteration is raised)
+            - Executor instances is garbage-collected
+
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
         self._has_started_execution = True
-
-        # Always used the saved context for execution.
-        ctx = self._context
 
         if self.has_computed_output():
             bundle = self.execute()
@@ -417,10 +432,8 @@ class ExecutionPlan:
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
         )
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(ctx, metrics_tag)
+        executor = self.create_executor()
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -437,7 +450,7 @@ class ExecutionPlan:
         self,
         preserve_order: bool = False,
     ) -> RefBundle:
-        """Execute this plan.
+        """Executes this plan (eagerly).
 
         Args:
             preserve_order: Whether to preserve order in execution.
@@ -486,25 +499,19 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
+                # Make sure executor is properly shutdown
+                with self.create_executor() as executor:
+                    blocks = execute_to_legacy_block_list(
+                        executor,
+                        self,
+                        dataset_uuid=self._dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
+                    bundle = RefBundle(
+                        tuple(blocks.iter_blocks_with_metadata()),
+                        owns_blocks=blocks._owned_by_consumer,
+                    )
 
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-                executor = StreamingExecutor(
-                    context,
-                    metrics_tag,
-                )
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
-                bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import uuid
 
 import ray
@@ -47,7 +47,23 @@ class OpTask(ABC):
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or ObjectRefGenerator to wait on."""
-        pass
+        ...
+
+    def _cancel(self, force: bool):
+        object_ref = self.get_waitable()
+
+        # Get generator's `ObjectRef`
+        if isinstance(object_ref, ObjectRefGenerator):
+            object_ref = object_ref._generator_ref
+
+        is_actor_task = not object_ref.task_id().actor_id().is_nil()
+
+        ray.cancel(
+            object_ref,
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
 
 
 class DataOpTask(OpTask):
@@ -203,7 +219,7 @@ class PhysicalOperator(Operator):
         self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
-        self._execution_completed = False
+        self._execution_finished = False
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
@@ -272,22 +288,30 @@ class PhysicalOperator(Operator):
         elif self._output_block_size_option is not None:
             self._output_block_size_option = None
 
-    def mark_execution_completed(self):
-        """Manually mark this operator has completed execution."""
-        self._execution_completed = True
+    def mark_execution_finished(self):
+        """Manually mark that this operator has finished execution."""
+        self._execution_finished = True
+
+    def execution_finished(self) -> bool:
+        """Return True when this operator has finished execution.
+
+        The outputs may or may not have been taken.
+        """
+        return self._execution_finished
 
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
-        An operator is completed the operator has stopped execution and all
-        outputs are taken.
+        An operator is completed when all these conditions hold true:
+        * The operator has finished execution (i.e., `execution_finished()` is True).
+        * All outputs have been taken (i.e., `has_next()` is False).
         """
-        if not self._execution_completed:
+        if not self._execution_finished:
             if self._inputs_complete and self.num_active_tasks() == 0:
                 # If all inputs are complete and there are no active tasks,
                 # then the operator has completed execution.
-                self._execution_completed = True
-        return self._execution_completed and not self.has_next()
+                self._execution_finished = True
+        return self._execution_finished and not self.has_next()
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -457,7 +481,7 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def shutdown(self) -> None:
+    def shutdown(self, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
@@ -465,6 +489,23 @@ class PhysicalOperator(Operator):
         """
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
+
+        elif force:
+            tasks: List[OpTask] = self.get_active_tasks()
+
+            # Interrupt all (still) running tasks immediately
+            for task in tasks:
+                task._cancel(force=True)
+
+            # Wait for all tasks to get cancelled before returning
+            for task in tasks:
+                try:
+                    ray.get(task.get_waitable())
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task might have already
+                    # failed with a different error, or cancellation failed.
+                    # In all cases, we swallow the exception.
+                    pass
 
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
@@ -569,3 +610,12 @@ class PhysicalOperator(Operator):
         Actors.
         """
         return ""
+
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors.
+
+        This method will be called in add_output API in OpState. Subclasses can
+        override it to return counts for Alive, Restarting and Pending
+        Actors.
+        """
+        return 0, 0, 0

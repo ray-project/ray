@@ -4,15 +4,22 @@ import aiohttp
 import inspect
 import logging
 import sys
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+import setproctitle
 import multiprocessing
 
 import ray
+from ray import ray_constants
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
+    get_socket_path,
+    get_named_pipe_path,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private import logging_utils
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +31,18 @@ class SubprocessModuleConfig:
     Pickleable.
     """
 
+    cluster_id_hex: str
+    gcs_address: str
+    session_name: str
+    temp_dir: str
+    session_dir: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
     log_dir: str
     # Name of the "base" log file. Its stem is appended with the Module.__name__.
     # e.g. when logging_filename = "dashboard.log", and Module is JobHead,
-    # we will set up logger with name "dashboard-JobHead.log". This name will again be
+    # we will set up logger with name "dashboard_JobHead.log". This name will again be
     # appended with .1 and .2 for rotation.
     logging_filename: str
     logging_rotate_bytes: int
@@ -53,6 +65,25 @@ class SubprocessModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
+        self._parent_process = multiprocessing.parent_process()
+        # Lazy init
+        self._gcs_client = None
+        self._gcs_aio_client = None
+        self._aiogrpc_gcs_channel = None
+        self._parent_process_death_detection_task = None
+        self._http_session = None
+
+    async def _detect_parent_process_death(self):
+        """
+        Detect parent process liveness. Only returns when parent process is dead.
+        """
+        while True:
+            if not self._parent_process.is_alive():
+                logger.warning(
+                    f"Parent process {self._parent_process.pid} died. Exiting..."
+                )
+                return
+            await asyncio.sleep(1)
 
     @staticmethod
     def is_minimal_module():
@@ -67,22 +98,14 @@ class SubprocessModule(abc.ABC):
         """
         return False
 
-    @abc.abstractmethod
-    async def init(self):
+    async def run(self):
         """
-        Run the module in an asyncio loop. A head module can provide
-        servicers to the server.
-
-        Only after this method is returned, the module will start receiving messages
-        from the parent queue.
+        Start running the module.
+        This method should be called first before the module starts receiving requests.
         """
-        pass
-
-    async def start_server(self):
-        """
-        Start the aiohttp server.
-        """
-        app = aiohttp.web.Application()
+        app = aiohttp.web.Application(
+            client_max_size=ray_constants.DASHBOARD_CLIENT_MAX_SIZE,
+        )
         routes: list[aiohttp.web.RouteDef] = [
             aiohttp.web.get("/api/healthz", self._internal_module_health_check)
         ]
@@ -103,18 +126,79 @@ class SubprocessModule(abc.ABC):
                 )
             )
         app.add_routes(routes)
-        runner = aiohttp.web.AppRunner(app)
+        runner = aiohttp.web.AppRunner(app, access_log=None)
         await runner.setup()
 
-        socket_path = os.path.join(
-            self._config.socket_dir, "dashboard_" + self.__class__.__name__
-        )
+        module_name = self.__class__.__name__
         if sys.platform == "win32":
-            site = aiohttp.web.NamedPipeSite(runner, socket_path)
+            named_pipe_path = get_named_pipe_path(
+                module_name, self._config.session_name
+            )
+            site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
+            logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:
+            socket_path = get_socket_path(self._config.socket_dir, module_name)
             site = aiohttp.web.UnixSite(runner, socket_path)
+            logger.info(f"Started aiohttp server over {socket_path}.")
         await site.start()
-        logger.info(f"Started aiohttp server over {socket_path}.")
+
+    @property
+    def gcs_aio_client(self):
+        if self._gcs_aio_client is None:
+            self._gcs_aio_client = GcsAioClient(
+                address=self._config.gcs_address,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        return self._gcs_aio_client
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            if not ray.experimental.internal_kv._internal_kv_initialized():
+                gcs_client = GcsClient(
+                    address=self._config.gcs_address,
+                    cluster_id=self._config.cluster_id_hex,
+                )
+                ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+            self._gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        return self._gcs_client
+
+    @property
+    def aiogrpc_gcs_channel(self):
+        if self._aiogrpc_gcs_channel is None:
+            gcs_channel = GcsChannel(gcs_address=self._config.gcs_address, aio=True)
+            gcs_channel.connect()
+            self._aiogrpc_gcs_channel = gcs_channel.channel()
+        return self._aiogrpc_gcs_channel
+
+    @property
+    def session_name(self):
+        """
+        Return the Ray session name. It's not related to the aiohttp session.
+        """
+        return self._config.session_name
+
+    @property
+    def temp_dir(self):
+        return self._config.temp_dir
+
+    @property
+    def session_dir(self):
+        return self._config.session_dir
+
+    @property
+    def log_dir(self):
+        return self._config.log_dir
+
+    @property
+    def http_session(self):
+        if self._http_session is None:
+            self._http_session = aiohttp.ClientSession()
+        return self._http_session
+
+    @property
+    def gcs_address(self):
+        return self._config.gcs_address
 
     async def _internal_module_health_check(self, request):
         return aiohttp.web.Response(
@@ -126,18 +210,25 @@ class SubprocessModule(abc.ABC):
 async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
+    incarnation: int,
     ready_event: multiprocessing.Event,
 ):
 
     module_name = cls.__name__
 
-    logger.info(f"Starting module {module_name} with config {config}")
+    logger.info(
+        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
+    )
 
     try:
         module = cls(config)
-        # First init the module, then start the aiohttp server.
-        await module.init()
-        await module.start_server()
+        module._parent_process_death_detection_task = asyncio.create_task(
+            module._detect_parent_process_death()
+        )
+        module._parent_process_death_detection_task.add_done_callback(
+            lambda _: sys.exit()
+        )
+        await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
@@ -148,12 +239,17 @@ async def run_module_inner(
 def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
+    incarnation: int,
     ready_event: multiprocessing.Event,
 ):
     """
     Entrypoint for a subprocess module.
     """
     module_name = cls.__name__
+    current_proctitle = setproctitle.getproctitle()
+    setproctitle.setproctitle(
+        f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
+    )
     logging_filename = module_logging_filename(module_name, config.logging_filename)
     setup_component_logger(
         logging_level=config.logging_level,
@@ -164,11 +260,26 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
+    if config.logging_filename:
+        stdout_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".out"
+        )
+        stderr_filename = module_logging_filename(
+            module_name, config.logging_filename, extension=".err"
+        )
+        logging_utils.redirect_stdout_stderr_if_needed(
+            os.path.join(config.log_dir, stdout_filename),
+            os.path.join(config.log_dir, stderr_filename),
+            config.logging_rotate_bytes,
+            config.logging_rotate_backup_count,
+        )
+
     loop = asyncio.new_event_loop()
-    loop.create_task(
+    task = loop.create_task(
         run_module_inner(
             cls,
             config,
+            incarnation,
             ready_event,
         )
     )
@@ -183,4 +294,5 @@ def run_module(
 
     ray._private.utils.set_sigterm_handler(sigterm_handler)
 
+    loop.run_until_complete(task)
     loop.run_forever()

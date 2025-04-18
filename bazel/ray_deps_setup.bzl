@@ -174,10 +174,11 @@ def ray_deps_setup():
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
     )
 
-    auto_http_archive(
+    http_archive(
         name = "com_github_google_flatbuffers",
-        url = "https://github.com/google/flatbuffers/archive/63d51afd1196336a7d1f56a988091ef05deb1c62.tar.gz",
-        sha256 = "3f469032571d324eabea88d7014c05fec8565a5877dbe49b2a52d8d1a0f18e63",
+        url = "https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz",
+        sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
+        strip_prefix = "flatbuffers-25.2.10",
     )
 
     auto_http_archive(
@@ -245,6 +246,7 @@ def ray_deps_setup():
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-zlib.patch",
             "@com_github_ray_project_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
         ],
     )
 
@@ -255,6 +257,7 @@ def ray_deps_setup():
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
         ],
     )
 
