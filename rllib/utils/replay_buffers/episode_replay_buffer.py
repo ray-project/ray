@@ -59,7 +59,6 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_EPISODES_EVICTED_LIFETIME,
     NUM_MODULE_EPISODES_PER_SAMPLE,
     NUM_MODULE_RESAMPLES,
-    NUM_MODULE_STEPS_STORED,
     NUM_MODULE_STEPS_ADDED,
     NUM_MODULE_STEPS_ADDED_LIFETIME,
     NUM_MODULE_STEPS_EVICTED,
@@ -628,16 +627,6 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             self.metrics.log_value(
                 (NUM_MODULE_EPISODES_STORED, mid),
                 module_episodes_stored,
-                reduce="mean",
-                window=self._metrics_num_episodes_for_smoothing,
-            )
-            # Number of module steps in the buffer.
-            module_steps_stored = self.metrics.peek(
-                (NUM_MODULE_STEPS_ADDED_LIFETIME, mid)
-            ) - self.metrics.peek((NUM_MODULE_EPISODES_EVICTED_LIFETIME, mid))
-            self.metrics.log_value(
-                (NUM_MODULE_STEPS_STORED, mid),
-                module_steps_stored,
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
