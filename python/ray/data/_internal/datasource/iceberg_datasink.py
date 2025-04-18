@@ -11,7 +11,7 @@ from ray.data.block import BlockAccessor, Block
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.datasource.datasink import WriteResult
 import uuid
-from importlib.metadata import version
+from packaging import version
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -86,12 +86,10 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def on_write_start(self) -> None:
         """Prepare for the transaction"""
+        import pyiceberg
         from pyiceberg.table import TableProperties
 
-        # Determine the PyIceberg version to handle backward compatibility
-        pyiceberg_version = version("pyiceberg")
-
-        if pyiceberg_version >= "0.9.0":
+        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             from pyiceberg.utils.properties import property_as_bool
         else:
             from pyiceberg.table import PropertyUtil

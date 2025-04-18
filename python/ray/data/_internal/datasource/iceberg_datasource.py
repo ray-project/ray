@@ -13,7 +13,7 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
-from importlib.metadata import version
+from packaging import version
 import pyarrow as pa
 
 if TYPE_CHECKING:
@@ -38,9 +38,9 @@ def _get_read_task(
     schema: "Schema",
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
-    pyiceberg_version = version("pyiceberg")
+    import pyiceberg
 
-    if pyiceberg_version >= "0.9.0":
+    if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
         # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
         from pyiceberg.io.pyarrow import ArrowScan
 
