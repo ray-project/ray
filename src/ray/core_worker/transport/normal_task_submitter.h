@@ -16,6 +16,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>
@@ -209,7 +210,7 @@ class NormalTaskSubmitter {
   /// \param[in] error_detail The reason why it was errored.
   /// it is unused if was_error is false.
   /// \param[in] worker_exiting Whether the worker is exiting.
-  void ReturnWorker(const rpc::Address addr,
+  void ReturnWorker(const rpc::Address &addr,
                     bool was_error,
                     const std::string &error_detail,
                     bool worker_exiting,
@@ -217,7 +218,7 @@ class NormalTaskSubmitter {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
-  inline bool CheckNoSchedulingKeyEntries() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool CheckNoSchedulingKeyEntries() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return scheduling_key_entries_.empty();
   }
 
@@ -318,22 +319,27 @@ class NormalTaskSubmitter {
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
     absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
-    TaskSpecification resource_spec = TaskSpecification();
-    // Tasks that are queued for execution. We keep an individual queue per
-    // scheduling class to ensure fairness.
-    std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
+    TaskSpecification resource_spec;
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
-    absl::flat_hash_set<rpc::Address> active_workers =
-        absl::flat_hash_set<rpc::Address>();
+    absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
     int64_t last_reported_backlog_size = 0;
 
+    // TODO(dayshah): Consider a map wrapper that keeps track of this and handles erasing
+    // when queue is empty.
+    // Keep track of the number of tasks that are queued for execution.
+    size_t num_tasks_queued = 0;
+
+    // Map of priority -> tasks queued for execution. We keep an individual map
+    // per scheduling class to ensure fairness.
+    absl::btree_map<int32_t, std::deque<TaskSpecification>> task_queue_map;
+
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
-    inline bool CanDelete() const {
-      if (pending_lease_requests.empty() && task_queue.empty() &&
+    bool CanDelete() const {
+      if (pending_lease_requests.empty() && task_queue_map.empty() &&
           active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
       }
@@ -342,20 +348,16 @@ class NormalTaskSubmitter {
     }
 
     // Check whether all workers are busy.
-    inline bool AllWorkersBusy() const {
+    bool AllWorkersBusy() const {
       RAY_CHECK_LE(num_busy_workers, active_workers.size());
       return num_busy_workers == active_workers.size();
     }
 
     // Get the current backlog size for this scheduling key
-    [[nodiscard]] inline int64_t BacklogSize() const {
-      if (task_queue.size() < pending_lease_requests.size()) {
-        // This can happen if worker is reused.
-        return 0;
-      }
-
+    int64_t BacklogSize() const {
       // Subtract tasks with pending lease requests so we don't double count them.
-      return task_queue.size() - pending_lease_requests.size();
+      // Make sure we don't return negative if a worker is reused.
+      return std::max(num_tasks_queued - pending_lease_requests.size(), 0ul);
     }
   };
 
