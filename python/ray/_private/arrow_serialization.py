@@ -2,11 +2,12 @@
 # it causes circular dependency issues for AsyncActors due to
 # ray.data's lazy import.
 # see https://github.com/ray-project/ray/issues/30498 for more context.
+from collections.abc import Callable
 from dataclasses import dataclass
 import logging
 import os
 import sys
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import List, Tuple, Optional, TYPE_CHECKING, Type
 from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
@@ -234,6 +235,19 @@ class PicklableArrayPayload:
         return _array_payload_to_array(self)
 
 
+extension_array_deserializers = {}
+
+
+def register_extension_array_deserializer(
+    type_cls: Type["pyarrow.DataType"],
+    deserializer: Callable[[PicklableArrayPayload], "pyarrow.Array"],
+):
+    """Add a deserializer for a specific Arrow Extension array type."""
+    if type_cls in extension_array_deserializers:
+        raise ValueError(f"Deserializer for type {type_cls} is already registered")
+    extension_array_deserializers[type_cls] = deserializer
+
+
 def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array":
     """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
@@ -255,6 +269,11 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
+    elif isinstance(payload.type, tuple(extension_array_deserializers.keys())):
+        for type_cls, deserializer in extension_array_deserializers.items():
+            if isinstance(payload.type, type_cls):
+                return deserializer(payload)
+        raise ValueError("Unreachable")
     elif isinstance(
         payload.type,
         tensor_extension_types,
@@ -318,7 +337,7 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _map_array_to_array_payload(a)
     elif isinstance(a.type, tensor_extension_types):
         return _tensor_array_to_array_payload(a)
-    elif isinstance(a.type, pa.ExtensionType):
+    elif isinstance(a.type, pa.BaseExtensionType):
         return _extension_array_to_array_payload(a)
     else:
         raise ValueError("Unhandled Arrow array type:", a.type)
