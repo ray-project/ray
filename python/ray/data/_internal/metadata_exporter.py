@@ -33,8 +33,12 @@ class Operator:
     
     Attributes:
         name: The name of the operator.
-        id: The unique identifier of the operator.
-        uuid: The UUID for the operator.
+        id: The unique identifier of the operator within the DAG structure, typically
+            incorporating a position or index (e.g., "ReadParquet_0"). This is used for
+            referencing operators within the DAG topology.
+        uuid: The system-generated UUID of the physical operator instance. This is the
+            internal unique identifier created when the operator instance is initialized
+            and remains consistent throughout its lifetime.
         input_dependencies: List of operator IDs that this operator depends on for input.
         sub_operators: List of sub-operators contained within this operator.
     """
