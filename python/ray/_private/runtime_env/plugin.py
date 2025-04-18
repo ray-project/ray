@@ -27,6 +27,9 @@ class RuntimeEnvPlugin(ABC):
     name: str = None
     priority: int = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
 
+    def __init__(self, *args, **kwargs):
+        pass
+
     @staticmethod
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.

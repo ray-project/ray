@@ -1510,3 +1510,11 @@ def set_runtime_env_container_use_ray_whl_package(request):
     os.environ["RAY_PODMAN_UES_WHL_PACKAGE"] = use_ray_whl_package
     yield use_ray_whl_package
     os.environ.pop("RAY_PODMAN_UES_WHL_PACKAGE", None)
+
+
+@pytest.fixture(scope="function")
+def set_ray_unpackable_file_suffixs(request):
+    ray_unpackable_file_suffixs = getattr(request, "param", "0")
+    os.environ["RAY_UNPACKABLE_FILE_SUFFIXS"] = ray_unpackable_file_suffixs
+    yield ray_unpackable_file_suffixs
+    os.environ.pop("RAY_UNPACKABLE_FILE_SUFFIXS", None)
