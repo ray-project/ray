@@ -210,7 +210,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    conn_to_parent: multiprocessing.connection.Connection,
+    child_conn: multiprocessing.connection.Connection,
 ):
 
     module_name = cls.__name__
@@ -228,8 +228,8 @@ async def run_module_inner(
             lambda _: sys.exit()
         )
         await module.run()
-        conn_to_parent.send(None)
-        conn_to_parent.close()
+        child_conn.send(None)
+        child_conn.close()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
@@ -240,7 +240,7 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    conn_to_parent: multiprocessing.connection.Connection,
+    child_conn: multiprocessing.connection.Connection,
 ):
     """
     Entrypoint for a subprocess module.
@@ -280,7 +280,7 @@ def run_module(
             cls,
             config,
             incarnation,
-            conn_to_parent,
+            child_conn,
         )
     )
     # TODO: do graceful shutdown.

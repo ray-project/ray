@@ -139,7 +139,13 @@ class SubprocessModuleHandle:
         and can be blocking.
         """
         if self.parent_conn.poll(dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT):
-            self.parent_conn.recv()
+            try:
+                self.parent_conn.recv()
+            except EOFError:
+                raise RuntimeError(
+                    f"Module {self.module_cls.__name__} failed to start. "
+                    "Received EOF from pipe."
+                )
             self.parent_conn.close()
             self.parent_conn = None
         else:
