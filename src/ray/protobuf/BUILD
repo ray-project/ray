@@ -491,3 +491,114 @@ cc_proto_library(
     name = "autoscaler_cc_proto",
     deps = [":autoscaler_proto"],
 )
+
+proto_library(
+    name = "actor_task_definition_event_proto",
+    srcs = ["events/task_events/actor_task_definition_event.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "actor_task_definition_event_cc_proto",
+    deps = [":actor_task_definition_event_proto"],
+)
+
+python_grpc_compile(
+    name = "actor_task_definition_event_py_proto",
+    deps = [":actor_task_definition_event_proto"],
+)
+
+proto_library(
+    name = "actor_task_execution_event_proto",
+    srcs = ["events/task_events/actor_task_execution_event.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "actor_task_execution_event_cc_proto",
+    deps = [":actor_task_execution_event_proto"],
+)
+
+python_grpc_compile(
+    name = "actor_task_execution_event_py_proto",
+    deps = [":actor_task_execution_event_proto"],
+)
+
+proto_library(
+    name = "task_definition_event_proto",
+    srcs = ["events/task_events/task_definition_event.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "task_definition_event_cc_proto",
+    deps = [":task_definition_event_proto"],
+)
+
+python_grpc_compile(
+    name = "task_definition_event_py_proto",
+    deps = [":task_definition_event_proto"],
+)
+
+proto_library(
+    name = "task_execution_event_proto",
+    srcs = ["events/task_events/task_execution_event.proto"],
+    deps = [
+        ":common_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "task_execution_event_cc_proto",
+    deps = [":task_execution_event_proto"],
+)
+
+python_grpc_compile(
+    name = "task_execution_event_py_proto",
+    deps = [":task_execution_event_proto"],
+)
+
+proto_library(
+    name = "base_event_proto",
+    srcs = ["events/base.proto"],
+    deps = [
+        ":actor_task_definition_event_proto",
+        ":actor_task_execution_event_proto",
+        ":task_definition_event_proto",
+        ":task_execution_event_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "base_event_cc_proto",
+    deps = [":base_event_proto"],
+)
+
+python_grpc_compile(
+    name = "base_event_py_proto",
+    deps = [":base_event_proto"],
+)
+
+proto_library(
+    name = "event_aggregator_service_proto",
+    srcs = ["events/event_aggregator_service.proto"],
+    deps = [
+        ":base_event_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "event_aggregator_service_cc_proto",
+    deps = [":event_aggregator_service_proto"],
+)
+
+python_grpc_compile(
+    name = "event_aggregator_service_py_proto",
+    deps = [":event_aggregator_service_proto"],
+)

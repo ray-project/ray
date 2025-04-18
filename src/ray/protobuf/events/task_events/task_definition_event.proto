@@ -14,6 +14,8 @@
 
 syntax = "proto3";
 
+import "src/ray/protobuf/common.proto";
+
 package ray.rpc.events;
 
 // Message containing the definition information of a task.
