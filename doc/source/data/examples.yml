@@ -45,12 +45,14 @@ examples:
     frameworks:
       - xgboost
     link: ../train/examples/xgboost/distributed-xgboost-lightgbm
-  - title: Distributed Data Processing with Data-Juicer
-    skill_level: beginner
-    frameworks:
-      - Data-Juicer
-    use_cases:
-      - large language models
-      - generative ai
-    contributor: community
-    link: examples/data_juicer_distributed_data_processing
+  # TODO(@vigneshka): Make this example accessible in the example gallery under 
+  # community contributions while keeping it hidden from the main documentation.
+  # - title: Distributed Data Processing with Data-Juicer
+  #   skill_level: beginner
+  #   frameworks:
+  #     - Data-Juicer
+  #   use_cases:
+  #     - large language models
+  #     - generative ai
+  #   contributor: community
+  #   link: examples/data_juicer_distributed_data_processing
