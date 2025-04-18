@@ -190,8 +190,8 @@ Status CheckCgroupV2MountedRW(const std::string &path) {
   return Status::OK();
 }
 
-Status CheckBaseCgroupSubtreeController(const std::string &directory) {
-  const auto subtree_control_path = ray::JoinPaths(directory, kSubtreeControlFilename);
+Status CheckBaseCgroupAvailableControllers(const std::string &directory) {
+  const auto subtree_control_path = ray::JoinPaths(directory, kControllerFilename);
   std::ifstream in_file(subtree_control_path, std::ios::app | std::ios::out);
   RAY_SCHECK_OK_CGROUP(in_file.good())
       << "Failed to open cgroup file " << subtree_control_path;
@@ -201,12 +201,12 @@ Status CheckBaseCgroupSubtreeController(const std::string &directory) {
   std::string_view content_sv{content};
   absl::ConsumeSuffix(&content_sv, "\n");
 
-  const std::vector<std::string_view> enabled_subtree_controllers =
+  const std::vector<std::string_view> available_controllers =
       absl::StrSplit(content_sv, ' ');
   for (const auto &cur_controller : kRequiredControllers) {
-    if (std::find(enabled_subtree_controllers.begin(),
-                  enabled_subtree_controllers.end(),
-                  cur_controller) != enabled_subtree_controllers.end()) {
+    if (std::find(available_controllers.begin(),
+                  available_controllers.end(),
+                  cur_controller) == available_controllers.end()) {
       return Status(StatusCode::Invalid, /*msg=*/"", RAY_LOC())
              << "Base cgroup " << directory << " doesn't enable " << cur_controller
              << " controller for subtree."
@@ -249,7 +249,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
   // Check cgroup subtree control before setup.
-  if (Status s = internal::CheckBaseCgroupSubtreeController(directory); !s.ok()) {
+  if (Status s = internal::CheckBaseCgroupAvailableControllers(directory); !s.ok()) {
     return s;
   }
 
