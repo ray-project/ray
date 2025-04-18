@@ -71,7 +71,8 @@ struct TaskOptions {
               int64_t generator_backpressure_num_objects_p = -1,
               std::string serialized_runtime_env_info_p = "{}",
               bool enable_task_events_p = kDefaultTaskEventEnabled,
-              std::unordered_map<std::string, std::string> labels_p = {})
+              std::unordered_map<std::string, std::string> labels_p = {},
+              int priority = 0)
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -79,7 +80,8 @@ struct TaskOptions {
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
         enable_task_events(enable_task_events_p),
-        labels(std::move(labels_p)) {}
+        labels(std::move(labels_p)),
+        priority(priority) {}
 
   /// The name of this task.
   std::string name;
@@ -96,11 +98,13 @@ struct TaskOptions {
   /// Only applicable when streaming generator is used.
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
-  int64_t generator_backpressure_num_objects;
+  int64_t generator_backpressure_num_objects = -1;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
+  /// The priority of this task.
+  int32_t priority = 0;
 };
 
 /// Options for actor creation tasks.
