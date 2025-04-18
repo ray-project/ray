@@ -4082,7 +4082,7 @@
 # LLM Batch
 ##############
 
-- name: llm_batch_vllm_v1_llama_tp2dp2
+- name: llm_batch_vllm
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4097,10 +4097,9 @@
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --tp-size 2 --concurrency 2 --vllm-use-v1
+      pytest -sv test_batch_vllm.py
 
-- name: llm_batch_vllm_llama_pp2dp2
+- name: llm_batch_sglang_llama
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4110,10 +4109,11 @@
   cluster:
     byod:
       type: llm-cu124
+      post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --pp-size 2 --concurrency 2
+      pytest -sv test_batch_sglang.py
+
