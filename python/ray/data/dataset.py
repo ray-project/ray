@@ -32,7 +32,6 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -426,8 +425,14 @@ class Dataset:
 
     @property
     def name(self) -> Optional[str]:
-        """Returns the dataset name"""
+        """Returns the user-defined dataset name"""
         return self._plan._dataset_name
+
+    def get_dataset_id(self) -> str:
+        """Unique ID of the dataset, including the dataset name,
+        UUID, and current execution index.
+        """
+        return self._plan.get_dataset_id()
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -1630,9 +1635,14 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> ds.random_sample(0.1).count()  # doctest: +SKIP
+            >>> ds1 = ray.data.range(100)
+            >>> ds1.random_sample(0.1).count()  # doctest: +SKIP
             10
+            >>> ds2 = ray.data.range(1000)
+            >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
+            [{'id': 2}, {'id': 9}]
+            >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
+            [{'id': 2}, {'id': 9}]
 
         Args:
             fraction: The fraction of elements to sample.
@@ -1641,8 +1651,6 @@ class Dataset:
         Returns:
             Returns a :class:`Dataset` containing the sampled rows.
         """
-        import random
-
         import pandas as pd
         import pyarrow as pa
 
@@ -1652,26 +1660,34 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed is not None:
-            random.seed(seed)
+        from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        def random_sample(batch):
-            if isinstance(batch, list):
-                return [row for row in batch if random.random() <= fraction]
+        def random_sample(batch: DataBatch, seed: Optional[int]):
+
+            ctx = TaskContext.get_current()
+
+            if "rng" in ctx.kwargs:
+                rng = ctx.kwargs["rng"]
+            elif seed is None:
+                rng = np.random.default_rng()
+                ctx.kwargs["rng"] = rng
+            else:
+                rng = np.random.default_rng([ctx.task_idx, seed])
+                ctx.kwargs["rng"] = rng
+
+            mask_idx = np.where(rng.random(len(batch)) < fraction)[0]
             if isinstance(batch, pa.Table):
-                # Lets the item pass if weight generated for that item <= fraction
-                return batch.filter(
-                    pa.array(random.random() <= fraction for _ in range(len(batch)))
-                )
-            if isinstance(batch, pd.DataFrame):
-                return batch.sample(frac=fraction)
-            if isinstance(batch, np.ndarray):
-                return _create_possibly_ragged_ndarray(
-                    [row for row in batch if random.random() <= fraction]
-                )
+                return batch.take(mask_idx)
+            elif isinstance(batch, pd.DataFrame):
+                return batch.iloc[mask_idx, :]
+
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(random_sample, batch_format=None)
+        return self.map_batches(
+            random_sample,
+            fn_args=[seed],
+            batch_format=None,
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMD_API_GROUP)
@@ -1866,7 +1882,7 @@ class Dataset:
                 )
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(stats),
+                        ExecutionPlan(stats, self.context.copy()),
                         logical_plan,
                     )
                 )
@@ -1984,7 +2000,7 @@ class Dataset:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(stats),
+                    ExecutionPlan(stats, self.context.copy()),
                     logical_plan,
                 )
             )
@@ -2059,7 +2075,7 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(stats),
+                    ExecutionPlan(stats, self.context.copy()),
                     logical_plan,
                 )
             )
@@ -2251,7 +2267,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(stats),
+            ExecutionPlan(stats, self.context.copy()),
             logical_plan,
         )
 
@@ -5288,10 +5304,10 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute()
 
-        bundle = copy._plan._snapshot_bundle
+        bundle = copy._plan.execute()
         blocks_with_metadata = bundle.blocks
+
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -5306,7 +5322,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats()),
+            ExecutionPlan(copy._plan.stats(), data_context=copy.context),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
@@ -5373,9 +5389,9 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-
         iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
         self._synchronize_progress_bar()
+
         return iter_ref_bundles
 
     @Deprecated
@@ -5752,6 +5768,14 @@ class Dataset:
         if self._current_executor:
             self._current_executor.shutdown()
             self._current_executor = None
+
+    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+        bundle_iter, stats, executor = self._plan.execute_to_iterator()
+        # Capture current executor to be able to clean it up properly, once
+        # dataset is garbage-collected
+        self._current_executor = executor
+
+        return bundle_iter, stats
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.

@@ -15,6 +15,7 @@ from ray.data._internal.execution.execution_callback import (
     add_execution_callback,
     get_execution_callbacks,
     remove_execution_callback,
+    EXECUTION_CALLBACKS_ENV_VAR,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -164,26 +165,26 @@ def test_process_completed_tasks():
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test input finalization.
     done_task_callback = MagicMock()
     done_task = MetadataOpTask(0, ray.put("done"), done_task_callback)
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
-    o1.mark_execution_completed = MagicMock()
+    o1.mark_execution_finished = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
-    o1.mark_execution_completed.assert_not_called()
+    o1.mark_execution_finished.assert_not_called()
 
     # Test dependents completed.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -199,11 +200,11 @@ def test_process_completed_tasks():
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
-    o3.mark_execution_completed()
-    o2.mark_execution_completed = MagicMock()
+    o3.mark_execution_finished()
+    o2.mark_execution_finished = MagicMock()
     process_completed_tasks(topo, resource_manager, 0)
     update_operator_states(topo)
-    o2.mark_execution_completed.assert_called_once()
+    o2.mark_execution_finished.assert_called_once()
 
 
 def test_select_operator_to_run():
@@ -554,6 +555,103 @@ def test_execution_callbacks():
     assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
+
+
+@patch("importlib.import_module")
+@patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "my.module.TestCallback"})
+def test_env_callbacks_loaded(mock_import):
+    """Test loading execution callbacks from environment variable."""
+    # Setup mock for importing the module
+    mock_module = MagicMock()
+    mock_callback_cls = MagicMock()
+    mock_callback = MagicMock()
+    mock_callback_cls.return_value = mock_callback
+    mock_module.TestCallback = mock_callback_cls
+    mock_import.return_value = mock_module
+
+    # Get callbacks should initialize from env
+    ctx = DataContext.get_current()
+    callbacks = get_execution_callbacks(ctx)
+
+    # Verify the callback was imported and initialized
+    mock_import.assert_called_once_with("my.module")
+    mock_callback_cls.assert_called_once()
+    assert len(callbacks) == 1
+    assert callbacks[0] is mock_callback
+
+
+@patch("importlib.import_module")
+@patch.dict(
+    os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "module1.Callback1,module2.Callback2"}
+)
+def test_multiple_env_callbacks(mock_import):
+    """Test loading multiple callbacks from environment variable."""
+    # Setup mock for importing multiple modules
+    mock_module1 = MagicMock()
+    mock_module2 = MagicMock()
+    mock_callback1 = MagicMock()
+    mock_callback2 = MagicMock()
+    mock_module1.Callback1.return_value = mock_callback1
+    mock_module2.Callback2.return_value = mock_callback2
+
+    # Return different mock modules depending on the import path
+    def side_effect(name):
+        if name == "module1":
+            return mock_module1
+        elif name == "module2":
+            return mock_module2
+        raise ImportError(f"No module named '{name}'")
+
+    mock_import.side_effect = side_effect
+
+    # Get callbacks should initialize from env
+    ctx = DataContext.get_current()
+    callbacks = get_execution_callbacks(ctx)
+
+    # Verify both callbacks were imported and initialized
+    assert len(callbacks) == 2
+    assert callbacks[0] is mock_callback1
+    assert callbacks[1] is mock_callback2
+
+
+@patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "invalid_module"})
+def test_invalid_callback_path():
+    """Test handling of invalid callback paths in environment variable."""
+    # Should raise ValueError due to missing class name
+    with pytest.raises(ValueError):
+        get_execution_callbacks(DataContext.get_current())
+
+
+@patch("importlib.import_module")
+@patch.dict(
+    os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "nonexistent.module.TestCallback"}
+)
+def test_import_error_handling(mock_import):
+    """Test handling of import errors when loading callbacks."""
+    # Make import fail
+    mock_import.side_effect = ImportError("No module named 'nonexistent'")
+
+    # Should re-raise as ValueError with context
+    with pytest.raises(ValueError):
+        get_execution_callbacks(DataContext.get_current())
+
+
+def test_callbacks_initialized_once():
+    """Test that environment callbacks are only initialized once per context."""
+    with patch(
+        "ray.data._internal.execution.execution_callback._initialize_env_callbacks"
+    ) as mock_init:
+        # First call should initialize
+        ctx = DataContext.get_current()
+        get_execution_callbacks(ctx)
+        mock_init.assert_called_once_with(ctx)
+
+        # Reset the mock to check if called again
+        mock_init.reset_mock()
+
+        # Second call should not initialize again
+        get_execution_callbacks(ctx)
+        mock_init.assert_not_called()
 
 
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
