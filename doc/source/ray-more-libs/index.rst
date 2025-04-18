@@ -11,6 +11,7 @@ More Ray ML Libraries
     raydp
     mars-on-ray
     modin/index
+    data_juicer_distributed_data_processing
     Ray Workflows (Deprecated) <../workflows/index>
 
 
