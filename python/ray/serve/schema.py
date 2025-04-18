@@ -659,6 +659,10 @@ class gRPCOptionsSchema(BaseModel):
             "need to be importable from the context of where Serve is running."
         ),
     )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for gRPC requests. Defaults to no timeout.",
+    )
 
 
 @PublicAPI(stability="stable")
