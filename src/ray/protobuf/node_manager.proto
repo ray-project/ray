@@ -369,7 +369,7 @@ message PushMutableObjectRequest {
   // The size of this chunk. Note that this size could include both data and metadata.
   uint64 chunk_size = 5;
   // The chunk payload. Note that this could include both data and metadata.
-  bytes payload = 6 [ctype = CORD];
+  bytes payload = 6;
 }
 
 message PushMutableObjectReply {

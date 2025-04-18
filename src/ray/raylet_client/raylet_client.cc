@@ -355,8 +355,7 @@ void RayletClient::PushMutableObject(
     request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_payload(absl::MakeCordFromExternal(
-        absl::string_view(static_cast<char *>(data) + offset, chunk_size), []() {}));
+    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
