@@ -100,8 +100,7 @@ class SubprocessModuleHandle:
         self.incarnation = 0
         # Runtime states, set by start_module() and wait_for_module_ready(),
         # reset by destroy_module().
-        self.pipe_reader = None
-        self.pipe_writer = None
+        self.parent_conn = None
         self.process = None
         self.http_client_session: Optional[aiohttp.ClientSession] = None
         self.health_check_task = None
@@ -118,7 +117,7 @@ class SubprocessModuleHandle:
         """
         Start the module. Should be non-blocking.
         """
-        self.pipe_reader, self.pipe_writer = self.mp_context.Pipe()
+        self.parent_conn, child_conn = self.mp_context.Pipe()
         if not os.path.exists(self.config.socket_dir):
             os.makedirs(self.config.socket_dir)
         self.process = self.mp_context.Process(
@@ -127,7 +126,7 @@ class SubprocessModuleHandle:
                 self.module_cls,
                 self.config,
                 self.incarnation,
-                self.pipe_writer,
+                child_conn,
             ),
             daemon=True,
             name=f"{self.module_cls.__name__}-{self.incarnation}",
@@ -139,12 +138,10 @@ class SubprocessModuleHandle:
         Wait for the module to be ready. This is called after start_module()
         and can be blocking.
         """
-        if self.pipe_reader.poll(dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT):
-            self.pipe_reader.recv()
-            self.pipe_reader.close()
-            self.pipe_reader = None
-            self.pipe_writer.close()
-            self.pipe_writer = None
+        if self.parent_conn.poll(dashboard_consts.SUBPROCESS_MODULE_WAIT_READY_TIMEOUT):
+            self.parent_conn.recv()
+            self.parent_conn.close()
+            self.parent_conn = None
         else:
             raise RuntimeError(
                 f"Module {self.module_cls.__name__} failed to start. "
@@ -164,12 +161,9 @@ class SubprocessModuleHandle:
         """
         self.incarnation += 1
 
-        if self.pipe_reader:
-            self.pipe_reader.close()
-            self.pipe_reader = None
-        if self.pipe_writer:
-            self.pipe_writer.close()
-            self.pipe_writer = None
+        if self.parent_conn:
+            self.parent_conn.close()
+            self.parent_conn = None
 
         if self.process:
             self.process.kill()
