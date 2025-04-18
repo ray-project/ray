@@ -38,8 +38,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/container_util.h"
@@ -1020,14 +1018,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  if (is_shutdown_) {
-    RAY_LOG(INFO)
-        << "Shutdown request has received although the core worker is already shutdown.";
+  // Ensure that the shutdown logic runs at most once.
+  bool expected = false;
+  if (!is_shutdown_.compare_exchange_strong(expected, /*desired=*/true)) {
+    RAY_LOG(INFO) << "Shutdown was called more than once, ignoring.";
     return;
   }
+  RAY_LOG(INFO) << "Shutting down.";
 
-  RAY_LOG(INFO) << "Shutting down a core worker.";
-  is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
     // Asyncio coroutines could still run after CoreWorker is removed because it is
@@ -1044,6 +1042,7 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
+  task_event_buffer_->FlushEvents(/*forced=*/true);
   task_event_buffer_->Stop();
 
   io_service_.stop();
@@ -1104,9 +1103,6 @@ void CoreWorker::Disconnect(
         /* timestamp */ absl::GetCurrentTimeNanos());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
-
-  // Force task state events push before exiting the worker.
-  task_event_buffer_->FlushEvents(/* forced */ true);
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
@@ -1178,12 +1174,12 @@ void CoreWorker::Exit(
     const rpc::WorkerExitType exit_type,
     const std::string &detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  if (is_exit_) {
-    RAY_LOG(INFO) << "Exit signal received, but the core worker has already received a "
-                     "signal and is shutting down.";
+  // Ensure that the exit logic runs at most once.
+  bool expected = false;
+  if (!is_exited_.compare_exchange_strong(expected, /*desired=*/true)) {
+    RAY_LOG(INFO) << "Exit was called multipled times, ignoring.";
     return;
   }
-  is_exit_ = true;
 
   RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
                    "tasks have finished"

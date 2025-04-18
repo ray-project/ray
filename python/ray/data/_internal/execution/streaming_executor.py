@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
@@ -76,7 +76,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # loop on a separate thread so that it doesn't become stalled between
         # generator `yield`s.
         self._topology: Optional[Topology] = None
-        self._output_node: Optional[OpState] = None
+        self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
 
         self._dataset_id = dataset_id
@@ -95,7 +95,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
-    ) -> Iterator[RefBundle]:
+    ) -> OutputIterator:
         """Executes the DAG using a streaming execution strategy.
 
         We take an event-loop approach to scheduling. We block on the next scheduling
@@ -145,7 +145,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._has_op_completed = {op: False for op in self._topology}
 
-        self._output_node: OpState = self._topology[dag]
+        self._output_node = dag, self._topology[dag]
+
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
@@ -156,32 +157,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self.start()
         self._execution_started = True
 
-        class StreamIterator(OutputIterator):
-            def __init__(self, outer: Executor):
-                self._outer = outer
-
-            def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
-                try:
-                    item = self._outer._output_node.get_output_blocking(
-                        output_split_idx
-                    )
-                    if self._outer._global_info:
-                        self._outer._global_info.update(
-                            item.num_rows(), dag.num_output_rows_total()
-                        )
-                    return item
-                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
-                # can leave dangling progress bars by skipping shutdown.
-                except BaseException as e:
-                    self._outer.shutdown(
-                        e if not isinstance(e, StopIteration) else None
-                    )
-                    raise
-
-            def __del__(self):
-                self._outer.shutdown()
-
-        return StreamIterator(self)
+        return _ClosingIterator(self)
 
     def __del__(self):
         self.shutdown()
@@ -247,6 +223,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         Results are returned via the output node's outqueue.
         """
+        exc: Optional[Exception] = None
         try:
             # Run scheduling loop until complete.
             while True:
@@ -263,10 +240,11 @@ class StreamingExecutor(Executor, threading.Thread):
                     break
         except Exception as e:
             # Propagate it to the result iterator.
-            self._output_node.mark_finished(e)
+            exc = e
         finally:
-            # Signal end of results.
-            self._output_node.mark_finished()
+            # Mark state of outputting operator as finished
+            _, state = self._output_node
+            state.mark_finished(exc)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -376,7 +354,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
-        return len(self._output_node.outqueue) == 0
+        _, state = self._output_node
+        return len(state.outqueue) == 0
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
@@ -435,7 +414,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "total_rows": op.num_output_rows_total(),
-                    "state": state,
+                    "state": DatasetState.FINISHED.name
+                    if op.execution_finished()
+                    else state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
             },
@@ -526,3 +507,36 @@ def _log_op_metrics(topology: Topology) -> None:
     for op in topology:
         log_str += f"{op.name}: {op.metrics.as_dict()}\n"
     logger.debug(log_str)
+
+
+class _ClosingIterator(OutputIterator):
+    """Iterator automatically shutting down executor upon exhausting the
+    iterable sequence.
+
+    NOTE: If this iterator isn't fully exhausted, executor still have to
+          be closed manually by the caller!
+    """
+
+    def __init__(self, executor: StreamingExecutor):
+        self._executor = executor
+
+    def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+        try:
+            op, state = self._executor._output_node
+            bundle = state.get_output_blocking(output_split_idx)
+
+            # Update progress-bars
+            if self._executor._global_info:
+                self._executor._global_info.update(
+                    bundle.num_rows(), op.num_output_rows_total()
+                )
+
+            return bundle
+
+        # Have to be BaseException to catch ``KeyboardInterrupt``
+        except BaseException as e:
+            self._executor.shutdown(e if not isinstance(e, StopIteration) else None)
+            raise
+
+    def __del__(self):
+        self._executor.shutdown()
