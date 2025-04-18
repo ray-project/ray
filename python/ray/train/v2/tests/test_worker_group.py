@@ -77,6 +77,25 @@ def test_worker_group_create():
         worker_group.get_workers()
 
 
+def test_worker_group_create_with_runtime_env():
+    """Test WorkerGroup.create() factory method with a custom runtime environment."""
+    train_run_context = TrainRunContext(
+        run_config=RunConfig(worker_runtime_env={"env_vars": {"DUMMY_VAR": "abcd"}})
+    )
+
+    worker_group_context = _default_worker_group_context()
+
+    worker_group = WorkerGroup.create(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+
+    env_vars = worker_group.execute(lambda: os.environ.get("DUMMY_VAR"))
+    assert env_vars == ["abcd"] * worker_group_context.num_workers
+
+    worker_group.shutdown()
+
+
 def test_actor_start_failure():
     class FailingWorker(RayTrainWorker):
         def __init__(self):

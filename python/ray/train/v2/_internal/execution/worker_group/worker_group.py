@@ -348,10 +348,12 @@ class WorkerGroup:
         resources_per_worker: Dict[str, float],
     ) -> List[Worker]:
 
+        runtime_env = self._get_worker_runtime_env(
+            custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
+        )
+        print(runtime_env)
         worker_actor_cls = ray.remote(
-            runtime_env=self._get_worker_runtime_env(
-                custom_runtime_env=self._train_run_context.run_config.runtime_env
-            ),
+            runtime_env=runtime_env,
             **bundle_to_remote_args(resources_per_worker),
         )(self._worker_cls)
 
@@ -788,6 +790,7 @@ class WorkerGroup:
         Args:
             The custom runtime env dict passed in by the user.
         """
-        return custom_runtime_env.setdefault("env_vars", {}).update(
-            {"env_vars": get_env_vars_to_propagate()}
+        custom_runtime_env.setdefault("env_vars", {}).update(
+            get_env_vars_to_propagate()
         )
+        return custom_runtime_env
