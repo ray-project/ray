@@ -136,6 +136,33 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
+def create_scheduler(
+    actor_id: str,
+    deployment_id: DeploymentID,
+    handle_options: InitHandleOptions,
+    is_inside_ray_client_context: bool,
+):
+    # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
+    node_id, availability_zone = _get_node_id_and_az()
+
+    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+        deployment_id=deployment_id,
+        handle_source=handle_options._source,
+        self_node_id=node_id,
+        self_actor_id=actor_id,
+        self_actor_handle=ray.get_runtime_context().current_actor
+        if ray.get_runtime_context().get_actor_id()
+        else None,
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        use_replica_queue_len_cache=not is_inside_ray_client_context,
+        create_replica_wrapper_func=lambda r: RunningReplica(r),
+        prefer_local_node_routing=handle_options._prefer_local_routing,
+        prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+        self_availability_zone=availability_zone,
+    )
+    return replica_scheduler
+
+
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
@@ -145,24 +172,15 @@ def create_router(
     from ray.serve.context import _get_global_client
 
     actor_id = get_current_actor_id()
-    node_id, availability_zone = _get_node_id_and_az()
+
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        deployment_id,
-        handle_options._source,
-        handle_options._prefer_local_routing,
-        RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-        node_id,
+    replica_scheduler = create_scheduler(
         actor_id,
-        ray.get_runtime_context().current_actor
-        if ray.get_runtime_context().get_actor_id()
-        else None,
-        availability_zone,
-        # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=not is_inside_ray_client_context,
-        create_replica_wrapper_func=lambda r: RunningReplica(r),
+        deployment_id,
+        handle_options,
+        is_inside_ray_client_context,
     )
 
     return SingletonThreadRouter(

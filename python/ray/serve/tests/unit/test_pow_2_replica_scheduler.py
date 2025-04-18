@@ -135,7 +135,7 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     # construct the scheduler on a different loop to mimic the deployment handle path.
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         scheduler = PowerOfTwoChoicesReplicaScheduler(
-            DeploymentID(name="TEST_DEPLOYMENT"),
+            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA
             ),
@@ -871,7 +871,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler):
     ],
     indirect=True,
 )
-async def test_prefer_replica_on_same_node(pow_2_scheduler):
+async def test_prefer_replica_on_same_node1(pow_2_scheduler):
     """
     Verify that the scheduler prefers replicas that are colocated on the same node ID
     as itself. If the first candidate replicas on the same node reject the request,
