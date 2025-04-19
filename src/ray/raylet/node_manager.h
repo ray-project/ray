@@ -689,12 +689,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
 
-  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
-  /// print.
-  ///
-  /// \param task RayTask that is infeasible
-  void PublishInfeasibleTaskError(const RayTask &task) const;
-
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///

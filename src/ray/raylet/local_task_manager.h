@@ -174,12 +174,12 @@ class LocalTaskManager : public ILocalTaskManager {
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const override {
+      &GetTaskToDispatch() const {
     return tasks_to_dispatch_;
   }
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-      &GetBackLogTracker() const override {
+      &GetBackLogTracker() const {
     return backlog_tracker_;
   }
 
@@ -301,15 +301,13 @@ class LocalTaskManager : public ILocalTaskManager {
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
     explicit SchedulingClassInfo(int64_t cap)
-        : running_tasks(),
-          capacity(cap),
-          next_update_time(std::numeric_limits<int64_t>::max()) {}
+        : capacity(cap), next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
     ///
     /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
-    const uint64_t capacity;
+    uint64_t capacity;
     /// The next time that a new task of this scheduling class may be dispatched.
     int64_t next_update_time;
   };

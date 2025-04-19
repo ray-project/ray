@@ -43,12 +43,10 @@ void SchedulerStats::ComputeStats() {
   size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
 
-  size_t num_infeasible_tasks =
-      std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
-                      cluster_task_manager_.infeasible_tasks_.end(),
-                      static_cast<size_t>(0),
-                      accumulator);
-
+  num_infeasible_tasks_ = std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
+                                          cluster_task_manager_.infeasible_tasks_.end(),
+                                          static_cast<size_t>(0),
+                                          accumulator);
   // TODO(sang): Normally, the # of queued tasks are not large, so this is less likely to
   // be an issue that we iterate all of them. But if it uses lots of CPU, consider
   // optimizing by updating live instead of iterating through here.
@@ -90,12 +88,13 @@ void SchedulerStats::ComputeStats() {
     }
     return state + pair.second.size();
   };
-  size_t num_tasks_to_schedule =
+
+  num_tasks_to_schedule_ =
       std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
                       cluster_task_manager_.tasks_to_schedule_.end(),
                       static_cast<size_t>(0),
                       per_work_accumulator);
-  size_t num_tasks_to_dispatch =
+  num_tasks_to_dispatch_ =
       std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
                       local_task_manager_.GetTaskToDispatch().end(),
                       static_cast<size_t>(0),
@@ -111,9 +110,6 @@ void SchedulerStats::ComputeStats() {
       num_worker_not_started_by_registration_timeout;
   num_tasks_waiting_for_workers_ = num_tasks_waiting_for_workers;
   num_cancelled_tasks_ = num_cancelled_tasks;
-  num_infeasible_tasks_ = num_infeasible_tasks;
-  num_tasks_to_schedule_ = num_tasks_to_schedule;
-  num_tasks_to_dispatch_ = num_tasks_to_dispatch;
 }
 
 void SchedulerStats::RecordMetrics() const {

@@ -86,9 +86,8 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
-  auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
-  if (!object_ids.empty()) {
+  if (!task.GetDependencies().empty()) {
     bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task_id,
         task.GetDependencies(),
@@ -292,7 +291,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
             work_it = dispatch_queue.erase(work_it);
             continue;
           }
-
           break;
         }
       }
@@ -339,7 +337,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        if (!spec.GetDependencies().empty()) {
+        if (!task.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
         ReleaseTaskArgs(task_id);
@@ -483,7 +481,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     if (!scheduling_node_id.IsNil() && scheduling_node_id != self_scheduling_node_id_) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
-      if (!spec.GetDependencies().empty()) {
+      if (!task.GetDependencies().empty()) {
         task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
       }
       num_waiting_task_spilled_++;
@@ -526,7 +524,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   num_unschedulable_task_spilled_++;
-  if (!spec.GetDependencies().empty()) {
+  if (!work->task.GetDependencies().empty()) {
     task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
   }
   return true;
@@ -896,7 +894,7 @@ bool LocalTaskManager::CancelTasks(
             // Release pinned task args.
             ReleaseTaskArgs(task_id);
           }
-          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+          if (!work->task.GetDependencies().empty()) {
             task_dependency_manager_.RemoveTaskDependencies(
                 work->task.GetTaskSpecification().TaskId());
           }
@@ -913,7 +911,7 @@ bool LocalTaskManager::CancelTasks(
       waiting_task_queue_, [&](const std::shared_ptr<internal::Work> &work) {
         if (predicate(work)) {
           ReplyCancelled(work, failure_type, scheduling_failure_message);
-          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+          if (!work->task.GetDependencies().empty()) {
             task_dependency_manager_.RemoveTaskDependencies(
                 work->task.GetTaskSpecification().TaskId());
           }
@@ -1214,7 +1212,7 @@ void LocalTaskManager::RecordMetrics() const {
 
 void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
-  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
+  buffer << "Number of executing task arguments: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "Number of total spilled tasks: " << num_task_spilled_ << "\n";
   buffer << "Number of spilled waiting tasks: " << num_waiting_task_spilled_ << "\n";

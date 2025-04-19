@@ -329,9 +329,6 @@ NodeManager::NodeManager(
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
   };
-  auto announce_infeasible_task = [this](const RayTask &task) {
-    PublishInfeasibleTaskError(task);
-  };
   RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
             RayConfig::instance().max_task_args_memory_fraction() <= 1)
       << "max_task_args_memory_fraction must be a nonzero fraction.";
@@ -365,7 +362,6 @@ NodeManager::NodeManager(
       self_node_id_,
       *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       get_node_info_func,
-      announce_infeasible_task,
       *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
@@ -3060,31 +3056,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
-}
-
-void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
-  bool suppress_warning = false;
-
-  if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
-    // If the task is part of a placement group, do nothing. If necessary, the infeasible
-    // warning should come from the placement group scheduling, not the task scheduling.
-    suppress_warning = true;
-  }
-
-  // Push a warning to the task's driver that this task is currently infeasible.
-  if (!suppress_warning) {
-    std::ostringstream error_message;
-    error_message
-        << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
-        << " cannot be scheduled right now. It requires "
-        << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
-        << " for placement, however the cluster currently cannot provide the requested "
-           "resources. The required resources may be added as autoscaling takes place "
-           "or placement groups are scheduled. Otherwise, consider reducing the "
-           "resource requirements of the task.";
-    std::string error_message_str = error_message.str();
-    RAY_LOG(WARNING) << error_message_str;
-  }
 }
 
 // Picks the worker with the latest submitted task and kills the process
