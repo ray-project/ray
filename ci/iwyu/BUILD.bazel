@@ -1,0 +1,10 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "iwyu_test",
+    srcs = ["iwyu_test.cc"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+    ],
+)
