@@ -345,15 +345,6 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             time_taken,
         )
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-
-        ret = ["prompt"]
-        if self.task_type == SGLangTaskType.GENERATE:
-            ret.append("sampling_params")
-        return ret
-
     def __del__(self):
         if hasattr(self, "llm"):
             self.llm.shutdown()
@@ -394,3 +385,19 @@ class SGLangEngineStage(StatefulStage):
         map_batches_kwargs["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        ret = {"prompt": "The text prompt (str)."}
+        task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
+        if self.task_type == SGLangTaskType.GENERATE:
+            ret["sampling_params"] = (
+                "The sampling parameters. See "
+                "https://docs.sglang.ai/backend/sampling_params.html"
+                "for details."
+            )
+        return ret
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {}

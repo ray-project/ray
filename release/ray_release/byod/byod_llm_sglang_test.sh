@@ -4,5 +4,4 @@
 
 set -exo pipefail
 
-pip install uv
-uv pip install "sglang[all]>=0.4.5.post1"
+pip3 install "sglang[all]>=0.4.5.post1"
