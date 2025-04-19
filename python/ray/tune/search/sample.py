@@ -158,10 +158,6 @@ class Uniform(Sampler):
 
 @DeveloperAPI
 class LogUniform(Sampler):
-    def __init__(self, base: float = 10):
-        self.base = base
-        assert self.base > 0, "Base has to be strictly greater than 0"
-
     def __str__(self):
         return "LogUniform"
 
@@ -223,10 +219,10 @@ class Float(Domain):
             assert (
                 0 < domain.upper < float("inf")
             ), "LogUniform needs a upper bound greater than 0"
-            logmin = np.log(domain.lower) / np.log(self.base)
-            logmax = np.log(domain.upper) / np.log(self.base)
+            logmin = np.log(domain.lower)
+            logmax = np.log(domain.upper)
 
-            items = self.base ** (random_state.uniform(logmin, logmax, size=size))
+            items = np.exp(random_state.uniform(logmin, logmax, size=size))
             return items if len(items) > 1 else domain.cast(items[0])
 
     class _Normal(Normal):
@@ -273,7 +269,7 @@ class Float(Domain):
         new.set_sampler(self._Uniform())
         return new
 
-    def loguniform(self, base: float = 10):
+    def loguniform(self):
         if not self.lower > 0:
             raise ValueError(
                 "LogUniform requires a lower bound greater than 0."
@@ -289,7 +285,7 @@ class Float(Domain):
                 "instead."
             )
         new = copy(self)
-        new.set_sampler(self._LogUniform(base))
+        new.set_sampler(self._LogUniform())
         return new
 
     def normal(self, mean=0.0, sd=1.0):
@@ -354,10 +350,10 @@ class Integer(Domain):
             assert (
                 0 < domain.upper < float("inf")
             ), "LogUniform needs a upper bound greater than 0"
-            logmin = np.log(domain.lower) / np.log(self.base)
-            logmax = np.log(domain.upper) / np.log(self.base)
+            logmin = np.log(domain.lower)
+            logmax = np.log(domain.upper)
 
-            items = self.base ** (random_state.uniform(logmin, logmax, size=size))
+            items = np.exp(random_state.uniform(logmin, logmax, size=size))
             items = np.floor(items).astype(int)
             return items if len(items) > 1 else domain.cast(items[0])
 
@@ -380,7 +376,7 @@ class Integer(Domain):
         new.set_sampler(self._Uniform())
         return new
 
-    def loguniform(self, base: float = 10):
+    def loguniform(self):
         if not self.lower > 0:
             raise ValueError(
                 "LogUniform requires a lower bound greater than 0."
@@ -396,7 +392,7 @@ class Integer(Domain):
                 "instead."
             )
         new = copy(self)
-        new.set_sampler(self._LogUniform(base))
+        new.set_sampler(self._LogUniform())
         return new
 
     def is_valid(self, value: int):
@@ -484,9 +480,11 @@ class Function(Domain):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             if domain.pass_config:
                 items = [
-                    self.__try_fn(domain, config[i])
-                    if isinstance(config, list)
-                    else self.__try_fn(domain, config)
+                    (
+                        self.__try_fn(domain, config[i])
+                        if isinstance(config, list)
+                        else self.__try_fn(domain, config)
+                    )
                     for i in range(size)
                 ]
             else:
@@ -601,20 +599,19 @@ def quniform(lower: float, upper: float, q: float):
 
 
 @PublicAPI
-def loguniform(lower: float, upper: float, base: float = 10):
+def loguniform(lower: float, upper: float):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
         lower: Lower boundary of the output interval (e.g. 1e-4)
         upper: Upper boundary of the output interval (e.g. 1e-2)
-        base: Base of the log. Defaults to 10.
 
     """
-    return Float(lower, upper).loguniform(base)
+    return Float(lower, upper).loguniform()
 
 
 @PublicAPI
-def qloguniform(lower: float, upper: float, q: float, base: float = 10):
+def qloguniform(lower: float, upper: float, q: float):
     """Sugar for sampling in different orders of magnitude.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
@@ -626,10 +623,9 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
         upper: Upper boundary of the output interval (e.g. 1e-2)
         q: Quantization number. The result will be rounded to an
             integer increment of this value.
-        base: Base of the log. Defaults to 10.
 
     """
-    return Float(lower, upper).loguniform(base).quantized(q)
+    return Float(lower, upper).loguniform().quantized(q)
 
 
 @PublicAPI
@@ -662,9 +658,8 @@ def randint(lower: int, upper: int):
 
 
 @PublicAPI
-def lograndint(lower: int, upper: int, base: float = 10):
-    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
-    with ``base`` being the base of logarithm.
+def lograndint(lower: int, upper: int):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``.
 
     ``lower`` is inclusive, ``upper`` is exclusive.
 
@@ -674,7 +669,7 @@ def lograndint(lower: int, upper: int, base: float = 10):
         the bounds stated in the docstring above.
 
     """
-    return Integer(lower, upper).loguniform(base)
+    return Integer(lower, upper).loguniform()
 
 
 @PublicAPI
@@ -696,9 +691,8 @@ def qrandint(lower: int, upper: int, q: int = 1):
 
 
 @PublicAPI
-def qlograndint(lower: int, upper: int, q: int, base: float = 10):
-    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
-    with ``base`` being the base of logarithm.
+def qlograndint(lower: int, upper: int, q: int):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``.
 
     ``lower`` is inclusive, ``upper`` is also inclusive (!).
 
@@ -711,7 +705,7 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
         the bounds stated in the docstring above.
 
     """
-    return Integer(lower, upper).loguniform(base).quantized(q)
+    return Integer(lower, upper).loguniform().quantized(q)
 
 
 @PublicAPI
