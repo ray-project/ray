@@ -20,10 +20,10 @@ from logger_utils import ContextLoggerAdapter
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
-# Define local filesystem paths for train and validation data
+# Use `download_input_data_from_s3.sh` to download the dataset
 LOCALFS_JPEG_SPLIT_DIRS = {
-    "train": "train",
-    "val": "val",
+    "train": "/mnt/local_storage/imagnet/train/",
+    "val": "/mnt/local_storage/imagnet/val/",
 }
 
 
