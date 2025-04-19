@@ -26,8 +26,8 @@ logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 # Use `download_input_data_from_s3.sh` to download the dataset
 LOCALFS_JPEG_SPLIT_DIRS = {
-    "train": "/mnt/local_storage/imagnet/train/",
-    "val": "/mnt/local_storage/imagnet/val/",
+    "train": "/mnt/local_storage/imagenet/train/",
+    "val": "/mnt/local_storage/imagenet/val/",
 }
 
 
