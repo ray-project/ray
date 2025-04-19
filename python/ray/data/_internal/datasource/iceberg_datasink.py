@@ -1,6 +1,7 @@
 """
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
+
 import logging
 
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
@@ -34,6 +35,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
+        overwrite_filter: Union["BooleanExpression", str] = None,
     ):
         """
         Initialize the IcebergDatasink
@@ -43,7 +45,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
             snapshot_properties: custom properties write to snapshot when committing
-            to an iceberg table, e.g. {"commit_time": "2021-01-01T00:00:00Z"}
+                to an iceberg table, e.g. {"commit_time": "2021-01-01T00:00:00Z"}
+            overwrite_filter: A boolean expression in case of a partial overwrite,
+                default is None, which means append.
         """
 
         from pyiceberg.io import FileIO
@@ -51,6 +55,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         from pyiceberg.table.metadata import TableMetadata
 
         self.table_identifier = table_identifier
+        self.overwrite_filter = overwrite_filter
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
         self._snapshot_properties = (
             snapshot_properties if snapshot_properties is not None else {}
@@ -143,6 +148,13 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         return data_files_list
 
     def on_write_complete(self, write_result: WriteResult[List["DataFile"]]):
+        if self.overwrite_filter is not None:
+            # First, deleting data files that match overwrite_filter
+            self._txn.delete(
+                delete_filter=self.overwrite_filter,
+                snapshot_properties=self._snapshot_properties,
+            )
+
         update_snapshot = self._txn.update_snapshot(
             snapshot_properties=self._snapshot_properties
         )
