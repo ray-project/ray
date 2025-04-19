@@ -457,6 +457,9 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        # New parameters for error handling
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[DataBatch], Exception], None]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -602,7 +605,8 @@ class Dataset:
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The semantics of this argument depend on the type of ``fn``:
 
@@ -628,6 +632,15 @@ class Dataset:
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
+            on_error: Strategy for handling errors raised by the UDF `fn`.
+                - "raise" (default): Raise the error, causing the job to fail.
+                - "continue": Log the error and skip the failed batch, continuing execution.
+            error_handler: An optional function to call when `on_error="continue"` and
+                an error occurs. It receives the Exception `e`, and potentially the
+                input batch `batch` that caused the error (currently `None` is passed
+                as the batch is not easily accessible in the error path). The handler
+                can be used for custom logging or side effects. It does not affect
+                whether the batch is skipped.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -691,6 +704,9 @@ class Dataset:
             memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
+            # Pass new parameters
+            on_error=on_error,
+            error_handler=error_handler,
             **ray_remote_args,
         )
 
@@ -711,6 +727,9 @@ class Dataset:
         memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        # Add new parameters here too
+        on_error: Literal["raise", "continue"],
+        error_handler: Optional[Callable[[Optional[DataBatch], Exception], None]],
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -765,6 +784,9 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            # Pass new parameters to MapBatches operator
+            on_error=on_error,
+            error_handler=error_handler,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
@@ -4248,7 +4270,7 @@ class Dataset:
                 * order_by:
                     Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
                     When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
-                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
+                    Otherwise, a "best" column is selected automatically (favoring a timestamp column,
                     then a non-string column, and lastly the first column).
 
                 * partition_by:

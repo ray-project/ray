@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union, Literal
 
 import ray
 from ray.actor import ActorHandle
@@ -59,6 +59,8 @@ class ActorPoolMapOperator(MapOperator):
         supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -83,6 +85,8 @@ class ActorPoolMapOperator(MapOperator):
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
                 See :func:`ray.remote` for details.
+            on_error: The action to take when an error occurs.
+            error_handler: The function to call when an error occurs.
         """
         super().__init__(
             map_transformer,
@@ -94,6 +98,8 @@ class ActorPoolMapOperator(MapOperator):
             supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
+            on_error=on_error,
+            error_handler=error_handler,
         )
         self._ray_actor_task_remote_args = {}
         actor_task_errors = self.data_context.actor_task_retry_on_errors

@@ -15,6 +15,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    Literal,
 )
 
 import ray
@@ -84,12 +85,16 @@ class MapOperator(OneToOneOperator, ABC):
         supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
+        on_error: Literal["raise", "continue"],
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]],
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        # Pass error handling params to transformer
+        self._map_transformer.set_error_handling_params(on_error, error_handler)
         self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
@@ -109,6 +114,7 @@ class MapOperator(OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
+
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size)
 
@@ -167,6 +173,8 @@ class MapOperator(OneToOneOperator, ABC):
         supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -195,6 +203,8 @@ class MapOperator(OneToOneOperator, ABC):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            on_error: Strategy for handling errors raised by the UDF.
+            error_handler: Optional function to call when an error occurs and on_error is 'continue'.
         """
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
@@ -215,6 +225,8 @@ class MapOperator(OneToOneOperator, ABC):
                 supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_error=on_error,
+                error_handler=error_handler,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -232,6 +244,8 @@ class MapOperator(OneToOneOperator, ABC):
                 supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_error=on_error,
+                error_handler=error_handler,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
