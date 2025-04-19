@@ -99,8 +99,11 @@ def upload_py_modules_if_needed(
             if Path(module_path).is_dir() or Path(module_path).suffix == ".py":
                 is_dir = Path(module_path).is_dir()
                 excludes = runtime_env.get("excludes", None)
+                includes = runtime_env.get("includes", None)
                 if is_dir:
-                    module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                    module_uri = get_uri_for_directory(
+                        module_path, excludes=excludes, includes=includes
+                    )
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
@@ -110,6 +113,7 @@ def upload_py_modules_if_needed(
                             scratch_dir,
                             module_path,
                             excludes=excludes,
+                            includes=includes,
                             include_parent_dir=is_dir,
                             logger=logger,
                         )
