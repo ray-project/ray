@@ -4,6 +4,10 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
+# New imports
+import logging
+from typing import Literal
+
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
@@ -18,6 +22,8 @@ IN = TypeVar("IN")
 OUT = TypeVar("OUT")
 MapTransformCallable = Callable[[Iterable[IN], TaskContext], Iterable[OUT]]
 
+# Logger for error handling
+logger = logging.getLogger(__name__)
 
 class MapTransformFnDataType(Enum):
     """An enum that represents the input/output data type of a MapTransformFn."""
@@ -147,6 +153,9 @@ class MapTransformer:
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._output_block_size_option = None
         self._udf_time = 0
+        # Initialize error handling params
+        self._on_error: Literal["raise", "continue"] = "raise"
+        self._error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -207,17 +216,54 @@ class MapTransformer:
         """
         self._init_fn()
 
+    def set_error_handling_params(
+        self,
+        on_error: Literal["raise", "continue"],
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]],
+    ) -> None:
+        """Set the error handling parameters."""
+        self._on_error = on_error
+        self._error_handler = error_handler
+
     def _udf_timed_iter(
         self, input: Iterable[MapTransformFnData]
     ) -> Iterable[MapTransformFnData]:
         while True:
+            output_batch = None
             try:
                 start = time.perf_counter()
-                output = next(input)
-                self._udf_time += time.perf_counter() - start
-                yield output
+                # This `next(input)` triggers the __call__ of the UDF transform_fn
+                # (e.g., BatchMapTransformFn), which in turn calls the user's function
+                # on the *next item* yielded by the *previous* transform_fn's iterator.
+                output_batch = next(input)
+                udf_time = time.perf_counter() - start
+                self._udf_time += udf_time
+                yield output_batch
             except StopIteration:
                 break
+            except Exception as e:
+                if self._on_error == "raise":
+                    raise e
+                elif self._on_error == "continue":
+                    logger.warning(
+                        f"Skipping batch due to error in map UDF: {e}",
+                        exc_info=True
+                    )
+                    if self._error_handler:
+                        try:
+                            # Cannot easily access the input batch here
+                            # Pass None for now, consistent with type hint
+                            self._error_handler(None, e)
+                        except Exception as handler_e:
+                            logger.warning(
+                                f"Caught error in user-defined error_handler: {handler_e}",
+                                exc_info=True
+                            )
+                    # Continue to the next iteration of the while loop, skipping the failed batch
+                    continue
+                else:
+                    # Should not happen with Literal type hint, but raise defensively
+                    raise ValueError(f"Invalid on_error strategy: {self._on_error}")
 
     def apply_transform(
         self,

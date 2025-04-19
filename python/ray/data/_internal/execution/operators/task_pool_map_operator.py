@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Literal
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -27,6 +27,8 @@ class TaskPoolMapOperator(MapOperator):
         supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        on_error: Literal["raise", "continue"] = "raise",
+        error_handler: Optional[Callable[[Optional[Any], Exception], None]] = None,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -50,6 +52,8 @@ class TaskPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
+            on_error: The action to take when an error occurs.
+            error_handler: A function to handle errors.
         """
         super().__init__(
             map_transformer,
@@ -61,6 +65,8 @@ class TaskPoolMapOperator(MapOperator):
             supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
+            on_error=on_error,
+            error_handler=error_handler,
         )
         self._concurrency = concurrency
 
