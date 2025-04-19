@@ -84,7 +84,6 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    print("Dockerfile path: ", os.path.join(RELEASE_BYOD_DIR, "byod.custom.Dockerfile"))
     subprocess.check_call(
         [
             "docker",
@@ -209,13 +208,13 @@ def _validate_and_push(byod_image: str) -> None:
         .decode("utf-8")
         .strip()
     )
-    # if os.environ.get("RAY_IMAGE_TAG"):
-    #     logger.info(f"Ray commit from image: {docker_ray_commit}")
-    # else:
-    #     expected_ray_commit = _get_ray_commit()
-    #     assert (
-    #         docker_ray_commit == expected_ray_commit
-    #     ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    if os.environ.get("RAY_IMAGE_TAG"):
+        logger.info(f"Ray commit from image: {docker_ray_commit}")
+    else:
+        expected_ray_commit = _get_ray_commit()
+        assert (
+            docker_ray_commit == expected_ray_commit
+        ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
     logger.info(f"Pushing image to registry: {byod_image}")
     subprocess.check_call(
         ["docker", "push", byod_image],
