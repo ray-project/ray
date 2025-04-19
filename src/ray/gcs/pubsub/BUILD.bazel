@@ -7,7 +7,7 @@ ray_cc_library(
     deps = [
         "//:gcs_service_rpc",
         "//src/ray/common:ray_config",
-        "//src/ray/gcs",
+        "//src/ray/gcs:gcs_callback",
         "//src/ray/gcs:gcs_redis_client",
         "//src/ray/pubsub:pubsub_lib",
     ],
