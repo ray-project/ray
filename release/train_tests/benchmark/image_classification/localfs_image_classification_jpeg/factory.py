@@ -36,10 +36,18 @@ class ImageFolderIterableDataset(IterableDataset):
 
     def __init__(self, dataset: Dataset):
         self.dataset = dataset
+        self._current_idx = 0
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        for i in range(len(self.dataset)):
-            yield self.dataset[i]
+        self._current_idx = 0
+        return self
+
+    def __next__(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self._current_idx >= len(self.dataset):
+            raise StopIteration
+        result = self.dataset[self._current_idx]
+        self._current_idx += 1
+        return result
 
 
 class LocalFSImageClassificationRayDataLoaderFactory(
