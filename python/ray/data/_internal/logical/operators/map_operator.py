@@ -73,6 +73,7 @@ class AbstractUDFMap(AbstractMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         """
         Args:
@@ -98,6 +99,7 @@ class AbstractUDFMap(AbstractMap):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Args to provide to :func:`ray.remote`.
+            actor_startup_timeout_s: The actor startup timeout in seconds.
         """
         name = self._get_operator_name(name, fn)
         super().__init__(
@@ -113,6 +115,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._ray_remote_args_fn = ray_remote_args_fn
+        self._actor_startup_timeout_s = actor_startup_timeout_s
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -159,6 +162,7 @@ class MapBatches(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         super().__init__(
             "MapBatches",
@@ -172,6 +176,7 @@ class MapBatches(AbstractUDFMap):
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
@@ -196,6 +201,7 @@ class MapRows(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         super().__init__(
             "Map",
@@ -208,6 +214,7 @@ class MapRows(AbstractUDFMap):
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
 
     @property
@@ -230,6 +237,7 @@ class Filter(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         # Ensure exactly one of fn or filter_expr is provided
         if not ((fn is None) ^ (filter_expr is None)):
@@ -247,6 +255,7 @@ class Filter(AbstractUDFMap):
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
 
     @property
@@ -304,6 +313,7 @@ class FlatMap(AbstractUDFMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        actor_startup_timeout_s: Optional[float] = None,
     ):
         super().__init__(
             "FlatMap",
@@ -316,6 +326,7 @@ class FlatMap(AbstractUDFMap):
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            actor_startup_timeout_s=actor_startup_timeout_s,
         )
 
     @property

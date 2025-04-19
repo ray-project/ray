@@ -582,6 +582,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
 
 def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     """Tests that ActorPoolMapOperator refuses input when actors are pending."""
+    # Get a ray connection.
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -611,6 +612,45 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
         assert op.should_add_input()
         op.add_input(input_op.get_next(), 0)
     assert not op.should_add_input()
+
+
+def test_actor_pool_map_operator_startup_timeout(shutdown_only):
+    """Tests that actor_startup_timeout_s overrides DataContext.wait_for_min_actors_s."""
+    
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    # Define a worker that sleeps during initialization
+    class SlowInitWorker:
+        def __init__(self, sleep_time):
+            import time
+            time.sleep(sleep_time)
+            
+        def __call__(self, x):
+            return x
+
+    # Create a dataset
+    ds = ray.data.range(5)
+    
+    # Create a custom DataContext with a very short global timeout
+    ctx = DataContext.get_current()
+    original_timeout = ctx.wait_for_min_actors_s
+    ctx.wait_for_min_actors_s = 0.1  # Very short timeout
+    
+    try:
+        # Test 1: With short global timeout and no specific timeout - should fail
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            # Initialize slow worker that takes longer than the global timeout
+            ds.map(SlowInitWorker(0.5))
+        
+        # Test 2: With short global timeout but longer specific timeout - should succeed
+        # The specific actor_startup_timeout_s should override the global setting
+        result = ds.map(SlowInitWorker(0.5), actor_startup_timeout_s=2.0).take_all()
+        assert len(result) == 5
+        
+    finally:
+        # Restore original timeout
+        ctx.wait_for_min_actors_s = original_timeout
 
 
 def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
