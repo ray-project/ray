@@ -16,6 +16,7 @@ from ray_release.test import (
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
+
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"

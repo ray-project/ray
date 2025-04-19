@@ -175,5 +175,6 @@ def main(
     steps_str = json.dumps(steps)
     print(steps_str)
 
+
 if __name__ == "__main__":
     sys.exit(main())
