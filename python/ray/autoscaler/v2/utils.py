@@ -341,9 +341,9 @@ class ClusterStatusFormatter:
             "",
             "Resources",
             separator,
-            f"{'Total ' if verbose else ''}Usage:",
+            "Total Usage:",
             cluster_usage_report,
-            f"{'Total ' if verbose else ''}Demands:",
+            "Total Demands:",
             demand_report,
             node_usage_report,
         ]
