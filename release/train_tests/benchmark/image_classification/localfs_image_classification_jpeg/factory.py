@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Iterator, Tuple
 
+from ray.data.datasource.partitioning import Partitioning
 import torch
 import torchvision
 from torch.utils.data import IterableDataset, Dataset
@@ -71,6 +72,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 LOCALFS_JPEG_SPLIT_DIRS["train"],
                 mode="RGB",
                 include_paths=True,
+                partitioning=Partitioning("dir", field_names=["class"]),
             )
             .limit(self.benchmark_config.limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
@@ -82,6 +84,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 LOCALFS_JPEG_SPLIT_DIRS["val"],
                 mode="RGB",
                 include_paths=True,
+                partitioning=Partitioning("dir", field_names=["class"]),
             )
             .limit(self.benchmark_config.limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
