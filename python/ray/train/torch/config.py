@@ -109,7 +109,7 @@ def _setup_torch_process_group(
                 f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
-    elif backend == "hccl":
+    elif backend == "hccl" or backend == "cncl":
         register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
