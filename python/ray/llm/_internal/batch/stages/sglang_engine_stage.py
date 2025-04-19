@@ -235,6 +235,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: SGLangTaskType = SGLangTaskType.GENERATE,
@@ -245,13 +246,14 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The path to the model to use for the SGLang engine.
             engine_kwargs: The kwargs to pass to the SGLang engine.
             task_type: The task to use for the SGLang engine (e.g., "generate", "embed", "reward").
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to a default value based on engine settings.
         """
-        super().__init__(data_column)
+        super().__init__(data_column, expected_input_keys)
         self.model = model
 
         # Setup SGLang engine kwargs.
