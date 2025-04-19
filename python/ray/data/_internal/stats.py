@@ -313,6 +313,11 @@ class _StatsActor:
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
         self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
@@ -487,6 +492,7 @@ class _StatsActor:
                     "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
@@ -526,6 +532,9 @@ class _StatsActor:
             )
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
             )
 
             # Get state code directly from enum
@@ -1614,7 +1623,7 @@ class IterStatsSummary:
                 )
             if self.next_time.get():
                 batch_creation_str = (
-                    "    * In batch creation: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch creation: {} min, {} max, {} avg, {} total\n"
                 )
                 out += batch_creation_str.format(
                     fmt(self.next_time.min()),
@@ -1624,7 +1633,7 @@ class IterStatsSummary:
                 )
             if self.format_time.get():
                 format_str = (
-                    "    * In batch formatting: {} min, {} max, " "{} avg, {} total\n"
+                    "    * In batch formatting: {} min, {} max, {} avg, {} total\n"
                 )
                 out += format_str.format(
                     fmt(self.format_time.min()),

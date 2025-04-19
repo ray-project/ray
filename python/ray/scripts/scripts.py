@@ -26,6 +26,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.label_utils import (
+    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
     parse_node_labels_string,
 )
@@ -56,6 +57,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 
 logger = logging.getLogger(__name__)
@@ -444,10 +446,8 @@ def debug(address: str, verbose: bool):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
-    "of available system memory capped by "
-    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
-    "but can be set higher.",
+    "By default, this is 30% of available system memory capped by "
+    "the shm size and 200G but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -523,7 +523,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="(Deprecated) No longer used and will be removed in a future version of Ray.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -661,6 +661,46 @@ Windows powershell users need additional escaping:
     "Only one log monitor should be started per physical host to avoid log "
     "duplication on the driver process.",
 )
+@click.option(
+    "--enable-resource-isolation",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Enable resource isolation through cgroupv2 by reserving memory and cpu "
+    "resources for ray system processes. To use, only cgroupv2 (not cgroupv1) must "
+    "be enabled with read and write permissions for the raylet. Cgroup memory and "
+    "cpu controllers must also be enabled.",
+)
+@click.option(
+    "--system-reserved-cpu",
+    required=False,
+    type=float,
+    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
+    "fractional i.e. 0.5 means half a cpu core. "
+    "By default, the min of 20% and 1 core will be reserved."
+    "Must be >= 0.5 and < total number of available cores. "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--system-reserved-memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to reserve for ray system processes. "
+    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
+    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
+    "This option only works if --enable-resource-isolation is set.",
+)
+@click.option(
+    "--cgroup-path",
+    required=False,
+    hidden=True,
+    type=str,
+    help="The path for the cgroup the raylet should use to enforce resource isolation. "
+    "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
+    "The raylet must have read/write permissions to this path. "
+    "Cgroup memory and cpu controllers be enabled for this cgroup. "
+    "This option only works if --enable-resource-isolation is set.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -688,8 +728,8 @@ def start(
     dashboard_host,
     dashboard_port,
     dashboard_agent_listen_port,
-    dashboard_agent_grpc_port,
     dashboard_grpc_port,
+    dashboard_agent_grpc_port,
     runtime_env_agent_port,
     block,
     plasma_directory,
@@ -710,10 +750,12 @@ def start(
     labels,
     labels_file,
     include_log_monitor,
+    enable_resource_isolation,
+    system_reserved_cpu,
+    system_reserved_memory,
+    cgroup_path,
 ):
     """Start Ray processes manually on the local machine."""
-    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
-    # all features implemented.
 
     if gcs_server_port is not None:
         cli_logger.error(
@@ -731,32 +773,40 @@ def start(
     resources = parse_resources_json(resources, cli_logger, cf)
 
     # Compose labels passed in with `--labels` and `--labels-file`.
-    # The label value from `--labels` will overrwite the value of any duplicate keys.
+    # In the case of duplicate keys, the values from `--labels` take precedence.
     try:
-        labels_from_file_dict = parse_node_labels_from_yaml_file(labels_file)
+        labels_from_file = parse_node_labels_from_yaml_file(labels_file)
     except Exception as e:
         cli_logger.abort(
-            "The file at `{}` is not a valid YAML file, detailed error:{}"
+            "The file at `{}` is not a valid YAML file, detailed error: {} "
             "Valid values look like this: `{}`",
             cf.bold(f"--labels-file={labels_file}"),
             str(e),
             cf.bold("--labels-file='gpu_type: A100\nregion: us'"),
         )
     try:
+        # Attempt to parse labels from new string format first.
         labels_from_string = parse_node_labels_string(labels)
     except Exception as e:
-        cli_logger.abort(
-            "`{}` is not a valid string of key-value pairs, detail error:{}"
-            "Valid values look like this: `{}`",
-            cf.bold(f"--labels={labels}"),
-            str(e),
-            cf.bold('--labels="key1=val1,key2=val2"'),
-        )
-    labels_dict = (
-        {**labels_from_file_dict, **labels_from_string}
-        if labels_from_file_dict
-        else labels_from_string
-    )
+        try:
+            # Fall back to JSON format if parsing from string fails.
+            labels_from_string = parse_node_labels_json(labels)
+            warnings.warn(
+                "passing node labels with `--labels` in JSON format is "
+                "deprecated and will be removed in a future version of Ray.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        except Exception:
+            # If parsing labels from both formats fails, return the original error message.
+            cli_logger.abort(
+                "`{}` is not a valid string of key-value pairs, detailed error: {} "
+                "Valid values look like this: `{}`",
+                cf.bold(f"--labels={labels}"),
+                str(e),
+                cf.bold('--labels="key1=val1,key2=val2"'),
+            )
+    labels_dict = {**labels_from_file, **labels_from_string}
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -781,6 +831,13 @@ def start(
         )
         temp_dir = None
 
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
+
     redirect_output = None if not no_redirect_output else True
 
     # no  client, no  port -> ok
@@ -794,6 +851,11 @@ def start(
     if storage is not None:
         warnings.warn(
             "--storage is deprecated and will be removed in a future version of Ray.",
+        )
+
+    if dashboard_grpc_port is not None:
+        warnings.warn(
+            "--dashboard-grpc-port is deprecated and will be removed in a future version of Ray.",
         )
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
@@ -826,7 +888,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -834,8 +895,8 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
+        resource_isolation_config=resource_isolation_config,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:

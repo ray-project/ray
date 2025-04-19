@@ -474,6 +474,9 @@ class MapOperator(OneToOneOperator, ABC):
         return self._map_transformer
 
     def shutdown(self, force: bool = False):
+        # Invoke base-class sequence
+        super().shutdown(force)
+        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
@@ -531,6 +534,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
+    TaskContext.set_current(ctx)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
@@ -545,6 +549,8 @@ def _map_task(
             yield m_out
             stats = BlockExecStats.builder()
             profiler.reset()
+
+    TaskContext.reset_current()
 
 
 class _BlockRefBundler:

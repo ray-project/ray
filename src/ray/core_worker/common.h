@@ -24,7 +24,6 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

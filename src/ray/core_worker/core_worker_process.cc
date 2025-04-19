@@ -20,7 +20,6 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
-#include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -325,8 +324,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
-  ray::asio::testing::init();
-  ray::rpc::testing::init();
+  ray::asio::testing::Init();
+  ray::rpc::testing::Init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {

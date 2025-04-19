@@ -1,11 +1,42 @@
+import json
 import pytest
 from ray._private.label_utils import (
+    parse_node_labels_json,
     parse_node_labels_string,
     parse_node_labels_from_yaml_file,
     validate_node_labels,
+    validate_node_label_syntax,
 )
 import sys
 import tempfile
+
+
+def test_parse_node_labels_from_json():
+    # Empty label argument passed
+    labels_json = "{}"
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {}
+
+    # Valid label key with empty value
+    labels_json = '{"region":""}'
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {"region": ""}
+
+    # Multiple valid label keys and values
+    labels_json = '{"ray.io/accelerator-type":"A100", "region":"us-west4"}'
+    labels_dict = parse_node_labels_json(labels_json)
+    assert labels_dict == {"ray.io/accelerator-type": "A100", "region": "us-west4"}
+
+    # Invalid label key - json.loads should fail
+    labels_json = '{500:"A100"}'
+    with pytest.raises(json.decoder.JSONDecodeError):
+        parse_node_labels_json(labels_json)
+
+    # Invalid label value - must be string type
+    labels_json = '{"ray.io/accelerator-type":500}'
+    with pytest.raises(ValueError) as e:
+        parse_node_labels_json(labels_json)
+    assert 'The value of the "ray.io/accelerator-type" is not string type' in str(e)
 
 
 def test_parse_node_labels_from_string():
@@ -28,7 +59,7 @@ def test_parse_node_labels_from_string():
     labels_string = "ray.io/accelerator-type=type=A100"
     with pytest.raises(ValueError) as e:
         parse_node_labels_string(labels_string)
-    assert "Label value is not a key-value pair" in str(e)
+    assert "Label string is not a key-value pair" in str(e)
 
 
 def test_parse_node_labels_from_yaml_file():
@@ -88,27 +119,29 @@ def test_validate_node_labels():
         validate_node_labels(labels_dict)
     assert "This is reserved for Ray defined labels." in str(e)
 
+
+def test_validate_node_label_syntax():
     # Invalid key prefix syntax
     labels_dict = {"!invalidPrefix/accelerator-type": "A100"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key prefix" in str(e)
 
     # Invalid key name syntax
     labels_dict = {"!!accelerator-type?": "A100"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key name" in str(e)
 
     # Invalid key value syntax
     labels_dict = {"accelerator-type": "??"}
     with pytest.raises(ValueError) as e:
-        validate_node_labels(labels_dict)
+        validate_node_label_syntax(labels_dict)
     assert "Invalid label key value" in str(e)
 
     # Valid node label
     labels_dict = {"accelerator-type": "A100"}
-    validate_node_labels(labels_dict)
+    validate_node_label_syntax(labels_dict)
 
 
 if __name__ == "__main__":
