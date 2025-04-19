@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include <fcntl.h>
+
 #include <memory>
 #include <string>
 #include <utility>
