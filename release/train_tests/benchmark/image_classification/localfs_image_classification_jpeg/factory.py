@@ -112,15 +112,7 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
     ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a safe iterator that handles device transfer and error handling."""
-        for batch in dataloader:
-            try:
-                images, labels = batch
-                images = images.to(device, non_blocking=True)
-                labels = labels.to(device, non_blocking=True)
-                yield images, labels
-            except Exception as e:
-                logger.error(f"Error processing batch: {e}")
-                raise
+        return BatchIterator(dataloader, device)
 
     def get_iterable_datasets(self) -> Dict[str, IterableDataset]:
         """Get the train and validation datasets."""
@@ -136,6 +128,31 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
             "train": ImageFolderIterableDataset(train_dataset),
             "val": ImageFolderIterableDataset(val_dataset),
         }
+
+
+class BatchIterator:
+    """Iterator that handles device transfer and error handling for batches."""
+
+    def __init__(self, dataloader: torch.utils.data.DataLoader, device: torch.device):
+        self.dataloader = dataloader
+        self.device = device
+        self._iterator = iter(dataloader)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        try:
+            batch = next(self._iterator)
+            images, labels = batch
+            images = images.to(self.device, non_blocking=True)
+            labels = labels.to(self.device, non_blocking=True)
+            return images, labels
+        except StopIteration:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing batch: {e}")
+            raise
 
 
 class LocalFSImageClassificationFactory(BenchmarkFactory):
