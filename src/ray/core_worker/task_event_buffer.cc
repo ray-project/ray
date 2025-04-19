@@ -530,6 +530,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   // Aggregate and prepare the data to send.
   std::unique_ptr<rpc::TaskEventData> data = CreateDataToSend(
       status_events_to_send, profile_events_to_send, dropped_task_attempts_to_send);
+  // NOLINTNEXTLINE(readability/todo)
+  // TODO: generate the data for the event aggregator
+  // std::unique_ptr<rpc::RayEventsData> ray_events_data
+  // = CreateRayEventsData(status_events_to_send, dropped_task_attempts_to_send);
   if (export_event_write_enabled_) {
     WriteExportData(status_events_to_write_for_export, profile_events_to_send);
   }
@@ -570,6 +574,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   };
 
   auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
+  // NOLINTNEXTLINE(readability/todo)
+  // TODO: Add the logic to push to the event buffer, based on the config. Keep track of
+  // aother set of counters for monitoring purposes.
   RAY_CHECK_OK(status);
 }
 
