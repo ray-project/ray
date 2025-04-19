@@ -337,6 +337,9 @@ def test_python_object_leak(shutdown_only):
     @ray.remote
     class AsyncActor:
         def __init__(self):
+            # Clear any existing circular references
+            # before testing leaks in actor tasks.
+            gc.collect()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
@@ -365,6 +368,9 @@ def test_python_object_leak(shutdown_only):
     @ray.remote
     class A:
         def __init__(self):
+            # Clear any existing circular references
+            # before testing leaks in actor tasks.
+            gc.collect()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
