@@ -56,7 +56,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 mode="RGB",
                 include_paths=True,
                 partitioning=Partitioning(
-                    "dir", base_dir="train", field_names=["class"]
+                    "dir",
+                    base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
+                    field_names=["class"],
                 ),
             )
             .limit(self.benchmark_config.limit_training_rows)
@@ -69,7 +71,11 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 LOCALFS_JPEG_SPLIT_DIRS["val"],
                 mode="RGB",
                 include_paths=True,
-                partitioning=Partitioning("dir", base_dir="val", field_names=["class"]),
+                partitioning=Partitioning(
+                    "dir",
+                    base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
+                    field_names=["class"],
+                ),
             )
             .limit(self.benchmark_config.limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
