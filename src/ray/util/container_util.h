@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -170,6 +171,34 @@ template <typename C>
 typename C::mapped_type &map_find_or_die(C &c, const typename C::key_type &k) {
   return const_cast<typename C::mapped_type &>(
       map_find_or_die(const_cast<const C &>(c), k));
+}
+
+template <typename OuterK, typename InnerK, typename V>
+void erase_if(absl::flat_hash_map<OuterK, absl::btree_map<InnerK, std::deque<V>>> &map,
+              std::function<bool(const V &)> predicate) {
+  for (auto outer_map_iter = map.begin(); outer_map_iter != map.end();) {
+    auto &inner_map = outer_map_iter->second;
+    for (auto inner_map_iter = inner_map.begin(); inner_map_iter != inner_map.end();) {
+      auto &deque = inner_map_iter->second;
+      for (auto deque_iter = deque.begin(); deque_iter != deque.end();) {
+        if (predicate(*deque_iter)) {
+          deque_iter = deque.erase(deque_iter);
+          continue;
+        }
+        ++deque_iter;
+      }
+      if (deque.empty()) {
+        inner_map_iter = inner_map_iter.erase(inner_map_iter);
+        continue;
+      }
+      ++inner_map_iter;
+    }
+    if (outer_map_iter->second.empty()) {
+      map.erase(outer_map_iter++);
+      continue;
+    }
+    ++outer_map_iter;
+  }
 }
 
 // This is guaranteed that predicate is applied to each element exactly once,
