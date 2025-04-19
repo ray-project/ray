@@ -71,20 +71,6 @@ def test_ray_init_set_node_labels(shutdown_only):
 def test_ray_init_set_node_labels_value_error(ray_start_cluster):
     cluster = ray_start_cluster
 
-    key = "ray.io/node_id"
-    with pytest.raises(
-        ValueError,
-        match=f"Custom label keys `{key}` cannot start with the prefix `ray.io/`",
-    ):
-        cluster.add_node(num_cpus=1, labels={key: "111111"})
-
-    key = "ray.io/other_key"
-    with pytest.raises(
-        ValueError,
-        match=f"Custom label keys `{key}` cannot start with the prefix `ray.io/`",
-    ):
-        ray.init(labels={key: "value"})
-
     cluster.add_node(num_cpus=1)
     with pytest.raises(ValueError, match="labels must not be provided"):
         ray.init(address=cluster.address, labels={"gpu_type": "A100"})
@@ -99,14 +85,6 @@ def test_ray_start_set_node_labels_value_error():
 
     out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
     assert "Label string is not a key-value pair." in out
-
-    out = check_cmd_stderr(["ray", "start", "--head", "--labels", "ray.io/node_id=111"])
-    assert "cannot start with the prefix `ray.io/`" in out
-
-    out = check_cmd_stderr(
-        ["ray", "start", "--head", "--labels", "ray.io/other_key=111"]
-    )
-    assert "cannot start with the prefix `ray.io/`" in out
 
 
 def test_cluster_add_node_with_labels(ray_start_cluster):

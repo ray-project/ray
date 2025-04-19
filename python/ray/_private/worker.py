@@ -3398,6 +3398,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
+    label_selector: Dict[str, str] = Undefined,
 ) -> RemoteDecorator:
     ...
 

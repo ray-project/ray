@@ -565,6 +565,7 @@ class _ActorClassMetadata:
         memory,
         object_store_memory,
         resources,
+        label_selector,
         accelerator_type,
         runtime_env,
         concurrency_groups,
@@ -583,6 +584,7 @@ class _ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.label_selector = label_selector
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
@@ -1235,6 +1237,7 @@ class ActorClass:
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
+            label_selector=actor_options.get("label_selector"),
         )
 
         if _actor_launch_hook:
