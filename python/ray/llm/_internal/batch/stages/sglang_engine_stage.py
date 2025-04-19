@@ -390,7 +390,7 @@ class SGLangEngineStage(StatefulStage):
         """The required input keys of the stage and their descriptions."""
         ret = {"prompt": "The text prompt (str)."}
         task_type = self.fn_constructor_kwargs.get("task_type", SGLangTaskType.GENERATE)
-        if self.task_type == SGLangTaskType.GENERATE:
+        if task_type == SGLangTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
                 "https://docs.sglang.ai/backend/sampling_params.html"
