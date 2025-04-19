@@ -1413,12 +1413,13 @@ libclang==16.0.6 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   tensorflow
-lightgbm==3.3.5 \
-    --hash=sha256:02a40745c1972cf4a2cde764c7739228f45178c2237af2df40fde7063a58ac6a \
-    --hash=sha256:044f65664c1a32c98cb619bafa97d8cd9d93c2c2d5053376aadfe509a3a3e7fa \
-    --hash=sha256:10b8fbdcf851e4f68a1f02f38d99bdc44c7c7fb9b1a62dcf924a0d29ff73395c \
-    --hash=sha256:843dd37c00a1096a8898b80e368b3eef7f5a5d327d1fd9eb770b6f3c2e1edc49 \
-    --hash=sha256:ef01e46939293a0a36729350a7384dc17a36880176d0f17d82b738bbe77e4528
+lightgbm==4.6.0 \
+    --hash=sha256:2dafd98d4e02b844ceb0b61450a660681076b1ea6c7adb8c566dfd66832aafad \
+    --hash=sha256:37089ee95664b6550a7189d887dbf098e3eadab03537e411f52c63c121e3ba4b \
+    --hash=sha256:4d68712bbd2b57a0b14390cbf9376c1d5ed773fa2e71e099cac588703b590336 \
+    --hash=sha256:b7a393de8a334d5c8e490df91270f0763f83f959574d504c7ccb9eee4aef70ed \
+    --hash=sha256:cb19b5afea55b5b61cbb2131095f50538bd608a00655f23ad5d25ae3e3bf1c8d \
+    --hash=sha256:cb1c59720eb569389c0ba74d14f52351b573af489f230032a1c9f314f8bab7fe
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
@@ -2710,7 +2711,6 @@ scikit-learn==1.3.2 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-    #   lightgbm
 scipy==1.11.4 \
     --hash=sha256:00150c5eae7b610c32589dda259eacc7c4f1665aedf25d921907f4d08a951b1c \
     --hash=sha256:028eccd22e654b3ea01ee63705681ee79933652b2d8f873e7949898dda6d11b6 \
@@ -2994,7 +2994,6 @@ wheel==0.45.1 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   astunparse
-    #   lightgbm
 wrapt==1.14.1 \
     --hash=sha256:00b6d4ea20a906c0ca56d84f93065b398ab74b927a7a3dbd470f6fc503f95dc3 \
     --hash=sha256:01c205616a89d09827986bc4e859bcabd64f5a0662a7fe95e0d359424e0e071b \

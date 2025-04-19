@@ -39,15 +39,17 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
             An :py:class:`LightGBMCheckpoint` containing the specified ``Estimator``.
 
         Examples:
-            >>> import lightgbm
-            >>> import numpy as np
-            >>> from ray.train.lightgbm import LightGBMCheckpoint
-            >>>
-            >>> train_X = np.array([[1, 2], [3, 4]])
-            >>> train_y = np.array([0, 1])
-            >>>
-            >>> model = lightgbm.LGBMClassifier().fit(train_X, train_y)
-            >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
+            .. testcode::
+
+                import lightgbm
+                import numpy as np
+                from ray.train.lightgbm import LightGBMCheckpoint
+
+                train_X = np.array([[1, 2], [3, 4]])
+                train_y = np.array([0, 1])
+
+                model = lightgbm.LGBMClassifier().fit(train_X, train_y)
+                checkpoint = LightGBMCheckpoint.from_model(model.booster_)
         """
         checkpoint_path = Path(path or tempfile.mkdtemp())
 
