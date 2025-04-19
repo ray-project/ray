@@ -24,7 +24,7 @@ build_x86_64() {
   # TODO(simon): make sure to change both PR and wheel builds
   # Special setup for jar builds (will be installed to the machine instead)
   # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
-  # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+  # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk11
   diskutil list external physical
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
@@ -64,7 +64,7 @@ build_aarch64() {
   # TODO(simon): make sure to change both PR and wheel builds
   # Special setup for jar builds (will be installed to the machine instead)
   # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
-  # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+  # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk11
   diskutil list external physical
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
