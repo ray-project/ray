@@ -7,10 +7,8 @@ import subprocess
 import sys
 import time
 
-from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
-from ray_release.bazel import bazel_runfile
 from ray_release.test import (
     Test,
     DATAPLANE_ECR_REPO,
