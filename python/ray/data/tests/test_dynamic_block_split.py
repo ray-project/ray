@@ -205,7 +205,7 @@ def test_dataset(
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "ReadRandomBytes": lambda count: count <= num_tasks,
+                "ReadRandomBytes": lambda count: count < num_tasks,
             },
             object_store_stats={
                 "cumulative_created_plasma_bytes": lambda count: True,

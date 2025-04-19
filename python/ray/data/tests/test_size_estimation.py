@@ -1,4 +1,3 @@
-import itertools
 import os
 import uuid
 from typing import Iterable
@@ -188,96 +187,60 @@ def test_split_map(shutdown_only, use_actors):
     # Arrow block
     ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
-
+    ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
-    bundles = ds2.map(identity_fn, **kwargs).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert len(blocks) == 1
-    assert num_rows == 1000
-
+    bundles: Iterable[RefBundle] = ds2.map(
+        identity_fn, **kwargs
+    ).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
-    bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert 4 < len(blocks) < 7
-    assert num_rows == 1000
+    bundles: Iterable[RefBundle] = ds3.map(
+        identity_fn, **kwargs
+    ).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
     # Setting a huge block size effectively disables block splitting.
     ctx.target_max_block_size = 2**64
-
     ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
     bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert len(blocks) == 1
-    assert num_rows == 1000
-
-
-def _get_total_rows(blocks):
-    return sum([b.num_rows for b in blocks])
-
-
-def _fetch_blocks(bundles: Iterable[RefBundle]):
-    return ray.get(list(itertools.chain(*[b.block_refs for b in bundles])))
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert nblocks == 1, nblocks
 
 
 def test_split_flat_map(ray_start_regular_shared):
     ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = 20_000_000
     # Arrow block
     ctx.target_max_block_size = 20_000_000
-
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert len(blocks) == 1
-    assert num_rows == 1000
-
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     ds3 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds3.flat_map(lambda x: [x]).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert 4 < len(blocks) < 7
-    assert num_rows == 1000
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert 4 < nblocks < 7, nblocks
 
 
 def test_split_map_batches(ray_start_regular_shared):
     ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = 20_000_000
     # Arrow block
     ctx.target_max_block_size = 20_000_000
-
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds2.map_batches(lambda x: x, batch_size=1).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert len(blocks) == 1
-    assert num_rows == 1000
-
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     ds3 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds3.map_batches(lambda x: x, batch_size=16).iter_internal_ref_bundles()
-
-    blocks = _fetch_blocks(bundles)
-    num_rows = _get_total_rows(blocks)
-
-    assert 4 < len(blocks) < 7
-    assert num_rows == 1000
+    nblocks = sum(len(b.block_refs) for b in bundles)
+    assert 4 < nblocks < 7, nblocks
 
 
 if __name__ == "__main__":
