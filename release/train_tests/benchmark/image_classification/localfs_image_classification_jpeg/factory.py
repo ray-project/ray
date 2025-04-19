@@ -17,6 +17,9 @@ from image_classification.factory import (
 )
 from image_classification.imagenet import get_transform
 from logger_utils import ContextLoggerAdapter
+from image_classification.image_classification_jpeg.imagenet import (
+    get_preprocess_map_fn,
+)
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
@@ -39,26 +42,6 @@ class ImageFolderIterableDataset(IterableDataset):
             yield self.dataset[i]
 
 
-def get_preprocess_map_fn(random_transforms: bool = False):
-    """Get a map function for preprocessing images with consistent transforms.
-
-    This matches the transforms used in the original ImageClassificationJpeg implementation.
-    """
-    transform = get_transform(to_torch_tensor=True, random_transforms=random_transforms)
-
-    def preprocess(batch):
-        images = batch["image"]
-        labels = batch["label"]
-
-        transformed_images = []
-        for img in images:
-            transformed_images.append(transform(img))
-
-        return {"image": torch.stack(transformed_images), "label": torch.tensor(labels)}
-
-    return preprocess
-
-
 class LocalFSImageClassificationRayDataLoaderFactory(
     ImageClassificationRayDataLoaderFactory
 ):
@@ -72,7 +55,9 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 LOCALFS_JPEG_SPLIT_DIRS["train"],
                 mode="RGB",
                 include_paths=True,
-                partitioning=Partitioning("dir", field_names=["class"]),
+                partitioning=Partitioning(
+                    "dir", base_dir="train", field_names=["class"]
+                ),
             )
             .limit(self.benchmark_config.limit_training_rows)
             .map(get_preprocess_map_fn(random_transforms=True))
@@ -84,7 +69,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 LOCALFS_JPEG_SPLIT_DIRS["val"],
                 mode="RGB",
                 include_paths=True,
-                partitioning=Partitioning("dir", field_names=["class"]),
+                partitioning=Partitioning("dir", base_dir="val", field_names=["class"]),
             )
             .limit(self.benchmark_config.limit_validation_rows)
             .map(get_preprocess_map_fn(random_transforms=False))
