@@ -185,17 +185,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // Count the number of scheduling classes that require CPU and sum their total CPU
     // requests.
     size_t num_classes_with_cpu = 0;
-    for (const auto &entry : tasks_to_dispatch_) {
-      const auto &cur_dispatch_queue = entry.second;
-      for (const auto &work : cur_dispatch_queue) {
-        const auto &task_spec = work->task.GetTaskSpecification();
-        auto cpu_request_ =
-            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
-        if (cpu_request_ > 0) {
-          num_classes_with_cpu++;
-          total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
-          break;
-        }
+    for (const auto &[_, cur_dispatch_queue] : tasks_to_dispatch_) {
+      // Only need to check the first because all tasks with the same scheduling class
+      // have the same CPU resource requirements.
+      const auto &work = cur_dispatch_queue.front();
+      const auto &task_spec = work->task.GetTaskSpecification();
+      auto cpu_request_ =
+          task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+      if (cpu_request_ > 0) {
+        num_classes_with_cpu++;
+        total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
       }
     }
     const auto &sched_cls_desc =
