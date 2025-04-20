@@ -227,7 +227,7 @@ steps:
 
   - label: ":ray: core: wheel tests"
     tags: linux_wheels
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --install-mask all-ray-libraries
