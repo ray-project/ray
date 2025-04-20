@@ -30,11 +30,14 @@ SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager,
       local_task_manager_(local_task_manager) {}
 
 void SchedulerStats::ComputeStats() {
-  auto accumulator =
-      [](size_t state,
-         const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
-        return state + pair.second.size();
-      };
+  auto accumulator = [](size_t state, const auto &pair) {
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t count = 0;
+    for (const auto &[_, queue] : priority_map) {
+      count += queue.size();
+    }
+    return state + count;
+  };
   size_t num_waiting_for_resource = 0;
   size_t num_waiting_for_plasma_memory = 0;
   size_t num_waiting_for_remote_node_resources = 0;
@@ -58,37 +61,37 @@ void SchedulerStats::ComputeStats() {
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
                                &num_tasks_waiting_for_workers,
-                               &num_cancelled_tasks](
-                                  size_t state,
-                                  const std::pair<
-                                      int,
-                                      std::deque<std::shared_ptr<internal::Work>>>
-                                      &pair) {
-    const auto &work_queue = pair.second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-      const auto &work = *work_it++;
-      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        num_tasks_waiting_for_workers += 1;
-      } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
-        num_cancelled_tasks += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION) {
-        num_waiting_for_resource += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
-        num_waiting_for_plasma_memory += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE) {
-        num_waiting_for_remote_node_resources += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST) {
-        num_worker_not_started_by_job_config_not_exist += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
-        num_worker_not_started_by_registration_timeout += 1;
+                               &num_cancelled_tasks](size_t state, const auto &pair) {
+    const auto &[scheduling_class, priority_map] = pair;
+    size_t total_count = 0;
+    for (const auto &[_, work_queue] : priority_map) {
+      total_count += work_queue.size();
+      for (const auto &work : work_queue) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+          num_tasks_waiting_for_workers += 1;
+        } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
+          num_cancelled_tasks += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION) {
+          num_waiting_for_resource += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+          num_waiting_for_plasma_memory += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE) {
+          num_waiting_for_remote_node_resources += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::
+                       WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST) {
+          num_worker_not_started_by_job_config_not_exist += 1;
+        } else if (work->GetUnscheduledCause() ==
+                   internal::UnscheduledWorkCause::
+                       WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
+          num_worker_not_started_by_registration_timeout += 1;
+        }
       }
     }
-    return state + pair.second.size();
+    return state + total_count;
   };
   size_t num_tasks_to_schedule =
       std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
