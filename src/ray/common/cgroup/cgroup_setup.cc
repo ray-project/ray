@@ -248,7 +248,7 @@ Status CgroupSetup::InitializeCgroupV2Directory(const std::string &directory,
   // Check cgroup accessibility before setup.
   RAY_RETURN_NOT_OK(internal::CheckCgroupV2MountedRW(directory));
 
-  // Check cgroup subtree control before setup.
+  // Check cgroup available controllers before setup.
   if (Status s = internal::CheckBaseCgroupAvailableControllers(directory); !s.ok()) {
     return s;
   }
