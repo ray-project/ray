@@ -98,6 +98,10 @@ class Work {
     return grant_or_reject || is_selected_based_on_locality;
   }
 
+  int32_t GetPriority() const {
+    return task.GetTaskSpecification().GetMessage().priority();
+  }
+
  private:
   WorkStatus status_ = WorkStatus::WAITING;
   UnscheduledWorkCause unscheduled_work_cause_ =
