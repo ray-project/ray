@@ -138,6 +138,7 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
     # Create UDF instance - it will use the mocked wrapper
     udf = SGLangEngineStageUDF(
         data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
         model=model_llama_3_2_216M,
         task_type=SGLangTaskType.GENERATE,
         engine_kwargs={

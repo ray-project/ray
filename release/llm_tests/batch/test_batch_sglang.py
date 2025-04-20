@@ -83,15 +83,15 @@ def test_sglang_llama_parallel(tp_size, dp_size, concurrency):
     processor_config = SGLangEngineProcessorConfig(
         model_source="unsloth/Llama-3.2-1B-Instruct",
         engine_kwargs=dict(
+            context_length=2048,
             tp_size=tp_size,
             dp_size=dp_size,
-            skip_tokenizer_init=True,
+            dtype="half",
         ),
         runtime_env=runtime_env,
         tokenize=True,
         detokenize=True,
         batch_size=16,
-        accelerator_type=None,
         concurrency=concurrency,
     )
 
