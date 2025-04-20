@@ -8,6 +8,7 @@ ray_cc_library(
     deps = [
         "//:gcs_service_rpc",
         "//src/ray/common:test_util",
+        "//src/ray/gcs:gcs_pb_util",
     ],
 )
 
