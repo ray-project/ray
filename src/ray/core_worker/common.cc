@@ -63,7 +63,7 @@ void SerializeReturnObject(const ObjectID &object_id,
     // This should only happen if the local raylet died. Caller should
     // retry the task.
     RAY_LOG(WARNING).WithField(object_id)
-      << "Failed to create task return object in the object store, exiting.";
+        << "Failed to create task return object in the object store, exiting.";
     QuickExit();
   }
   return_object_proto->set_size(return_object->GetSize());
