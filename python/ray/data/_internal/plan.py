@@ -360,26 +360,31 @@ class ExecutionPlan:
             return self._schema
 
         schema = None
-
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-
         elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
-
-        elif fetch_if_missing or self.is_read_only():
+        elif fetch_if_missing:
+            iter_ref_bundles, _, _ = self.execute_to_iterator()
+            for ref_bundle in iter_ref_bundles:
+                for metadata in ref_bundle.metadata:
+                    if metadata.schema is not None and (
+                        metadata.num_rows is None or metadata.num_rows > 0
+                    ):
+                        schema = metadata.schema
+                        break
+        elif self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-
-            iter_ref_bundles, _, executor = self.execute_to_iterator()
-
-            # Make sure executor is fully shutdown upon exiting
-            with executor:
-                for ref_bundle in iter_ref_bundles:
-                    for metadata in ref_bundle.metadata:
-                        if metadata.schema is not None:
-                            schema = metadata.schema
-                            break
+            iter_ref_bundles, _, _ = self.execute_to_iterator()
+            try:
+                ref_bundle = next(iter(iter_ref_bundles))
+                for metadata in ref_bundle.metadata:
+                    if metadata.schema is not None:
+                        schema = metadata.schema
+                        break
+            except StopIteration:  # Empty dataset.
+                schema = None
 
         self._schema = schema
         return self._schema
@@ -415,11 +420,6 @@ class ExecutionPlan:
 
         This will use streaming execution to generate outputs.
 
-        NOTE: Executor will be shutdown upon either of the 2 following conditions:
-
-            - Iterator is fully exhausted (ie until StopIteration is raised)
-            - Executor instances is garbage-collected
-
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
@@ -450,7 +450,7 @@ class ExecutionPlan:
         self,
         preserve_order: bool = False,
     ) -> RefBundle:
-        """Executes this plan (eagerly).
+        """Execute this plan.
 
         Args:
             preserve_order: Whether to preserve order in execution.
@@ -499,19 +499,17 @@ class ExecutionPlan:
                     owns_blocks=owns_blocks,
                 )
             else:
-                # Make sure executor is properly shutdown
-                with self.create_executor() as executor:
-                    blocks = execute_to_legacy_block_list(
-                        executor,
-                        self,
-                        dataset_uuid=self._dataset_uuid,
-                        preserve_order=preserve_order,
-                    )
-                    bundle = RefBundle(
-                        tuple(blocks.iter_blocks_with_metadata()),
-                        owns_blocks=blocks._owned_by_consumer,
-                    )
-
+                executor = self.create_executor()
+                blocks = execute_to_legacy_block_list(
+                    executor,
+                    self,
+                    dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
+                )
+                bundle = RefBundle(
+                    tuple(blocks.iter_blocks_with_metadata()),
+                    owns_blocks=blocks._owned_by_consumer,
+                )
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False

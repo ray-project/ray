@@ -474,9 +474,6 @@ class MapOperator(OneToOneOperator, ABC):
         return self._map_transformer
 
     def shutdown(self, force: bool = False):
-        # Invoke base-class sequence
-        super().shutdown(force)
-        # Release refs
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 

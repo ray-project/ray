@@ -47,23 +47,7 @@ class OpTask(ABC):
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or ObjectRefGenerator to wait on."""
-        ...
-
-    def _cancel(self, force: bool):
-        object_ref = self.get_waitable()
-
-        # Get generator's `ObjectRef`
-        if isinstance(object_ref, ObjectRefGenerator):
-            object_ref = object_ref._generator_ref
-
-        is_actor_task = not object_ref.task_id().actor_id().is_nil()
-
-        ray.cancel(
-            object_ref,
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+        pass
 
 
 class DataOpTask(OpTask):
@@ -489,23 +473,6 @@ class PhysicalOperator(Operator):
         """
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
-
-        elif force:
-            tasks: List[OpTask] = self.get_active_tasks()
-
-            # Interrupt all (still) running tasks immediately
-            for task in tasks:
-                task._cancel(force=True)
-
-            # Wait for all tasks to get cancelled before returning
-            for task in tasks:
-                try:
-                    ray.get(task.get_waitable())
-                except ray.exceptions.RayError:
-                    # Cancellation either succeeded, or the task might have already
-                    # failed with a different error, or cancellation failed.
-                    # In all cases, we swallow the exception.
-                    pass
 
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
