@@ -19,7 +19,6 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:exponential_backoff",
-        "//src/ray/util:util",
         "@boost//:asio",
     ],
 )

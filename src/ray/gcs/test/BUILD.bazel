@@ -8,7 +8,6 @@ ray_cc_library(
     deps = [
         "//:gcs_service_rpc",
         "//src/ray/common:test_util",
-        "//src/ray/gcs",
     ],
 )
 
@@ -18,7 +17,7 @@ ray_cc_test(
     srcs = ["callback_reply_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/gcs",
+        "//src/ray/gcs:gcs_redis_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -38,7 +37,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:test_util",
-        "//src/ray/gcs",
+        "//src/ray/gcs:gcs_redis_client",
         "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],
