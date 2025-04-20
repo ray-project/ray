@@ -14,6 +14,8 @@
 
 #include "ray/common/status.h"
 
+#include <filesystem>
+
 #include "gtest/gtest.h"
 #include "ray/common/grpc_util.h"
 
@@ -122,4 +124,41 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
   ASSERT_TRUE(ray_status.IsIOError());
 }
 
+TEST_F(StatusTest, StreamOperatorAbslStrAppendTypes) {
+  Status status = Status::Invalid("");
+
+  status = Status::Invalid("");
+  status << std::string("test");
+  EXPECT_EQ(status.message(), "test");
+
+  status = Status::Invalid("");
+  status << 42;
+  EXPECT_EQ(status.message(), "42");
+
+  status = Status::Invalid("");
+  status << 3.14;
+  EXPECT_EQ(status.message(), "3.14");
+
+  status = Status::Invalid("");
+  status << true;
+  EXPECT_EQ(status.message(), "1");
+
+  status = Status::Invalid("");
+  status << 42 << ", " << 3.14 << ", " << true << ", " << std::string("test");
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(status.IsInvalid());
+  EXPECT_EQ(status.message(), "42, 3.14, 1, test");
+}
+
+TEST_F(StatusTest, StreamOperatorFallbackPath) {
+  Status status = Status::Invalid("");
+  const std::filesystem::directory_entry entry{"."};
+
+  status << entry;
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(status.IsInvalid());
+  EXPECT_EQ(status.message(), "\".\"");
+}
 }  // namespace ray

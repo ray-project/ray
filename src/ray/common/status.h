@@ -109,6 +109,33 @@ enum class StatusCode : char {
 class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 #endif
 
+template <typename T, typename = void>
+struct can_absl_str_append : std::false_type {};
+
+template <typename T>
+struct can_absl_str_append<
+    T,
+    std::void_t<decltype(absl::StrAppend(std::declval<std::string *>(),
+                                         std::forward<T>(std::declval<T>())))>>
+    : std::true_type {};
+
+template <typename T>
+inline constexpr bool can_absl_str_append_v = can_absl_str_append<std::decay_t<T>>::value;
+
+template <typename Arg>
+inline void append_arg_to_status(std::string *msg_str, Arg &&arg) {
+  if constexpr (can_absl_str_append_v<Arg>) {
+    // If absl::StrAppend supports this type, use it.
+    absl::StrAppend(msg_str, std::forward<Arg>(arg));
+  } else {
+    // Otherwise, fall back to using std::ostringstream.
+    // Requires that Arg is streamable via operator<<.
+    std::ostringstream oss;
+    oss << std::forward<Arg>(arg);
+    *msg_str += oss.str();
+  }
+}
+
 class RAY_EXPORT Status {
  public:
   // Create a success status.
@@ -329,7 +356,9 @@ class RAY_EXPORT Status {
 
   template <typename... T>
   Status &operator<<(T &&...msg) {
-    absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+    if (RAY_PREDICT_FALSE(state_ != nullptr)) {
+      (append_arg_to_status(&state_->msg, std::forward<T>(msg)), ...);
+    }
     return *this;
   }
 
