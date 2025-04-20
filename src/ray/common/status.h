@@ -122,17 +122,33 @@ struct can_absl_str_append<
 template <typename T>
 inline constexpr bool can_absl_str_append_v = can_absl_str_append<std::decay_t<T>>::value;
 
+template <typename T, typename = void>
+struct is_streamable : std::false_type {};
+
+template <typename T>
+struct is_streamable<
+    T,
+    std::void_t<decltype(std::declval<std::ostringstream &>() << std::declval<T>())>>
+    : std::true_type {};
+
 template <typename Arg>
 inline void append_arg_to_status(std::string *msg_str, Arg &&arg) {
-  if constexpr (can_absl_str_append_v<Arg>) {
+  if constexpr (std::is_same_v<std::decay_t<Arg>, std::filesystem::directory_entry>) {
+    // Explicitly handle std::filesystem::directory_entry.
+    absl::StrAppend(msg_str, arg.path().string());
+  } else if constexpr (can_absl_str_append_v<Arg>) {
     // If absl::StrAppend supports this type, use it.
     absl::StrAppend(msg_str, std::forward<Arg>(arg));
-  } else {
-    // Otherwise, fall back to using std::ostringstream.
-    // Requires that Arg is streamable via operator<<.
+  } else if constexpr (is_streamable<Arg>::value) {
+    // Otherwise, if the type is streamable, use it.
     std::ostringstream oss;
     oss << std::forward<Arg>(arg);
     *msg_str += oss.str();
+  } else {
+    // For all other types, we need to assert that they are either appendable or
+    // streamable.
+    static_assert(can_absl_str_append_v<Arg> || is_streamable<Arg>::value,
+                  "Type must be either appendable or streamable");
   }
 }
 

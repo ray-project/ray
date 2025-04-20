@@ -159,6 +159,6 @@ TEST_F(StatusTest, StreamOperatorFallbackPath) {
 
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(status.IsInvalid());
-  EXPECT_EQ(status.message(), "\".\"");
+  EXPECT_EQ(status.message(), ".");
 }
 }  // namespace ray
