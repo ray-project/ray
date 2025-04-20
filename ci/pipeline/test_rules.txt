@@ -54,6 +54,7 @@ ci/docker/ml.build.wanda.yaml
 ci/ray_ci/ml.tests.yml
 ci/docker/min.build.Dockerfile
 ci/docker/min.build.wanda.yaml
+ci/build/build-multinode-image.py
 @ ml train tune
 ;
 

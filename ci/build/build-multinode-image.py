@@ -20,7 +20,8 @@ def build_multinode_image(source_image: str, target_image: str):
         f.write("RUN sudo apt install -y openssh-server\n")
 
     subprocess.check_output(
-        f"docker build -t {target_image} .", shell=True, cwd=tempdir
+        ["docker", "build", "--progress=plain", "-t", target_image, "."],
+        cwd=tempdir,
     )
 
     shutil.rmtree(tempdir)
