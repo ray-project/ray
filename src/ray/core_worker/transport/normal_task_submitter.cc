@@ -31,7 +31,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   num_tasks_submitted_++;
 
   resolver_.ResolveDependencies(
-      task_spec, [this, task_spec = std::move(task_spec)](const Status &status) mutable {
+      task_spec, [this, task_spec](const Status &status) mutable {
         // NOTE: task_spec here is capture copied (from a stack variable) and also
         // mutable. (Mutations to the variable are expected to be shared inside and
         // outside of this closure).
