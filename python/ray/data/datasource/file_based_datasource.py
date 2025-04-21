@@ -229,17 +229,13 @@ class FileBasedDatasource(Datasource):
             ]
             paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
 
-        filesystem = _wrap_s3_serialization_workaround(self._filesystem)
-
         if open_stream_args is None:
             open_stream_args = {}
 
         def read_files(
             read_paths: Iterable[str],
         ) -> Iterable[Block]:
-            nonlocal filesystem, open_stream_args, partitioning
-
-            fs = _unwrap_s3_serialization_workaround(filesystem)
+            nonlocal open_stream_args, partitioning
 
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
@@ -248,7 +244,9 @@ class FileBasedDatasource(Datasource):
                     partitions = parse(read_path)
 
                 with RetryingContextManager(
-                    self._open_input_source(fs, read_path, **open_stream_args),
+                    self._open_input_source(
+                        self._filesystem, read_path, **open_stream_args
+                    ),
                     context=self._data_context,
                 ) as f:
                     for block in iterate_with_retry(
@@ -468,81 +466,6 @@ def _add_partitions_to_dataframe(
     return df
 
 
-def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
-    # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
-    # imported before deserialization. See #17085.
-    import pyarrow as pa
-    import pyarrow.fs
-
-    wrap_retries = False
-    fs_to_be_wrapped = filesystem  # Only unwrap for S3FileSystemWrapper
-    retryable_errors = []
-    if isinstance(fs_to_be_wrapped, RetryingPyFileSystem):
-        wrap_retries = True
-        retryable_errors = fs_to_be_wrapped.retryable_errors
-        fs_to_be_wrapped = fs_to_be_wrapped.unwrap()
-    if isinstance(fs_to_be_wrapped, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(
-            fs_to_be_wrapped,
-            wrap_retries=wrap_retries,
-            retryable_errors=retryable_errors,
-        )
-    return filesystem
-
-
-def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
-):
-    if isinstance(filesystem, _S3FileSystemWrapper):
-        wrap_retries = filesystem._wrap_retries
-        retryable_errors = filesystem._retryable_erros
-        filesystem = filesystem.unwrap()
-        if wrap_retries:
-            filesystem = RetryingPyFileSystem.wrap(
-                filesystem, retryable_errors=retryable_errors
-            )
-    return filesystem
-
-
-class _S3FileSystemWrapper:
-    def __init__(
-        self,
-        fs: "pyarrow.fs.S3FileSystem",
-        wrap_retries: bool = False,
-        retryable_errors: List[str] = tuple(),
-    ):
-        self._fs = fs
-        self._wrap_retries = wrap_retries
-        self._retryable_erros = retryable_errors
-
-    def unwrap(self):
-        return self._fs
-
-    @classmethod
-    def _reconstruct(cls, fs_reconstruct, fs_args):
-        # Implicitly trigger S3 subsystem initialization by importing
-        # pyarrow.fs.
-        import pyarrow.fs  # noqa: F401
-
-        return cls(fs_reconstruct(*fs_args))
-
-    def __reduce__(self):
-        return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
-
-
-def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if "filesystem" in kwargs:
-        kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
-
-    return kwargs
-
-
-def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
-        kwargs["filesystem"] = kwargs["filesystem"].unwrap()
-    return kwargs
-
-
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
@@ -553,7 +476,7 @@ def _resolve_kwargs(
 
 
 def _validate_shuffle_arg(
-    shuffle: Union[Literal["files"], FileShuffleConfig, None]
+    shuffle: Union[Literal["files"], FileShuffleConfig, None],
 ) -> None:
     if not (
         shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
