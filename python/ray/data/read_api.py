@@ -573,7 +573,7 @@ def read_videos(
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
         include_timestmaps: If ``True``, include the frame timestamps from the video
-            as a ``'frame_timestamp'`` column. 
+            as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
