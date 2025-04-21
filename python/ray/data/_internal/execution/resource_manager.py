@@ -426,12 +426,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
-        return (
-            not op.throttling_disabled()
-            # As long as the op has finished execution, even if there are still
-            # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
-        )
+        return not op.throttling_disabled() and not op.completed()
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         return [
@@ -453,7 +448,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
-        remaining = global_limits.copy()
+        self._total_shared = global_limits.copy()
 
         if len(eligible_ops) == 0:
             return
@@ -463,7 +458,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         default_reserved = global_limits.scale(
             self._reservation_ratio / (len(eligible_ops))
         )
-        for index, op in enumerate(eligible_ops):
+        for op in eligible_ops:
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
@@ -484,17 +479,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total resources we want to reserve for this operator.
             op_total_reserved = default_reserved.max(min_reserved)
-
-            # Check if the remaining resources are enough for op_total_reserved.
-            # Note, we only consider CPU and GPU, but not object_store_memory,
-            # because object_store_memory can be oversubscribed, but CPU/GPU cannot.
-            if op_total_reserved.satisfies_limit(
-                remaining, ignore_object_store_memory=True
-            ):
+            if op_total_reserved.satisfies_limit(self._total_shared):
                 # If the remaining resources are enough to reserve `op_total_reserved`,
-                # subtract it from the remaining and reserve it for this op.
+                # subtract it from `self._total_shared` and reserve it for this op.
                 self._reserved_min_resources[op] = True
-                remaining = remaining.subtract(op_total_reserved)
+                self._total_shared = self._total_shared.subtract(op_total_reserved)
                 self._op_reserved[op] = op_total_reserved
                 self._op_reserved[
                     op
@@ -504,9 +493,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
                 # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # NOTE: we prioritize upstream operators for minimum resource reservation.
-                # ops. It's fine that downstream ops don't get the minimum reservation,
-                # because they can wait for upstream ops to finish and release resources.
+                # Note, we reserve minimum resources first for the upstream
+                # ops. Downstream ops need to wait for upstream ops to finish
+                # and release resources.
                 self._reserved_min_resources[op] = False
                 self._op_reserved[op] = ExecutionResources(
                     0,
@@ -514,19 +503,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     min_reserved.object_store_memory
                     - self._reserved_for_op_outputs[op],
                 )
-                remaining = remaining.subtract(
+                self._total_shared = self._total_shared.subtract(
                     ExecutionResources(0, 0, min_reserved.object_store_memory)
                 )
-                if index == 0:
-                    # Log a warning if even the first operator cannot reserve
-                    # the minimum resources.
-                    logger.warning(
-                        f"Cluster resource are not engough to run any task from {op}."
-                        " The job may hang forever unless the cluster scales up."
-                    )
 
-            remaining = remaining.max(ExecutionResources.zero())
-        self._total_shared = remaining
+            self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         if op not in self._op_budgets:
