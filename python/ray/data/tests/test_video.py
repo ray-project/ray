@@ -7,7 +7,7 @@ import ray
 
 def test_read_videos():
     uri = "s3://anonymous@ray-example-data/basketball.mp4"
-    ds = ray.data.read_datasource(VideoDatasource(uri, include_timestamps=True))
+    ds = ray.data.read_videos(uri, include_timestamps=True)
 
     assert ds.count() == 333
     assert ds.schema().names == ["frame", "frame_index", "frame_timestamp"]
