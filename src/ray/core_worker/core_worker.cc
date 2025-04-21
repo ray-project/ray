@@ -374,7 +374,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      resource_ids_(),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_.get_executor()),
       exiting_detail_(std::nullopt),
@@ -2569,7 +2568,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
 
     io_service_.post(
-        [this, task_spec]() {
+        [this, task_spec = std::move(task_spec)]() mutable {
           RAY_UNUSED(normal_task_submitter_->SubmitTask(std::move(task_spec)));
         },
         "CoreWorker.SubmitTask");
@@ -2782,7 +2781,7 @@ Status CoreWorker::CreatePlacementGroup(
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)
       << "Submitting Placement Group creation to GCS";
-  const auto status =
+  auto status =
       gcs_client_->PlacementGroups().SyncCreatePlacementGroup(placement_group_spec);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
@@ -2797,7 +2796,7 @@ Status CoreWorker::CreatePlacementGroup(
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
   // Synchronously wait for placement group removal.
-  const auto status =
+  auto status =
       gcs_client_->PlacementGroups().SyncRemovePlacementGroup(placement_group_id);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
@@ -2812,8 +2811,8 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                            int64_t timeout_seconds) {
-  const auto status = gcs_client_->PlacementGroups().SyncWaitUntilReady(
-      placement_group_id, timeout_seconds);
+  auto status = gcs_client_->PlacementGroups().SyncWaitUntilReady(placement_group_id,
+                                                                  timeout_seconds);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
@@ -3124,7 +3123,7 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
   const auto ray_namespace = worker_context_.GetCurrentJobConfig().ray_namespace();
-  const auto status =
+  auto status =
       gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
@@ -3140,7 +3139,7 @@ CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
   auto it = local_mode_named_actor_registry_.find(name);
   if (it == local_mode_named_actor_registry_.end()) {
     std::string err_msg = absl::StrFormat("Failed to look up actor with name %s", name);
-    return std::make_pair(nullptr, Status::NotFound(std::move(err_msg)));
+    return std::make_pair(nullptr, Status::NotFound(err_msg));
   }
 
   return std::make_pair(GetActorHandle(it->second), Status::OK());
@@ -3857,10 +3856,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
         [this,
-         request,
+         request = std::move(request),
          reply,
          send_reply_callback = std::move(send_reply_callback),
-         func_name] {
+         func_name]() mutable {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (IsExiting()) {
@@ -3868,13 +3867,13 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          task_receiver_->HandleTask(request, reply, send_reply_callback);
+          task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
-    task_receiver_->HandleTask(request, reply, send_reply_callback);
+    task_receiver_->HandleTask(std::move(request), reply, send_reply_callback);
     task_execution_service_.post(
         [this, func_name] {
           // We have posted an exit task onto the main event loop,
