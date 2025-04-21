@@ -1,9 +1,10 @@
 import os
 from typing import Dict, List, Optional, Union
 
-from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
 from ray.util.annotations import DeveloperAPI
+
+from .common import NodeIdStr
 
 
 class ExecutionResources:
@@ -116,6 +117,11 @@ class ExecutionResources:
     def zero(cls) -> "ExecutionResources":
         """Returns an ExecutionResources object with zero resources."""
         return ExecutionResources(0.0, 0.0, 0.0)
+
+    @classmethod
+    def inf(cls) -> "ExecutionResources":
+        """Returns an ExecutionResources object with infinite resources."""
+        return ExecutionResources.for_limits()
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""

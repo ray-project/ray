@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -110,8 +110,10 @@ class TaskPoolMapOperator(MapOperator):
     def progress_str(self) -> str:
         return ""
 
-    def base_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources()
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        return self.incremental_resource_usage(), ExecutionResources.for_limits()
 
     def current_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()

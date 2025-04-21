@@ -20,8 +20,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor_state import OpState
-    from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 
 logger = logging.getLogger(__name__)
@@ -419,9 +418,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
-        self._cached_global_limits = ExecutionResources.zero()
-        self._cached_num_eligible_ops = 0
-
         self._idle_detector = self.IdleDetector()
 
     def _is_op_eligible(self, op: PhysicalOperator) -> bool:
@@ -442,14 +438,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         global_limits = self._resource_manager.get_global_limits()
         eligible_ops = self._get_eligible_ops()
 
-        if (
-            global_limits == self._cached_global_limits
-            and len(eligible_ops) == self._cached_num_eligible_ops
-        ):
-            return
-        self._cached_global_limits = global_limits
-        self._cached_num_eligible_ops = len(eligible_ops)
-
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
         self._reserved_min_resources.clear()
@@ -467,38 +455,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
             # op.
-            self._reserved_for_op_outputs[op] = max(
-                default_reserved.object_store_memory / 2, 1.0
+            reserved_for_outputs = ExecutionResources(
+                0, 0, default_reserved.object_store_memory / 2
             )
-            # Calculate the minimum amount of resources to reserve.
-            # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage().copy()
-            # 2. To ensure that all GPUs are utilized, reserve enough resource budget
-            # to launch one task for each worker.
-            if op.base_resource_usage().gpu > 0:
-                min_workers = sum(
-                    pool.min_size() for pool in op.get_autoscaling_actor_pools()
-                )
-                min_reserved.object_store_memory *= min_workers
-            # Also include `reserved_for_op_outputs`.
-            min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
-            # Total resources we want to reserve for this operator.
-            op_total_reserved = default_reserved.max(min_reserved)
 
-            # Check if the remaining resources are enough for op_total_reserved.
-            # Note, we only consider CPU and GPU, but not object_store_memory,
-            # because object_store_memory can be oversubscribed, but CPU/GPU cannot.
-            if op_total_reserved.satisfies_limit(
+            min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
+            reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
+            reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
+            reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
+
+            # Check if the remaining resources are enough for both reserved_for_tasks
+            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
+            # object_store_memory, because object_store_memory can be oversubscribed,
+            # but CPU/GPU cannot.
+            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
                 remaining, ignore_object_store_memory=True
             ):
-                # If the remaining resources are enough to reserve `op_total_reserved`,
-                # subtract it from the remaining and reserve it for this op.
                 self._reserved_min_resources[op] = True
-                remaining = remaining.subtract(op_total_reserved)
-                self._op_reserved[op] = op_total_reserved
-                self._op_reserved[
-                    op
-                ].object_store_memory -= self._reserved_for_op_outputs[op]
             else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
@@ -508,14 +481,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
                 self._reserved_min_resources[op] = False
-                self._op_reserved[op] = ExecutionResources(
-                    0,
-                    0,
-                    min_reserved.object_store_memory
-                    - self._reserved_for_op_outputs[op],
-                )
-                remaining = remaining.subtract(
-                    ExecutionResources(0, 0, min_reserved.object_store_memory)
+                reserved_for_tasks = ExecutionResources(
+                    0, 0, min_resource_usage.object_store_memory
                 )
                 if index == 0:
                     # Log a warning if even the first operator cannot reserve
@@ -525,7 +492,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
+            self._op_reserved[op] = reserved_for_tasks
+            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+
+            op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
+            remaining = remaining.subtract(op_total_reserved)
             remaining = remaining.max(ExecutionResources.zero())
+
         self._total_shared = remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:

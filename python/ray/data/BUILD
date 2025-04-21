@@ -591,6 +591,20 @@ py_test(
 )
 
 py_test(
+    name = "test_task_pool_map_operator",
+    size = "small",
+    srcs = ["tests/test_task_pool_map_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_tensor",
     size = "small",
     srcs = ["tests/test_tensor.py"],

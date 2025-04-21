@@ -32,7 +32,7 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
+from ray.data._internal.stats import DatasetState, DatasetStats, StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
@@ -457,7 +457,8 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
 
     base_usage = ExecutionResources(cpu=1)
     for op in walk(dag):
-        base_usage = base_usage.add(op.base_resource_usage())
+        min_resource_usage, _ = op.min_max_resource_requirements()
+        base_usage = base_usage.add(min_resource_usage)
 
     if not base_usage.satisfies_limit(limits):
         error_message = (

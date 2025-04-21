@@ -44,14 +44,14 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
-from ray.data._internal.util import MemoryProfiler
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import MemoryProfiler
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockMetadata,
     BlockExecStats,
+    BlockMetadata,
     BlockStats,
     to_stats,
 )
@@ -489,7 +489,9 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def base_resource_usage(self) -> ExecutionResources:
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
         raise NotImplementedError
 
     @abstractmethod

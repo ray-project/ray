@@ -101,7 +101,8 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
     )
-    assert op.base_resource_usage() == ExecutionResources()
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources()
     data_context = ray.data.DataContext.get_current()
     inc_obj_store_mem = (
         data_context._max_num_blocks_in_streaming_gen_buffer
@@ -122,7 +123,8 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2},
     )
-    assert op.base_resource_usage() == ExecutionResources()
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources()
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=2, object_store_memory=inc_obj_store_mem
     )
@@ -136,7 +138,8 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2, "num_cpus": 1},
     )
-    assert op.base_resource_usage() == ExecutionResources()
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources()
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=1, gpu=2, object_store_memory=inc_obj_store_mem
     )
@@ -309,7 +312,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
     )
-    assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources(cpu=2, gpu=0)
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
@@ -404,7 +408,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         data_context._max_num_blocks_in_streaming_gen_buffer
         * data_context.target_max_block_size
     )
-    assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    min_resource_usage, _ = op.min_max_resource_requirements()
+    assert min_resource_usage == ExecutionResources(cpu=2, gpu=0)
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
