@@ -1490,6 +1490,40 @@ def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_
         ray.data.read_parquet(tmp_path)
 
 
+def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
+    """Verify row_group_size is respected."""
+
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_5k.parquet",
+            row_group_size=5000,
+        )
+    )
+
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
+    assert ds.fragments[0].num_row_groups == 2
+
+
+def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
+    """Verify arrow_parquet_args_fn is working with row_group_size."""
+    (
+        ray.data.range(10000)
+        .repartition(1)
+        .write_parquet(
+            tmp_path / "test_row_group_1k.parquet",
+            arrow_parquet_args_fn=lambda: {
+                "row_group_size": 1000,  # overrides row_group_size
+            },
+            row_group_size=5000,
+        )
+    )
+
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
+    assert ds.fragments[0].num_row_groups == 10
+
+
 if __name__ == "__main__":
     import sys
 
