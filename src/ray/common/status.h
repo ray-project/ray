@@ -36,6 +36,7 @@
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/type_traits.h"
 #include "ray/util/visibility.h"
 
 namespace boost::system {
@@ -109,37 +110,15 @@ enum class StatusCode : char {
 class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 #endif
 
-template <typename T, typename = void>
-struct can_absl_str_append : std::false_type {};
-
-template <typename T>
-struct can_absl_str_append<
-    T,
-    std::void_t<decltype(absl::StrAppend(std::declval<std::string *>(),
-                                         std::forward<T>(std::declval<T>())))>>
-    : std::true_type {};
-
-template <typename T>
-inline constexpr bool can_absl_str_append_v = can_absl_str_append<std::decay_t<T>>::value;
-
-template <typename T, typename = void>
-struct is_streamable : std::false_type {};
-
-template <typename T>
-struct is_streamable<
-    T,
-    std::void_t<decltype(std::declval<std::ostringstream &>() << std::declval<T>())>>
-    : std::true_type {};
-
 template <typename Arg>
-inline void append_arg_to_status(std::string *msg_str, Arg &&arg) {
+inline void AppendArgToStatus(std::string *msg_str, Arg &&arg) {
   if constexpr (std::is_same_v<std::decay_t<Arg>, std::filesystem::directory_entry>) {
     // Explicitly handle std::filesystem::directory_entry.
     absl::StrAppend(msg_str, arg.path().string());
   } else if constexpr (can_absl_str_append_v<Arg>) {
     // If absl::StrAppend supports this type, use it.
     absl::StrAppend(msg_str, std::forward<Arg>(arg));
-  } else if constexpr (is_streamable<Arg>::value) {
+  } else if constexpr (is_streamable_v<Arg>) {
     // Otherwise, if the type is streamable, use it.
     std::ostringstream oss;
     oss << std::forward<Arg>(arg);
@@ -373,7 +352,7 @@ class RAY_EXPORT Status {
   template <typename... T>
   Status &operator<<(T &&...msg) {
     if (RAY_PREDICT_FALSE(state_ != nullptr)) {
-      (append_arg_to_status(&state_->msg, std::forward<T>(msg)), ...);
+      (AppendArgToStatus(&state_->msg, std::forward<T>(msg)), ...);
     }
     return *this;
   }

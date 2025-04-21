@@ -291,6 +291,7 @@ ray_cc_library(
         ":source_location",
         "//src/ray/util:logging",
         "//src/ray/util:macros",
+        "//src/ray/util:type_traits",
         "//src/ray/util:visibility",
         "@boost//:system",
         "@com_google_absl//absl/container:flat_hash_map",
