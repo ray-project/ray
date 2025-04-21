@@ -29,10 +29,6 @@ class ThreadRunner:
         if self._thread is not None:
             raise RuntimeError("Thread is already running.")
 
-        import ipdb
-
-        ipdb.set_trace()
-
         def _run_target():
             with self._lock:
                 self._is_running = True
