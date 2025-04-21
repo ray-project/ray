@@ -132,14 +132,19 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
   auto tasks_to_dispatch_range =
       tasks_to_dispatch_ | boost::adaptors::transformed([](const auto &pair) {
-        auto cnt = pair.second.size();
-        // We should only report dispatching tasks that do not have resources allocated.
-        for (const auto &task : pair.second) {
-          if (task->allocated_instances) {
-            cnt--;
+        const auto &[scheduling_class, priority_map] = pair;
+        size_t count = 0;
+        for (const auto &[_, queue] : priority_map) {
+          count += queue.size();
+          for (const auto &task : queue) {
+            // We should only report dispatching tasks that do not have resources
+            // allocated.
+            if (task->allocated_instances) {
+              --count;
+            }
           }
         }
-        return std::make_pair(pair.first, cnt);
+        return std::make_pair(pair.first, count);
       });
   fill_resource_usage_helper(tasks_to_dispatch_range, false);
 

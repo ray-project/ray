@@ -173,8 +173,7 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const override {
+  const internal::WorkQueueMap &GetTaskToDispatch() const override {
     return tasks_to_dispatch_;
   }
 
@@ -326,8 +325,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      tasks_to_dispatch_;
+  internal::WorkQueueMap tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
@@ -345,6 +343,8 @@ class LocalTaskManager : public ILocalTaskManager {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
+  /// Note: This queue currently doesn't take priority into account since the only time
+  /// its order matters is when spilling tasks to other nodes.
   std::list<std::shared_ptr<internal::Work>> waiting_task_queue_;
 
   /// An index for the above queue.
