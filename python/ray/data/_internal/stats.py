@@ -26,7 +26,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data._internal.metadata_exporter import LoggerDataMetadataExporter
+from ray.data._internal.metadata_exporter import OperatorDAG, get_data_metadata_exporter
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ class _StatsActor:
         self._ray_nodes_cache: Dict[str, str] = {}
 
         # Initialize the metadata exporter
-        self._metadata_exporter = LoggerDataMetadataExporter.create_if_enabled()
+        self._metadata_exporter = get_data_metadata_exporter()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -483,7 +483,7 @@ class _StatsActor:
         job_id: str,
         dataset_tag: str,
         operator_tags: List[str],
-        dag_structure: "OperatorDAG",
+        dag_structure: OperatorDAG,
     ):
         start_time = time.time()
         self.datasets[dataset_tag] = {

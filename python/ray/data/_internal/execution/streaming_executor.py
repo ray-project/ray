@@ -34,7 +34,7 @@ from ray.data._internal.logging import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
-from ray.data._internal.metadata_exporter import OperatorDAG, Operator, SubOperator
+from ray.data._internal.metadata_exporter import OperatorDAG
 
 logger = logging.getLogger(__name__)
 
@@ -148,10 +148,13 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._output_node = dag, self._topology[dag]
 
+        op_to_id = {
+            op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
+        }
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
-            self._create_operator_dag_metadata(dag),
+            OperatorDAG.create_operator_dag_metadata(dag, op_to_id),
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
@@ -432,57 +435,6 @@ class StreamingExecutor(Executor, threading.Thread):
             self._get_state_dict(state=state),
             force_update=force_update,
         )
-
-    def _create_operator_dag_metadata(self, dag: PhysicalOperator) -> OperatorDAG:
-        """Create an OperatorDAG structure from the physical operator DAG.
-
-        Args:
-            dag: The operator DAG to analyze.
-
-        Returns:
-            An OperatorDAG object representing the operator DAG structure.
-        """
-        # Return an empty DAG if the topology isn't initialized yet
-        if not self._topology:
-            return OperatorDAG()
-
-        # Create a mapping of operators to their IDs
-        op_to_id = {
-            op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
-        }
-
-        # Create the result structure
-        result = OperatorDAG()
-
-        # Add detailed operator information with dependencies
-        for op in dag.post_order_iter():
-            # Skip operators that aren't in the topology
-            if op not in op_to_id:
-                continue
-
-            op_id = op_to_id[op]
-
-            # Create operator object
-            operator = Operator(
-                name=op.name,
-                id=op_id,
-                uuid=op.id,
-                input_dependencies=[
-                    op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
-                ],
-            )
-
-            # Add sub-operators if they exist
-            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
-                for j, sub_name in enumerate(op._sub_progress_bar_names):
-                    sub_op_id = f"{op_id}_sub_{j}"
-                    operator.sub_operators.append(
-                        SubOperator(name=sub_name, id=sub_op_id)
-                    )
-
-            result.operators.append(operator)
-
-        return result
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

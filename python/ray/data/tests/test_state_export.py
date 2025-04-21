@@ -125,11 +125,15 @@ def test_export_data_metadata_enabled_by_config(
     _test_data_metadata_export(dummy_dataset_dag_structure)
 
 
-def test_export_data_metadata(ray_start_cluster_with_export_api_write, dummy_dataset_dag_structure):
+def test_export_data_metadata(
+    ray_start_cluster_with_export_api_write, dummy_dataset_dag_structure
+):
     _test_data_metadata_export(dummy_dataset_dag_structure)
 
 
-def test_export_multiple_datasets(ray_start_cluster_with_export_api_write, dummy_dataset_dag_structure):
+def test_export_multiple_datasets(
+    ray_start_cluster_with_export_api_write, dummy_dataset_dag_structure
+):
     """Test that multiple datasets can be exported when export API is enabled."""
     stats_actor = _get_or_create_stats_actor()
 
@@ -185,7 +189,9 @@ def test_export_multiple_datasets(ray_start_cluster_with_export_api_write, dummy
     datasets_by_id = {entry["event_data"]["dataset_id"]: entry for entry in data}
 
     # Verify first dataset
-    assert first_dataset_id in datasets_by_id, f"First dataset {first_dataset_id} not found in exported data"
+    assert (
+        first_dataset_id in datasets_by_id
+    ), f"First dataset {first_dataset_id} not found in exported data"
     first_entry = datasets_by_id[first_dataset_id]
     assert first_entry["source_type"] == "EXPORT_DATA_METADATA"
     assert first_entry["event_data"]["dag"] == asdict(dummy_dataset_dag_structure)
@@ -193,7 +199,9 @@ def test_export_multiple_datasets(ray_start_cluster_with_export_api_write, dummy
     assert first_entry["event_data"]["start_time"] is not None
 
     # Verify second dataset
-    assert second_dataset_id in datasets_by_id, f"Second dataset {second_dataset_id} not found in exported data"
+    assert (
+        second_dataset_id in datasets_by_id
+    ), f"Second dataset {second_dataset_id} not found in exported data"
     second_entry = datasets_by_id[second_dataset_id]
     assert second_entry["source_type"] == "EXPORT_DATA_METADATA"
     assert second_entry["event_data"]["dag"] == asdict(second_dag_structure)

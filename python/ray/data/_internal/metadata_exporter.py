@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import ray
 from ray._private.event.export_event_logger import (
@@ -13,16 +13,24 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
 )
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
+
 UNKNOWN = "unknown"
 
+# NOTE: These dataclasses need to be updated in sync with the protobuf definitions in
+# src/ray/protobuf/export_api/export_data_metadata.proto
 @dataclass
 class SubOperator:
     """Represents a sub-operator within a main operator in the DAG.
-    
+
     Attributes:
         name: The name of the sub-operator.
         id: The unique identifier of the sub-operator.
     """
+
     name: str
     id: str
 
@@ -30,7 +38,7 @@ class SubOperator:
 @dataclass
 class Operator:
     """Represents a data processing operator in the DAG.
-    
+
     Attributes:
         name: The name of the operator.
         id: The unique identifier of the operator within the DAG structure, typically
@@ -42,6 +50,7 @@ class Operator:
         input_dependencies: List of operator IDs that this operator depends on for input.
         sub_operators: List of sub-operators contained within this operator.
     """
+
     name: str
     id: str
     uuid: str
@@ -52,36 +61,80 @@ class Operator:
 @dataclass
 class OperatorDAG:
     """Represents the complete structure of the operator DAG.
-    
+
     Attributes:
         operators: List of all operators in the DAG.
     """
+
     operators: List[Operator] = field(default_factory=list)
+
+    @staticmethod
+    def create_operator_dag_metadata(
+        dag: "PhysicalOperator", op_to_id: Dict["PhysicalOperator", str]
+    ) -> "OperatorDAG":
+        """Create an OperatorDAG structure from the physical operator DAG.
+
+        Args:
+            dag: The operator DAG to analyze.
+
+        Returns:
+            An OperatorDAG object representing the operator DAG structure.
+        """
+        # Create the result structure
+        result = OperatorDAG()
+
+        # Add detailed operator information with dependencies
+        for op in dag.post_order_iter():
+            op_id = op_to_id[op]
+
+            # Create operator object
+            operator = Operator(
+                name=op.name,
+                id=op_id,
+                uuid=op.id,
+                input_dependencies=[
+                    op_to_id[dep] for dep in op.input_dependencies if dep in op_to_id
+                ],
+            )
+
+            # Add sub-operators if they exist
+            if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
+                for j, sub_name in enumerate(op._sub_progress_bar_names):
+                    sub_op_id = f"{op_id}_sub_{j}"
+                    operator.sub_operators.append(
+                        SubOperator(name=sub_name, id=sub_op_id)
+                    )
+
+            result.operators.append(operator)
+
+        return result
 
 
 @dataclass
 class DatasetMetadata:
     """Metadata about a Ray Data dataset.
-    
+
     This class represents the metadata associated with a dataset, including its provenance
     information and execution details.
-    
+
     Attributes:
         job_id: The ID of the job running this dataset.
         dag_structure: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
         start_time: The timestamp when the dataset execution started.
     """
+
     job_id: str
     dag_structure: OperatorDAG
     dataset_id: str
     start_time: float
 
+
 def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     """Convert the dataset metadata to a protobuf message.
 
     Args:
-        dataset_metadata: DatasetMetadata object containing the dataset's 
+        dataset_metadata: DatasetMetadata object containing the dataset's
             information and DAG structure.
 
     Returns:
@@ -128,9 +181,18 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     return data_metadata
 
 
+def get_data_metadata_exporter() -> "DataMetadataExporter":
+    """Get the data metadata exporter instance.
+
+    Returns:
+        The data metadata exporter instance.
+    """
+    return LoggerDataMetadataExporter.create_if_enabled()
+
+
 class DataMetadataExporter(ABC):
     """Abstract base class for data metadata exporters.
-    
+
     Implementations of this interface can export Ray Data metadata to various destinations
     like log files, databases, or monitoring systems.
     """
@@ -138,7 +200,7 @@ class DataMetadataExporter(ABC):
     @abstractmethod
     def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
         """Export dataset metadata to the destination.
-        
+
         Args:
             dataset_metadata: DatasetMetadata object containing dataset information.
         """
@@ -148,7 +210,7 @@ class DataMetadataExporter(ABC):
     @abstractmethod
     def create_if_enabled(cls) -> Optional["DataMetadataExporter"]:
         """Create an exporter instance if the export functionality is enabled.
-        
+
         Returns:
             An exporter instance if enabled, None otherwise.
         """
@@ -157,13 +219,13 @@ class DataMetadataExporter(ABC):
 
 class LoggerDataMetadataExporter(DataMetadataExporter):
     """Data metadata exporter implementation that uses the Ray export event logger.
-    
+
     This exporter writes dataset metadata to log files using Ray's export event system.
     """
 
     def __init__(self, logger: logging.Logger):
         """Initialize with a configured export event logger.
-        
+
         Args:
             logger: The export event logger to use for writing events.
         """
@@ -171,18 +233,17 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
 
     def export_dataset_metadata(self, dataset_metadata: DatasetMetadata) -> None:
         """Export dataset metadata using the export event logger.
-        
+
         Args:
             dataset_metadata: DatasetMetadata object containing dataset information.
         """
         data_metadata_proto = dataset_metadata_to_proto(dataset_metadata)
         self._export_logger.send_event(data_metadata_proto)
 
-
     @classmethod
     def create_if_enabled(cls) -> Optional["LoggerDataMetadataExporter"]:
         """Create a logger-based exporter if the export API is enabled.
-        
+
         Returns:
             A LoggerDataMetadataExporter instance if enabled, None otherwise.
         """
