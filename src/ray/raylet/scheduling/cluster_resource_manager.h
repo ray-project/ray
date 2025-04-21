@@ -109,19 +109,6 @@ class ClusterResourceManager {
   bool HasFeasibleResources(scheduling::NodeID node_id,
                             const ResourceRequest &resource_request) const;
 
-  /// Check if a node has the necessary labels to satisfy the label selector for a Task.
-  bool HasRequiredLabels(scheduling::NodeID node_id,
-                         const rpc::LabelSelector &label_selector) const;
-
-  /// Check if a node satisfies a given LabelConstraint.
-  bool NodeLabelMatchesConstraint(const ray::Node &node,
-                                  const rpc::LabelConstraint &constraint) const;
-
-  /// Check if a node's labels has the required key and at least one value
-  bool IsNodeLabelInValues(const ray::Node &node,
-                           const std::string &key,
-                           const absl::flat_hash_set<std::string> &values) const;
-
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
@@ -215,6 +202,7 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

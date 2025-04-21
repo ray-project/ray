@@ -120,6 +120,7 @@ class ClusterResourceScheduler {
   /// schedulable if it has the available resources needed to execute the task.
   ///
   /// \param node_name Name of the node.
+  /// \param label_selector: label requirements to schedule on a node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
@@ -163,17 +164,6 @@ class ClusterResourceScheduler {
   bool IsSchedulable(const ResourceRequest &resource_request,
                      scheduling::NodeID node_id) const;
 
-  /// Check whether a resource request can be scheduled given a node.
-  ///
-  ///  \param resource_request: Resource request to be scheduled.
-  ///  \param label_selector: Label constraints to schedule a Task on a node.
-  ///  \param node_id: ID of the node.
-  ///
-  ///  \return: Whether the request can be scheduled.
-  bool IsSchedulable(const ResourceRequest &resource_request,
-                     const rpc::LabelSelector &label_selector,
-                     scheduling::NodeID node_id) const;
-
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
@@ -207,6 +197,7 @@ class ClusterResourceScheduler {
   //           resource request.
   scheduling::NodeID GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
+      const rpc::LabelSelector &label_selector,
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory,
       bool actor_creation,
@@ -256,6 +247,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
 };
 
 }  // end namespace ray

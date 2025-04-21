@@ -155,30 +155,9 @@ def validate_label_selector_value(selector: str) -> Optional[str]:
 # TODO (ryanaoleary@): This function will replace `validate_node_labels` after
 # the migration from NodeLabelSchedulingPolicy to the Label Selector API is complete.
 def validate_node_label_syntax(labels: Dict[str, str]):
-    if labels is None:
-        return
-    for key in labels.keys():
-        if "/" in key:
-            prefix, name = key.rsplit("/")
-            if len(prefix) > 253 or not re.match(LABEL_PREFIX_REGEX, prefix):
-                raise ValueError(
-                    f"Invalid label key prefix `{prefix}`. Prefix must be a series of DNS labels "
-                    f"separated by dots (.),not longer than 253 characters in total."
-                )
-        else:
-            name = key
-        if len(name) > 63 or not re.match(LABEL_REGEX, name):
-            raise ValueError(
-                f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
-                f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-                f"dots (.), and alphanumerics between."
-            )
-        value = labels.get(key)
-        if value is None or value == "":
-            return
-        if len(value) > 63 or not re.match(LABEL_REGEX, value):
-            raise ValueError(
-                f"Invalid label key value `{value}`. Value must be 63 chars or less beginning and ending "
-                f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-                f"dots (.), and alphanumerics between."
-            )
+    for key, value in labels.items():
+        possible_error_message = validate_label_key(key)
+        if possible_error_message:
+            raise ValueError(possible_error_message)
+        if value is not None:
+            validate_label_value(value)

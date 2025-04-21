@@ -222,65 +222,6 @@ bool ClusterResourceManager::HasAvailableResources(
                                                ignore_object_store_memory_requirement);
 }
 
-bool ClusterResourceManager::HasRequiredLabels(
-    scheduling::NodeID node_id, const rpc::LabelSelector &label_selector) const {
-  // Get the node
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    return false;
-  }
-
-  // Check if node labels satisfy all label constraints
-  for (const auto &constraint : label_selector.label_constraints()) {
-    if (!NodeLabelMatchesConstraint(it->second, constraint)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool ClusterResourceManager::NodeLabelMatchesConstraint(
-    const ray::Node &node, const rpc::LabelConstraint &constraint) const {
-  const auto &key = constraint.label_key();
-  const auto &match_operator = constraint.operator_();
-  const auto &values = constraint.label_values();
-
-  absl::flat_hash_set<std::string> values_set;
-  for (const auto &v : values) {
-    values_set.insert(v);
-  }
-
-  if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_IN) {
-    // Check for equals or in() labels
-    if (IsNodeLabelInValues(node, key, values_set)) {
-      return true;
-    }
-  } else if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN) {
-    // Check for not equals (!) or not in (!in()) labels
-    if (!IsNodeLabelInValues(node, key, values_set)) {
-      return true;
-    }
-  } else {
-    RAY_CHECK(false)
-        << "Node label constraint operator type must be one of equals, not equals (!),"
-           "in、or not in (!in)";
-  }
-  return false;
-}
-
-bool ClusterResourceManager::IsNodeLabelInValues(
-    const ray::Node &node,
-    const std::string &key,
-    const absl::flat_hash_set<std::string> &values) const {
-  const auto &node_labels = node.GetLocalView().labels;
-  if (!node_labels.contains(key)) {
-    return false;
-  }
-
-  return values.contains(node_labels.at(key));
-}
-
 bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
                                                        const ResourceSet &resource_set) {
   auto it = nodes_.find(node_id);

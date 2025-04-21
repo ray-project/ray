@@ -91,6 +91,11 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
+  auto label_selector = resource_request.GetLabelSelector();
+  if (!HasRequiredLabels(label_selector)) {
+    return false;
+  }
+
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
@@ -100,7 +105,61 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
+  auto label_selector = resource_request.GetLabelSelector();
+  if (!HasRequiredLabels(label_selector)) {
+    return false;
+  }
   return this->total >= resource_request.GetResourceSet();
+}
+
+bool NodeResources::HasRequiredLabels(const rpc::LabelSelector &label_selector) const {
+  // Check if node labels satisfy all label constraints
+  for (const auto &constraint : label_selector.label_constraints()) {
+    if (!NodeLabelMatchesConstraint(constraint)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool NodeResources::NodeLabelMatchesConstraint(
+    const rpc::LabelConstraint &constraint) const {
+  const auto &key = constraint.label_key();
+  const auto &match_operator = constraint.operator_();
+  const auto &values = constraint.label_values();
+
+  absl::flat_hash_set<std::string> values_set;
+  for (const auto &v : values) {
+    values_set.insert(v);
+  }
+
+  if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_IN) {
+    // Check for equals or in() labels
+    if (IsNodeLabelInValues(key, values_set)) {
+      return true;
+    }
+  } else if (match_operator == ray::rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN) {
+    // Check for not equals (!) or not in (!in()) labels
+    if (!IsNodeLabelInValues(key, values_set)) {
+      return true;
+    }
+  } else {
+    RAY_CHECK(false)
+        << "Node label constraint operator type must be one of equals, not equals (!),"
+           "in、or not in (!in)";
+  }
+  return false;
+}
+
+bool NodeResources::IsNodeLabelInValues(
+    const std::string &key, const absl::flat_hash_set<std::string> &values) const {
+  auto node_labels = this->labels;
+  if (!node_labels.contains(key)) {
+    return false;
+  }
+
+  return values.contains(node_labels.at(key));
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {

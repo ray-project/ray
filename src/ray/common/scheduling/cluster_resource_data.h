@@ -27,6 +27,7 @@
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -36,20 +37,33 @@ using scheduling::ResourceID;
 class ResourceRequest {
  public:
   /// Construct an empty ResourceRequest.
-  ResourceRequest() : ResourceRequest({}, false) {}
+  ResourceRequest() : ResourceRequest({}, false, rpc::LabelSelector()) {}
 
   /// Construct a ResourceRequest with a given resource map.
   explicit ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
-      : ResourceRequest(resource_map, false){};
+      : ResourceRequest(resource_map, false, rpc::LabelSelector()){};
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
       : resources_(resource_map),
         requires_object_store_memory_(requires_object_store_memory) {}
 
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
+                  bool requires_object_store_memory,
+                  rpc::LabelSelector label_selector)
+      : resources_(resource_map),
+        requires_object_store_memory_(requires_object_store_memory),
+        label_selector_(label_selector) {}
+
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   const ResourceSet &GetResourceSet() const { return resources_; }
+
+  const rpc::LabelSelector &GetLabelSelector() const { return label_selector_; }
+
+  void SetLabelSelector(rpc::LabelSelector label_selector) {
+    label_selector_ = rpc::LabelSelector(label_selector);
+  }
 
   FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
 
@@ -117,6 +131,8 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
+  // Label selector to schedule this request on a node.
+  rpc::LabelSelector label_selector_;
 };
 
 /// Represents a resource set that contains the per-instance resource values.
@@ -333,6 +349,13 @@ class NodeResources {
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
+  // Returns true if the node's labels satisfy the label selector requirement.
+  bool HasRequiredLabels(const rpc::LabelSelector &label_selector) const;
+  bool NodeLabelMatchesConstraint(const rpc::LabelConstraint &constraint) const;
+
+  /// Check if a node's labels has the required key and at least one value
+  bool IsNodeLabelInValues(const std::string &key,
+                           const absl::flat_hash_set<std::string> &values) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other) const;
   bool operator!=(const NodeResources &other) const;
