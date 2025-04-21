@@ -52,8 +52,6 @@ class VideoDatasource(FileBasedDatasource):
         self.include_timestamps = include_timestamps
         if decord_load_args is None:
             self.decord_load_args = {}
-        else:
-            self.decord_load_args = {}
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         from decord import VideoReader

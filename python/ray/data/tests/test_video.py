@@ -16,10 +16,11 @@ def test_read_videos():
         {"frame_index": i} for i in range(333)
     ]
 
-    frame_type, frame_index_type = ds.schema().types
+    frame_type, frame_index_type, frame_timestamp_type = ds.schema().types
     assert frame_type.shape == (720, 1280, 3)
     assert frame_type.scalar_type == pa.uint8()
     assert frame_index_type == pa.int64()
+    assert frame_timestamp_type == pa.list_(pa.float64())
 
 
 if __name__ == "__main__":
