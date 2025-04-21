@@ -940,53 +940,6 @@ bool LocalTaskManager::CancelTask(
       scheduling_failure_message);
 }
 
-bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar,
-    bool *any_pending,
-    int *num_pending_actor_creation,
-    int *num_pending_tasks) const {
-  // We are guaranteed that these tasks are blocked waiting for resources after a
-  // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
-  // this should be a transient condition only.
-  for (const auto &shapes_it : tasks_to_dispatch_) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      const auto &work = *work_it;
-      const auto &task = work_it->task;
-
-      // If the work is not in the waiting state, it will be scheduled soon or won't be
-      // scheduled. Consider as non-pending.
-      if (work.GetState() != internal::WorkStatus::WAITING) {
-        continue;
-      }
-
-      // If the work is not waiting for acquiring resources, we don't consider it as
-      // there's resource deadlock.
-      if (work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
-          work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
-          work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
-        continue;
-      }
-
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        *num_pending_actor_creation += 1;
-      } else {
-        *num_pending_tasks += 1;
-      }
-
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
-      }
-    }
-  }
-  // If there's any pending task, at this point, there's no progress being made.
-  return *any_pending;
-}
-
 void LocalTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
