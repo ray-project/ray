@@ -21,6 +21,10 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     config = (
         get_trainable_cls(alg_name)
         .get_default_config()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False
+        )
         .framework(framework)
         # Switch on saving native DL-framework (tf, torch) model files.
         .checkpointing(export_native_model_files=True)
@@ -63,7 +67,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
 
     # Test loading exported model and perform forward pass.
     filename = os.path.join(model_dir, "model.pt")
-    model = torch.load(filename)
+    model = torch.load(filename, weights_only=False)
     assert model
     results = model(
         input_dict={"obs": torch.from_numpy(test_obs)},
