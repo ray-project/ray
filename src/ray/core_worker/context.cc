@@ -194,13 +194,16 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
 
 void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    if (!current_job_id_.IsNil() && job_config_.has_value()) {
+      RAY_CHECK(current_job_id_ == job_id);
+      return;
+    }
+  }
   absl::WriterMutexLock lock(&mutex_);
-  if (current_job_id_.IsNil()) {
-    current_job_id_ = job_id;
-  }
-  if (!job_config_.has_value()) {
-    job_config_ = job_config;
-  }
+  current_job_id_ = job_id;
+  job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
 }
 

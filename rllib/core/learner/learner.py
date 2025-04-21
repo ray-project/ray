@@ -67,7 +67,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
     MiniBatchRayDataIterator,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -1050,6 +1049,8 @@ class Learner(Checkpointable):
             **kwargs,
         )
 
+        self.metrics.activate_tensor_mode()
+
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1065,13 +1066,7 @@ class Learner(Checkpointable):
 
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                tensor_minibatch.policy_batches
-            )
-
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
+            fwd_out, loss_per_module, _ = self._update(tensor_minibatch.policy_batches)
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
@@ -1097,7 +1092,7 @@ class Learner(Checkpointable):
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
         # window is only 1 anyways.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
+        for mid, loss in loss_per_module.items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
                 value=loss,
@@ -1110,6 +1105,8 @@ class Learner(Checkpointable):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
+
+        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:
@@ -1424,7 +1421,7 @@ class Learner(Checkpointable):
                     # Cut out the module ID from the beginning since it's already part
                     # of the key sequence: (ModuleID, "[optim name]_lr").
                     key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
-                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    value=self._get_optimizer_lr(optimizer),
                     window=1,
                 )
 

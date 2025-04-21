@@ -150,6 +150,9 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
 
+        # Add a new stats field to track coordinator overhead
+        self._coordinator_overhead_s = 0.0
+
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
@@ -178,8 +181,14 @@ class SplitCoordinator:
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats()
-        return self._base_dataset._plan.stats()
+            stats = self._executor.get_stats()
+        else:
+            stats = self._base_dataset._plan.stats()
+
+        # Set the tracked overhead time
+        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+
+        return stats
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -231,11 +240,8 @@ class SplitCoordinator:
         except StopIteration:
             return None
         finally:
-            stats = self.stats()
-            if stats and stats.streaming_split_coordinator_s:
-                stats.streaming_split_coordinator_s.add(
-                    time.perf_counter() - start_time
-                )
+            # Track overhead time in the instance variable
+            self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

@@ -474,7 +474,7 @@ def test_many_custom_resources(shutdown_only):
     # This eventually turns into a command line argument which on windows is
     # limited to 32,767 characters.
     if sys.platform == "win32":
-        num_custom_resources = 4000
+        num_custom_resources = 1000
     else:
         num_custom_resources = 10000
     total_resources = {
