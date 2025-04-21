@@ -111,7 +111,7 @@ class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 #endif
 
 template <typename Arg>
-inline void AppendArgToStatus(std::string *msg_str, Arg &&arg) {
+inline void appendArgToStatus(std::string *msg_str, Arg &&arg) {
   if constexpr (std::is_same_v<std::decay_t<Arg>, std::filesystem::directory_entry>) {
     // Explicitly handle std::filesystem::directory_entry.
     absl::StrAppend(msg_str, arg.path().string());
@@ -352,7 +352,7 @@ class RAY_EXPORT Status {
   template <typename... T>
   Status &operator<<(T &&...msg) {
     if (RAY_PREDICT_FALSE(state_ != nullptr)) {
-      (AppendArgToStatus(&state_->msg, std::forward<T>(msg)), ...);
+      (appendArgToStatus(&state_->msg, std::forward<T>(msg)), ...);
     }
     return *this;
   }
