@@ -346,6 +346,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_label_utils.py",
         "test_minimal_install.py",
         "test_runtime_env_ray_minimal.py",
         "test_utils.py",
@@ -903,6 +904,21 @@ py_test(
     tags = [
         "exclusive",
         "medium_size_python_tests_a_to_j",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_resource_isolation_config",
+    size = "medium",
+    srcs = ["test_resource_isolation_config.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
         "team:core",
     ],
     deps = [

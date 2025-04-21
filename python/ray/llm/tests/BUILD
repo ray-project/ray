@@ -107,6 +107,7 @@ py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
     files = [
+        "serve/deployments/llm/vllm/test_vllm_engine_gpu.py",
         "serve/integration/test_openai_compatibility.py",
         "serve/integration/test_openai_compatibility_no_accelerator_type.py",
     ],

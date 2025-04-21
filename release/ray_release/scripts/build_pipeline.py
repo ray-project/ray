@@ -92,6 +92,7 @@ def main(
         f"  priority =                {settings['priority']}\n"
         f"  no_concurrency_limit =    {settings['no_concurrency_limit']}\n"
     )
+
     try:
         test_collection = read_and_validate_release_test_collection(
             test_collection_file or RELEASE_TEST_CONFIG_FILES

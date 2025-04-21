@@ -10,6 +10,7 @@ from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     CloudMirrorConfig,
+    CloudModelAccessor,
     is_remote_path,
 )
 
@@ -45,17 +46,34 @@ class NodeModelDownloadable(enum.Enum):
         return NodeModelDownloadable.NONE
 
 
-def get_model_location_on_disk(model_id: str) -> str:
-    """Get the location of the model on disk.
+def get_model_entrypoint(model_id: str) -> str:
+    """Get the path to entrypoint of the model on disk if it exists, otherwise return the model id as is.
+
+    Entrypoint is typically <TRANSFORMERS_CACHE>/models--<model_id>/
 
     Args:
         model_id: Hugging Face model ID.
+
+    Returns:
+        The path to the entrypoint of the model on disk if it exists, otherwise the model id as is.
     """
     from transformers.utils.hub import TRANSFORMERS_CACHE
 
     model_dir = Path(
         TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}"
     ).expanduser()
+    if not model_dir.exists():
+        return model_id
+    return str(model_dir.absolute())
+
+
+def get_model_location_on_disk(model_id: str) -> str:
+    """Get the location of the model on disk if exists, otherwise return the model id as is.
+
+    Args:
+        model_id: Hugging Face model ID.
+    """
+    model_dir = Path(get_model_entrypoint(model_id))
     model_id_or_path = model_id
 
     model_dir_refs_main = Path(model_dir, "refs", "main")
@@ -82,30 +100,13 @@ def get_model_location_on_disk(model_id: str) -> str:
     return model_id_or_path
 
 
-class CloudModelDownloader:
+class CloudModelDownloader(CloudModelAccessor):
     """Unified downloader for models stored in cloud storage (S3 or GCS).
 
     Args:
         model_id: The model id to download.
         mirror_config: The mirror config for the model.
     """
-
-    def __init__(self, model_id: str, mirror_config: CloudMirrorConfig):
-        self.model_id = model_id
-        self.mirror_config = mirror_config
-
-    def _get_lock_path(self, suffix: str = "") -> Path:
-        return Path(
-            "~", f"{self.model_id.replace('/', '--')}{suffix}.lock"
-        ).expanduser()
-
-    def _get_model_path(self) -> Path:
-        # Delayed import to avoid circular dependencies
-        from transformers.utils.hub import TRANSFORMERS_CACHE
-
-        return Path(
-            TRANSFORMERS_CACHE, f"models--{self.model_id.replace('/', '--')}"
-        ).expanduser()
 
     def get_model(
         self,

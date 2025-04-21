@@ -3,10 +3,9 @@ import os
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import (
-    validate_node_labels,
-    check_ray_client_dependencies_installed,
-)
+
+from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._private.utils import check_ray_client_dependencies_installed
 
 
 logger = logging.getLogger(__name__)
@@ -127,9 +126,8 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
-        enable_physical_mode: Whether physical mode is enabled, which applies
-            constraint to tasks' resource consumption. As of now, only memory resource
-            is supported.
+        resource_isolation_config: settings for cgroupv2 based isolation of ray
+            system processes (defaults to no isolation if config not provided)
     """
 
     def __init__(
@@ -193,7 +191,7 @@ class RayParams:
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
-        enable_physical_mode: bool = False,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -257,7 +255,12 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
-        self.enable_physical_mode = enable_physical_mode
+
+        self.resource_isolation_config = resource_isolation_config
+        if not self.resource_isolation_config:
+            self.resource_isolation_config = ResourceIsolationConfig(
+                enable_resource_isolation=False
+            )
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
@@ -451,8 +454,6 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
-
-        validate_node_labels(self.labels)
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""
