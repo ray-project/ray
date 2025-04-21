@@ -152,13 +152,37 @@ TEST_F(StatusTest, StreamOperatorAbslStrAppendTypes) {
 }
 
 TEST_F(StatusTest, StreamOperatorFallbackPath) {
-  Status status = Status::Invalid("");
-  const std::filesystem::directory_entry entry{"."};
+  Status status;
 
-  status << entry;
+  {
+    status = Status::Invalid("");
+    const std::filesystem::directory_entry entry{"."};
+    status << entry;
+    EXPECT_TRUE(status.IsInvalid());
+    EXPECT_EQ(status.message(), ".");
+  }
 
-  EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(status.IsInvalid());
-  EXPECT_EQ(status.message(), ".");
+  {
+    status = Status::Invalid("");
+    const std::filesystem::path path{"/tmp/test"};
+    status << path;
+    EXPECT_TRUE(status.IsInvalid());
+    EXPECT_EQ(status.message(), "\"/tmp/test\"");
+  }
+
+  {
+    status = Status::Invalid("");
+    std::error_code ec(ENOENT, std::system_category());
+    status << ec;
+    EXPECT_TRUE(status.IsInvalid());
+    EXPECT_FALSE(status.message().empty());  // Exact message varies by platform
+  }
+
+  {
+    status = Status::Invalid("");
+    status << std::this_thread::get_id();
+    EXPECT_TRUE(status.IsInvalid());
+    EXPECT_FALSE(status.message().empty());  // Thread ID format varies
+  }
 }
 }  // namespace ray
