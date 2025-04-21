@@ -136,7 +136,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
+@ tools
 ;
 
 release/*.md
