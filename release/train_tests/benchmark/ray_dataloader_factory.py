@@ -22,6 +22,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.enable_operator_progress_bars = (
             dataloader_config.enable_operator_progress_bars
         )
+        # Retry ACCESS_DENIED errors that sometimes show up
+        # due to throttling during read operations.
+        data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
