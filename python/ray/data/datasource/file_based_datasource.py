@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     Iterable,
     Iterator,
@@ -464,16 +463,6 @@ def _add_partitions_to_dataframe(
         df[field] = column
 
     return df
-
-
-def _resolve_kwargs(
-    kwargs_fn: Optional[Callable[[], Dict[str, Any]]], **kwargs
-) -> Dict[str, Any]:
-    """Merges keyword arguments returned by a callable with explicitly passed kwargs."""
-    if kwargs_fn:
-        kwarg_overrides = kwargs_fn()
-        kwargs.update(kwarg_overrides)
-    return kwargs
 
 
 def _validate_shuffle_arg(

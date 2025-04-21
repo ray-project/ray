@@ -15,6 +15,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     Generator,
     Iterable,
     Iterator,
@@ -382,6 +383,16 @@ def _truncated_repr(obj: Any) -> str:
     return msg
 
 
+def _resolve_kwargs(
+    kwargs_fn: Optional[Callable[[], Dict[str, Any]]], **kwargs
+) -> Dict[str, Any]:
+    """Merges keyword arguments returned by a callable with explicitly passed kwargs."""
+    if kwargs_fn:
+        kwarg_overrides = kwargs_fn()
+        kwargs.update(kwarg_overrides)
+    return kwargs
+
+
 def _insert_doc_at_pattern(
     obj,
     *,
@@ -698,7 +709,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
