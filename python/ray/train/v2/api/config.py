@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Union
 
+from ray.runtime_env import RuntimeEnv
 from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
 from ray.air.config import ScalingConfig as ScalingConfigV1
@@ -117,7 +118,7 @@ class RunConfig(RunConfigV1):
     """
 
     callbacks: Optional[List["UserCallback"]] = None
-    worker_runtime_env: Optional[dict] = None
+    worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
