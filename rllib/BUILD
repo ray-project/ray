@@ -2643,6 +2643,34 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_offline_evaluation_runner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner_group",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
 # TODO (sven, simon): This runs fine locally, but fails in the CI
 # py_test(
 #    # TODO(#50340): test is flaky.

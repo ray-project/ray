@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
-class TestOfflineData(unittest.TestCase):
+class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]

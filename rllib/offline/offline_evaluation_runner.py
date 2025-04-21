@@ -136,6 +136,8 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         train: bool,
     ) -> None:
 
+        self.metrics.activate_tensor_mode()
+
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
@@ -147,7 +149,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                     f"Batch contains one or more ModuleIDs ({unknown_module_ids}) that "
                     f"are not in this Learner!"
                 )
-            self.metrics.activate_tensor_mode()
 
             if explore:
                 fwd_out = self.module.forward_exploration(
@@ -161,10 +162,6 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             eval_loss_per_module = self.compute_eval_losses(
                 fwd_out=fwd_out, batch=tensor_minibatch.policy_batches
             )
-
-            # TODO (simon): Check, if `deactivate_tensor_mode` is called later with newest
-            # changes.
-            self.metrics.tensors_to_numpy(self.metrics.deactivate_tensor_mode())
 
             self._log_steps_evaluated_metrics(tensor_minibatch)
 
@@ -190,6 +187,8 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
                 value=loss,
                 window=1,
             )
+
+        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 
