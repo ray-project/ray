@@ -254,6 +254,7 @@ def do_exec_tasks(
                     self, operation.type, overlap_gpu_communication
                 )
                 if done:
+                    logger.error(f"Task done for {operation.method_name}")
                     break
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
@@ -709,6 +710,7 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
+            logger.error(f"Compute failed in {self.method_name}: {exc}")
             self.wrap_and_set_intermediate_future(
                 exc, wrap_in_gpu_future=overlap_gpu_communication
             )
