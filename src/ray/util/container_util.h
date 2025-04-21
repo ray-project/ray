@@ -188,7 +188,7 @@ void erase_if(absl::flat_hash_map<OuterK, absl::btree_map<InnerK, std::deque<V>>
         ++deque_iter;
       }
       if (deque.empty()) {
-        inner_map_iter = inner_map_iter.erase(inner_map_iter);
+        inner_map_iter = inner_map.erase(inner_map_iter);
         continue;
       }
       ++inner_map_iter;

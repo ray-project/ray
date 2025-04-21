@@ -53,7 +53,8 @@ class SchedulerResourceReporter {
 
   const internal::WorkQueueMap &tasks_to_schedule_;
 
-  const internal::WorkQueueMap &tasks_to_dispatch_;
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      &tasks_to_dispatch_;
 
   const internal::WorkQueueMap &infeasible_tasks_;
 
