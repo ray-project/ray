@@ -35,7 +35,8 @@ class SchedulingQueue {
                                       const Status &,
                                       rpc::SendReplyCallback)> reject_request,
                    rpc::SendReplyCallback send_reply_callback,
-                   TaskSpecification task_spec) = 0;
+                   TaskSpecification task_spec,
+                   int32_t priority = 0) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;

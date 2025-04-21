@@ -82,7 +82,8 @@ void ActorSchedulingQueue::Add(
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    TaskSpecification task_spec) {
+    TaskSpecification task_spec,
+    int32_t priority) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 

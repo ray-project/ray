@@ -276,12 +276,14 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
+    auto priority = task_spec.GetMessage().priority();
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
                                   std::move(cancel_callback),
                                   std::move(send_reply_callback),
-                                  std::move(task_spec));
+                                  std::move(task_spec),
+                                  priority);
   }
 }
 
