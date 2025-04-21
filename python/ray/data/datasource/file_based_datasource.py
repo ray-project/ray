@@ -467,8 +467,9 @@ def _add_partitions_to_dataframe(
 
 
 def _resolve_kwargs(
-    kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
+    kwargs_fn: Optional[Callable[[], Dict[str, Any]]], **kwargs
 ) -> Dict[str, Any]:
+    """Merges keyword arguments returned by a callable with explicitly passed kwargs."""
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
