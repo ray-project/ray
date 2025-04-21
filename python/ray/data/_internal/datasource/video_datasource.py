@@ -56,7 +56,7 @@ class VideoDatasource(FileBasedDatasource):
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         from decord import VideoReader
 
-        reader = VideoReader(f)
+        reader = VideoReader(f, **self.decord_load_args)
 
         for frame_index, frame in enumerate(reader):
             item = {"frame": frame.asnumpy(), "frame_index": frame_index}
