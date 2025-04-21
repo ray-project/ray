@@ -351,9 +351,9 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   cluster_resource_scheduler_.GetLocalResourceManager().PopulateResourceViewSyncMessage(
       resource_view_sync_message);
   (*data.mutable_resources_total()) =
-      std::move(resource_view_sync_message.resources_total());
+      std::move(*resource_view_sync_message.mutable_resources_total());
   (*data.mutable_resources_available()) =
-      std::move(resource_view_sync_message.resources_available());
+      std::move(*resource_view_sync_message.mutable_resources_available());
   data.set_object_pulls_queued(resource_view_sync_message.object_pulls_queued());
   data.set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
   data.set_is_draining(resource_view_sync_message.is_draining());
