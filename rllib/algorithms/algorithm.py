@@ -1010,6 +1010,11 @@ class Algorithm(Checkpointable, Trainable):
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
 
+        evaluate_offline_this_iter = (
+            self.config.offline_evaluation_duration
+            and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
+        )
+
         # Results dict for training (and if appolicable: evaluation).
         eval_results: ResultDict = {}
 
