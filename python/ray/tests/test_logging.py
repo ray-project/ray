@@ -27,7 +27,9 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_PYTHON_CORE_WORKER,
     PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
     PROCESS_TYPE_RAYLET,
+    PROCESS_TYPE_REDIS_SERVER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
+    PROCESS_TYPE_WEBUI,
     PROCESS_TYPE_WORKER,
 )
 from ray._private.log_monitor import (
