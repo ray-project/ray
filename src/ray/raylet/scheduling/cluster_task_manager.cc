@@ -187,16 +187,28 @@ bool ClusterTaskManager::CancelAllTaskOwnedBy(
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
-  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
-  for (auto priority_map_iter = tasks_to_schedule_.begin();
-       priority_map_iter != tasks_to_schedule_.end();) {
-    auto &priority_map = priority_map_iter->second;
-    bool is_infeasible = false;
 
-    for (auto work_queue_iter = priority_map.begin();
-         work_queue_iter != priority_map.end();) {
+  // TODO(dayshah): Consider changing data structure so we don't need to do this.
+  absl::flat_hash_set<int32_t> priorities;
+  for (const auto &[_, priority_map] : tasks_to_schedule_) {
+    for (const auto &[priority, _] : priority_map) {
+      priorities.insert(priority);
+    }
+  }
+
+  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
+  for (const auto &priority : priorities) {
+    for (auto shapes_it = tasks_to_schedule_.begin();
+         shapes_it != tasks_to_schedule_.end();) {
+      auto &priority_map = shapes_it->second;
+      auto work_queue_iter = priority_map.find(priority);
+      if (work_queue_iter == priority_map.end()) {
+        shapes_it++;
+        continue;
+      }
       auto &work_queue = work_queue_iter->second;
 
+      bool is_infeasible = false;
       for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
         // Check every task in task_to_schedule queue to see
         // whether it can be scheduled. This avoids head-of-line
@@ -254,29 +266,28 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
         ScheduleOnNode(node_id, work);
         work_it = work_queue.erase(work_it);
       }
+      if (work_queue.empty()) {
+        priority_map.erase(work_queue_iter);
+      }
 
-      work_queue_iter =
-          work_queue.empty() ? priority_map.erase(work_queue_iter) : ++work_queue_iter;
       if (is_infeasible) {
-        break;
+        RAY_CHECK(!priority_map.empty());
+        // Only announce the first item as infeasible.
+        const auto &work = *priority_map.begin()->second.begin();
+        const RayTask &task = work->task;
+        if (announce_infeasible_task_) {
+          announce_infeasible_task_(task);
+        }
+        infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
+        tasks_to_schedule_.erase(shapes_it++);
+      } else if (priority_map.empty()) {
+        tasks_to_schedule_.erase(shapes_it++);
+      } else {
+        shapes_it++;
       }
-    }
-    if (is_infeasible) {
-      RAY_CHECK(!priority_map.empty());
-      // Only announce the first item as infeasible.
-      const auto &work = *priority_map.begin()->second.begin();
-      const RayTask &task = work->task;
-      if (announce_infeasible_task_) {
-        announce_infeasible_task_(task);
-      }
-      infeasible_tasks_[priority_map_iter->first] = std::move(priority_map_iter->second);
-      tasks_to_schedule_.erase(priority_map_iter++);
-    } else if (priority_map.empty()) {
-      tasks_to_schedule_.erase(priority_map_iter++);
-    } else {
-      priority_map_iter++;
     }
   }
+
   for (const auto &work : works_to_cancel) {
     // All works in `works_to_cancel` are scheduled by gcs. So `ReplyCancelled`
     // will synchronously call `ClusterTaskManager::CancelTask`, where works are
