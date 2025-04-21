@@ -407,11 +407,12 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
+      // This should ideally only happen when resources on the node are changed,
+      // and the only dynamic resource is placement group bundles.
       for (const auto &work : dispatch_queue) {
         CancelTask(work->task.GetTaskSpecification().TaskId(),
-                   rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
-                   "Scheduling failed due to unexpected conditions on the node the task "
-                   "was scheduled for.");
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "Scheduling failed due to the task becoming infeasible.");
       }
       tasks_to_dispatch_.erase(shapes_it++);
     } else if (dispatch_queue.empty()) {
