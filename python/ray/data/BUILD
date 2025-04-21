@@ -171,7 +171,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",

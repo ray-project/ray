@@ -692,6 +692,74 @@ def test_decorator_args(ray_start_regular_shared):
             pass
 
 
+@pytest.mark.parametrize(
+    "label_selector, expected_error",
+    [
+        (  # Valid: multiple labels with implicit 'equals' condition
+            {"ray.io/market-type": "spot", "ray.io/accelerator-type": "H100"},
+            None,
+        ),
+        (  # Valid: not equals condition
+            {"ray.io/market-type": "!spot"},
+            None,
+        ),
+        (  # Valid: in condition
+            {"ray.io/accelerator-type": "in(H100, B200, TPU)"},
+            None,
+        ),
+        (  # Valid: not in condition
+            {"ray.io/accelerator-type": "!in(H100, B200)"},
+            None,
+        ),
+        (  # Invalid: label_selector expects a dict
+            "",
+            TypeError,
+        ),
+        (  # Invalid: Invalid label prefix
+            {"r!a!y.io/market_type": "spot"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label name
+            {"??==ags!": "true"},
+            ValueError,
+        ),
+        (  # Invalid: Invalid label value
+            {"ray.io/accelerator_type": "??==ags!"},
+            ValueError,
+        ),
+        (  # Invalid: non-supported label selector condition
+            {"ray.io/accelerator_type": "matches(TPU)"},
+            ValueError,
+        ),
+        (  # Invalid: in condition with incorrectly formatted string
+            {"ray.io/accelerator_type": "in(H100,, B200)"},
+            ValueError,
+        ),
+        (  # Invalid: unclosed parentheses in condition
+            {"ray.io/accelerator_type": "in(TPU, H100, B200"},
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_label_selector_args(
+    ray_start_regular_shared, label_selector, expected_error
+):
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(label_selector=label_selector)  # noqa: F811
+            class Actor:  # noqa: F811
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(label_selector=label_selector)  # noqa: F811
+        class Actor:  # noqa: F811
+            def __init__(self):
+                pass
+
+
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote
     class Foo:

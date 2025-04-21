@@ -125,8 +125,11 @@ def setup_wandb(
 
     # Do a try-catch here if we are not in a train session
     session = get_session()
-    if session and rank_zero_only and session.world_rank in (None, 0):
-        return RunDisabled()
+
+    if rank_zero_only:
+        # Check if we are in a train session and if we are not the rank 0 worker
+        if session and session.world_rank is not None and session.world_rank != 0:
+            return RunDisabled()
 
     if session:
         default_trial_id = session.trial_id

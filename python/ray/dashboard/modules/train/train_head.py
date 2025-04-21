@@ -333,7 +333,7 @@ class TrainHead(SubprocessModule):
     async def _get_actor_infos(self, actor_ids: List[str]):
         if self._node_head_http_session is None:
             self._node_head_http_session = get_http_session_to_module(
-                "NodeHead", self._config.socket_dir
+                "NodeHead", self._config.socket_dir, self._config.session_name
             )
         actor_ids_qs_str = ",".join(actor_ids)
         url = f"http://localhost/logical/actors?ids={actor_ids_qs_str}&nocache=1"
