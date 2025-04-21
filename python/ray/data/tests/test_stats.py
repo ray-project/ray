@@ -119,7 +119,6 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
-            "'rows_task_outputs_generated': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             (
