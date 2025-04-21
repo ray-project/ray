@@ -507,6 +507,7 @@ class SerializationContext:
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         contained_object_refs = []
+        old_value = value
 
         if isinstance(value, RayTaskError):
             if issubclass(value.cause.__class__, TaskCancelledError):
@@ -520,6 +521,7 @@ class SerializationContext:
                     "ascii"
                 )
                 value = value.to_bytes()
+            logger.info("Serializing RayTaskError %s, metadata: %s, value: %s", old_value, metadata, value)
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
@@ -553,6 +555,9 @@ class SerializationContext:
             )
         else:
             pickle5_serialized_object = None
+        
+        if isinstance(old_value, RayTaskError):
+            logger.info("Creating MessagePackSerializedObject, metadata: %s, msgpack_data: %s, contained_object_refs: %s, pickle5_serialized_object: %s", metadata, msgpack_data, contained_object_refs, pickle5_serialized_object)
 
         return MessagePackSerializedObject(
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object

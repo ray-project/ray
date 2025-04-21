@@ -710,7 +710,6 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            logger.error(f"Compute failed in {self.method_name}: {exc}")
             self.wrap_and_set_intermediate_future(
                 exc, wrap_in_gpu_future=overlap_gpu_communication
             )
@@ -729,6 +728,7 @@ class ExecutableTask:
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
+            logger.error(f"Wrap exception in {self.method_name}: {exc}")
             output_val = _wrap_exception(exc)
 
         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
