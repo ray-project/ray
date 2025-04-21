@@ -86,6 +86,16 @@ def test_ray_start_set_node_labels_value_error():
     out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
     assert "Label string is not a key-value pair." in out
 
+    out = check_cmd_stderr(
+        ["ray", "start", "--head", '--labels={"ray.io/node_id":"111"}']
+    )
+    assert "Label string is not a key-value pair" in out
+
+    out = check_cmd_stderr(
+        ["ray", "start", "--head", '--labels={"ray.io/other_key":"111"}']
+    )
+    assert "Label string is not a key-value pair" in out
+
 
 def test_cluster_add_node_with_labels(ray_start_cluster):
     labels = {"gpu_type": "A100", "region": "us"}
@@ -133,18 +143,21 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
 
 
 def test_ray_start_set_node_labels_from_file():
-    with tempfile.NamedTemporaryFile(mode="w+", delete=True) as test_file:
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as test_file:
         test_file.write('"gpu_type": "A100"\n"region": "us"\n"market-type": "spot"')
-        test_file.flush()  # Ensure data is written
+        test_file_path = test_file.name
 
-        cmd = ["ray", "start", "--head", "--labels-file", test_file.name]
+    try:
+        cmd = ["ray", "start", "--head", "--labels-file", test_file_path]
         subprocess.check_call(cmd)
         ray.init(address="auto")
         node_info = ray.nodes()[0]
         assert node_info["Labels"] == add_default_labels(
             node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
         )
+    finally:
         subprocess.check_call(["ray", "stop", "--force"])
+        os.remove(test_file_path)
 
 
 if __name__ == "__main__":

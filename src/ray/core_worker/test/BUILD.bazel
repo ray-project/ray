@@ -54,7 +54,7 @@ ray_cc_test(
     srcs = ["direct_actor_transport_mock_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_count",
@@ -201,7 +201,7 @@ ray_cc_test(
     srcs = ["task_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -220,7 +220,7 @@ ray_cc_test(
     srcs = ["task_event_buffer_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -243,7 +243,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
@@ -263,7 +263,7 @@ ray_cc_test(
     srcs = ["actor_creator_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:actor_creator",
@@ -278,7 +278,7 @@ ray_cc_test(
     srcs = ["generator_waiter_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:test_util",
         "//src/ray/core_worker:core_worker_common",
@@ -294,7 +294,7 @@ ray_cc_test(
     srcs = ["actor_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:gcs_client_lib",
+        "//src/ray/gcs/gcs_client:gcs_client_lib",
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",

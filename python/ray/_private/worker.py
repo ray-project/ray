@@ -3554,6 +3554,10 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
+        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+                which this actor can be scheduled on. The label selector consist of key-value pairs,
+                where the keys are label names and the value are expressions consisting of an operator
+                with label values or just a value to indicate equality.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.

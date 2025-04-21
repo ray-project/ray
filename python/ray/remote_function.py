@@ -57,6 +57,7 @@ class RemoteFunction:
             remote function.
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
+        _label_selector: The label requirements on a node for scheduling of the task or actor.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -195,6 +196,10 @@ class RemoteFunction:
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
+            label_selector (Dict[str, str]): If specified, the labels required for the node on
+                which this actor can be scheduled on. The label selector consist of key-value pairs,
+                where the keys are label names and the value are expressions consisting of an operator
+                with label values or just a value to indicate equality.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
