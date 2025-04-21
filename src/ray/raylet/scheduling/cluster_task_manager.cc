@@ -257,6 +257,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       work_queue_iter =
           work_queue.empty() ? priority_map.erase(work_queue_iter) : ++work_queue_iter;
+      if (is_infeasible) {
+        break;
+      }
     }
     if (is_infeasible) {
       RAY_CHECK(!priority_map.empty());
@@ -291,42 +294,39 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
   for (auto priority_map_iter = infeasible_tasks_.begin();
        priority_map_iter != infeasible_tasks_.end();) {
-    for (auto work_queue_iter = priority_map_iter->second.begin();
-         work_queue_iter != priority_map_iter->second.end();) {
-      auto &work_queue = work_queue_iter->second;
-      RAY_CHECK(!work_queue.empty())
-          << "Empty work queue shouldn't have been added as a infeasible shape.";
-      // We only need to check the first item because every task has the same shape.
-      // If the first entry is infeasible, that means everything else is the same.
-      const auto work = work_queue[0];
-      RayTask task = work->task;
-      RAY_LOG(DEBUG)
-          << "Check if the infeasible task is schedulable in any node. task_id:"
-          << task.GetTaskSpecification().TaskId();
-      bool is_infeasible;
-      cluster_resource_scheduler_.GetBestSchedulableNode(
-          task.GetTaskSpecification(),
-          /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
-                                                            : task.GetPreferredNodeID(),
-          /*exclude_local_node*/ false,
-          /*requires_object_store_memory*/ false,
-          &is_infeasible);
+    auto &work_queue = priority_map_iter->second.begin()->second;
+    RAY_CHECK(!work_queue.empty())
+        << "Empty work queue shouldn't have been added as a infeasible shape.";
+    // We only need to check the first item because every task has the same shape.
+    // If the first entry is infeasible, that means everything else is the same.
+    const auto work = work_queue[0];
+    RayTask task = work->task;
+    RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
+                   << task.GetTaskSpecification().TaskId();
+    bool is_infeasible = false;
+    cluster_resource_scheduler_.GetBestSchedulableNode(
+        task.GetTaskSpecification(),
+        /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
+                                                          : task.GetPreferredNodeID(),
+        /*exclude_local_node*/ false,
+        /*requires_object_store_memory*/ false,
+        &is_infeasible);
 
-      // There is no node that has available resources to run the request.
-      // Move on to the next shape.
-      if (is_infeasible) {
-        RAY_LOG(DEBUG) << "No feasible node found for task "
-                       << task.GetTaskSpecification().TaskId();
-        work_queue_iter++;
-      } else {
-        RAY_LOG(DEBUG) << "Infeasible task of task id "
-                       << task.GetTaskSpecification().TaskId()
-                       << " is now feasible. Move the entry back to tasks_to_schedule_";
-        // Move all tasks of the same shape to tasks_to_schedule_.
-        tasks_to_schedule_[priority_map_iter->first] = priority_map_iter->second;
-        infeasible_tasks_.erase(priority_map_iter++);
-        break;
-      }
+    // There is no node that has available resources to run the request.
+    // Move on to the next shape.
+    if (is_infeasible) {
+      RAY_LOG(DEBUG) << "No feasible node found for task "
+                     << task.GetTaskSpecification().TaskId();
+      priority_map_iter++;
+      break;
+    } else {
+      RAY_LOG(DEBUG) << "Infeasible task of task id "
+                     << task.GetTaskSpecification().TaskId()
+                     << " is now feasible. Move the entry back to tasks_to_schedule_";
+      // Move all tasks of the same shape to tasks_to_schedule_.
+      tasks_to_schedule_[priority_map_iter->first] = priority_map_iter->second;
+      infeasible_tasks_.erase(priority_map_iter++);
+      break;
     }
   }
 }
