@@ -580,6 +580,8 @@ execution time data from all components across your entire Ray job lifecycle. Wh
 graphs are limited to profiling performance on a single machine, Ray's Distributed Flame Graph provides
 a unified view of performance across your entire distributed system.
 
+The demo we provide in gif is using the deepseek-chat as the LLM model, feel free to use models like gpt, gemini or claude, make sure to configure the corresponding context size.
+
 Key features of the Distributed Flame Graph:
 
 - **System-wide Performance View:** Visualizes execution time across all distributed components
@@ -633,6 +635,42 @@ logging into individual nodes and examining processes one by one.
 
 To access the DStack view, select "Call Stack" in the view type selector in the Flow Insight
 visualization after clicking on the "Insight" link for a specific job in the Jobs view.
+
+Analysis
+~~~~~~~~
+
+.. image:: ./images/flow-insight-analysis.gif
+    :align: center
+    :alt: Flow Insight Analysis screenshot
+
+The Analysis feature provides AI-powered performance analysis of Ray application, generating comprehensive reports that identify bottlenecks, resource utilization patterns, and optimization opportunities. This feature leverages the visualization data from Flow Insight to deliver comprehensive insights.
+
+Key capabilities of the Analysis feature:
+
+- **Automated Performance Analysis:** Get detailed reports analyzing your application's distributed execution patterns
+- **Resource Utilization Insights:** Identify inefficient resource usage across CPU, memory, and GPU
+- **Bottleneck Detection:** Pinpoint performance bottlenecks in your distributed application
+- **Optimization Recommendations:** Receive actionable suggestions to improve application performance
+- **Architecture Analysis:** Understand the strengths and weaknesses of your current application architecture
+
+The analysis reports are structured into several key sections:
+
+- **Performance Summary:** Critical findings and priority optimizations
+- **Distributed Application Topology Analysis:** Node distribution and resource profiles
+- **Distributed Execution Analysis:** Actor/task system behavior and scalability characteristics
+- **Data Flow Analysis:** Object transfer patterns
+- **Application-Specific Analysis:** Workload characterization and architecture evaluation
+- **Recommendations:** Architecture optimizations with expected improvements
+
+To generate an analysis report:
+
+1. Navigate to the Flow Insight view and click on the "Analysis" tab
+2. Configure your OpenAI API settings if this is your first time
+3. Click "Generate Report" to begin the analysis process
+4. The analysis will be streamed in real-time as it's generated
+5. Once complete, you can export the report as a Markdown file for sharing or documentation
+
+The Analysis feature helps bridge the gap between visualization and comprehensive insights, making it easier to optimize complex distributed applications by identifying specific areas for improvement.
 
 
 Info Card

@@ -6,6 +6,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource
 from ray._private.test_utils import get_resource_usage
+from ray.dashboard.modules.insight.analyze_prompt import PROMPT_TEMPLATE
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -14,6 +15,17 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 class InsightHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
+
+    @routes.get("/get_insight_analyze_prompt")
+    async def get_insight_analyze_prompt(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Return the insight analyze prompt."""
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="Insight analyze prompt retrieved successfully.",
+            prompt=PROMPT_TEMPLATE,
+        )
 
     @routes.get("/get_breakpoints")
     async def get_breakpoints(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

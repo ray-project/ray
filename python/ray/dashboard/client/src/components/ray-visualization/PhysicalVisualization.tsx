@@ -10,6 +10,7 @@ import React, {
   forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -818,8 +819,13 @@ const hasResourceInfo = (
 const ACTOR_HEIGHT = 24; // Fixed height for all actors
 const ACTOR_WIDTH = ACTOR_HEIGHT * 6; // Width is 6 times the height
 
+// Extend this to include an exportSvg method
+export type PhysicalVisualizationHandle = {
+  exportSvg: () => void;
+};
+
 const PhysicalVisualization = forwardRef<
-  HTMLDivElement,
+  PhysicalVisualizationHandle,
   PhysicalVisualizationProps
 >(
   (
@@ -835,6 +841,7 @@ const PhysicalVisualization = forwardRef<
     ref,
   ) => {
     const svgRef = useRef<SVGSVGElement | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const zoomRef =
       useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const graphRef =
@@ -1586,9 +1593,53 @@ const PhysicalVisualization = forwardRef<
       renderPhysicalView();
     }, [renderPhysicalView, physicalViewData, contextValueFilter]);
 
+    // Function to export the SVG visualization
+    const exportSvg = () => {
+      if (!svgRef.current) {
+        return;
+      }
+
+      // Get the SVG element
+      const svgElement = svgRef.current;
+
+      // Create a copy of the SVG to avoid modifying the original
+      const svgCopy = svgElement.cloneNode(true) as SVGSVGElement;
+
+      // Set the proper dimensions and styling
+      svgCopy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      svgCopy.setAttribute("width", svgElement.clientWidth.toString());
+      svgCopy.setAttribute("height", svgElement.clientHeight.toString());
+
+      // Convert to a string
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgCopy);
+
+      // Create a blob from the SVG string
+      const blob = new Blob([svgString], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+
+      // Create a download link and trigger the download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ray-physical-visualization-${new Date()
+        .toISOString()
+        .slice(0, 10)}.svg`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    // Expose exportSvg method
+    useImperativeHandle(ref, () => ({
+      exportSvg,
+    }));
+
     return (
       <div
-        ref={ref}
+        ref={containerRef}
         className="ray-visualization-container"
         style={{ display: "flex", flexDirection: "column" }}
       >

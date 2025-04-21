@@ -91,7 +91,7 @@ type InfoCardProps = {
   data: Node | null;
   visible: boolean;
   graphData: GraphData;
-  currentView?: "logical" | "physical" | "flame" | "call_stack";
+  currentView?: "logical" | "physical" | "flame" | "call_stack" | "analysis";
   onNavigateToLogicalView?: (nodeId: string) => void;
 };
 

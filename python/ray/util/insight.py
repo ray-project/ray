@@ -681,7 +681,7 @@ class _ray_internal_insight_monitor:
         for callee_id, start_times in self.start_time_record.get(job_id, {}).items():
             if callee_id not in visited:
                 start_times = [
-                    {"caller_id": k, "start_time": v}
+                    {"caller_id": f"{k[0]}.{k[1]}" if k[0] else k[1], "start_time": v}
                     for k, v in start_times.items()
                     if v > 0
                 ]
