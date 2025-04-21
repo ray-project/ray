@@ -4,6 +4,7 @@ import traceback
 from typing import Callable, Optional, TypeVar
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
+from ray.train.v2._internal.util import get_callable_name
 
 T = TypeVar("T")
 
@@ -58,7 +59,7 @@ class ThreadRunner:
                 self._is_running = False
 
         self._thread = threading.Thread(
-            target=_run_target, daemon=True, name=target.__name__
+            target=_run_target, daemon=True, name=get_callable_name(target)
         )
         self._thread.start()
 
