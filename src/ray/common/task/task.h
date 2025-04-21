@@ -29,6 +29,10 @@ namespace ray {
 /// time.
 class RayTask {
  public:
+  /// Construct an empty task. This should only be used to pass a task
+  /// as an out parameter to a function or method.
+  RayTask() = default;
+
   /// Construct a `RayTask` object from a `TaskSpecification`.
   explicit RayTask(TaskSpecification task_spec);
 
