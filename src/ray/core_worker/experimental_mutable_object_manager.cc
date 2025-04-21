@@ -178,7 +178,7 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
 }
 
 void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Destroy " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "Destroy";
   PlasmaObjectHeader::Semaphores sem{};
   if (!GetSemaphores(object_id, sem)) {
     return;
@@ -213,7 +213,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           int64_t num_readers,
                                           std::shared_ptr<Buffer> &data,
                                           int64_t timeout_ms) {
-  RAY_LOG(DEBUG) << "WriteAcquire " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "WriteAcquire";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -259,7 +259,7 @@ Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
                                                    int64_t data_size,
                                                    int64_t metadata_size,
                                                    std::shared_ptr<Buffer> &data) {
-  RAY_LOG(DEBUG) << "WriteGetObjectBackingStore " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "GetObjectBackingStore";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -275,7 +275,7 @@ Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
 }
 
 Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "WriteRelease " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "WriteRelease";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -303,7 +303,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result,
                                          int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "ReadAcquire";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -354,7 +354,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          check_signals_,
                                          timeout_point);
   if (!s.ok()) {
-    RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
+    RAY_LOG(DEBUG).withField(object_id) << "ReadAcquire error was set, returning";
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();
@@ -399,13 +399,13 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::move(metadata_copy),
                                          std::vector<rpc::ObjectReference>());
   }
-  RAY_LOG(DEBUG) << "ReadAcquire returning buffer " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "ReadAcquire returning buffer";
   return Status::OK();
 }
 
 Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  RAY_LOG(DEBUG) << "ReadRelease " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "ReadRelease";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -429,7 +429,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 
   Status s = object->header->ReadRelease(sem, channel->next_version_to_read);
   if (!s.ok()) {
-    RAY_LOG(DEBUG) << "ReadRelease error was set, returning: " << object_id;
+    RAY_LOG(DEBUG).withField(object_id) << "ReadRelease error was set, returning";
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();
@@ -446,7 +446,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 }
 
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "SetError " << object_id;
+  RAY_LOG(DEBUG).withField(object_id) << "SetError";
   absl::ReaderMutexLock guard(&destructor_lock_);
   if (auto *channel = GetChannel(object_id)) {
     return SetErrorInternal(object_id, *channel);
