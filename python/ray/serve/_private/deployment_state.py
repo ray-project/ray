@@ -2075,14 +2075,16 @@ class DeploymentState:
 
     def _stop_replica(self, replica: DeploymentReplica, graceful_stop=True):
         """Stop replica
-        1. Stop the replica if it is already allocated.
+        1. Stop the replica - hard stop if unallocated, graceful if allocated.
         2. Change the replica into stopping state.
         3. Set the health replica stats to 0.
         """
         logger.debug(f"Adding STOPPING to replica: {replica.replica_id}.")
 
         start_status, _ = replica.check_started()
-        if start_status != ReplicaStartupStatus.PENDING_ALLOCATION:
+        if start_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+            replica.stop(graceful=False)
+        else:
             replica.stop(graceful=graceful_stop)
 
         self._replicas.add(ReplicaState.STOPPING, replica)

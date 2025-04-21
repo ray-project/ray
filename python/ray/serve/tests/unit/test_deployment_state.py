@@ -4785,16 +4785,11 @@ class TestStopReplicasOnDrainingNodes:
         )
 
     def test_stop_unallocated_replica(self, mock_deployment_state_manager):
-        """Test skipping graceful shutdown for unallocated replicas.
+        """Test that replicas are stopped with correct graceful value based on their state.
 
-        This test verifies that when a replica is still in PENDING_ALLOCATION state:
-        1. The system correctly detects this unallocated state
-        2. It skips calling replica.stop() which would hang on a non-existent actor
-        3. The replica still transitions properly to STOPPING state
-        4. The deployment cleanup continues normally
-
-        This prevents hanging when trying to gracefully shut down actors that
-        haven't been allocated by Ray yet.
+        When stopping a replica:
+        - If it's in PENDING_ALLOCATION state, stop() should be called with graceful=False
+        - Otherwise, stop() should be called with the provided graceful_stop value
         """
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm = create_dsm()
@@ -4806,25 +4801,31 @@ class TestStopReplicasOnDrainingNodes:
         check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
         replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
 
-        # Override check_started to consistently return PENDING_ALLOCATION
-        def mock_check_started():
-            return ReplicaStartupStatus.PENDING_ALLOCATION, None
-
-        replica.check_started = mock_check_started
-
-        stop_called = False
+        stop_graceful_value = None
         original_stop = replica.stop
 
-        def mock_stop(graceful=True):
-            nonlocal stop_called
-            stop_called = True
+        def mock_stop(graceful):
+            nonlocal stop_graceful_value
+            stop_graceful_value = graceful
             return original_stop(graceful=graceful)
 
         replica.stop = mock_stop
 
+        # Test Case 1: PENDING_ALLOCATION state
+        def mock_pending_allocation():
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        replica.check_started = mock_pending_allocation
         ds.stop_replicas([replica.replica_id])
-        assert not stop_called
-        check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, v1)])
+        assert stop_graceful_value is False
+
+        # Test Case 2: SUCCEEDED state
+        def mock_pending_initialization():
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+
+        replica.check_started = mock_pending_initialization
+        ds.stop_replicas([replica.replica_id])
+        assert stop_graceful_value is True
 
 
 if __name__ == "__main__":
