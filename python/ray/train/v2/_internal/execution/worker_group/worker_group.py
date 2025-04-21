@@ -790,7 +790,9 @@ class WorkerGroup:
         Args:
             The custom runtime env dict passed in by the user.
         """
-        custom_runtime_env.setdefault("env_vars", {}).update(
-            get_env_vars_to_propagate()
-        )
-        return custom_runtime_env
+        merged_env_vars = get_env_vars_to_propagate()
+        merged_env_vars.update(custom_runtime_env.get("env_vars", {}))
+
+        runtime_env = dict(custom_runtime_env)
+        runtime_env["env_vars"] = merged_env_vars
+        return runtime_env
