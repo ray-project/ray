@@ -72,7 +72,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
         if self.__dataset_iterator is None:
             raise ValueError(
                 f"{self} doesn't have a data iterator. Can't call `run` on "
-                "`OfflineEvalautionRunner`."
+                "`OfflineEvaluationRunner`."
             )
 
         if not self._batch_iterator:
@@ -125,7 +125,7 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             iterator=self._dataset_iterator,
             collate_fn=_collate_fn,
             finalize_fn=_finalize_fn,
-            minibatch_size=self.config.offline_eval_minibatch_size,
+            minibatch_size=self.config.offline_eval_batch_size_per_runner,
             num_iters=self.config.dataset_num_iters_per_eval_runner,
             **kwargs,
         )
@@ -461,14 +461,14 @@ class OfflineEvaluationRunner(Runner, Checkpointable):
             self.module = None
 
     def get_loss_for_module_fn(self):
-        # Either the user has provided a loss-for-module function.
-        if self.config.get("loss_for_module_fn"):
-            return self.config.loss_for_module_fn
-        # Or we take the loss funciton from the default `Learner` class.
-        else:
-            return self.config.get_default_learner_class().__dict__[
+        # Either the user has provided a loss-for-module function, or we take
+        # the loss function from the default `Learner` class.
+        return (
+            self.config.offline_loss_for_module_fn
+            or self.config.get_default_learner_class().__dict__[
                 "compute_loss_for_module"
             ]
+        )
 
     @property
     def _dataset_iterator(self) -> DataIterator:

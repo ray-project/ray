@@ -48,7 +48,7 @@ class TestOfflineData(unittest.TestCase):
             )
         )
         # Start ray.
-        ray.init()
+        ray.init(ignore_reinit_error=True)
 
     def tearDown(self) -> None:
         ray.shutdown()
@@ -92,6 +92,9 @@ class TestOfflineData(unittest.TestCase):
 
         for iter in offline_runner_group._offline_data_iterators:
             self.assertIsInstance(iter, DataIterator)
+
+        # Clean up.
+        algo.cleanup()
 
     def test_offline_evaluation_runner_group_run(self):
 
@@ -138,6 +141,9 @@ class TestOfflineData(unittest.TestCase):
             for metric in metric_dict[DEFAULT_MODULE_ID].values():
                 self.assertIsInstance(metric, Stats)
 
+        # Clean up.
+        algo.cleanup()
+
     def test_offline_evaluation_runner_group_with_local_runner(self):
 
         algo = self.config.build()
@@ -173,6 +179,9 @@ class TestOfflineData(unittest.TestCase):
             local_runner=True,
         )
         self.assertEqual(len(metrics), 1)
+
+        # Clean up.
+        algo.cleanup()
 
 
 if __name__ == "__main__":

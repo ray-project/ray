@@ -532,6 +532,7 @@ class AlgorithmConfig(_Config):
         # decide, if we use `offline_evaluation_duration` or
         # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
         # The latter will be much faster, but runs per runner call all evaluation.
+        self.offline_loss_for_module_fn = None
         self.offline_evaluation_duration = 1
         self.offline_evaluation_parallel_to_training = False
         self.offline_evaluation_timeout_s = 120.0
@@ -548,7 +549,6 @@ class AlgorithmConfig(_Config):
         self.offline_eval_rl_module_inference_only = False
         self.broadcast_offline_eval_runner_states = False
         self.offline_eval_batch_size_per_runner = 256
-        self.offline_eval_minibatch_size = None
         self.dataset_num_iters_per_eval_runner = 1
 
         # `self.reporting()`
@@ -2652,8 +2652,8 @@ class AlgorithmConfig(_Config):
         custom_evaluation_function: Optional[Callable] = NotProvided,
         # Offline evaluation.
         num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_loss_for_module_fn: Optional[Callable] = NotProvided,
         offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
-        offline_eval_minibatch_size: Optional[int] = NotProvided,
         dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
         offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
         num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
@@ -2771,14 +2771,17 @@ class AlgorithmConfig(_Config):
                 for parallel evaluation. Setting this to 0 forces sampling to be done in the
                 local OfflineEvaluationRunner (main process or the Algorithm's actor when
                 using Tune).
+            offline_loss_for_module_fn: A callable to compute the loss per `RLModule` in
+                offline evaluation. If not provided the training loss function (
+                `Learner.compute_loss_for_module`) is used. The signature must be (
+                runner: OfflineEvaluationRunner, module_id: ModuleID, config: AlgorithmConfig,
+                batch: Dict[str, Any], fwd_out: Dict[str, TensorType]).
             offline_eval_batch_size_per_runner: Evaluation batch size per individual
                 OfflineEvaluationRunner worker. This setting only applies to the new API
                 stack. The number of OfflineEvaluationRunner workers can be set via
                 `config.evaluation(num_offline_eval_runners=...)`. The total effective batch
                 size is then `num_offline_eval_runners` x
                 `offline_eval_batch_size_per_runner`.
-            offline_eval_minibatch_size: The size of minibatches to use to further split the
-                evaluation batch into.
             dataset_num_iters_per_offline_eval_runner: Number of batches to evaluate in each
                 OfflineEvaluationRunner during a single evaluation. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
@@ -2905,12 +2908,13 @@ class AlgorithmConfig(_Config):
             self.custom_evaluation_function = custom_evaluation_function
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
+        # Offline evaluation.
         if num_offline_eval_runners is not NotProvided:
             self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_loss_for_module_fn is not NotProvided:
+            self.offline_loss_for_module_fn = offline_loss_for_module_fn
         if offline_eval_batch_size_per_runner is not NotProvided:
             self.offline_eval_batch_size_per_runner = offline_eval_batch_size_per_runner
-        if offline_eval_minibatch_size is not NotProvided:
-            self.offline_eval_minibatch_size = offline_eval_minibatch_size
         if dataset_num_iters_per_offline_eval_runner is not NotProvided:
             self.dataset_num_iters_per_eval_runner = (
                 dataset_num_iters_per_offline_eval_runner
