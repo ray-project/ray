@@ -113,50 +113,7 @@ def validate_node_labels(labels: Dict[str, str]):
                 f"Custom label keys `{key}` cannot start with the prefix "
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
-
-
-def validate_label_key(key: str) -> Optional[str]:
-    if "/" in key:
-        prefix, name = key.rsplit("/", 1)
-        if len(prefix) > 253 or not re.fullmatch(LABEL_PREFIX_REGEX, prefix):
-            return str(
-                f"Invalid label key prefix `{prefix}`. Prefix must be a series of DNS labels "
-                f"separated by dots (.), not longer than 253 characters in total."
             )
-    else:
-        name = key
-    if len(name) > 63 or not re.fullmatch(LABEL_REGEX, name):
-        return str(
-            f"Invalid label key name `{name}`. Name must be 63 chars or less beginning and ending "
-            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-            f"dots (.), and alphanumerics between."
-        )
-    return None
-
-
-def validate_label_value(value: str):
-    if value == "":
-        return
-    if len(value) > 63 or not re.fullmatch(LABEL_REGEX, value):
-        raise ValueError(
-            f"Invalid label key value `{value}`. Value must be 63 chars or less beginning and ending "
-            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-            f"dots (.), and alphanumerics between."
-        )
-
-
-def validate_label_selector_value(selector: str) -> Optional[str]:
-    if selector == "":
-        return None
-    if not re.fullmatch(LABEL_SELECTOR_REGEX, selector):
-        return str(
-            f"Invalid label selector value `{selector}`. The label selector value should contain optional operators and a label value. Supported operators are: ! and {LABEL_OPERATORS}. "
-            f"Value must be 63 chars or less beginning and ending "
-            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-            f"dots (.), and alphanumerics between."
-        )
-
-    return None
 
 
 def validate_label_key(key: str) -> Optional[str]:

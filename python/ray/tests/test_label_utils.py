@@ -80,42 +80,7 @@ def test_parse_node_labels_from_json():
     labels_json = '{"accelerator-type":500}'
     with pytest.raises(ValueError) as e:
         parse_node_labels_json(labels_json)
-    assert 'The value of the "ray.io/accelerator-type" is not string type' in str(e)
-
-
-@pytest.mark.parametrize(
-    "labels_string, should_raise, expected_result, expected_error_msg",
-    [
-        # Valid - Empty label string
-        ("", False, {}, None),
-        # Valid - Empty label value
-        ("region=", False, {"region": ""}, None),
-        # Valid - multiple label key-value pairs
-        (
-            "ray.io/accelerator-type=A100,region=us-west4",
-            False,
-            {"ray.io/accelerator-type": "A100", "region": "us-west4"},
-            None,
-        ),
-        # Invalid - label is not a key-value pair
-        (
-            "ray.io/accelerator-type=type=A100",
-            True,
-            None,
-            "Label string is not a key-value pair",
-        ),
-    ],
-)
-def test_parse_node_labels_from_string(
-    labels_string, should_raise, expected_result, expected_error_msg
-):
-    if should_raise:
-        with pytest.raises(ValueError) as e:
-            parse_node_labels_string(labels_string)
-        assert expected_error_msg in str(e.value)
-    else:
-        labels_dict = parse_node_labels_string(labels_string)
-        assert labels_dict == expected_result
+    assert 'The value of the "accelerator-type" is not string type' in str(e)
 
 
 def test_parse_node_labels_from_yaml_file():
