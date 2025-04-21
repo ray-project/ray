@@ -22,8 +22,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         get_trainable_cls(alg_name)
         .get_default_config()
         .api_stack(
-            enable_env_runner_and_connector_v2=False,
-            enable_rl_module_and_learner=False
+            enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
         )
         .framework(framework)
         # Switch on saving native DL-framework (tf, torch) model files.
