@@ -68,8 +68,6 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
   /// \param task_dependency_manager_ Used to fetch task's dependencies.
-  /// \param is_owner_alive: A callback which returns if the owner process is alive
-  ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
@@ -85,7 +83,6 @@ class LocalTaskManager : public ILocalTaskManager {
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
-      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
       internal::NodeInfoGetter get_node_info,
       WorkerPoolInterface &worker_pool,
       absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
@@ -289,8 +286,6 @@ class LocalTaskManager : public ILocalTaskManager {
   ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
-  /// Function to check if the owner is alive on a given node.
-  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
 

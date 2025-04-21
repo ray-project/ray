@@ -262,7 +262,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
   /// \param data The data of the worker that died.
-  void HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data);
+  void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
+
+  void HandleNodeRemoved(const NodeID &node_id);
 
   /// Handler for the addition of a new node.
   ///

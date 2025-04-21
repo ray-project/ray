@@ -89,8 +89,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                   const std::string &scheduling_failure_message = "") override;
 
   /// Cancel all tasks owned by a specific worker.
-  bool CancelAllTaskOwnedBy(
+  bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      const std::string &scheduling_failure_message = "") override;
+
+  bool CancelAllTasksOwnedBy(
+      const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") override;
