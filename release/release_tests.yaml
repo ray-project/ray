@@ -4155,7 +4155,7 @@
 # LLM Batch
 ##############
 
-- name: llm_batch_vllm_v1_llama_tp2dp2
+- name: llm_batch_vllm
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4170,10 +4170,9 @@
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --tp-size 2 --concurrency 2 --vllm-use-v1
+      pytest -sv test_batch_vllm.py
 
-- name: llm_batch_vllm_llama_pp2dp2
+- name: llm_batch_sglang_llama
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4183,68 +4182,10 @@
   cluster:
     byod:
       type: llm-cu124
+      post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
   run:
     timeout: 3600
     script: >
-      python run_llama.py
-      --pp-size 2 --concurrency 2
-
-- name: llm_batch_vllm_llama_lora
-  frequency: nightly
-  python: "3.11"
-  group: llm-batch
-  team: llm
-  working_dir: llm_tests/batch
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_1xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python run_llama.py
-      --model-source s3://air-example-data/llama-3.2-216M-dummy/
-      --dynamic-lora-loading-path s3://air-example-data/
-      --lora-name llama-3.2-216M-lora-dummy
-      --max-lora-rank 32
-
-- name: llm_batch_vllm_v1_llava_tp1dp1
-  frequency: nightly
-  python: "3.11"
-  group: llm-batch
-  team: llm
-  working_dir: llm_tests/batch
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_1xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python run_vision_language_model.py
-      --tp-size 1 --concurrency 1 --vllm-use-v1
-
-- name: llm_batch_vllm_v1_pixtral_tp2dp2
-  frequency: nightly
-  python: "3.11"
-  group: llm-batch
-  team: llm
-  working_dir: llm_tests/batch
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_4xl4.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python run_vision_language_model.py
-      --model-source mistral-community/pixtral-12b
-      --tp-size 2 --concurrency 2 --vllm-use-v1
+      pytest -sv test_batch_sglang.py
