@@ -52,6 +52,8 @@ class VideoDatasource(FileBasedDatasource):
         self.include_timestamps = include_timestamps
         if decord_load_args is None:
             self.decord_load_args = {}
+        else:
+            self.decord_load_args = decord_load_args
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         from decord import VideoReader
@@ -60,14 +62,9 @@ class VideoDatasource(FileBasedDatasource):
 
         for frame_index, frame in enumerate(reader):
             item = {"frame": frame.asnumpy(), "frame_index": frame_index}
-            if self.include_timestamps is False:
-                item = {"frame": frame.asnumpy(), "frame_index": frame_index}
-            else:
-                item = {
-                    "frame": frame.asnumpy(),
-                    "frame_index": frame_index,
-                    "frame_timestamp": reader.get_frame_timestamp(frame_index),
-                }
+            if self.include_timestamps is True:
+                item["frame_timestamp"] = reader.get_frame_timestamp(frame_index)
+
             builder = DelegatingBlockBuilder()
             builder.add(item)
             yield builder.build()
