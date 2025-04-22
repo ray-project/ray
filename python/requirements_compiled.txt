@@ -45,10 +45,11 @@ aiofiles==22.1.0
     #   ypy-websocket
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.14
+aiohttp==3.11.16
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   datasets
@@ -965,7 +966,7 @@ lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==16.0.6
     # via tensorflow
-lightgbm==3.3.5
+lightgbm==4.6.0
     # via -r python/requirements/ml/core-requirements.txt
 lightning-utilities==0.11.2
     # via pytorch-lightning
@@ -1966,7 +1967,6 @@ scikit-learn==1.3.2
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
-    #   lightgbm
     #   mlflow
     #   mosaicml
     #   pymars
@@ -2497,10 +2497,10 @@ werkzeug==2.3.8
     #   moto
     #   pytest-httpserver
     #   tensorboard
-wheel==0.43.0
+wheel==0.45.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   astunparse
-    #   lightgbm
 widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.14.1

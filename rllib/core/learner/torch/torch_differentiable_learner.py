@@ -101,9 +101,6 @@ class TorchDifferentiableLearner(DifferentiableLearner):
                 4) a metrics dict mapping module IDs to metrics key/value pairs.
 
         """
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
@@ -145,7 +142,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, params, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, params, {}
 
     # TODO (simon): Maybe make type for gradients.
     @override(DifferentiableLearner)

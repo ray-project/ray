@@ -82,7 +82,7 @@ def _resolve_paths_and_filesystem(
             f"filesystem was: {filesystem}"
         )
         try:
-            import fsspec
+            import fsspec  # noqa: F401
             from fsspec.implementations.http import HTTPFileSystem
         except ModuleNotFoundError:
             # If filesystem is not a pyarrow filesystem and fsspec isn't
@@ -114,6 +114,7 @@ def _resolve_paths_and_filesystem(
                     # try to use fsspec HTTPFileSystem. This expects fsspec is
                     # installed.
                     try:
+                        import fsspec  # noqa: F401
                         from fsspec.implementations.http import HTTPFileSystem
                     except ModuleNotFoundError:
                         raise ImportError(
@@ -148,6 +149,7 @@ def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
     from pyarrow.fs import FSSpecHandler, PyFileSystem
 
     try:
+        import fsspec  # noqa: F401
         from fsspec.implementations.http import HTTPFileSystem
     except ModuleNotFoundError:
         return False

@@ -313,6 +313,11 @@ class _StatsActor:
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
         self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
@@ -407,7 +412,7 @@ class _StatsActor:
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
 
@@ -487,6 +492,7 @@ class _StatsActor:
                     "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
@@ -526,6 +532,9 @@ class _StatsActor:
             )
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
             )
 
             # Get state code directly from enum
