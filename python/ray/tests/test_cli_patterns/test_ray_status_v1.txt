@@ -15,7 +15,7 @@ Usage:
  0.+
  0.+
 
-Constraints:
+Total Constraints:
  \(no request_resources\(\) constraints\)
-Demands:
+Total Demands:
  \(no resource demands\)
