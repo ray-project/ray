@@ -151,7 +151,7 @@ class BCIRLPPOTorchMetaLearner(TorchMetaLearner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     # TODO (simon): Maybe add some more noise to the
     @override(TorchLearner)

@@ -81,11 +81,11 @@ stop = {
     # TRAINING_ITERATION: 350,
 }
 
-# algo = config.build()
-# for _ in range(10):
-#     results = algo.train()
-#     print(results)
+algo = config.build()
+for _ in range(10):
+    results = algo.train()
+    print(results)
 
 
-if __name__ == "__main__":
-    run_rllib_example_script_experiment(config, args, stop=stop)
+# if __name__ == "__main__":
+#     run_rllib_example_script_experiment(config, args, stop=stop)
