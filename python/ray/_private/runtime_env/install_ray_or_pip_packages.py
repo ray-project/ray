@@ -39,7 +39,7 @@ def install_ray_package(ray_version, whl_dir):
         raise RuntimeError(f"Failed to install ray, got ex: {result.stderr}")
 
 
-def install_pip_package(pip_packages):
+def install_pip_package(pip_packages, isolate_pip_installation):
     formatted_pip_packages = []
     for package in pip_packages:
         package = package.strip("'")
@@ -49,6 +49,11 @@ def install_pip_package(pip_packages):
     pip_install_command.extend(formatted_pip_packages)
     logger.info("Starting install pip package: {}".format(pip_install_command))
     env = os.environ.copy()
+    if isolate_pip_installation:
+        # Remove PYTHONPATH from the environment variables
+        env.pop("PYTHONPATH", None)
+        # install pip packages without python path
+        logger.info("Installing pip packages without `PYTHONPATH`.")
     result = subprocess.run(pip_install_command, env=env)
 
     if result.returncode != 0:
@@ -71,7 +76,18 @@ if __name__ == "__main__":
         "--ray-version", required=False, help="Install Which version for Ray."
     )
 
+    parser.add_argument(
+        "--isolate-pip-installation",
+        required=False,
+        help="Enable to install pip install without python path",
+    )
+
     args = parser.parse_args()
+    isolate_pip_installation = (
+        args.isolate_pip_installation.lower() == "true"
+        if args.isolate_pip_installation is not None
+        else False
+    )
 
     if args.ray_version or args.whl_dir:
         install_ray_package(args.ray_version, args.whl_dir)
@@ -79,4 +95,4 @@ if __name__ == "__main__":
         pip_packages = json.loads(
             base64.b64decode(args.packages.encode("utf-8")).decode("utf-8")
         )
-        install_pip_package(pip_packages)
+        install_pip_package(pip_packages, isolate_pip_installation)

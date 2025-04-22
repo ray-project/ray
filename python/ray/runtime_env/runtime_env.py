@@ -653,6 +653,11 @@ class RuntimeEnv(dict):
             return False
         return self["container"].get("install_ray", False)
 
+    def py_container_isolate_pip_installation(self) -> bool:
+        if not self.has_py_container():
+            return False
+        return self["container"].get("isolate_pip_installation", False)
+
     def image_uri(self) -> Optional[str]:
         return self.get("image_uri")
 

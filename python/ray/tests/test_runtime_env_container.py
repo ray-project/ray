@@ -565,6 +565,34 @@ class TestContainerRuntimeEnvCommandLine:
                 lambda: check_logs_by_keyword(keyword1, log_file_pattern_1), timeout=20
             )
 
+    def test_container_command_with_no_python_path(
+        self, api_version, ray_start_regular
+    ):
+        runtime_env = {
+            api_version: {
+                "image": "unknown_image",
+                "isolate_pip_installation": True,
+                "pip": ["numpy"],
+            },
+        }
+
+        a = Counter.options(
+            runtime_env=runtime_env,
+        ).remote()
+        try:
+            ray.get(a.increment.remote(), timeout=1)
+        except (ray.exceptions.RuntimeEnvSetupError, ray.exceptions.GetTimeoutError):
+            # ignore the exception because container mode don't work in common
+            # test environments.
+            pass
+        # Checkout the worker logs to ensure if the cgroup params is set correctly
+        # in the podman command.
+        keyword = "\--isolate-pip-installation true"
+        log_file_pattern = "raylet.err"
+        wait_for_condition(
+            lambda: check_logs_by_keyword(keyword, log_file_pattern), timeout=20
+        )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
