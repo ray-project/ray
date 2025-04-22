@@ -32,10 +32,14 @@ message Operator {
   // Name of the operator
   string name = 1;
 
-  // Unique identifier for the operator
+  // The unique identifier of the operator within the DAG structure, typically
+  // incorporating a position or index (e.g., "ReadParquet_0"). This is used for
+  // referencing operators within the DAG topology.
   string id = 2;
 
-  // UUID for the operator
+  // The system-generated UUID of the physical operator instance. This is the
+  // internal unique identifier created when the operator instance is initialized
+  // and remains consistent throughout its lifetime.
   string uuid = 3;
 
   // List of operator IDs that this operator depends on for input
