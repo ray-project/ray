@@ -58,7 +58,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -72,7 +72,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -80,7 +80,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -89,7 +89,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
