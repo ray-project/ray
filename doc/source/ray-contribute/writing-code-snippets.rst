@@ -203,7 +203,7 @@ To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code
 Skipping *code-output-style* examples
 ====================================
 
-To skip a *code-output-style* example, add `:skipif: True` to the `testoutput` block. ::
+To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block. ::
 
     .. testcode::
         :skipif: True
