@@ -90,7 +90,7 @@ class TaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(const rpc::PushTaskRequest &request,
+  void HandleTask(rpc::PushTaskRequest request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
@@ -163,7 +163,7 @@ class TaskReceiver {
   bool execute_out_of_order_ = false;
   /// The repr name of the actor instance for an anonymous actor.
   /// This is only available after the actor creation task.
-  std::string actor_repr_name_ = "";
+  std::string actor_repr_name_;
 };
 
 }  // namespace core
