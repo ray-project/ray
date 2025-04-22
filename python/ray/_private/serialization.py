@@ -521,7 +521,9 @@ class SerializationContext:
                     "ascii"
                 )
                 value = value.to_bytes()
-            logger.info("Serializing RayTaskError %s, metadata: %s, value: %s", old_value, metadata, value)
+            logger.info(
+                "Serializing RayTaskError, metadata: %s, value: %s", metadata, value
+            )
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
@@ -555,9 +557,18 @@ class SerializationContext:
             )
         else:
             pickle5_serialized_object = None
-        
+
         if isinstance(old_value, RayTaskError):
-            logger.info("Creating MessagePackSerializedObject, metadata: %s, msgpack_data: %s, contained_object_refs: %s, pickle5_serialized_object: %s", metadata, msgpack_data, contained_object_refs, pickle5_serialized_object)
+            logger.info(
+                "Creating MessagePackSerializedObject, metadata: %s, msgpack_data: %s, "
+                "contained_object_refs: %s, pickle5_serialized_object: %s, "
+                "python_objects: %s",
+                metadata,
+                msgpack_data,
+                contained_object_refs,
+                pickle5_serialized_object,
+                python_objects,
+            )
 
         return MessagePackSerializedObject(
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object

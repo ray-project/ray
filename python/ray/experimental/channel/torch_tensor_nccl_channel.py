@@ -301,6 +301,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         ) = self.serialization_ctx.reset_out_of_band_tensors([])
         assert deserialized_tensor_placeholders == set(range(len(tensors)))
 
+        if len(tensors) == 0:
+            logger.info("Received data: %s", data)
+
         return data
 
     def read(self, timeout: Optional[float] = None) -> Any:
