@@ -188,6 +188,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     for (const auto &[_, cur_dispatch_queue] : tasks_to_dispatch_) {
       // Only need to check the first because all tasks with the same scheduling class
       // have the same CPU resource requirements.
+      RAY_CHECK(!cur_dispatch_queue.empty());
       const auto &work = cur_dispatch_queue.front();
       const auto &task_spec = work->task.GetTaskSpecification();
       auto cpu_request_ =
