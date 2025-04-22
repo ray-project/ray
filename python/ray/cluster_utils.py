@@ -399,7 +399,7 @@ class Cluster:
         return all(node.remaining_processes_alive() for node in self.list_all_nodes())
 
     def shutdown(self):
-        """Removes all nodes."""
+        """Terminate the cluster."""
 
         # We create a list here as a copy because `remove_node`
         # modifies `self.worker_nodes`.
@@ -413,3 +413,6 @@ class Cluster:
         ray.experimental.internal_kv._internal_kv_reset()
         # Delete the cluster address.
         ray._private.utils.reset_ray_address()
+
+        # Call ray stop to make sure all processes are killed.
+        subprocess.check_call(["ray", "stop", "--force"])
