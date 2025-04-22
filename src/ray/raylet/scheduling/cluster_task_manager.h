@@ -47,15 +47,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   ///                                    the state of the cluster.
   /// \param get_node_info: Function that returns the node info for a node.
-  /// \param announce_infeasible_task: Callback that informs the user if a task
-  ///                                  is infeasible.
   /// \param local_task_manager: Manages local tasks.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
   ClusterTaskManager(
       const NodeID &self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
-      std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
