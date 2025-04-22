@@ -40,7 +40,7 @@ class BenchmarkConfig(BaseModel):
 
     task: str = "image_classification"
     locality_with_output: bool = True
-    actor_locality_enabled: bool = True
+    actor_locality_enabled: bool = False
     enable_shard_locality: bool = True
 
     # Data
