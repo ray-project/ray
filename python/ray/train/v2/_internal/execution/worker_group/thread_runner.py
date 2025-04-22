@@ -55,7 +55,9 @@ class ThreadRunner:
                 self._is_running = False
 
         self._thread = threading.Thread(
-            target=_run_target, daemon=True, name=get_callable_name(target)
+            target=_run_target,
+            daemon=True,
+            name=f"TrainingThread({get_callable_name(target)})",
         )
         self._thread.start()
 
