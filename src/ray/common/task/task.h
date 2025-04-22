@@ -33,6 +33,9 @@ class RayTask {
   /// as an out parameter to a function or method.
   RayTask() = default;
 
+  /// Construct a `RayTask` object from a protobuf message.
+  explicit RayTask(rpc::TaskSpec task_spec);
+
   /// Construct a `RayTask` object from a `TaskSpecification`.
   explicit RayTask(TaskSpecification task_spec);
 
