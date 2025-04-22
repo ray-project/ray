@@ -1,10 +1,14 @@
+import logging
 import threading
 import traceback
 from typing import Callable, Optional, TypeVar
 
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
+from ray.train.v2._internal.util import get_callable_name
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class ThreadRunner:
@@ -42,6 +46,7 @@ class ThreadRunner:
                     exc_traceback_str = traceback.format_exc(
                         limit=-(len(traceback.extract_tb(e.__traceback__)) - 2)
                     )
+                    logger.error(f"Error in training function:\n{exc_traceback_str}")
                     self._exc = UserExceptionWithTraceback(
                         e, traceback_str=exc_traceback_str
                     )
@@ -49,7 +54,11 @@ class ThreadRunner:
             with self._lock:
                 self._is_running = False
 
-        self._thread = threading.Thread(target=_run_target, daemon=True)
+        self._thread = threading.Thread(
+            target=_run_target,
+            daemon=True,
+            name=f"TrainingThread({get_callable_name(target)})",
+        )
         self._thread.start()
 
     def is_running(self) -> bool:

@@ -10,12 +10,12 @@
 #
 #   ;  # Semicolon to separate rules
 
-
 python/ray/air/
 @ ml train tune data linux_wheels
 ;
 
 python/ray/llm/
+doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 python/requirements_compiled_*.txt
@@ -70,7 +70,7 @@ ci/docker/serve.build.Dockerfile
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels
+@ dashboard linux_wheels python
 ;
 
 python/setup.py
@@ -117,6 +117,11 @@ docker/
 @ docker linux_wheels
 ;
 
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
+;
+
 .readthedocs.yaml
 @ doc
 ;
@@ -135,7 +140,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
+@ tools
 ;
 
 release/*.md
@@ -176,6 +181,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
