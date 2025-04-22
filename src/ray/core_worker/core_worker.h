@@ -14,9 +14,10 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <deque>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <string>
 #include <tuple>
@@ -24,12 +25,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
@@ -40,7 +39,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
@@ -53,7 +51,6 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
@@ -147,9 +144,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-
-  /// Updates the actor seqno if true.
-  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -305,7 +299,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -1009,7 +1003,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  ActorID GetActorId() const {
+    absl::MutexLock lock(&mutex_);
+    return actor_id_;
+  }
 
   std::string GetActorName() const;
 
@@ -1732,7 +1729,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1870,7 +1867,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
@@ -1891,16 +1889,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
-  std::atomic<bool> is_shutdown_ = false;
+  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
+  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
+  /// See https://github.com/ray-project/ray/issues/51642.
 
-  /// Whether the `Exit` function has been called, to avoid executing the exit
-  /// process multiple times.
-  ///
-  /// TODO(kevin85421): Currently, there are two public functions, `Exit` and `Shutdown`,
-  /// to terminate the core worker gracefully. We should unify them into `Exit()` so we
-  /// don't need `is_shutdown_` in the future. See
-  /// https://github.com/ray-project/ray/issues/51642 for more details.
-  std::atomic<bool> is_exit_ = false;
+  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
+  std::atomic<bool> is_exited_ = false;
+  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
+  std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 

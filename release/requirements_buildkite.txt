@@ -118,9 +118,9 @@ anyio==4.4.0 \
     # via
     #   starlette
     #   watchfiles
-anyscale==0.26.1 \
-    --hash=sha256:4da5e801e7c86848554575493c0a1f466bad58a1a11c601e21b850f6c4fbb9c4 \
-    --hash=sha256:56fd7f7b4747bf6ec2103ee811c0f90ed3407f9dbf91d5519d9053bce12e88fb
+anyscale==0.26.14 \
+    --hash=sha256:4b253d2d4f42a941de47db4e47e92bed964beebaf80164dfb6697d5322743cab \
+    --hash=sha256:aca4625c7f427a01fed01d8879d866eff78eff4b0f11aaf7739a5c3f16790dc5
     # via -r release/requirements_buildkite.in
 appnope==0.1.4 \
     --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
@@ -356,7 +356,6 @@ colorama==0.4.6 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via
     #   anyscale
-    #   halo
     #   log-symbols
     #   sphinx-autobuild
 comm==0.2.2 \
@@ -719,10 +718,6 @@ h11==0.14.0 \
     --hash=sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d \
     --hash=sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761
     # via uvicorn
-halo==0.0.31 \
-    --hash=sha256:5350488fb7d2aa7c31a1344120cee67a872901ce8858f60da7946cef96c208ab \
-    --hash=sha256:7b67a3521ee91d53b7152d4ee3452811e1d2a6321975137762eb3d70063cc9d6
-    # via anyscale
 httplib2==0.22.0 \
     --hash=sha256:14ae0a53c1ba8f3d37e9e27cf37eabb0fb9980f435ba405d546948b009dd64dc \
     --hash=sha256:d7a10bc5ef5ab08322488bde8c726eeee5c8618723fdb399597ec58f3d82df81
@@ -853,7 +848,7 @@ keyring==25.2.0 \
 log-symbols==0.0.14 \
     --hash=sha256:4952106ff8b605ab7d5081dd2c7e6ca7374584eff7086f499c06edd1ce56dcca \
     --hash=sha256:cf0bbc6fe1a8e53f0d174a716bc625c4f87043cc21eb55dd8a740cfe22680556
-    # via halo
+    # via anyscale
 markdown-it-py==3.0.0 \
     --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1 \
     --hash=sha256:e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb
@@ -1668,7 +1663,7 @@ six==1.16.0 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
     # via
     #   anyscale
-    #   halo
+    #   asttokens
     #   oauth2client
     #   python-dateutil
     #   sphinxcontrib-redoc
@@ -1774,7 +1769,7 @@ sphinxemoji==0.2.0 \
 spinners==0.0.24 \
     --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
     --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
-    # via halo
+    # via anyscale
 sqlalchemy==2.0.31 \
     --hash=sha256:0b0f658414ee4e4b8cbcd4a9bb0fd743c5eeb81fc858ca517217a8013d282c96 \
     --hash=sha256:2196208432deebdfe3b22185d46b08f00ac9d7b01284e168c212919891289396 \
@@ -1843,7 +1838,7 @@ tabulate==0.9.0 \
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
-    # via halo
+    # via anyscale
 toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
