@@ -48,6 +48,7 @@ from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasourc
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.xml_datasource import XMLDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
@@ -3581,6 +3582,58 @@ def read_clickhouse(
         client_kwargs=client_kwargs,
     )
 
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI
+def read_xml(
+    *,
+    paths: Union[str, List[str]],
+    record_tag: Optional[str] = None,
+    sep: str = ".",
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_xml( # doctest: +SKIP
+        ...     paths="my_data.xml",
+        ...     record_tag="record",
+        ... )
+
+    Args:
+        paths: A string or list of strings representing the file paths to the XML files.
+            The paths can be local or remote (e.g., S3, GCS).
+        record_tag: The XML tag name that represents a single record in the XML files.
+            If not specified, the first tag in the XML file will be used.
+        sep: The separator used to flatten nested XML structures. Default is ".".
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the XML files.
+    """  # noqa: E501
+    datasource = XMLDatasource(
+        paths=paths,
+        record_tag=record_tag,
+        sep=sep,
+    )
     return read_datasource(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
