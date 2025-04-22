@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Dict, Any
 
 import pandas as pd
 
@@ -59,6 +59,13 @@ class Tokenizer(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
+        ray_remote_args: Args to provide to :func:`ray.remote`.
+        ray_remote_args_fn: A function that returns a dictionary of remote args
+            passed to each map worker. The purpose of this argument is to generate
+            dynamic arguments for each actor/task, and will be called each time
+            prior to initializing the worker. Args returned from this dict will
+            always override the args in ``ray_remote_args``. Note: this is an
+            advanced, experimental feature.
     """
 
     _is_fittable = False
@@ -68,7 +75,13 @@ class Tokenizer(Preprocessor):
         columns: List[str],
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
         output_columns: Optional[List[str]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
     ):
+        super().__init__(
+            ray_remote_args=ray_remote_args,
+            ray_remote_args_fn=ray_remote_args_fn,
+        )
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer

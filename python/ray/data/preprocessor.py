@@ -4,7 +4,7 @@ import collections
 import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional, Callable
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -46,6 +46,24 @@ class Preprocessor(abc.ABC):
       implement both. Otherwise, the data will be converted to the match the
       implemented method.
     """
+
+    def __init__(
+        self,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+    ):
+        """
+        Args:
+            ray_remote_args: Args to provide to :func:`ray.remote`.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
+        """
+        self._ray_remote_args = ray_remote_args
+        self._ray_remote_args_fn = ray_remote_args_fn
 
     class FitStatus(str, Enum):
         """The fit status of preprocessor."""
@@ -225,6 +243,11 @@ class Preprocessor(abc.ABC):
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
+        if self._ray_remote_args is not None:
+            kwargs = dict(kwargs, **self._ray_remote_args)
+        if self._ray_remote_args_fn is not None:
+            kwargs["ray_remote_args_fn"] = self._ray_remote_args_fn
+
         if transform_type == BatchFormat.PANDAS:
             return ds.map_batches(
                 self._transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
