@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 UNKNOWN = "unknown"
 
 # NOTE: These dataclasses need to be updated in sync with the protobuf definitions in
-# src/ray/protobuf/export_api/export_data_metadata.proto
+# src/ray/protobuf/export_api/export_dataset_metadata.proto
 @dataclass
-class SubOperator:
-    """Represents a sub-operator within a main operator in the DAG.
+class SubStage:
+    """Represents a sub-stage within an operator in the DAG.
 
     Attributes:
-        name: The name of the sub-operator.
-        id: The unique identifier of the sub-operator.
+        name: The name of the sub-stage.
+        id: The unique identifier of the sub-stage.
     """
 
     name: str
@@ -48,18 +48,18 @@ class Operator:
             internal unique identifier created when the operator instance is initialized
             and remains consistent throughout its lifetime.
         input_dependencies: List of operator IDs that this operator depends on for input.
-        sub_operators: List of sub-operators contained within this operator.
+        sub_stages: List of sub-stages contained within this operator.
     """
 
     name: str
     id: str
     uuid: str
     input_dependencies: List[str] = field(default_factory=list)
-    sub_operators: List[SubOperator] = field(default_factory=list)
+    sub_stages: List[SubStage] = field(default_factory=list)
 
 
 @dataclass
-class OperatorDAG:
+class Topology:
     """Represents the complete structure of the operator DAG.
 
     Attributes:
@@ -69,19 +69,19 @@ class OperatorDAG:
     operators: List[Operator] = field(default_factory=list)
 
     @staticmethod
-    def create_operator_dag_metadata(
+    def create_topology_metadata(
         dag: "PhysicalOperator", op_to_id: Dict["PhysicalOperator", str]
-    ) -> "OperatorDAG":
-        """Create an OperatorDAG structure from the physical operator DAG.
+    ) -> "Topology":
+        """Create a Topology structure from the physical operator DAG.
 
         Args:
             dag: The operator DAG to analyze.
 
         Returns:
-            An OperatorDAG object representing the operator DAG structure.
+            A Topology object representing the operator DAG structure.
         """
         # Create the result structure
-        result = OperatorDAG()
+        result = Topology()
 
         # Add detailed operator information with dependencies
         for op in dag.post_order_iter():
@@ -97,13 +97,11 @@ class OperatorDAG:
                 ],
             )
 
-            # Add sub-operators if they exist
+            # Add sub-stages if they exist
             if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
                 for j, sub_name in enumerate(op._sub_progress_bar_names):
                     sub_op_id = f"{op_id}_sub_{j}"
-                    operator.sub_operators.append(
-                        SubOperator(name=sub_name, id=sub_op_id)
-                    )
+                    operator.sub_stages.append(SubStage(name=sub_name, id=sub_op_id))
 
             result.operators.append(operator)
 
@@ -119,13 +117,13 @@ class DatasetMetadata:
 
     Attributes:
         job_id: The ID of the job running this dataset.
-        dag_structure: The structure of the dataset's operator DAG.
+        topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
         start_time: The timestamp when the dataset execution started.
     """
 
     job_id: str
-    dag_structure: OperatorDAG
+    topology: Topology
     dataset_id: str
     start_time: float
 
@@ -140,19 +138,19 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     Returns:
         The protobuf message representing the dataset metadata.
     """
-    from ray.core.generated.export_data_metadata_pb2 import (
-        ExportDataMetadata,
-        OperatorDAG as ProtoOperatorDAG,
+    from ray.core.generated.export_dataset_metadata_pb2 import (
+        ExportDatasetMetadata as ProtoDatasetMetadata,
+        Topology as ProtoTopology,
         Operator as ProtoOperator,
-        SubOperator as ProtoSubOperator,
+        SubStage as ProtoSubStage,
     )
 
     # Create the protobuf message
-    data_metadata = ExportDataMetadata()
-    proto_dag = ProtoOperatorDAG()
+    proto_dataset_metadata = ProtoDatasetMetadata()
+    proto_topology = ProtoTopology()
 
     # Add operators to the DAG
-    for op in dataset_metadata.dag_structure.operators:
+    for op in dataset_metadata.topology.operators:
         proto_operator = ProtoOperator()
         proto_operator.name = op.name
         proto_operator.id = op.id
@@ -162,23 +160,23 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
         for dep_id in op.input_dependencies:
             proto_operator.input_dependencies.append(dep_id)
 
-        # Add sub-operators
-        for sub_op in op.sub_operators:
-            proto_sub_op = ProtoSubOperator()
-            proto_sub_op.name = sub_op.name
-            proto_sub_op.id = sub_op.id
-            proto_operator.sub_operators.append(proto_sub_op)
+        # Add sub-stages
+        for sub_stage in op.sub_stages:
+            proto_sub_stage = ProtoSubStage()
+            proto_sub_stage.name = sub_stage.name
+            proto_sub_stage.id = sub_stage.id
+            proto_operator.sub_stages.append(proto_sub_stage)
 
         # Add the operator to the DAG
-        proto_dag.operators.append(proto_operator)
+        proto_topology.operators.append(proto_operator)
 
     # Populate the data metadata proto
-    data_metadata.dag.CopyFrom(proto_dag)
-    data_metadata.job_id = dataset_metadata.job_id
-    data_metadata.start_time = dataset_metadata.start_time
-    data_metadata.dataset_id = dataset_metadata.dataset_id
+    proto_dataset_metadata.topology.CopyFrom(proto_topology)
+    proto_dataset_metadata.job_id = dataset_metadata.job_id
+    proto_dataset_metadata.start_time = dataset_metadata.start_time
+    proto_dataset_metadata.dataset_id = dataset_metadata.dataset_id
 
-    return data_metadata
+    return proto_dataset_metadata
 
 
 def get_data_metadata_exporter() -> "DataMetadataExporter":
@@ -251,7 +249,7 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
         from ray.core.generated.export_event_pb2 import ExportEvent
 
         is_data_metadata_export_api_enabled = check_export_api_enabled(
-            ExportEvent.SourceType.EXPORT_DATA_METADATA
+            ExportEvent.SourceType.EXPORT_DATASET_METADATA
         )
         if not is_data_metadata_export_api_enabled:
             # The export API is not enabled, so we shouldn't create an exporter
@@ -264,12 +262,12 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
         logger = None
         try:
             logger = get_export_event_logger(
-                EventLogType.DATA_METADATA,
+                EventLogType.DATASET_METADATA,
                 log_directory,
             )
         except Exception:
             logger.exception(
-                "Unable to initialize the export event logger, so no Data Metadata export "
+                "Unable to initialize the export event logger, so no Dataset Metadata export "
                 "events will be written."
             )
 

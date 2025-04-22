@@ -26,7 +26,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data._internal.metadata_exporter import OperatorDAG, get_data_metadata_exporter
+from ray.data._internal.metadata_exporter import Topology, get_data_metadata_exporter
 
 logger = logging.getLogger(__name__)
 
@@ -483,7 +483,7 @@ class _StatsActor:
         job_id: str,
         dataset_tag: str,
         operator_tags: List[str],
-        dag_structure: OperatorDAG,
+        topology: Topology,
     ):
         start_time = time.time()
         self.datasets[dataset_tag] = {
@@ -508,7 +508,7 @@ class _StatsActor:
 
             dataset_metadata = DatasetMetadata(
                 job_id=job_id,
-                dag_structure=dag_structure,
+                topology=topology,
                 dataset_id=dataset_tag,
                 start_time=start_time,
             )
@@ -779,20 +779,20 @@ class _StatsManager:
     # Other methods
 
     def register_dataset_to_stats_actor(
-        self, dataset_tag, operator_tags, dag_structure=None
+        self, dataset_tag, operator_tags, topology=None
     ):
         """Register a dataset with the stats actor.
 
         Args:
             dataset_tag: Tag for the dataset
             operator_tags: List of operator tags
-            dag_structure: Optional OperatorDAG representing the DAG structure to export
+            topology: Optional Topology representing the DAG structure to export
         """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
-            dag_structure,
+            topology,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:

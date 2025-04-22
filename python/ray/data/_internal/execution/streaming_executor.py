@@ -34,7 +34,7 @@ from ray.data._internal.logging import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
-from ray.data._internal.metadata_exporter import OperatorDAG
+from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ class StreamingExecutor(Executor, threading.Thread):
         StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
-            OperatorDAG.create_operator_dag_metadata(dag, op_to_id),
+            TopologyMetadata.create_topology_metadata(dag, op_to_id),
         )
         for callback in get_execution_callbacks(self._data_context):
             callback.before_execution_starts(self)
