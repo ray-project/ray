@@ -100,8 +100,8 @@ class Topology:
             # Add sub-stages if they exist
             if hasattr(op, "_sub_progress_bar_names") and op._sub_progress_bar_names:
                 for j, sub_name in enumerate(op._sub_progress_bar_names):
-                    sub_op_id = f"{op_id}_sub_{j}"
-                    operator.sub_stages.append(SubStage(name=sub_name, id=sub_op_id))
+                    sub_stage_id = f"{op_id}_sub_{j}"
+                    operator.sub_stages.append(SubStage(name=sub_name, id=sub_stage_id))
 
             result.operators.append(operator)
 

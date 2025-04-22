@@ -704,8 +704,10 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     assert datasink.unresolved_path == output_path
 
 
-def test_dump_dag_structure():
-    """Test that _dump_dag_structure correctly serializes the DAG structure."""
+def test_create_topology_metadata():
+    """Test that create_topology_metadata correctly serializes the DAG structure."""
+    from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+
     # Create a simple DAG with a few connected operators
     inputs = make_ref_bundles([[x] for x in range(10)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -723,94 +725,98 @@ def test_dump_dag_structure():
     # Create a StreamingExecutor instance
     executor = StreamingExecutor(DataContext.get_current())
 
-    # Test that it returns empty dict when topology is not initialized
-    assert executor._dump_dag_structure(o3) == {}
-
     # Initialize the topology on the executor
     executor._topology, _ = build_streaming_topology(o3, ExecutionOptions())
 
     # Call the _dump_dag_structure method
-    dag_dict = executor._dump_dag_structure(o3)
+    op_to_id = {
+        op: executor._get_operator_id(op, i)
+        for i, op in enumerate(executor._topology.keys())
+    }
+    topology_metadata = TopologyMetadata.create_topology_metadata(o3, op_to_id)
 
     # Verify the structure of the returned dictionary
-    assert "operators" in dag_dict
-    assert isinstance(dag_dict["operators"], list)
-    assert len(dag_dict["operators"]) == 3  # We should have 3 operators
+    assert len(topology_metadata.operators) == 3  # We should have 3 operators
 
     # Find each operator by name - the operators are simplified in the representation
-    operators_by_name = {op["name"]: op for op in dag_dict["operators"]}
+    operators_by_name = {op.name: op for op in topology_metadata.operators}
 
     # Check input data buffer (appears as "Input" in the structure)
     assert "Input" in operators_by_name
     input_buffer = operators_by_name["Input"]
-    assert "id" in input_buffer
-    assert "uuid" in input_buffer
-    assert input_buffer["input_dependencies"] == []
+    assert input_buffer.id is not None
+    assert input_buffer.uuid is not None
+    assert input_buffer.input_dependencies == []
 
     # Check map operators (appear as "Map" in the structure)
     assert "Map" in operators_by_name
 
     # Since there are two Map operators with the same name, we need to identify them by their ID
-    map_ops = [op for op in dag_dict["operators"] if op["name"] == "Map"]
+    map_ops = [op for op in topology_metadata.operators if op.name == "Map"]
     assert len(map_ops) == 2
 
     # Sort by ID to get them in order
-    map_ops.sort(key=lambda op: op["id"])
+    map_ops.sort(key=lambda op: op.id)
     map_op1, map_op2 = map_ops
 
     # First map operator should depend on the input buffer
-    assert len(map_op1["input_dependencies"]) == 1
-    assert map_op1["input_dependencies"][0] == input_buffer["id"]
+    assert len(map_op1.input_dependencies) == 1
+    assert map_op1.input_dependencies[0] == input_buffer.id
 
     # Second map operator should depend on the first map operator
-    assert len(map_op2["input_dependencies"]) == 1
-    assert map_op2["input_dependencies"][0] == map_op1["id"]
+    assert len(map_op2.input_dependencies) == 1
+    assert map_op2.input_dependencies[0] == map_op1.id
 
     # Cleanup
     executor.shutdown()
 
 
-def test_dump_dag_structure_with_sub_operators():
-    """Test that _dump_dag_structure correctly handles sub-operators."""
+def test_create_topology_metadata_with_sub_stages():
+    """Test that _dump_dag_structure correctly handles sub-stages."""
+    from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+
     inputs = make_ref_bundles([[x] for x in range(5)])
 
     # Create a base operator
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
 
-    # Create an operator with sub-progress bars
+    # Create an operator with sub-stages
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o1,
         DataContext.get_current(),
     )
 
-    # Add fake sub-progress bar names to test the sub-operators feature
-    o2._sub_progress_bar_names = ["SubOp1", "SubOp2"]
+    # Add fake sub-stages to test the sub-stages feature
+    o2._sub_progress_bar_names = ["SubStage1", "SubStage2"]
 
     # Create the executor and set up topology
     executor = StreamingExecutor(DataContext.get_current())
     executor._topology, _ = build_streaming_topology(o2, ExecutionOptions())
 
     # Get the DAG structure
-    dag_dict = executor._dump_dag_structure(o2)
+    op_to_id = {
+        op: executor._get_operator_id(op, i)
+        for i, op in enumerate(executor._topology.keys())
+    }
+    topology_metadata = TopologyMetadata.create_topology_metadata(o2, op_to_id)
 
-    # Find the operator with sub-operators (appears as "Map" in the structure)
+    # Find the operator with sub-stages (appears as "Map" in the structure)
     map_op = None
-    for op in dag_dict["operators"]:
-        if op["name"] == "Map":
+    for op in topology_metadata.operators:
+        if op.name == "Map":
             map_op = op
             break
 
     assert map_op is not None
-    assert "sub_operators" in map_op
-    assert len(map_op["sub_operators"]) == 2
+    assert len(map_op.sub_stages) == 2
 
-    # Check that sub-operators have the expected structure
-    sub_op1, sub_op2 = map_op["sub_operators"]
-    assert sub_op1["name"] == "SubOp1"
-    assert sub_op1["id"].endswith("_sub_0")
-    assert sub_op2["name"] == "SubOp2"
-    assert sub_op2["id"].endswith("_sub_1")
+    # Check that sub-stages have the expected structure
+    sub_stage1, sub_stage2 = map_op.sub_stages
+    assert sub_stage1.name == "SubStage1"
+    assert sub_stage1.id.endswith("_sub_0")
+    assert sub_stage2.name == "SubStage2"
+    assert sub_stage2.id.endswith("_sub_1")
 
     # Cleanup
     executor.shutdown()
