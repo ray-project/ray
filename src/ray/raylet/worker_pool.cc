@@ -80,15 +80,8 @@ bool RemoveWorker(
 
 // If both `ask` and `have` are set, they must match. If either of them is not set, it
 // is considered a match.
-bool OptionalMatches(const std::optional<bool> &ask, const std::optional<bool> &have) {
+bool OptionalsMatchOrEmpty(const std::optional<bool> &ask, const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
-}
-
-// Similar to OptionalMatches, but for JobID or ActorID.
-// TODO(ryw): use std::optional<IDType>.
-template <typename IDType>
-bool IdMatches(const IDType &ask, const IDType &have) {
-  return ask.IsNil() || have.IsNil() || ask == have;
 }
 
 }  // namespace
@@ -1289,22 +1282,17 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
     return WorkerUnfitForTaskReason::OTHERS;
   }
 
-  // A: detached actor,  job_id: 010000
-  // workers:            job_id: 020000, root_detached_actor_id: ?????
-  // pop_worker_request: job_id: ??????, root_detached_actor_id: A
-
-  RAY_LOG(DEBUG) << "request root_detached_actor_id: " << pop_worker_request.root_detached_actor_id;
-  RAY_LOG(DEBUG) << "worker root_detached_actor_id: "
-                 << worker.GetRootDetachedActorId();
-  RAY_LOG(DEBUG) << "request job_id: " << pop_worker_request.job_id;
-  RAY_LOG(DEBUG) << "worker job_id: " << worker.GetAssignedJobId();
-
-  if (!IdMatches(pop_worker_request.root_detached_actor_id,
-                 worker.GetRootDetachedActorId())) {
+  // For scheduling requests with a root detached actor ID, ensure that either the
+  // worker has _no_ detached actor ID or it matches the request.
+  // NOTE(edoakes): this does not assert anything about the worker job ID, which is
+  // checked below. The pop_worker_request will always have the job ID of the job
+  // that created it.
+  if (!pop_worker_request.root_detached_actor_id.IsNil() && !worker.GetRootDetachedActorId().IsNil() && pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
-  // XXX.
+  // Only consider workers that haven't been assigned to a job or have been assigned
+  // to the matching job.
   const auto worker_job_id = worker.GetAssignedJobId();
   if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
@@ -1312,12 +1300,12 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
-  if (!OptionalMatches(pop_worker_request.is_gpu, worker.GetIsGpu())) {
+  if (!OptionalsMatchOrEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
-  if (!OptionalMatches(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
+  if (!OptionalsMatchOrEmpty(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // Skip workers with a mismatched runtime_env.
