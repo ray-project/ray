@@ -4,7 +4,7 @@ from typing import Dict, Iterator, Tuple
 from ray.data.datasource.partitioning import Partitioning
 import torch
 import torchvision
-from torch.utils.data import IterableDataset, Dataset
+from torch.utils.data import IterableDataset
 import ray.data
 
 from config import DataloaderType, BenchmarkConfig
@@ -29,25 +29,6 @@ LOCALFS_JPEG_SPLIT_DIRS = {
     "train": "/mnt/local_storage/imagenet/train/",
     "val": "/mnt/local_storage/imagenet/val/",
 }
-
-
-class ImageFolderIterableDataset(IterableDataset):
-    """Wrapper to convert ImageFolder to an IterableDataset."""
-
-    def __init__(self, dataset: Dataset):
-        self.dataset = dataset
-        self._current_idx = 0
-
-    def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        self._current_idx = 0
-        return self
-
-    def __next__(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self._current_idx >= len(self.dataset):
-            raise StopIteration
-        result = self.dataset[self._current_idx]
-        self._current_idx += 1
-        return result
 
 
 class LocalFSImageClassificationRayDataLoaderFactory(
@@ -133,8 +114,8 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         )
 
         return {
-            "train": ImageFolderIterableDataset(train_dataset),
-            "val": ImageFolderIterableDataset(val_dataset),
+            "train": train_dataset,
+            "val": val_dataset,
         }
 
 
