@@ -151,10 +151,11 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
     # Add operators to the DAG
     for op in dataset_metadata.topology.operators:
-        proto_operator = ProtoOperator()
-        proto_operator.name = op.name
-        proto_operator.id = op.id
-        proto_operator.uuid = op.uuid
+        proto_operator = ProtoOperator(
+            name=op.name,
+            id=op.id,
+            uuid=op.uuid,
+        )
 
         # Add input dependencies
         for dep_id in op.input_dependencies:
@@ -162,19 +163,22 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
 
         # Add sub-stages
         for sub_stage in op.sub_stages:
-            proto_sub_stage = ProtoSubStage()
-            proto_sub_stage.name = sub_stage.name
-            proto_sub_stage.id = sub_stage.id
+            proto_sub_stage = ProtoSubStage(
+                name=sub_stage.name,
+                id=sub_stage.id,
+            )
             proto_operator.sub_stages.append(proto_sub_stage)
 
         # Add the operator to the DAG
         proto_topology.operators.append(proto_operator)
 
     # Populate the data metadata proto
+    proto_dataset_metadata = ProtoDatasetMetadata(
+        dataset_id=dataset_metadata.dataset_id,
+        job_id=dataset_metadata.job_id,
+        start_time=dataset_metadata.start_time,
+    )
     proto_dataset_metadata.topology.CopyFrom(proto_topology)
-    proto_dataset_metadata.job_id = dataset_metadata.job_id
-    proto_dataset_metadata.start_time = dataset_metadata.start_time
-    proto_dataset_metadata.dataset_id = dataset_metadata.dataset_id
 
     return proto_dataset_metadata
 
