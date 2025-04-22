@@ -1,1 +1,1 @@
-"""Local filesystem image classification benchmark implementation.""" 
+"""Local filesystem image classification benchmark implementation."""
