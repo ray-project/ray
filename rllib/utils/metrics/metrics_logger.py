@@ -922,11 +922,9 @@ class MetricsLogger:
             return self.peek_results(reduced_stats_to_return)
 
     def activate_tensor_mode(self):
-        assert not self.tensor_mode
         self._tensor_mode = True
 
     def deactivate_tensor_mode(self):
-        assert self.tensor_mode
         self._tensor_mode = False
 
     @property
