@@ -51,9 +51,7 @@ class ILocalTaskManager {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
-  virtual const absl::flat_hash_map<SchedulingClass,
-                                    std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const = 0;
+  virtual const internal::WorkQueueMap &GetTaskToDispatch() const = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     absl::flat_hash_map<WorkerID, int64_t>>
@@ -101,11 +99,8 @@ class NoopLocalTaskManager : public ILocalTaskManager {
     return false;
   }
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const override {
-    static const absl::flat_hash_map<SchedulingClass,
-                                     std::deque<std::shared_ptr<internal::Work>>>
-        tasks_to_dispatch;
+  const internal::WorkQueueMap &GetTaskToDispatch() const override {
+    static const internal::WorkQueueMap tasks_to_dispatch;
     return tasks_to_dispatch;
   }
 

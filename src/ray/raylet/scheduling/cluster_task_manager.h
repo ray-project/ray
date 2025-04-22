@@ -198,16 +198,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ILocalTaskManager &local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
-  /// through queues to cancel tasks, etc.
-  /// Queue of lease requests that are waiting for resources to become available.
+  /// Scheduling class
+  /// -> ordered maps of [priority -> queues of lease requests waiting for resources]
   /// Tasks move from scheduled -> dispatch | waiting.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      tasks_to_schedule_;
+  internal::WorkQueueMap tasks_to_schedule_;
 
-  /// Queue of lease requests that are infeasible.
+  /// Scheduling class
+  /// -> [maps of priority -> queues of lease requests that are infeasible]
   /// Tasks go between scheduling <-> infeasible.
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      infeasible_tasks_;
+  internal::WorkQueueMap infeasible_tasks_;
 
   const SchedulerResourceReporter scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;

@@ -79,7 +79,8 @@ void OutOfOrderActorSchedulingQueue::Add(
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    TaskSpecification task_spec) {
+    TaskSpecification task_spec,
+    int32_t priority) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more

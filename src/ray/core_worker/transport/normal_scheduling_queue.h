@@ -31,7 +31,7 @@ namespace core {
 /// constraints.
 class NormalSchedulingQueue : public SchedulingQueue {
  public:
-  NormalSchedulingQueue();
+  NormalSchedulingQueue() = default;
 
   void Stop() override;
   bool TaskQueueEmpty() const override;
@@ -46,7 +46,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
                               const Status &,
                               rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+           TaskSpecification task_spec,
+           int32_t priority = 0) override;
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
   // If found, remove the InboundRequest from the queue and return true. Otherwise,
@@ -60,7 +61,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;
   /// Queue with (accept, rej) callbacks for non-actor tasks
-  std::deque<InboundRequest> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::btree_map<int32_t, std::deque<InboundRequest>> pending_normal_tasks_
+      ABSL_GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 

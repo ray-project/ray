@@ -66,7 +66,8 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
                               const Status &,
                               rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+           TaskSpecification task_spec,
+           int32_t priority = 0) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.

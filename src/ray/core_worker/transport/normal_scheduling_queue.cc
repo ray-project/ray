@@ -20,8 +20,6 @@
 namespace ray {
 namespace core {
 
-NormalSchedulingQueue::NormalSchedulingQueue(){};
-
 void NormalSchedulingQueue::Stop() {
   // No-op
 }
@@ -34,7 +32,11 @@ bool NormalSchedulingQueue::TaskQueueEmpty() const {
 // Returns the current size of the task queue.
 size_t NormalSchedulingQueue::Size() const {
   absl::MutexLock lock(&mu_);
-  return pending_normal_tasks_.size();
+  size_t size = 0;
+  for (const auto &[_, task_queue] : pending_normal_tasks_) {
+    size += task_queue.size();
+  }
+  return size;
 }
 
 /// Add a new task's callbacks to the worker queue.
@@ -45,16 +47,17 @@ void NormalSchedulingQueue::Add(
     std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    TaskSpecification task_spec) {
+    TaskSpecification task_spec,
+    int32_t priority) {
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
   // Create a InboundRequest object for the new task, and add it to the queue.
 
-  pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
-                                                 std::move(reject_request),
-                                                 std::move(send_reply_callback),
-                                                 std::move(task_spec)));
+  pending_normal_tasks_[priority].emplace_back(std::move(accept_request),
+                                               std::move(reject_request),
+                                               std::move(send_reply_callback),
+                                               std::move(task_spec));
 }
 
 // Search for an InboundRequest associated with the task that we are trying to cancel.
@@ -62,13 +65,18 @@ void NormalSchedulingQueue::Add(
 // return false.
 bool NormalSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
-       it != pending_normal_tasks_.rend();
-       ++it) {
-    if (it->TaskID() == task_id) {
-      it->Cancel(Status::OK());
-      pending_normal_tasks_.erase(std::next(it).base());
-      return true;
+  for (auto priority_iter = pending_normal_tasks_.begin();
+       priority_iter != pending_normal_tasks_.end();) {
+    auto &task_queue = priority_iter->second;
+    for (auto task_iter = task_queue.begin(); task_iter != task_queue.end();) {
+      if (task_iter->TaskID() == task_id) {
+        task_iter->Cancel(Status::OK());
+        task_queue.erase(task_iter);
+        if (task_queue.empty()) {
+          pending_normal_tasks_.erase(priority_iter);
+        }
+        return true;
+      }
     }
   }
   return false;
@@ -81,8 +89,13 @@ void NormalSchedulingQueue::ScheduleRequests() {
     {
       absl::MutexLock lock(&mu_);
       if (!pending_normal_tasks_.empty()) {
-        head = std::move(pending_normal_tasks_.front());
-        pending_normal_tasks_.pop_front();
+        auto priority_iter = pending_normal_tasks_.begin();
+        auto &task_queue = priority_iter->second;
+        head = std::move(task_queue.front());
+        task_queue.pop_front();
+        if (task_queue.empty()) {
+          pending_normal_tasks_.erase(priority_iter);
+        }
       } else {
         return;
       }

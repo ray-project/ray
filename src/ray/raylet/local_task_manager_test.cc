@@ -343,6 +343,8 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
   // Only task f in queue now as g is dispatched.
   ASSERT_EQ(tasks_to_dispatch_.size(), 1);
+  ASSERT_EQ(tasks_to_dispatch_.begin()->second.size(), 1);
+  ASSERT_EQ(tasks_to_dispatch_.begin()->second.begin()->second.size(), 3);
 }
 
 int main(int argc, char **argv) {
