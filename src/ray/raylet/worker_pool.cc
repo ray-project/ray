@@ -47,7 +47,6 @@ DEFINE_stats(worker_register_time_ms,
 
 namespace {
 
-// A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::ClientConnection> &connection) {
@@ -70,17 +69,16 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
   return nullptr;
 }
 
-// A helper function to remove a worker from a list. Returns true if the worker
-// was found and removed.
+// Remove the worker from the set, returning true if found and removed.
 bool RemoveWorker(
     std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
 
-// If both `ask` and `have` are set, they must match. If either of them is not set, it
-// is considered a match.
-bool OptionalsMatchOrEmpty(const std::optional<bool> &ask, const std::optional<bool> &have) {
+// Return true if the optionals' values match or if either of them is empty.
+bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
+                                 const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
 }
 
@@ -1287,7 +1285,9 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
   // which is checked below. The pop_worker_request for a task rooted in a detached
   // actor will have the job ID of the job that created the detached actor.
-  if (!pop_worker_request.root_detached_actor_id.IsNil() && !worker.GetRootDetachedActorId().IsNil() && pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
+  if (!pop_worker_request.root_detached_actor_id.IsNil() &&
+      !worker.GetRootDetachedActorId().IsNil() &&
+      pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
@@ -1300,12 +1300,13 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
-  if (!OptionalsMatchOrEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_gpu, worker.GetIsGpu())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // If the request asks for a is_actor_worker, and the worker is assigned a different
   // is_actor_worker, then skip it.
-  if (!OptionalsMatchOrEmpty(pop_worker_request.is_actor_worker, worker.GetIsActorWorker())) {
+  if (!OptionalsMatchOrEitherEmpty(pop_worker_request.is_actor_worker,
+                                   worker.GetIsActorWorker())) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
   // Skip workers with a mismatched runtime_env.
