@@ -171,7 +171,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_arrow_block.py"],
     tags = [
         "data_non_parallel",
@@ -468,6 +468,20 @@ py_test(
     name = "test_json",
     size = "medium",
     srcs = ["tests/test_json.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_logging_dataset",
+    size = "small",
+    srcs = ["tests/test_logging_dataset.py"],
     tags = [
         "exclusive",
         "team:data",

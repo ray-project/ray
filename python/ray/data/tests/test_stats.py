@@ -88,6 +88,8 @@ def gen_expected_metrics(
             "'num_task_outputs_generated': N",
             "'bytes_task_outputs_generated': N",
             "'rows_task_outputs_generated': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'num_outputs_of_finished_tasks': N",
@@ -119,6 +121,8 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
+            "'row_outputs_taken': N",
+            "'block_outputs_taken': N",
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             (
@@ -427,7 +431,7 @@ def test_dataset_stats_basic(
         ds = ds.map_batches(dummy_map_batches).materialize()
 
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N ReadRange->MapBatches(dummy_map_batches): "
@@ -453,7 +457,7 @@ def test_dataset_stats_basic(
 
         ds = ds.map(dummy_map_batches).materialize()
         if enable_auto_log_stats:
-            logger_args, logger_kwargs = mock_logger.call_args
+            logger_args, logger_kwargs = mock_logger.call_args_list[-2]
 
             assert canonicalize(logger_args[0]) == (
                 f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
@@ -603,6 +607,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -721,6 +727,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_task_outputs_generated: N,\n"
         "      bytes_task_outputs_generated: N,\n"
         "      rows_task_outputs_generated: N,\n"
+        "      row_outputs_taken: N,\n"
+        "      block_outputs_taken: N,\n"
         "      num_outputs_taken: N,\n"
         "      bytes_outputs_taken: N,\n"
         "      num_outputs_of_finished_tasks: N,\n"
@@ -794,6 +802,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_task_outputs_generated: N,\n"
         "            bytes_task_outputs_generated: N,\n"
         "            rows_task_outputs_generated: N,\n"
+        "            row_outputs_taken: N,\n"
+        "            block_outputs_taken: N,\n"
         "            num_outputs_taken: N,\n"
         "            bytes_outputs_taken: N,\n"
         "            num_outputs_of_finished_tasks: N,\n"

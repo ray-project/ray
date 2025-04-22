@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_mgr.h"
 
 #include <memory>
 #include <string>
@@ -814,7 +814,26 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
       // (for example gpu resource when there's only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
-      if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
+
+      // check to make sure the placement group shouldn't be in PENDING or REMOVED state
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::PENDING)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "PENDING placement group should have no scheduled bundles on the dead node.";
+      RAY_CHECK(iter->second->GetState() != rpc::PlacementGroupTableData::REMOVED)
+              .WithField(iter->second->GetPlacementGroupID())
+              .WithField(node_id)
+          << "REMOVED placement group should have no scheduled bundles on the dead node.";
+
+      if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
+        // Only update the placement group state to RESCHEDULING if it is in CREATED
+        // state. We don't need to update the placement group state or add to the
+        // pending queue for other states (RESCHEDULING, PREPARED). This is because
+        // RESCHEDULING and PREPARED state indicate that the placement group is in
+        // scheduling process and when completing the scheduling, we will check
+        // whether all bundles in the placement group has been successfully scheduled.
+        // If not, the unplaced bundles will be rescheduled and thus the unplaced
+        // bundles due to the node death will be handled there.
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         iter->second->GetMutableStats()->set_scheduling_state(
             rpc::PlacementGroupStats::QUEUED);
