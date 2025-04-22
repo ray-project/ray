@@ -61,7 +61,15 @@ def swallow_cancelled(task: asyncio.Task):
     try:
         task.result()
     except (RequestCancelledError, asyncio.CancelledError):
+        # We expect RequestCancelledError to be raised because for disconnect or
+        # timeouts, we explicitly call resp.cancel(). To avoid "Task exception
+        # was never retrieved" errors from spamming the proxy logs, swallow
+        # them here.
         pass
+    except Exception:
+        # For all other exceptions, do not catch and instead re-raise here so that
+        # they will be logged properly.
+        raise
 
 
 class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
