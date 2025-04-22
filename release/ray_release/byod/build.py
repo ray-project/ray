@@ -13,12 +13,18 @@ from ray_release.test import (
     Test,
 )
 
+bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
 DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
-RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+RELEASE_BYOD_DIR = (
+    os.path.join(bazel_workspace_dir, "release/ray_release/byod")
+    if bazel_workspace_dir
+    else os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+)
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"

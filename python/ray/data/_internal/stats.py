@@ -58,7 +58,7 @@ class Timer:
     """Helper class for tracking accumulated time (in seconds)."""
 
     def __init__(self):
-        self._value: float = 0
+        self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
@@ -72,7 +72,7 @@ class Timer:
             self.add(time.perf_counter() - time_start)
 
     def add(self, value: float) -> None:
-        self._value += value
+        self._total += value
         if value < self._min:
             self._min = value
         if value > self._max:
@@ -80,7 +80,7 @@ class Timer:
         self._total_count += 1
 
     def get(self) -> float:
-        return self._value
+        return self._total
 
     def min(self) -> float:
         return self._min
@@ -89,7 +89,7 @@ class Timer:
         return self._max
 
     def avg(self) -> float:
-        return self._value / self._total_count if self._total_count else float("inf")
+        return self._total / self._total_count if self._total_count else float("inf")
 
 
 class _DatasetStatsBuilder:
@@ -313,6 +313,11 @@ class _StatsActor:
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
+        self.data_operator_queued_blocks = Gauge(
+            "data_operator_queued_blocks",
+            description="Number of queued blocks for operator",
+            tag_keys=operator_tags,
+        )
         self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
@@ -407,7 +412,7 @@ class _StatsActor:
             self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
             self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
             self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("rows_task_outputs_generated", 0), tags)
+            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
 
@@ -487,6 +492,7 @@ class _StatsActor:
                     "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
+                    "queued_blocks": 0,
                 }
                 for operator in operator_tags
             },
@@ -526,6 +532,9 @@ class _StatsActor:
             )
             self.data_operator_estimated_total_rows.set(
                 op_state.get("total_rows", 0), operator_tags
+            )
+            self.data_operator_queued_blocks.set(
+                op_state.get("queued_blocks", 0), operator_tags
             )
 
             # Get state code directly from enum
