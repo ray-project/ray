@@ -1284,15 +1284,15 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
   // For scheduling requests with a root detached actor ID, ensure that either the
   // worker has _no_ detached actor ID or it matches the request.
-  // NOTE(edoakes): this does not assert anything about the worker job ID, which is
-  // checked below. The pop_worker_request will always have the job ID of the job
-  // that created it.
+  // NOTE(edoakes): the job ID for a worker with no detached actor ID must still match,
+  // which is checked below. The pop_worker_request for a task rooted in a detached
+  // actor will have the job ID of the job that created the detached actor.
   if (!pop_worker_request.root_detached_actor_id.IsNil() && !worker.GetRootDetachedActorId().IsNil() && pop_worker_request.root_detached_actor_id != worker.GetRootDetachedActorId()) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
 
-  // Only consider workers that haven't been assigned to a job or have been assigned
-  // to the matching job.
+  // Only consider workers that haven't been assigned to a job yet or have been assigned
+  // to the requested job.
   const auto worker_job_id = worker.GetAssignedJobId();
   if (!worker_job_id.IsNil() && pop_worker_request.job_id != worker_job_id) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
