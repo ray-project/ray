@@ -380,6 +380,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   result = std::make_shared<RayObject>(
       std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
   if (result->IsException()) {
+    RAY_LOG(INFO) << "Object is exception: " << object_id;
     // If the result is an exception, currently we use zero-copy
     // deserialization to create the frontend exception object. This makes it
     // easy for the frontend code to leak the shared_ptr<MutableObjectBuffer>,
