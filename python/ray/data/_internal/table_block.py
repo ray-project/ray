@@ -8,10 +8,10 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Sequence,
+    Tuple,
     TypeVar,
     Union,
-    Tuple,
-    Sequence,
 )
 
 import numpy as np
@@ -20,21 +20,26 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
+from ray.data._internal.util import (
+    NULL_SENTINEL,
+    MiB,
+    find_partition_index,
+    is_nan,
+    keys_equal,
+)
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockType,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
-    BlockColumnAccessor,
     U,
 )
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
@@ -196,7 +201,7 @@ class TableBlockAccessor(BlockAccessor):
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         raise NotImplementedError
 
     def to_block(self) -> Block:
@@ -524,6 +529,31 @@ class TableBlockAccessor(BlockAccessor):
 
         ret = builder.build()
         return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
+
+    def _find_partitions_sorted(
+        self,
+        boundaries: List[Tuple[Any]],
+        sort_key: "SortKey",
+    ):
+        partitions = []
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
+        bounds = [
+            find_partition_index(self._table, boundary, sort_key)
+            for boundary in boundaries
+        ]
+
+        last_idx = 0
+        for idx in bounds:
+            partitions.append(self._table[last_idx:idx])
+            last_idx = idx
+        partitions.append(self._table[last_idx:])
+        return partitions
 
     @classmethod
     def normalize_block_types(
