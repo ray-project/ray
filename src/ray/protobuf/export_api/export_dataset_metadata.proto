@@ -59,7 +59,7 @@ message ExportDatasetMetadata {
   // The dataset ID
   string dataset_id = 2;
 
-  // The job ID
+  // The Ray Job ID
   string job_id = 3;
 
   // The timestamp when execution started (in seconds since epoch)

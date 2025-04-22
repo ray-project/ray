@@ -179,17 +179,17 @@ def dataset_metadata_to_proto(dataset_metadata: DatasetMetadata) -> Any:
     return proto_dataset_metadata
 
 
-def get_data_metadata_exporter() -> "DataMetadataExporter":
-    """Get the data metadata exporter instance.
+def get_dataset_metadata_exporter() -> "DatasetMetadataExporter":
+    """Get the dataset metadata exporter instance.
 
     Returns:
-        The data metadata exporter instance.
+        The dataset metadata exporter instance.
     """
-    return LoggerDataMetadataExporter.create_if_enabled()
+    return LoggerDatasetMetadataExporter.create_if_enabled()
 
 
-class DataMetadataExporter(ABC):
-    """Abstract base class for data metadata exporters.
+class DatasetMetadataExporter(ABC):
+    """Abstract base class for dataset metadata exporters.
 
     Implementations of this interface can export Ray Data metadata to various destinations
     like log files, databases, or monitoring systems.
@@ -206,7 +206,7 @@ class DataMetadataExporter(ABC):
 
     @classmethod
     @abstractmethod
-    def create_if_enabled(cls) -> Optional["DataMetadataExporter"]:
+    def create_if_enabled(cls) -> Optional["DatasetMetadataExporter"]:
         """Create an exporter instance if the export functionality is enabled.
 
         Returns:
@@ -215,8 +215,8 @@ class DataMetadataExporter(ABC):
         pass
 
 
-class LoggerDataMetadataExporter(DataMetadataExporter):
-    """Data metadata exporter implementation that uses the Ray export event logger.
+class LoggerDatasetMetadataExporter(DatasetMetadataExporter):
+    """Dataset metadata exporter implementation that uses the Ray export event logger.
 
     This exporter writes dataset metadata to log files using Ray's export event system.
     """
@@ -239,19 +239,19 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
         self._export_logger.send_event(data_metadata_proto)
 
     @classmethod
-    def create_if_enabled(cls) -> Optional["LoggerDataMetadataExporter"]:
+    def create_if_enabled(cls) -> Optional["LoggerDatasetMetadataExporter"]:
         """Create a logger-based exporter if the export API is enabled.
 
         Returns:
-            A LoggerDataMetadataExporter instance if enabled, None otherwise.
+            A LoggerDatasetMetadataExporter instance if enabled, None otherwise.
         """
         # Proto schemas should be imported here to prevent serialization errors
         from ray.core.generated.export_event_pb2 import ExportEvent
 
-        is_data_metadata_export_api_enabled = check_export_api_enabled(
+        is_dataset_metadata_export_api_enabled = check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_DATASET_METADATA
         )
-        if not is_data_metadata_export_api_enabled:
+        if not is_dataset_metadata_export_api_enabled:
             # The export API is not enabled, so we shouldn't create an exporter
             return None
 
@@ -259,19 +259,15 @@ class LoggerDataMetadataExporter(DataMetadataExporter):
             ray._private.worker._global_node.get_session_dir_path(), "logs"
         )
 
-        logger = None
         try:
             logger = get_export_event_logger(
                 EventLogType.DATASET_METADATA,
                 log_directory,
             )
+            return LoggerDatasetMetadataExporter(logger)
         except Exception:
             logger.exception(
                 "Unable to initialize the export event logger, so no Dataset Metadata export "
                 "events will be written."
             )
-
-        if logger is None:
             return None
-
-        return LoggerDataMetadataExporter(logger)

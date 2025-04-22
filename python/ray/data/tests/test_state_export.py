@@ -6,6 +6,7 @@ from dataclasses import asdict
 
 from ray.data._internal.stats import _get_or_create_stats_actor
 from ray.data._internal.metadata_exporter import Topology, Operator
+from ray.tests.conftest import _ray_start
 
 STUB_JOB_ID = "stub_job_id"
 STUB_DATASET_ID = "stub_dataset_id"
@@ -26,32 +27,32 @@ def _get_exported_data():
 
     with open(exported_file, "r") as f:
         data = f.readlines()
-    print(exported_file)
+
     return [json.loads(line) for line in data]
 
 
 @pytest.fixture
 def ray_start_cluster_with_export_api_config(shutdown_only):
     """Enable export API for the EXPORT_TRAIN_RUN resource type."""
-    ray.init(
+    with _ray_start(
         num_cpus=4,
         runtime_env={
             "env_vars": {
                 "RAY_enable_export_api_write_config": "EXPORT_DATASET_METADATA"
             }
         },
-    )
-    yield
+    ) as res:
+        yield res
 
 
 @pytest.fixture
 def ray_start_cluster_with_export_api_write(shutdown_only):
     """Enable export API for all resource types."""
-    ray.init(
+    with _ray_start(
         num_cpus=4,
         runtime_env={"env_vars": {"RAY_enable_export_api_write": "1"}},
-    )
-    yield
+    ) as res:
+        yield res
 
 
 @pytest.fixture

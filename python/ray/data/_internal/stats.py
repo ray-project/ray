@@ -26,7 +26,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.data._internal.metadata_exporter import Topology, get_data_metadata_exporter
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ class _StatsActor:
         self._ray_nodes_cache: Dict[str, str] = {}
 
         # Initialize the metadata exporter
-        self._metadata_exporter = get_data_metadata_exporter()
+        self._metadata_exporter = get_dataset_metadata_exporter()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -779,7 +779,10 @@ class _StatsManager:
     # Other methods
 
     def register_dataset_to_stats_actor(
-        self, dataset_tag, operator_tags, topology=None
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
     ):
         """Register a dataset with the stats actor.
 
