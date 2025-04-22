@@ -671,7 +671,7 @@ The requests loop until canceled with `Control-C`.
 
 While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. Metric report interval rates can be modified using configuration variable metrics_report_interval_ms. 
+The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. The metrics report interval rate can be modified using the following configuration option (note that this is not a stable public API and is subject to change without warning):
 
 ```console
 
