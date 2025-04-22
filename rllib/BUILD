@@ -562,6 +562,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # CQL
 # Pendulum
 py_test(

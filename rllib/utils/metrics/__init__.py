@@ -152,6 +152,7 @@ NUM_TARGET_UPDATES = "num_target_updates"
 TRAINING_ITERATION_TIMER = "training_iteration"
 # Duration of a `Algorithm.evaluate()` call.
 EVALUATION_ITERATION_TIMER = "evaluation_iteration"
+OFFLINE_EVALUATION_ITERATION_TIMER = "offline_evaluation_iteration_timer"
 # Duration of a single `training_step()` call.
 TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"

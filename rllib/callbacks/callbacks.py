@@ -108,6 +108,27 @@ class RLlibCallback(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
+    def on_evaluate_offline_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        **kwargs,
+    ) -> None:
+        """Callback before offline evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics before running the next round of offline
+                evaluation.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_evaluate_end(
         self,
         *,
@@ -126,6 +147,31 @@ class RLlibCallback(metaclass=_CallbackMeta):
                 used to log custom metrics after the most recent evaluation round.
             evaluation_metrics: Results dict to be returned from algorithm.evaluate().
                 You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_offline_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the offline evaluation is done.
+
+        Runs at the end of Algorithm.evaluate_offline().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            metrics_logger: The MetricsLogger object inside the `Algorithm`. Can be
+                used to log custom metrics after the most recent offline evaluation
+                round.
+            evaluation_metrics: Results dict to be returned from
+                Algorithm.evaluate_offline(). You can mutate this object to add
+                additional metrics.
             kwargs: Forward compatibility placeholder.
         """
         pass

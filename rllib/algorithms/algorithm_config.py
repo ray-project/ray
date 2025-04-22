@@ -425,6 +425,8 @@ class AlgorithmConfig(_Config):
         self.callbacks_on_episode_end = None
         self.callbacks_on_evaluate_start = None
         self.callbacks_on_evaluate_end = None
+        self.callbacks_on_evaluate_offline_start = None
+        self.callbacks_on_evaluate_offline_end = None
         self.callbacks_on_sample_end = None
         self.callbacks_on_train_result = None
 
@@ -527,6 +529,7 @@ class AlgorithmConfig(_Config):
         #  EnvRunner (connector) states.
         self.sync_filters_on_rollout_workers_timeout_s = 10.0
         # Offline evaluation.
+        self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 1
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -2501,6 +2504,12 @@ class AlgorithmConfig(_Config):
         on_train_result: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_offline_start: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_evaluate_offline_end: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
         on_env_runners_recreated: Optional[
             Union[Callable, List[Callable]]
         ] = NotProvided,
@@ -2609,6 +2618,10 @@ class AlgorithmConfig(_Config):
             self.callbacks_on_evaluate_start = on_evaluate_start
         if on_evaluate_end is not NotProvided:
             self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_evaluate_offline_start is not NotProvided:
+            self.callbacks_on_evaluate_offline_start = on_evaluate_offline_start
+        if on_evaluate_offline_end is not NotProvided:
+            self.callbacks_on_evaluate_offline_end = on_evaluate_offline_end
         if on_env_runners_recreated is not NotProvided:
             self.callbacks_on_env_runners_recreated = on_env_runners_recreated
         if on_offline_eval_runners_recreated is not NotProvided:
@@ -2651,6 +2664,7 @@ class AlgorithmConfig(_Config):
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
         # Offline evaluation.
+        offline_evaluation_interval: Optional[int] = NotProvided,
         num_offline_eval_runners: Optional[int] = NotProvided,
         offline_loss_for_module_fn: Optional[Callable] = NotProvided,
         offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
@@ -2767,6 +2781,10 @@ class AlgorithmConfig(_Config):
                 iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
+            offline_evaluation_interval: Evaluate offline with every
+                `offline_evaluation_interval` training iterations. The offline evaluation
+                stats are reported under the "evaluation/offline_evaluation" metric key. Set
+                to None (or 0) for no offline evaluation.
             num_offline_eval_runners: Number of OfflineEvaluationRunner actors to create
                 for parallel evaluation. Setting this to 0 forces sampling to be done in the
                 local OfflineEvaluationRunner (main process or the Algorithm's actor when
@@ -2909,6 +2927,8 @@ class AlgorithmConfig(_Config):
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
         # Offline evaluation.
+        if offline_evaluation_interval is not NotProvided:
+            self.offline_evaluation_interval = offline_evaluation_interval
         if num_offline_eval_runners is not NotProvided:
             self.num_offline_eval_runners = num_offline_eval_runners
         if offline_loss_for_module_fn is not NotProvided:

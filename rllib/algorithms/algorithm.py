@@ -145,6 +145,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
     OFFLINE_EVAL_RUNNER_RESULTS,
+    OFFLINE_EVALUATION_ITERATION_TIMER,
     RESTORE_ENV_RUNNERS_TIMER,
     RESTORE_EVAL_ENV_RUNNERS_TIMER,
     RESTORE_OFFLINE_EVAL_RUNNERS_TIMER,
@@ -1011,7 +1012,7 @@ class Algorithm(Checkpointable, Trainable):
         )
 
         evaluate_offline_this_iter = (
-            self.config.offline_evaluation_duration
+            self.config.offline_evaluation_interval
             and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
         )
 
@@ -1044,6 +1045,18 @@ class Algorithm(Checkpointable, Trainable):
         # Sequential: Train (already done above), then evaluate.
         if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             eval_results = self._run_one_evaluation(parallel_train_future=None)
+
+        if evaluate_offline_this_iter:
+            offline_eval_results = self._run_one_offline_evaluation()
+            # If we already have online evaluation results merge the offline
+            # evaluation results.
+            if eval_results:
+                eval_results[EVALUATION_RESULTS].update(
+                    offline_eval_results[EVALUATION_RESULTS]
+                )
+            # Otherwise, just assign.
+            else:
+                eval_results = offline_eval_results
 
         # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
@@ -1093,6 +1106,62 @@ class Algorithm(Checkpointable, Trainable):
         return results
 
     @PublicAPI
+    def evaluate_offline(self):
+        """Evaluates current policy offline under `evaluation_config` settings.
+
+        Returns:
+            A ResultDict only containing the offline evaluation results from the current
+            iteration.
+        """
+        # Call the `_before_evaluate_offline` hook.
+        self._before_evaluate_offline()
+
+        # First synchronize weights.
+        self.offline_eval_runner_group.sync_weights(
+            from_worker_or_learner_group=self.learner_group,
+            inference_only=self.config.offline_eval_rl_module_inference_only,
+        )
+
+        # TODO (simon): Check, how we can sync without a local runner. Also,
+        # connectors are in the data pipeline not directly in the runner applied.
+        # if self.config.broadcast_offline_eval_runner_states:
+        #     # TODO (simon): Create offline equivalent.
+        #     with self.metrics.log_time(TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER):
+        #         self.offline_eval_runner_group.sync_runner_states(
+        #             from_runner=
+        #         )
+
+        make_callback(
+            "on_evaluate_offline_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
+            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+        )
+
+        # Evaluate with fixed duration.
+        self._evaluate_offline_with_fixed_duration()
+        # Reduce the evaluation results.
+        eval_results = self.metrics.reduce(
+            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            return_stats_obj=False,
+        )
+
+        # Trigger `on_evaluate_offline_end` callback.
+        make_callback(
+            "on_evaluate_offline_end",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                evaluation_metrics=eval_results,
+            ),
+        )
+
+        # Also return the results here for convenience.
+        return {EVALUATION_RESULTS: {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}}
+
+    @PublicAPI
     def evaluate(
         self,
         parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
@@ -1114,7 +1183,7 @@ class Algorithm(Checkpointable, Trainable):
         self._before_evaluate()
 
         if self.evaluation_dataset is not None:
-            return self._run_offline_evaluation()
+            return self._run_offline_evaluation_old_api_stack()
 
         if self.config.enable_env_runner_and_connector_v2:
             if (
@@ -1164,27 +1233,6 @@ class Algorithm(Checkpointable, Trainable):
                 from_worker_or_learner_group=weights_src,
                 inference_only=True,
             )
-
-        if self.offline_eval_runner_group:
-            self.offline_eval_runner_group.sync_weights(
-                from_worker_or_learner_group=weights_src,
-                # Note, in offline evaluation the full module might need to be
-                # used (e.g. to compute a validation loss).
-                inference_only=self.config.offline_eval_rl_module_inference_only,
-            )
-
-            # TODO (simon): Check, how the states could be merged and then
-            # distributed again, e.g. with a `MeanStdFilter` in the learner.
-            # if self.evaluation_config.broadcast_offline_eval_runner_states:
-            #     with self.metrics.log_time(
-            #             (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
-            #         ):
-            #             self.eval_env_runner_group.sync_runner_states(
-            #                 config=self.evaluation_config,
-            #                 from_worker=,
-            #                 env_to_module=self.env_to_module_connector,
-            #                 module_to_env=self.module_to_env_connector,
-            #             )
 
         make_callback(
             "on_evaluate_start",
@@ -1244,18 +1292,6 @@ class Algorithm(Checkpointable, Trainable):
         # Can't find a good way to run this evaluation -> Wait for next iteration.
         else:
             eval_results = {}
-
-        if self.offline_eval_runner_group:
-            if self.offline_eval_runner_group.num_healthy_remote_runners > 0:
-                # Running in automatic duration mode (parallel with training step).
-                if self.config.offline_evaluation_duration == "auto":
-                    # TODO (simon, sven): Check, if this `parallel_train_future`
-                    # works with both online and offline evaluation.
-                    assert parallel_train_future is not None
-                    self._evaluate_offline_with_auto_duration(parallel_train_future)
-                # Running with a fixed amount of data to sample.
-                else:
-                    self._evaluate_offline_with_fixed_duration()
 
         if self.config.enable_env_runner_and_connector_v2:
             eval_results = self.metrics.reduce(
@@ -1394,88 +1430,6 @@ class Algorithm(Checkpointable, Trainable):
             env_runner_results = None
 
         return env_runner_results, env_steps, agent_steps, all_batches
-
-    def _evaluate_offline_with_auto_duration(self, parallel_train_future) -> None:
-        logger.info(
-            f"Evaluating current state of {self} for as long as the parallelly "
-            "running training step takes."
-        )
-
-        all_metrics = []
-
-        def _offline_eval_runner_remote(runner, num, round, iter):
-            # Sample AND get_metrics, but only return metrics (and steps actually taken)
-            # to save time.
-            metrics = runner.run(
-                num_samples=num,
-            )
-            # TODO (simon): Maybe return metrics here and do not return anything from run?
-            # metrics = runner.get_metrics()
-
-            env_steps = metrics[ALL_MODULES][NUM_ENV_STEPS_SAMPLED]
-            return env_steps, metrics, iter
-
-        # How many episodes have we run (across all eval workers)?
-        num_healthy_workers = self.offline_eval_runner_group.num_healthy_remote_runners
-
-        env_steps = 0
-        algo_iteration = self.iteration
-
-        _round = -1
-        while (
-            # In case all the remote evaluation workers die during a round of
-            # evaluation, we need to stop.
-            num_healthy_workers > 0
-            # Run at least for one round AND at least for as long as the parallel
-            # training step takes.
-            and (_round == -1 or not parallel_train_future.done())
-        ):
-            _round += 1
-
-            results = self.offline_eval_runner_group.fetch_ready_async_reqs(
-                return_obj_refs=False, timeout_seconds=0.0
-            )
-            self.offline_eval_runner_group.foreach_runner_async(
-                func=functools.partial(
-                    _offline_eval_runner_remote,
-                    num=self.evaluation_config.dataset_num_iters_per_eval_runner,
-                    round=_round,
-                    iter=algo_iteration,
-                ),
-            )
-            for wid, (env_s, metrics, iter) in results:
-                # Ignore eval results kicked off in an earlier iteration.
-                # (those results would be outdated and thus misleading).
-                if iter != self.iteration:
-                    continue
-                env_steps += env_s
-                all_metrics.append(metrics)
-            time.sleep(0.01)
-
-            # Update correct number of healthy remote workers.
-            num_healthy_workers = (
-                self.offline_eval_runner_group.num_healthy_remote_runners
-            )
-
-        if num_healthy_workers == 0:
-            logger.warning(
-                "Calling `run()` on your remote offline evaluation runner(s) "
-                "resulted in all runners crashing! Make sure a) your offline data is not"
-                " corrupted, b) you have enough offline evaluation runner(s)"
-                "(`config.evaluation(num_offline_eval_runners=...)`) to cover for "
-                "occasional losses, and c) you use the `config.evaluation("
-                "restart_failed_offline_eval_runners=True)` setting."
-            )
-
-        self.metrics.merge_and_log_n_dicts(
-            all_metrics,
-            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
-        )
-        # TODO (simon): Use instead a metric such as num_batches.
-        # num_episodes = self.metrics.peek(
-        #     (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS, NUM_EPISODES),
-        #     default=0,
-        # )
 
     def _evaluate_with_auto_duration(self, parallel_train_future):
         logger.info(
@@ -1956,6 +1910,8 @@ class Algorithm(Checkpointable, Trainable):
             # Restore the correct data iterator split stream.
             # TODO (simon): Define a `restore` method in the `RunnerGroup`
             # such that we do not have to check here for the group.
+            # Also get a different streaming split if a runner fails and is not
+            # recreated.
             runner_group.foreach_runner(
                 func="set_dataset_iterator",
                 remote_worker_ids=restored,
@@ -3124,6 +3080,10 @@ class Algorithm(Checkpointable, Trainable):
         """Pre-evaluation callback."""
         pass
 
+    @DeveloperAPI
+    def _before_evaluate_offline(self):
+        pass
+
     @staticmethod
     def _get_env_id_and_creator(
         env_specifier: Union[str, EnvType, None], config: AlgorithmConfig
@@ -3429,6 +3389,38 @@ class Algorithm(Checkpointable, Trainable):
         # result dict.
         return self.metrics.reduce(), train_iter_ctx
 
+    def _run_one_offline_evaluation(self):
+        """Runs offline evaluation step via `self.offline_evaluate()` and handling runner
+        failures.
+
+        Returns:
+            The results dict from the offline evaluation call.
+        """
+        # Restore crashed offline evaluation runners.
+        if self.offline_eval_runner_group is not None:
+            with self.metrics.log_time((TIMERS, RESTORE_OFFLINE_EVAL_RUNNERS_TIMER)):
+                self.restore_offline_eval_runners(self.offline_eval_runner_group)
+
+        # Run one offline evaluation and time it.
+        with self.metrics.log_time((TIMERS, OFFLINE_EVALUATION_ITERATION_TIMER)):
+            eval_results = self.evaluate_offline()
+
+        # After evaluation, do a round of health check on remote eval runners to see if
+        # any of the failed runners are back.
+        if self.offline_eval_runner_group is not None:
+            # Add number of healthy evaluation runners after this iteration.
+            eval_results[
+                "num_healthy_offline_eval_runners"
+            ] = self.offline_eval_runner_group.num_healthy_remote_runners
+            eval_results[
+                "offline_runners_actor_manager_num_outstanding_async_reqs"
+            ] = self.offline_eval_runner_group.num_in_flight_async_reqs
+            eval_results[
+                "num_remote_offline_eval_runners_restarts"
+            ] = self.offline_eval_runner_group.num_remote_runner_restarts
+
+        return {EVALUATION_RESULTS: eval_results}
+
     def _run_one_evaluation(
         self,
         parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
@@ -3452,10 +3444,6 @@ class Algorithm(Checkpointable, Trainable):
             else:
                 with self._timers["restore_eval_workers"]:
                     self.restore_env_runners(self.eval_env_runner_group)
-
-        if self.offline_eval_runner_group is not None:
-            with self.metrics.log_time((TIMERS, RESTORE_OFFLINE_EVAL_RUNNERS_TIMER)):
-                self.restore_offline_eval_runners(self.offline_eval_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -3485,20 +3473,6 @@ class Algorithm(Checkpointable, Trainable):
             eval_results[
                 "num_remote_worker_restarts"
             ] = self.eval_env_runner_group.num_remote_worker_restarts()
-
-        # After evaluation, do a round of health check on remote eval workers to see if
-        # any of the failed workers are back.
-        if self.offline_eval_runner_group is not None:
-            # Add number of healthy evaluation workers after this iteration.
-            eval_results[
-                "num_healthy_offline_eval_workers"
-            ] = self.offline_eval_runner_group.num_healthy_remote_runners
-            eval_results[
-                "offline_runners_actor_manager_num_outstanding_async_reqs"
-            ] = self.offline_eval_runner_group.num_in_flight_async_reqs
-            eval_results[
-                "num_remote_offline_eval_runners_restarts"
-            ] = self.offline_eval_runner_group.num_remote_runner_restarts
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -3538,7 +3512,7 @@ class Algorithm(Checkpointable, Trainable):
 
         return train_results, evaluation_results, train_iter_ctx
 
-    def _run_offline_evaluation(self):
+    def _run_offline_evaluation_old_api_stack(self):
         """Runs offline evaluation via `OfflineEvaluator.estimate_on_dataset()` API.
 
         This method will be used when `evaluation_dataset` is provided.
