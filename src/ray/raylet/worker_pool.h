@@ -793,7 +793,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
-  /// Checks if the worker can be used to satisfy the request.
+  /// Returns if the worker can be used to satisfy the request.
   ///
   /// \param[in] worker The worker.
   /// \param[in] pop_worker_request The pop worker request.
