@@ -111,8 +111,6 @@ class BCIRLPPOTorchMetaLearner(TorchMetaLearner):
         others_loss_per_module: List[Dict[ModuleID, TensorType]] = None,
         **kwargs,
     ):
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
 
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:

@@ -39,7 +39,21 @@ config = (
     .env_runners(
         num_env_runners=0,
     )
-    .learners(num_learners=0)
+    .learners(
+        num_learners=0,
+    )
+    .training(
+        lr=1e-4,
+        train_batch_size_per_learner=256,
+        ppo_lr=1e-4,
+        ppo_train_batch_size_per_learner=256 * 5,
+        ppo_num_epochs=2,
+        ppo_minibatch_size=256 // 4,
+        ppo_clip_param=0.2,
+        ppo_vf_loss_coeff=0.5,
+        ppo_entropy_coeff=0.001,
+        ppo_kl_coeff=0.0,
+    )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
     # arguments for the `ray.data.Dataset` read method can be
