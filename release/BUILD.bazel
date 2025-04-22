@@ -637,3 +637,18 @@ py_test(
         bk_require("pytest"),
     ],
 )
+
+py_binary(
+    name = "build_pipeline",
+    srcs = ["ray_release/scripts/build_pipeline.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_release",
+    ],
+    data = glob(["**/*.yaml"]) + [
+        "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
+        "ray_release/byod/byod.custom.Dockerfile",
+        "ray_release/byod/byod.Dockerfile",
+    ]
+)
