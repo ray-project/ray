@@ -1,6 +1,5 @@
 from typing import Dict, Iterator, Tuple
 import logging
-import multiprocessing
 from abc import ABC, abstractmethod
 
 import torch
@@ -14,16 +13,6 @@ from dataloader_factory import BaseDataLoaderFactory
 from logger_utils import ContextLoggerAdapter
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-if torch.cuda.is_available():
-    try:
-        multiprocessing.set_start_method("spawn", force=True)
-        logger.info(
-            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-        )
-    except RuntimeError:
-        logger.info("Multiprocessing start method already set")
 
 
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
