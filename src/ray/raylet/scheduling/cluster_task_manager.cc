@@ -303,9 +303,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
-  for (auto priority_map_iter = infeasible_tasks_.begin();
-       priority_map_iter != infeasible_tasks_.end();) {
-    auto &work_queue = priority_map_iter->second.begin()->second;
+  for (auto shapes_it = infeasible_tasks_.begin();
+       shapes_it != infeasible_tasks_.end();) {
+    auto &work_queue = shapes_it->second.begin()->second;
     RAY_CHECK(!work_queue.empty())
         << "Empty work queue shouldn't have been added as a infeasible shape.";
     // We only need to check the first item because every task has the same shape.
@@ -328,16 +328,14 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for task "
                      << task.GetTaskSpecification().TaskId();
-      priority_map_iter++;
-      break;
+      shapes_it++;
     } else {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
       // Move all tasks of the same shape to tasks_to_schedule_.
-      tasks_to_schedule_[priority_map_iter->first] = priority_map_iter->second;
-      infeasible_tasks_.erase(priority_map_iter++);
-      break;
+      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      infeasible_tasks_.erase(shapes_it++);
     }
   }
 }
