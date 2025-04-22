@@ -38,6 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.stats import Timer
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
@@ -546,7 +547,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
-    op.shutdown()
+    op.shutdown(timer=Timer())
 
     # Tasks/actors should be cancelled/killed.
     wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))

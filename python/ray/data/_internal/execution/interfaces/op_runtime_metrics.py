@@ -253,6 +253,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OUTPUTS,
         map_only=True,
     )
+    row_outputs_taken: int = metric_field(
+        default=0,
+        description="Number of rows that are already taken by downstream operators.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
+    block_outputs_taken: int = metric_field(
+        default=0,
+        description="Number of blocks that are already taken by downstream operators.",
+        metrics_group=MetricsGroup.OUTPUTS,
+    )
     num_outputs_taken: int = metric_field(
         default=0,
         description=(
@@ -605,6 +615,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
         self.num_outputs_taken += 1
+        self.block_outputs_taken += len(output)
+        self.row_outputs_taken += output.num_rows() or 0
         self.bytes_outputs_taken += output.size_bytes()
 
     def on_task_submitted(self, task_index: int, inputs: RefBundle):

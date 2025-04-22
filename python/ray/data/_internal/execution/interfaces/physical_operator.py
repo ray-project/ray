@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import uuid
@@ -14,9 +15,12 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
-from ray.data._internal.stats import StatsDict
+from ray.data._internal.stats import StatsDict, Timer
 from ray.data.context import DataContext
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+
+
+logger = logging.getLogger(__name__)
 
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
@@ -215,6 +219,7 @@ class PhysicalOperator(Operator):
         self._output_block_size_option = None
         self.set_target_max_block_size(target_max_block_size)
         self._started = False
+        self._shutdown = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
         self._estimated_num_output_bundles = None
@@ -481,31 +486,26 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def shutdown(self, force: bool = False) -> None:
+    def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        if not self._started:
+        if self._shutdown:
+            return
+        elif not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-        elif force:
-            tasks: List[OpTask] = self.get_active_tasks()
+        # Mark operator as shut down
+        self._shutdown = True
+        # Time shutdown sequence duration
+        with timer.timer():
+            self._do_shutdown(force)
 
-            # Interrupt all (still) running tasks immediately
-            for task in tasks:
-                task._cancel(force=True)
-
-            # Wait for all tasks to get cancelled before returning
-            for task in tasks:
-                try:
-                    ray.get(task.get_waitable())
-                except ray.exceptions.RayError:
-                    # Cancellation either succeeded, or the task might have already
-                    # failed with a different error, or cancellation failed.
-                    # In all cases, we swallow the exception.
-                    pass
+    def _do_shutdown(self, force: bool):
+        # Default implementation simply cancels any outstanding active task
+        self._cancel_active_tasks(force=force)
 
     def current_processor_usage(self) -> ExecutionResources:
         """Returns the current estimated CPU and GPU usage of this operator, excluding
@@ -619,3 +619,23 @@ class PhysicalOperator(Operator):
         Actors.
         """
         return 0, 0, 0
+
+    def _cancel_active_tasks(self, force: bool):
+        tasks: List[OpTask] = self.get_active_tasks()
+
+        # Interrupt all (still) running tasks immediately
+        for task in tasks:
+            task._cancel(force=force)
+
+        # In case of forced cancellation block until task actually return
+        # to guarantee all tasks are done upon return from this method
+        if force:
+            # Wait for all tasks to get cancelled before returning
+            for task in tasks:
+                try:
+                    ray.get(task.get_waitable())
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task might have already
+                    # failed with a different error, or cancellation failed.
+                    # In all cases, we swallow the exception.
+                    pass

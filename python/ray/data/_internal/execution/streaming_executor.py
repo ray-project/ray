@@ -32,7 +32,7 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
+from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState, Timer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
@@ -160,15 +160,22 @@ class StreamingExecutor(Executor, threading.Thread):
         return _ClosingIterator(self)
 
     def __del__(self):
-        self.shutdown()
+        # NOTE: Upon garbage-collection we're allowing running tasks
+        #       to be terminated asynchronously (ie avoid unnecessary
+        #       synchronization on their completion)
+        self.shutdown(force=False)
 
-    def shutdown(self, exception: Optional[Exception] = None):
+    def shutdown(self, force: bool, exception: Optional[Exception] = None):
         global _num_shutdown
 
         with self._shutdown_lock:
             if not self._execution_started or self._shutdown:
                 return
-            logger.debug(f"Shutting down {self}.")
+
+            start = time.perf_counter()
+
+            logger.debug(f"Shutting down executor for dataset {self._dataset_id}")
+
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -206,17 +213,35 @@ class StreamingExecutor(Executor, threading.Thread):
                 logger.info(prog_bar_msg)
                 self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
+
+            timer = Timer()
+
             for op, state in self._topology.items():
-                op.shutdown(force=True)
+                op.shutdown(timer, force=force)
                 state.close_progress_bars()
+
+            logger.debug(
+                f"Shut down operator hierarchy for dataset {self._dataset_id}"
+                f" (min/max/total={timer.min()}/{timer.max()}/{timer.get()}s)"
+            )
+
             if exception is None:
                 for callback in get_execution_callbacks(self._data_context):
                     callback.after_execution_succeeds(self)
             else:
                 for callback in get_execution_callbacks(self._data_context):
                     callback.after_execution_fails(self, exception)
+
             self._autoscaler.on_executor_shutdown()
+
             unregister_dataset_logger(self._dataset_id)
+
+            dur = time.perf_counter() - start
+
+            logger.debug(
+                f"Shut down executor for dataset {self._dataset_id} "
+                f"(took {round(dur, 3)}s)"
+            )
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -535,9 +560,18 @@ class _ClosingIterator(OutputIterator):
             return bundle
 
         # Have to be BaseException to catch ``KeyboardInterrupt``
+        #
+        # NOTE: This also handles ``StopIteration``
         except BaseException as e:
-            self._executor.shutdown(e if not isinstance(e, StopIteration) else None)
+            # Asynchronously shutdown the executor (ie avoid unnecessary
+            # synchronization on tasks termination)
+            self._executor.shutdown(
+                force=False, exception=e if not isinstance(e, StopIteration) else None
+            )
             raise
 
     def __del__(self):
-        self._executor.shutdown()
+        # NOTE: Upon garbage-collection we're allowing running tasks
+        #       to be terminated asynchronously (ie avoid unnecessary
+        #       synchronization on their completion)
+        self._executor.shutdown(force=False)

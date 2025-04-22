@@ -5904,7 +5904,9 @@ class Dataset:
         output (https://github.com/ray-project/ray/issues/32414).
         """
         if self._current_executor:
-            self._current_executor.shutdown()
+            # NOTE: This method expected to have executor fully shutdown upon returning
+            #       from this method
+            self._current_executor.shutdown(force=True)
             self._current_executor = None
 
     def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
@@ -5938,7 +5940,10 @@ class Dataset:
         # `if ray is not None`. For more information, see #42382.
         try:
             if ray is not None and ray.is_initialized():
-                self._current_executor.shutdown()
+                # NOTE: Upon garbage-collection we're allowing running tasks
+                #       to be terminated asynchronously (ie avoid unnecessary
+                #       synchronization on their completion)
+                self._current_executor.shutdown(force=False)
         except TypeError:
             pass
 
