@@ -88,6 +88,15 @@ class TrainLoopRunner:
         with self._metrics["train/epoch"].timer():
             self._train_epoch()
 
+    def ship_batch_tensor_to_device(self, batch):
+        if batch:
+            input_batch, labels = batch
+            input_batch = input_batch.to(ray.train.torch.get_device())
+            labels = labels.to(ray.train.torch.get_device())
+            return input_batch, labels
+        else:
+            return None
+
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(f"Starting @ epoch={self._train_epoch_idx}")
@@ -98,6 +107,7 @@ class TrainLoopRunner:
         # pipeline warmup time.
         with self._metrics["train/iter_first_batch"].timer():
             batch = self.get_next_batch(train_dataloader)
+            batch = self.ship_batch_tensor_to_device(batch)
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
@@ -107,9 +117,11 @@ class TrainLoopRunner:
 
             for _ in range(self._train_batch_idx):
                 with self._metrics["train/iter_skip_batch"].timer():
-                    self.get_next_batch(train_dataloader)
+                    batch = self.get_next_batch(train_dataloader)
+                    batch = self.ship_batch_tensor_to_device(batch)
 
         while batch:
+            batch = self.ship_batch_tensor_to_device(batch)
             input_batch, labels = batch
 
             with self._metrics["train/step"].timer():
@@ -127,6 +139,7 @@ class TrainLoopRunner:
 
             with self._metrics["train/iter_batch"].timer():
                 batch = self.get_next_batch(train_dataloader)
+                batch = self.ship_batch_tensor_to_device(batch)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0

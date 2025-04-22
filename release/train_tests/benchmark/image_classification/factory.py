@@ -214,8 +214,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
             convert_ndarray_batch_to_torch_tensor_batch,
         )
 
-        device = ray.train.torch.get_device()
-        batch = convert_ndarray_batch_to_torch_tensor_batch(batch, device=device)
+        batch = convert_ndarray_batch_to_torch_tensor_batch(batch, device=None)
 
         return batch["image"], batch["label"]
 
