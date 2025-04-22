@@ -355,7 +355,7 @@ void RayletClient::PushMutableObject(
     request.set_offset(offset);
     request.set_chunk_size(chunk_size);
 
-    char *ptr = malloc(chunk_size);
+    char *ptr = reinterpret_cast<char *>(ray::internal::realloc(ptr, chunk_size));
     if (offset + chunk_size > data_size) {
       memcpy(ptr, static_cast<char *>(data) + offset, data_size - offset);
       memcpy(ptr + (data_size - offset), static_cast<char *>(metadata), metadata_size);
@@ -366,7 +366,7 @@ void RayletClient::PushMutableObject(
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
-        request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
+        request, [callback, &ptr](const Status &status, rpc::PushMutableObjectReply &&reply) {
           RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
           if (reply.done()) {
             // The callback is only executed once the receiver node receives all chunks
