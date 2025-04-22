@@ -172,7 +172,7 @@ def test_read_xml_remote_args(ray_start_cluster, tmp_path):
     def get_node_id():
         return ray.get_runtime_context().get_node_id()
 
-    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+    ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
     path = write_xml(tmp_path, "foo.xml", MULTI_XML)
     ds = ray.data.read_xml(
@@ -181,7 +181,7 @@ def test_read_xml_remote_args(ray_start_cluster, tmp_path):
         ray_remote_args={"resources": {"bar": 1}},
         record_tag="user",
     )
-    block_refs = list(ds.iter_torch_batches())
+    ds.take_all()
     # This does not actually check placement but exercises the API.
 
 
