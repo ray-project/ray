@@ -180,6 +180,7 @@ void MutableObjectProvider::HandlePushMutableObject(
 
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
+  RAY_LOG(INFO) << "PushMutableObject total_written: " << total_written << ", total_size: " << total_size;
   if (total_written == total_size) {
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
@@ -253,6 +254,7 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetData()->Size(),
         object->GetMetadata()->Size(),
         object->GetData()->Data(),
+        object->GetMetadata()->Data(),
         [this, &io_context, writer_object_id, remote_readers, num_replied](
             const Status &status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;

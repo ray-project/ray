@@ -330,6 +330,7 @@ void RayletClient::PushMutableObject(
     uint64_t data_size,
     uint64_t metadata_size,
     void *data,
+    void *metadata,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
   // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
   // slightly lower value to allow extra padding just in case.
@@ -353,9 +354,15 @@ void RayletClient::PushMutableObject(
     uint64_t offset = i * kMaxGrpcPayloadSize;
     request.set_offset(offset);
     request.set_chunk_size(chunk_size);
-    // This assumes that the format of the object is a contiguous buffer of (data |
-    // metadata).
-    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
+
+    char *ptr = malloc(chunk_size);
+    if (offset + chunk_size > data_size) {
+      memcpy(ptr, static_cast<char *>(data) + offset, data_size - offset);
+      memcpy(ptr + (data_size - offset), static_cast<char *>(metadata), metadata_size);
+    } else {
+      memcpy(ptr, static_cast<char *>(data) + offset, chunk_size);
+    }
+    request.set_payload(ptr, chunk_size);
 
     // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
@@ -366,6 +373,7 @@ void RayletClient::PushMutableObject(
             // for the mutable object write.
             callback(status, std::move(reply));
           }
+          free(ptr);
         });
   }
 }
