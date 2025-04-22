@@ -530,7 +530,7 @@ class AlgorithmConfig(_Config):
         self.sync_filters_on_rollout_workers_timeout_s = 10.0
         # Offline evaluation.
         self.offline_evaluation_interval = None
-        self.num_offline_eval_runners = 1
+        self.num_offline_eval_runners = 0
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
         # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?

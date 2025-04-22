@@ -3557,7 +3557,10 @@ class Algorithm(Checkpointable, Trainable):
     def _should_create_offline_evaluation_runners(cls, eval_config: "AlgorithmConfig"):
         """Determines whether we need to create offline evaluation workers."""
 
-        return eval_config.num_offline_eval_runners > 0
+        return (
+            eval_config.offline_evaluation_interval is not None
+            or eval_config.num_offline_eval_runners > 0
+        )
 
     def _compile_iteration_results(self, *, train_results, eval_results):
         # Error if users still use `self._timers`.
