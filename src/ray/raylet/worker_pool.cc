@@ -69,7 +69,7 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
   return nullptr;
 }
 
-// Remove the worker from the set, returning true if found and removed.
+// Remove the worker from the set, returning true if it was present.
 bool RemoveWorker(
     std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
