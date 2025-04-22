@@ -169,11 +169,13 @@ def test_dataset(
         identity_func = identity_fn
         empty_func = empty_fn
         func_name = "identity_fn"
+        task_name = f"ReadRandomBytes->MapBatches({func_name})"
     else:
         compute = ray.data.ActorPoolStrategy()
         identity_func = IdentityClass
         empty_func = EmptyClass
         func_name = "IdentityClass"
+        task_name = f"ReadRandomBytes->MapBatches({func_name}).submit"
 
     ray.shutdown()
     # We need at least 2 CPUs to run a actorpool streaming
@@ -203,7 +205,7 @@ def test_dataset(
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "ReadRandomBytes": lambda count: count < num_tasks,
+                "ReadRandomBytes": lambda count: count <= num_tasks,
             },
             object_store_stats={
                 "cumulative_created_plasma_bytes": lambda count: True,
@@ -225,7 +227,7 @@ def test_dataset(
                 f"({func_name})).get_location": lambda count: True,
                 "_MapWorker.__init__": lambda count: True,
                 "_MapWorker.get_location": lambda count: True,
-                f"ReadRandomBytes->MapBatches({func_name})": num_tasks,
+                task_name: num_tasks,
             },
         ),
         last_snapshot,

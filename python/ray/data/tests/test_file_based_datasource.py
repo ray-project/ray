@@ -1,6 +1,5 @@
 import os
 from typing import Iterator
-from unittest import mock
 
 import pyarrow
 import pytest
@@ -9,22 +8,6 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data.datasource.path_util import _has_file_extension, _is_local_windows_path
-
-
-@pytest.mark.parametrize(
-    "path, extensions, has_extension",
-    [
-        ("foo.csv", ["csv"], True),
-        ("foo.csv", ["json", "csv"], True),
-        ("foo.csv", ["json", "jsonl"], False),
-        ("foo.parquet.crc", ["parquet"], False),
-        ("foo.parquet.crc", ["crc"], True),
-        ("foo.csv", None, True),
-    ],
-)
-def test_has_file_extension(path, extensions, has_extension):
-    assert _has_file_extension(path, extensions) == has_extension
 
 
 class MockFileBasedDatasource(FileBasedDatasource):
@@ -119,13 +102,6 @@ def test_flaky_datasource(ray_start_regular_shared):
     datasource = FlakyCSVDatasource(["example://iris.csv"])
     ds = ray.data.read_datasource(datasource)
     assert len(ds.take()) == 20
-
-
-def test_windows_path():
-    with mock.patch("sys.platform", "win32"):
-        assert _is_local_windows_path("c:/some/where")
-        assert _is_local_windows_path("c:\\some\\where")
-        assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])

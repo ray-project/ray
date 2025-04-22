@@ -597,7 +597,6 @@ autosummary_filename_map = {
 
 autodoc_mock_imports = [
     "aiohttp",
-    "aiosignal",
     "async_timeout",
     "backoff",
     "cachetools",
@@ -607,7 +606,6 @@ autodoc_mock_imports = [
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",

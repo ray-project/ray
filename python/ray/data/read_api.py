@@ -133,7 +133,8 @@ def from_blocks(blocks: List[Block]):
     metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
     from_blocks_op = FromBlocks(block_refs, metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
+        DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
     return MaterializedDataset(
@@ -216,7 +217,8 @@ def from_items(
 
     from_items_op = FromItems(blocks, metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+        DatasetStats(metadata={"FromItems": metadata}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(from_items_op, execution_plan._context)
     return MaterializedDataset(
@@ -419,7 +421,10 @@ def read_datasource(
         ray_remote_args,
         concurrency,
     )
-    execution_plan = ExecutionPlan(stats)
+    execution_plan = ExecutionPlan(
+        stats,
+        DataContext.get_current().copy(),
+    )
     logical_plan = LogicalPlan(read_op, execution_plan._context)
     return Dataset(
         plan=execution_plan,
@@ -523,6 +528,7 @@ def read_videos(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
+    include_timestamps: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -566,6 +572,8 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
+        include_timestmaps: If ``True``, include the frame timestamps from the video
+            as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -588,6 +596,7 @@ def read_videos(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_timestamps=include_timestamps,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1249,6 +1258,7 @@ def read_parquet_bulk(
 def read_json(
     paths: Union[str, List[str]],
     *,
+    lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
@@ -1282,11 +1292,11 @@ def read_json(
 
         Read a JSONL file in remote storage.
 
-        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl", lines=True)
         >>> ds.schema()
         Column  Type
         ------  ----
-        input   string
+        input   <class 'object'>
 
         Read multiple local files.
 
@@ -1311,6 +1321,9 @@ def read_json(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
+        lines: [Experimental] If ``True``, read files assuming line-delimited JSON.
+            If set, will ignore the ``filesystem``, ``arrow_open_stream_args``, and
+            ``arrow_json_args`` parameters.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `PyArrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1365,11 +1378,22 @@ def read_json(
     """  # noqa: E501
     _emit_meta_provider_deprecation_warning(meta_provider)
 
+    if lines:
+        incompatible_params = {
+            "filesystem": filesystem,
+            "arrow_open_stream_args": arrow_open_stream_args,
+            "arrow_json_args": arrow_json_args,
+        }
+        for param, value in incompatible_params.items():
+            if value:
+                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
     datasource = JSONDatasource(
         paths,
+        is_jsonl=lines,
         arrow_json_args=arrow_json_args,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
@@ -2770,7 +2794,8 @@ def from_pandas_refs(
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         execution_plan = ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
+            DataContext.get_current().copy(),
         )
         logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
         return MaterializedDataset(
@@ -2784,7 +2809,8 @@ def from_pandas_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        DatasetStats(metadata={"FromPandas": metadata}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
     return MaterializedDataset(
@@ -2869,7 +2895,8 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
 
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+        DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
 
@@ -2948,7 +2975,8 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     execution_plan = ExecutionPlan(
-        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+        DatasetStats(metadata={"FromArrow": metadata}, parent=None),
+        DataContext.get_current().copy(),
     )
     logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
 
@@ -3426,7 +3454,7 @@ def read_lance(
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lancedb.github.io/lance/api/python/lance.html#lance.LanceDataset>`_.
+    `Lance Dataset <https://lancedb.github.io/lance/api/py_modules.html#lance.dataset.LanceDataset>`_.
 
     Examples:
         >>> import ray
@@ -3445,11 +3473,11 @@ def read_lance(
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
-                ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+                ://lancedb.github.io/lance/object_store.html#object-store-configuration>`_.
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io\
-            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
+            see `LanceDB API doc <https://lancedb.github.io/\
+                lance/api/py_modules.html#lance.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the

@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include "ray/core_worker/transport/actor_scheduling_queue.h"
-
 namespace ray {
 namespace core {
 

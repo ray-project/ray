@@ -84,9 +84,9 @@ class Deployment:
             def __call__(self, request):
                 return "Hello world!"
 
-            app = MyDeployment.bind()
-            # Run via `serve.run` or the `serve run` CLI command.
-            serve.run(app)
+        app = MyDeployment.bind()
+        # Run via `serve.run` or the `serve run` CLI command.
+        serve.run(app)
 
     """
 

@@ -259,7 +259,7 @@ filegroup(
     ],
 )
 
-native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
+native_java_library("runtime", "core_worker_library_java", "//src/ray/core_worker/lib/java:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
