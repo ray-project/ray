@@ -358,11 +358,7 @@ def _get_file_infos_parallel(
     filesystem: "RetryingPyFileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
-    from ray.data.datasource.file_based_datasource import (
-        PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _unwrap_s3_serialization_workaround,
-        _wrap_s3_serialization_workaround,
-    )
+    from ray.data.datasource.file_based_datasource import PATHS_PER_FILE_SIZE_FETCH_TASK
 
     logger.warning(
         f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
@@ -371,15 +367,11 @@ def _get_file_infos_parallel(
         "metadata fetching."
     )
 
-    # Capture the filesystem in the fetcher func closure, but wrap it in our
-    # serialization workaround to make sure that the pickle roundtrip works as expected.
-    filesystem = _wrap_s3_serialization_workaround(filesystem)
-
     def _file_infos_fetcher(paths: List[str]) -> List[Tuple[str, int]]:
-        fs = _unwrap_s3_serialization_workaround(filesystem)
         return list(
             itertools.chain.from_iterable(
-                _get_file_infos(path, fs, ignore_missing_paths) for path in paths
+                _get_file_infos(path, filesystem, ignore_missing_paths)
+                for path in paths
             )
         )
 
