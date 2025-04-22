@@ -36,6 +36,7 @@ RESPONSE_SCHEMA = [
 OPERATOR_SCHEMA = [
     "name",
     "operator",
+    "queued_blocks",
 ] + DATA_SCHEMA
 
 

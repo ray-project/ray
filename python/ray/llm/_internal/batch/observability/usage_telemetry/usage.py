@@ -19,8 +19,11 @@ class BatchModelTelemetry(BaseModelExtended):
     accelerator_type: str = ""
     concurrency: Union[int, Tuple[int, int]] = 0
     task_type: str = ""
+
+    # For the parallel size, 0 means not supported.
     pipeline_parallel_size: int = 0
     tensor_parallel_size: int = 0
+    data_parallel_size: int = 0
 
 
 class BatchTelemetryTags(str, Enum):
@@ -34,6 +37,7 @@ class BatchTelemetryTags(str, Enum):
     LLM_BATCH_TASK_TYPE = "LLM_BATCH_TASK_TYPE"
     LLM_BATCH_PIPELINE_PARALLEL_SIZE = "LLM_BATCH_PIPELINE_PARALLEL_SIZE"
     LLM_BATCH_TENSOR_PARALLEL_SIZE = "LLM_BATCH_TENSOR_PARALLEL_SIZE"
+    LLM_BATCH_DATA_PARALLEL_SIZE = "LLM_BATCH_DATA_PARALLEL_SIZE"
 
 
 @ray.remote(
@@ -77,6 +81,9 @@ class _TelemetryAgent:
             ),
             BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: ",".join(
                 [str(t.tensor_parallel_size) for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_DATA_PARALLEL_SIZE: ",".join(
+                [str(t.data_parallel_size) for t in self._tracking_telemetries]
             ),
         }
 

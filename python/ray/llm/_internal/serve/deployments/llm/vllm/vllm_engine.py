@@ -276,6 +276,7 @@ class VLLMEngine:
         self.running = False
         self.model_config: "ModelConfig" = None
         self.engine = None
+        self.vllm_config: "VllmConfig" = None
 
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -341,6 +342,17 @@ class VLLMEngine:
         """
         # Initialize node and return all configurations
         node_initialization = await self.initialize_node(self.llm_config)
+
+        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
+        # decide which engine to use based on the passed configs.
+        # Here we set it explicitly to make sure Ray Serve LLM and vLLM
+        # configs are consistent.
+        runtime_env = dict(
+            env_vars=dict(
+                VLLM_USE_V1=str(int(use_v1)),
+            ),
+        )
+
         if self.engine_config.use_gpu:
             # Create engine config on a task with access to GPU,
             # as GPU capability may be queried.
@@ -352,15 +364,7 @@ class VLLMEngine:
                         accelerator_type=self.llm_config.accelerator_type,
                     )(_get_vllm_engine_config)
                     .options(
-                        # If VLLM_USE_V1 is not set explicitly, vLLM may automatically
-                        # decide which engine to use based on the passed configs.
-                        # Here we set it explicitly to make sure Ray LLM and vLLM
-                        # configs are consistent.
-                        runtime_env=dict(
-                            env_vars=dict(
-                                VLLM_USE_V1=str(int(use_v1)),
-                            ),
-                        ),
+                        runtime_env=runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
                         ),
@@ -371,15 +375,20 @@ class VLLMEngine:
                 ref = (
                     ray.remote(num_cpus=0, num_gpus=1)(_get_vllm_engine_config)
                     .options(
+                        runtime_env=runtime_env,
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=node_initialization.placement_group,
-                        )
+                        ),
                     )
                     .remote(self.llm_config)
                 )
             engine_args, engine_config = ray.get(ref)
         else:
             engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
+
+        # Note (genesu): vllm_config is used to extract the scheduler config for
+        # computing the correct prompt limit.
+        self.vllm_config = engine_config
         return engine_args, engine_config, node_initialization
 
     async def _start_engine_v1(self) -> "EngineClient":
@@ -662,6 +671,24 @@ class VLLMEngine:
             # phase
             await self.engine.abort(vllm_generation_request.request_id)
 
+    def _get_prompt_limit(self) -> int:
+        """Helper to get the prompt limit from scheduler config
+
+        Port from https://github.com/vllm-project/vllm/blob/7b5ecf79bd94aab0d782c70126d0dcc37c16bc60/vllm/core/scheduler.py#L939
+        """
+        scheduler_config = self.vllm_config.scheduler_config
+        if (
+            scheduler_config.chunked_prefill_enabled
+            and not scheduler_config.is_multi_step
+        ):
+            prompt_limit = scheduler_config.max_model_len
+        else:
+            prompt_limit = min(
+                scheduler_config.max_model_len,
+                scheduler_config.max_num_batched_tokens,
+            )
+        return prompt_limit
+
     def _handle_input_too_long(
         self, request_output: "RequestOutput", finish_reason: Optional[FinishReason]
     ):
@@ -672,7 +699,7 @@ class VLLMEngine:
         ):
             # This means that the prompt was too long and we did not generate anything.
             raise InputTooLong(
-                len(request_output.prompt_token_ids), self.model_config.max_model_len
+                len(request_output.prompt_token_ids), self._get_prompt_limit()
             ).exception
 
     async def check_health(self):
