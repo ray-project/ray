@@ -355,7 +355,7 @@ void RayletClient::PushMutableObject(
     request.set_offset(offset);
     request.set_chunk_size(chunk_size);
 
-    char *ptr = reinterpret_cast<char *>(ray::internal::realloc(ptr, chunk_size));
+    char *ptr = reinterpret_cast<char *>(malloc(chunk_size));
     if (offset + chunk_size > data_size) {
       memcpy(ptr, static_cast<char *>(data) + offset, data_size - offset);
       memcpy(ptr + (data_size - offset), static_cast<char *>(metadata), metadata_size);
