@@ -302,6 +302,8 @@ py_test(
         "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
+        # Test is failing: https://github.com/ray-project/ray/issues/52270
+        "manual",
     ],
 )
 
@@ -1857,40 +1859,6 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks_on_algorithm",
-    size = "large",
-    srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "test_callbacks_on_env_runner",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-# @OldAPIStack
-py_test(
-    name = "test_callbacks_old_api_stack",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_old_api_stack.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "test_registry",
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
@@ -2103,6 +2071,37 @@ py_test(
 #
 # Tag: callbacks
 # --------------------------------------------------------------------
+py_test(
+    name = "test_callbacks_on_algorithm",
+    size = "large",
+    srcs = ["callbacks/tests/test_callbacks_on_algorithm.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_callbacks_on_env_runner",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_on_env_runner.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+# @OldAPIStack
+py_test(
+    name = "test_callbacks_old_api_stack",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_old_api_stack.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
 py_test(
     name = "test_multicallback",
     size = "medium",
@@ -3639,6 +3638,8 @@ py_test(
         "examples",
         "exclusive",
         "team:rllib",
+        # Test is failing: https://github.com/ray-project/ray/issues/47717
+        "manual",
     ],
 )
 

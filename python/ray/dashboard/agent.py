@@ -41,12 +41,11 @@ class DashboardAgent:
         log_dir: str,
         temp_dir: str,
         session_dir: str,
-        logging_params: dict,
-        agent_id: int,
         session_name: str,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        assert node_ip_address is not None
         self.ip = node_ip_address
         self.minimal = minimal
 
@@ -63,10 +62,8 @@ class DashboardAgent:
         self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
-        self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
-        self.agent_id = agent_id
         self.session_name = session_name
 
         # grpc server is None in mininal.
@@ -180,38 +177,43 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
+        launch_http_server = True
         if self.http_server:
             try:
                 await self.http_server.start(modules)
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
+            except Exception as e:
+                # TODO(kevin85421): We should fail the agent if the HTTP server
+                # fails to start to avoid hiding the root cause. However,
+                # agent processes are not cleaned up correctly after some tests
+                # finish. If we fail the agent, the CI will always fail until
+                # we fix the leak.
                 logger.exception(
-                    "Failed to start http server. Agent will stay alive but "
-                    "disable the http service."
+                    f"Failed to start HTTP server with exception: {e}. "
+                    "The agent will stay alive but the HTTP service will be disabled.",
                 )
+                launch_http_server = False
 
-        # Writes agent address to kv.
-        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
-        # -1 should indicate that http server is not started.
-        http_port = -1 if not self.http_server else self.http_server.http_port
-        grpc_port = -1 if not self.server else self.grpc_port
-        put_by_node_id = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-            json.dumps([self.ip, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-        put_by_ip = self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-            json.dumps([self.node_id, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
+        if launch_http_server:
+            # Writes agent address to kv.
+            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+            # -1 should indicate that http server is not started.
+            http_port = -1 if not self.http_server else self.http_server.http_port
+            grpc_port = -1 if not self.server else self.grpc_port
+            put_by_node_id = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+                json.dumps([self.ip, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
+            put_by_ip = self.gcs_aio_client.internal_kv_put(
+                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+                json.dumps([self.node_id, http_port, grpc_port]).encode(),
+                True,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            )
 
-        await asyncio.gather(put_by_node_id, put_by_ip)
+            await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 
@@ -241,18 +243,6 @@ class DashboardAgent:
 
         if self.http_server:
             await self.http_server.cleanup()
-
-
-def get_capture_filepaths(log_dir):
-    """Get filepaths for the given [log_dir].
-    log_dir:
-        Logging directory to place output and error logs.
-    """
-    filename = f"agent-{args.agent_id}"
-    return (
-        f"{log_dir}/{filename}.out",
-        f"{log_dir}/{filename}.err",
-    )
 
 
 if __name__ == "__main__":
@@ -385,18 +375,25 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
-        "--agent-id",
-        required=True,
-        type=int,
-        help="ID to report when registering with raylet",
-        default=os.getpid(),
-    )
-    parser.add_argument(
         "--session-name",
         required=False,
         type=str,
         default=None,
         help="The session name (cluster id) of this cluster.",
+    )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard agent stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump dashboard agent stderr.",
     )
 
     args = parser.parse_args()
@@ -410,7 +407,7 @@ if __name__ == "__main__":
             args.logging_rotate_backup_count if sys.platform != "win32" else 1
         )
 
-        logging_params = dict(
+        logger = setup_component_logger(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
@@ -418,20 +415,18 @@ if __name__ == "__main__":
             max_bytes=logging_rotation_bytes,
             backup_count=logging_rotation_backup_count,
         )
-        logger = setup_component_logger(**logging_params)
+
+        # Setup stdout/stderr redirect files if redirection enabled.
+        logging_utils.redirect_stdout_stderr_if_needed(
+            args.stdout_filepath,
+            args.stderr_filepath,
+            logging_rotation_bytes,
+            logging_rotation_backup_count,
+        )
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
         loop = get_or_create_event_loop()
-
-        # Setup stdout/stderr redirect files
-        out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
-        logging_utils.redirect_stdout_stderr_if_needed(
-            out_filepath,
-            err_filepath,
-            logging_rotation_bytes,
-            logging_rotation_backup_count,
-        )
 
         agent = DashboardAgent(
             args.node_ip_address,
@@ -447,9 +442,7 @@ if __name__ == "__main__":
             listen_port=args.listen_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
-            logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
-            agent_id=args.agent_id,
             session_name=args.session_name,
         )
 

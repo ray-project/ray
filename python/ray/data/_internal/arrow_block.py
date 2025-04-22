@@ -14,6 +14,7 @@ from typing import (
 )
 
 import numpy as np
+from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -25,16 +26,15 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
     U,
-    BlockColumnAccessor,
-    BlockColumn,
 )
 from ray.data.context import DataContext
 
@@ -52,6 +52,9 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+_MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 
 # We offload some transformations to polars for performance.
@@ -166,16 +169,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def column_names(self) -> List[str]:
         return self._table.column_names
 
-    def append_column(self, name: str, data: Any) -> Block:
+    def fill_column(self, name: str, value: Any) -> Block:
         assert name not in self._table.column_names
 
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
+        import pyarrow.compute as pc
 
-        return self._table.append_column(name, [data])
+        if isinstance(value, pyarrow.Scalar):
+            type = value.type
+        else:
+            type = pyarrow.infer_type([value])
+
+        array = pyarrow.nulls(len(self._table), type=type)
+        array = pc.fill_null(array, value)
+        return self._table.append_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -356,7 +362,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(
@@ -450,6 +458,13 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
     def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
+        if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
+            return self._column.to_numpy()
+
+        return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
     def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
         return self._column
