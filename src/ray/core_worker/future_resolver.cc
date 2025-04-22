@@ -87,7 +87,7 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data.data())),
           data.size());
     } else {
-      RAY_LOG(DEBUG).WithField(object_id) 
+      RAY_LOG(DEBUG).WithField(object_id)
           << "Object not returned directly in GetObjectStatus reply, "
           << "fetching it from Plasma";
     }
