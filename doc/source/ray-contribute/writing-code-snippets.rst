@@ -139,7 +139,7 @@ want to print intermediate objects, use *doctest-style*. ::
         [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
 When to use *code-output-style*
-==============================
+======================================
 
 If you're writing a longer example, or if object representations aren't relevant to your example, use *code-output-style*. ::
 
@@ -201,7 +201,7 @@ To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code
         >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
 
 Skipping *code-output-style* examples
-====================================
+==========================================
 
 To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block. ::
 
@@ -236,7 +236,7 @@ To ignore parts of a *doctest-style* output, replace problematic sections with e
 To ignore an output altogether, write a *code-output-style* snippet. Don't use `# doctest: +SKIP`.
 
 Ignoring *code-output-style* outputs
-===================================
+========================================
 
 If parts of your output are long or non-deterministic, replace problematic sections
 with ellipses. ::
