@@ -4,6 +4,7 @@ import aiohttp
 import asyncio
 import time
 import aiohttp.web_exceptions
+from aiohttp.client_exceptions import ClientPayloadError
 import numpy as np
 import traceback
 from typing import Any, Dict, AsyncIterator, Optional, List, Type, Callable
@@ -131,7 +132,11 @@ class HttpRequestUDF(StatefulStageUDF):
                                     f"the column {self.IDX_IN_BATCH_COLUMN}."
                                 )
                         break
-                    except (asyncio.TimeoutError, aiohttp.ClientConnectionError) as e:
+                    except (
+                        asyncio.TimeoutError,
+                        aiohttp.ClientConnectionError,
+                        ClientPayloadError,
+                    ) as e:
                         last_exception_traceback = traceback.format_exc()
                         last_exception = type(e).__name__
                         wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
