@@ -38,7 +38,7 @@ from ray.data.context import DataContext
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-class FuseMapOperators(Rule):
+class FuseOperators(Rule):
     """Fuses linear chains of compatible physical operators."""
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:

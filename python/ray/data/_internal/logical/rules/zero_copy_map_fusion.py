@@ -10,7 +10,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.interfaces.optimizer import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.rules.operator_fusion import FuseMapOperators
+from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 
 
 class ZeroCopyMapFusionRule(Rule):
@@ -27,7 +27,7 @@ class ZeroCopyMapFusionRule(Rule):
 
     @classmethod
     def dependencies(cls) -> List[Type[Rule]]:
-        return [FuseMapOperators]
+        return [FuseOperators]
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._traverse(plan.dag)
