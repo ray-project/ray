@@ -379,5 +379,45 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 
+def test_unallocated_replica_shutdown(serve_instance):
+    """Test that unallocated replicas are stopped immediately without waiting for graceful shutdown.
+
+    When a replica is in PENDING_ALLOCATION state (due to requiring resources that don't exist),
+    stopping it should be immediate and not wait for the graceful shutdown timeout.
+    """
+
+    @serve.deployment(
+        ray_actor_options={"resources": {"custom": 1}},  # Require non-existent resource
+        graceful_shutdown_timeout_s=10,
+    )
+    class CustomResourceDeployment:
+        def __init__(self):
+            self.ready = False
+
+        def __call__(self):
+            return "ready"
+
+    serve.run(CustomResourceDeployment.bind())
+    wait_for_condition(
+        check_deployment_status,
+        name="CustomResourceDeployment",
+        expected_status=DeploymentStatus.UNHEALTHY,
+    )
+
+    check_num_replicas_eq("CustomResourceDeployment", 1)
+
+    start = time.time()
+    serve.delete("CustomResourceDeployment")
+    deletion_time = time.time() - start
+    # deletion_time should be under the graceful shutdown timeout
+    assert deletion_time < 5, f"Deletion took {deletion_time}s, expected < 5s"
+
+    def check_deployment_removed():
+        app_status = serve.status().applications["default"]
+        return "CustomResourceDeployment" not in app_status.deployments
+
+    wait_for_condition(check_deployment_removed)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
