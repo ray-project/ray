@@ -475,7 +475,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             """
             return ArrowTensorScalar
 
-    def _extension_scalar_to_ndarray(self, scalar: pa.ExtensionScalar) -> np.ndarray:
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
         Convert an ExtensionScalar to a tensor element.
         """
@@ -1061,7 +1061,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
     def __repr__(self) -> str:
         return str(self)
 
-    def _extension_scalar_to_ndarray(self, scalar: pa.ExtensionScalar) -> np.ndarray:
+    def _extension_scalar_to_ndarray(self, scalar: "pa.ExtensionScalar") -> np.ndarray:
         """
         Convert an ExtensionScalar to a tensor element.
         """
