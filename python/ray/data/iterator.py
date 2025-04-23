@@ -17,7 +17,6 @@ from typing import (
 
 import numpy as np
 import pyarrow
-import torch
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
@@ -217,6 +216,8 @@ class DefaultCollateFn(ArrowBatchCollateFn):
 class DefaultFinalizeFn:
     """Default finalize function for moving PyTorch tensors to device."""
 
+    import torch
+
     def __init__(
         self,
         device: Optional[str] = None,
@@ -241,6 +242,8 @@ class DefaultFinalizeFn:
         Returns:
             A contiguous tensor on the target device
         """
+        import torch
+
         # Assumes tensors have the same shape/dtype
         assert tensor_list, "Cannot stack empty list of tensors"
         assert all(
@@ -297,6 +300,8 @@ class DefaultFinalizeFn:
         Returns:
             Tensor or collection of tensors moved to the target device
         """
+        import torch
+
         if self.device is None:
             return batch
 
