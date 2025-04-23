@@ -329,27 +329,10 @@ class SerializationContext:
             # the error type.
             try:
                 error_type = int(metadata_fields[0])
-            except Exception as e:
-                logger.info(f"deser exception: {e}")
-                import faulthandler
-
-                faulthandler.dump_traceback()
-
-                logger.info(f"data: {data}")
-
-                # Print payload data in string and hex format
-                if data:
-                    try:
-                        # Print as string
-                        logger.info("\n=== Payload as string ===")
-                        logger.info(data.to_pybytes().decode("utf-8", errors="replace"))
-                        logger.info("\n=== Payload as string end ===")
-                    except Exception as decode_err:
-                        logger.info(f"Failed to decode as string: {decode_err}")
-
+            except Exception:
                 raise Exception(
                     f"Can't deserialize object: {object_ref}, " f"metadata: {metadata}"
-                ) from e
+                )
 
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
@@ -507,7 +490,6 @@ class SerializationContext:
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         contained_object_refs = []
-        old_value = value
 
         if isinstance(value, RayTaskError):
             if issubclass(value.cause.__class__, TaskCancelledError):
@@ -521,9 +503,6 @@ class SerializationContext:
                     "ascii"
                 )
                 value = value.to_bytes()
-            logger.info(
-                "Serializing RayTaskError, metadata: %s, value: %s", metadata, value
-            )
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
@@ -557,18 +536,6 @@ class SerializationContext:
             )
         else:
             pickle5_serialized_object = None
-
-        if isinstance(old_value, RayTaskError):
-            logger.info(
-                "Creating MessagePackSerializedObject, metadata: %s, msgpack_data: %s, "
-                "contained_object_refs: %s, pickle5_serialized_object: %s, "
-                "python_objects: %s",
-                metadata,
-                msgpack_data,
-                contained_object_refs,
-                pickle5_serialized_object,
-                python_objects,
-            )
 
         return MessagePackSerializedObject(
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object

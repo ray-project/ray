@@ -254,7 +254,6 @@ def do_exec_tasks(
                     self, operation.type, overlap_gpu_communication
                 )
                 if done:
-                    logger.error(f"Task done for {operation.method_name}")
                     break
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
@@ -728,7 +727,6 @@ class ExecutableTask:
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
-            logger.error(f"Wrap exception in {self.method_name}: {exc}")
             output_val = _wrap_exception(exc)
 
         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture

@@ -147,12 +147,6 @@ void MutableObjectProvider::HandlePushMutableObject(
     }
   }
 
-  RAY_LOG(DEBUG) << "PushMutableObject debug: writer_object_id " << writer_object_id
-                 << "\n\tlocal_object_id " << info.local_object_id
-                 << "\n\ttmp_written_so_far " << tmp_written_so_far << "\n\toffset "
-                 << offset << "\n\tchunk_size " << chunk_size << "\n\ttotal_size "
-                 << total_size;
-
   std::shared_ptr<Buffer> object_backing_store;
   if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
@@ -180,15 +174,12 @@ void MutableObjectProvider::HandlePushMutableObject(
 
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
-  RAY_LOG(INFO) << "PushMutableObject total_written: " << total_written << ", total_size: " << total_size;
   if (total_written == total_size) {
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
-    RAY_LOG(DEBUG) << "PushMutableObject release: local_object_id " << info.local_object_id;
     reply->set_done(true);
   } else {
     reply->set_done(false);
-    RAY_LOG(DEBUG) << "PushMutableObject continue: local_object_id " << info.local_object_id;
   }
 }
 

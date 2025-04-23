@@ -199,10 +199,6 @@ class TorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
-        if isinstance(value, ray.exceptions.RayTaskError):
-            logger.info("Passing gpu_tensors: %s", gpu_tensors)
-            logger.info("Passing cpu_data: %s", cpu_data)
-
         # First send the extracted tensors through a GPU-specific channel.
         self._gpu_data_channel.write(gpu_tensors)
         # Next send the non-tensor data through a CPU-specific channel. The
@@ -245,8 +241,6 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # non-tensor data channel if it is available to make these
                 # exceptions recoverable.
                 raise value
-            else:
-                logger.error("Passing RayTaskError: %s", value)
 
         if self._cpu_data_channel is None:
             # Handle the case where _direct_return=True. In this case, we check
@@ -300,9 +294,6 @@ class TorchTensorNcclChannel(ChannelInterface):
             deserialized_tensor_placeholders,
         ) = self.serialization_ctx.reset_out_of_band_tensors([])
         assert deserialized_tensor_placeholders == set(range(len(tensors)))
-
-        if len(tensors) == 0:
-            logger.info("Received data: %s", data)
 
         return data
 
