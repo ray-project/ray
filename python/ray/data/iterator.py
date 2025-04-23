@@ -26,7 +26,7 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -58,6 +58,7 @@ class _IterableFromIterator(Iterable[T]):
         return self.iterator_gen()
 
 
+@DeveloperAPI
 class CollateFn(Generic[T]):
     """A function that converts a DataBatch to a CollatedData."""
 
@@ -88,6 +89,7 @@ class CollateFn(Generic[T]):
         ...
 
 
+@DeveloperAPI
 class ArrowBatchCollateFn(CollateFn[pyarrow.Table]):
     """Collate function for converting Arrow tables to PyTorch tensors."""
 
@@ -116,6 +118,7 @@ class ArrowBatchCollateFn(CollateFn[pyarrow.Table]):
         ...
 
 
+@DeveloperAPI
 class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
     """Collate function for converting Numpy batches to PyTorch tensors."""
 
@@ -132,29 +135,6 @@ class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
         """
         super().__init__(dtypes=dtypes, device=device)
 
-    def _numpy_batch_to_torch_tensors(
-        self,
-        batch: Dict[str, np.ndarray],
-        device: Optional[str] = None,
-    ) -> Union["torch.Tensor", Dict[str, "torch.Tensor"]]:
-        """Convert a dictionary of numpy arrays to PyTorch tensors.
-
-        Args:
-            batch: Dictionary mapping column names to numpy arrays
-
-        Returns:
-            Either a single PyTorch tensor or a dict mapping column names to tensors
-        """
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        return convert_ndarray_batch_to_torch_tensor_batch(
-            batch,
-            dtypes=self.dtypes,
-            device=device,
-        )
-
     def __call__(self, batch: Dict[str, np.ndarray]) -> "CollatedData":
         """Convert a Numpy batch to PyTorch tensors.
 
@@ -167,6 +147,7 @@ class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
         ...
 
 
+@DeveloperAPI
 class DefaultCollateFn(ArrowBatchCollateFn):
     """Default collate function for converting Arrow batches to PyTorch tensors."""
 
@@ -204,15 +185,13 @@ class DefaultCollateFn(ArrowBatchCollateFn):
             - A dict of column name to list of tensors
         """
         from ray.air._internal.torch_utils import (
-            arrow_table_to_gpu_tensors,
+            arrow_table_to_tensors,
         )
 
-        combine_chunks = self.device is None or self.device == "cpu"
-        return arrow_table_to_gpu_tensors(
-            batch, combine_chunks=combine_chunks, dtypes=self.dtypes, device=self.device
-        )
+        return arrow_table_to_tensors(batch, dtypes=self.dtypes, device=self.device)
 
 
+@DeveloperAPI
 class DefaultFinalizeFn:
     """Default finalize function for moving PyTorch tensors to device."""
 
@@ -226,54 +205,6 @@ class DefaultFinalizeFn:
             device: Optional device to place tensors on
         """
         self.device = device
-
-    @staticmethod
-    def _concat_tensors_to_device(
-        tensor_list: List["torch.Tensor"],
-        device: str,
-    ) -> "torch.Tensor":
-        """Stack list of tensors into a contiguous GPU tensor.
-
-        Args:
-            tensor_list: List of tensors to stack
-
-        Returns:
-            A contiguous tensor on the target device
-        """
-        import torch
-
-        # Assumes tensors have the same shape/dtype
-        assert tensor_list, "Cannot stack empty list of tensors"
-        assert all(
-            isinstance(t, torch.Tensor) for t in tensor_list
-        ), "All items must be torch.Tensor"
-        assert all(
-            t.dtype == tensor_list[0].dtype for t in tensor_list
-        ), "All tensors must have the same dtype"
-        assert all(
-            t.shape[1:] == tensor_list[0].shape[1:] for t in tensor_list
-        ), "All tensors must have the same shape[1:]"
-
-        first = tensor_list[0]
-        dtype = first.dtype
-        shape_tail = first.shape[1:]
-        total_rows = sum(t.shape[0] for t in tensor_list)
-
-        # Allocate an empty Tensor on device
-        result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
-
-        row_start = 0
-        for t in tensor_list:
-            row_end = row_start + t.shape[0]
-            if t.is_pinned():
-                # Perform non-blocking transfer if the tensor is pinned
-                result[row_start:row_end].copy_(t, non_blocking=True)
-            else:
-                # Perform blocking transfer if the tensor is not pinned
-                result[row_start:row_end].copy_(t)
-            row_start = row_end
-
-        return result
 
     def __call__(
         self,
@@ -297,32 +228,11 @@ class DefaultFinalizeFn:
         Returns:
             Tensor or collection of tensors moved to the target device
         """
-        import torch
+        from ray.air._internal.torch_utils import (
+            move_tensors_to_device,
+        )
 
-        if self.device is None:
-            return batch
-
-        if isinstance(batch, dict):
-            for k, v in batch.items():
-                if isinstance(v, list) and all(isinstance(t, torch.Tensor) for t in v):
-                    batch[k] = self._concat_tensors_to_device(v, device=self.device)
-                elif isinstance(v, torch.Tensor):
-                    if v.is_pinned():
-                        batch[k] = v.to(device=self.device, non_blocking=True)
-                    else:
-                        batch[k] = v.to(device=self.device)
-        elif isinstance(batch, list) and all(
-            isinstance(t, torch.Tensor) for t in batch
-        ):
-            batch = self._concat_tensors_to_device(batch, device=self.device)
-        else:
-            assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
-            if batch.is_pinned():
-                batch = batch.to(device=self.device, non_blocking=True)
-            else:
-                batch = batch.to(device=self.device)
-
-        return batch
+        return move_tensors_to_device(batch, device=self.device)
 
 
 @PublicAPI

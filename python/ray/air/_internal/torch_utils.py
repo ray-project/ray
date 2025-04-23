@@ -342,9 +342,8 @@ def convert_ndarray_list_to_torch_tensor_list(
         }
 
 
-def arrow_table_to_gpu_tensors(
+def arrow_table_to_tensors(
     batch: pyarrow.Table,
-    combine_chunks: bool = True,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
 ) -> Union[
@@ -357,7 +356,6 @@ def arrow_table_to_gpu_tensors(
 
     Args:
         batch: PyArrow table to convert
-        combine_chunks: Whether to combine chunks or keep separate
         dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
             will be inferred from the NumPy ndarray data.
         device: Optional device to place tensors on
@@ -371,6 +369,15 @@ def arrow_table_to_gpu_tensors(
     """
 
     from ray.data._internal.arrow_ops import transform_pyarrow
+
+    combine_chunks: bool = (
+        dtypes is None
+        or not any(
+            dtype is object for dtype in dtypes.values() if isinstance(dtypes, dict)
+        )
+        or device is None
+        or device == "cpu"
+    )
 
     if combine_chunks:
         numpy_batch = transform_pyarrow.table_to_numpy_dict_combined(
@@ -394,3 +401,124 @@ def arrow_table_to_gpu_tensors(
         )
 
     return result
+
+
+def numpy_batch_to_torch_tensors(
+    batch: Dict[str, np.ndarray],
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    device: Optional[str] = None,
+) -> Union["torch.Tensor", Dict[str, "torch.Tensor"]]:
+    """Convert a dictionary of numpy arrays to PyTorch tensors.
+
+    Args:
+        batch: Dictionary mapping column names to numpy arrays
+
+    Returns:
+        Either a single PyTorch tensor or a dict mapping column names to tensors
+    """
+    from ray.air._internal.torch_utils import (
+        convert_ndarray_batch_to_torch_tensor_batch,
+    )
+
+    return convert_ndarray_batch_to_torch_tensor_batch(
+        batch,
+        dtypes=dtypes,
+        device=device,
+    )
+
+
+def concat_tensors_to_device(
+    tensor_list: List["torch.Tensor"],
+    device: str,
+) -> "torch.Tensor":
+    """Stack list of tensors into a contiguous GPU tensor.
+
+    Args:
+        tensor_list: List of tensors to stack
+
+    Returns:
+        A contiguous tensor on the target device
+    """
+    # Assumes tensors have the same shape/dtype
+    assert tensor_list, "Cannot stack empty list of tensors"
+    assert all(
+        isinstance(t, torch.Tensor) for t in tensor_list
+    ), "All items must be torch.Tensor"
+    assert all(
+        t.dtype == tensor_list[0].dtype for t in tensor_list
+    ), "All tensors must have the same dtype"
+    assert all(
+        t.shape[1:] == tensor_list[0].shape[1:] for t in tensor_list
+    ), "All tensors must have the same shape[1:]"
+
+    first = tensor_list[0]
+    dtype = first.dtype
+    shape_tail = first.shape[1:]
+    total_rows = sum(t.shape[0] for t in tensor_list)
+
+    # Allocate an empty Tensor on device
+    result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+
+    row_start = 0
+    for t in tensor_list:
+        row_end = row_start + t.shape[0]
+        if t.is_pinned():
+            # Perform non-blocking transfer if the tensor is pinned
+            result[row_start:row_end].copy_(t, non_blocking=True)
+        else:
+            # Perform blocking transfer if the tensor is not pinned
+            result[row_start:row_end].copy_(t)
+        row_start = row_end
+
+    return result
+
+
+def move_tensors_to_device(
+    batch: Union[
+        torch.Tensor,
+        List[torch.Tensor],
+        Dict[str, torch.Tensor],
+        Dict[str, List[torch.Tensor]],
+    ],
+    device: Optional[str] = None,
+) -> Union[
+    torch.Tensor,
+    List[torch.Tensor],
+    Dict[str, torch.Tensor],
+    Dict[str, List[torch.Tensor]],
+]:
+    """Move tensors to the specified device.
+
+    Args:
+        batch: A tensor or collection of tensors to move to device. Can be:
+            - A single tensor
+            - A list of tensors
+            - A dict mapping keys to tensors
+            - A dict mapping keys to lists of tensors
+        device: The device to move tensors to. If None, tensors are not moved.
+
+    Returns:
+        The input tensors moved to the specified device, maintaining the same structure.
+    """
+    if device is None:
+        return batch
+
+    if isinstance(batch, dict):
+        for k, v in batch.items():
+            if isinstance(v, list) and all(isinstance(t, torch.Tensor) for t in v):
+                batch[k] = concat_tensors_to_device(v, device=device)
+            elif isinstance(v, torch.Tensor):
+                if v.is_pinned():
+                    batch[k] = v.to(device=device, non_blocking=True)
+                else:
+                    batch[k] = v.to(device=device)
+    elif isinstance(batch, list) and all(isinstance(t, torch.Tensor) for t in batch):
+        batch = concat_tensors_to_device(batch, device=device)
+    else:
+        assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
+        if batch.is_pinned():
+            batch = batch.to(device=device, non_blocking=True)
+        else:
+            batch = batch.to(device=device)
+
+    return batch
