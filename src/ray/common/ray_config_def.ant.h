@@ -32,3 +32,7 @@ RAY_CONFIG(uint64_t, local_node_cleanup_delay_interval_ms, 30000)
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+// Whether to support virtual clusters. It has to be configured before the bootstrap and
+// is not allowed being updated on the fly.
+RAY_CONFIG(bool, virtual_cluster_enabled, false)

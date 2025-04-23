@@ -89,6 +89,8 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   void OnDetachedPlacementGroupDestroy(const std::string &virtual_cluster_id,
                                        const PlacementGroupID &placement_group_id);
 
+  std::shared_ptr<const PrimaryCluster> GetPrimaryCluster();
+
  protected:
   void HandleCreateOrUpdateVirtualCluster(
       rpc::CreateOrUpdateVirtualClusterRequest request,

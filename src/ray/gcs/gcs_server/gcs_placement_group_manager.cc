@@ -911,7 +911,12 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
 }
 
 void GcsPlacementGroupManager::Tick() {
-  UpdatePlacementGroupLoad();
+  // `UpdatePlacementGroupLoad` moves the pending pg info to `GcsResourceManager`. When
+  // autoscaler v2 is enabled, it should be skipped because `GcsAutoscalerStateManager`
+  // needs to get the pending pg info directly.
+  if (!RayConfig::instance().enable_autoscaler_v2()) {
+    UpdatePlacementGroupLoad();
+  }
   // To avoid scheduling exhaution in some race conditions.
   // Note that we don't currently have a known race condition that requires this, but we
   // added as a safety check. https://github.com/ray-project/ray/pull/18419

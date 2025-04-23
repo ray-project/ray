@@ -171,6 +171,18 @@ message GetClusterResourceStateRequest {
   int64 last_seen_cluster_resource_state_version = 1;
 }
 
+message VirtualClusterState {
+  string parent_virtual_cluster_id = 1;
+  bool divisible = 2;
+  uint64 revision = 3;
+  // The list of node id for all nodes within the virtual cluster.
+  repeated string nodes = 4;
+  // Resource requests pending scheduling.
+  repeated ResourceRequestByCount pending_resource_requests = 5;
+  // Gang resource requests pending scheduling.
+  repeated GangResourceRequest pending_gang_resource_requests = 6;
+}
+
 // Represents a cluster resource state.
 message ClusterResourceState {
   // an monotonically increasing version of the cluster resources.
@@ -189,6 +201,8 @@ message ClusterResourceState {
   repeated ClusterResourceConstraint cluster_resource_constraints = 6;
   // The cluster session name.
   string cluster_session_name = 7;
+  // The state of every virtual cluster.
+  map<string, VirtualClusterState> virtual_cluster_states = 8;
 }
 
 message GetClusterResourceStateReply {

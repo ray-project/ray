@@ -612,5 +612,9 @@ void GcsVirtualClusterManager::OnDetachedPlacementGroupDestroy(
   }
 }
 
+std::shared_ptr<const PrimaryCluster> GcsVirtualClusterManager::GetPrimaryCluster() {
+  return primary_cluster_;
+}
+
 }  // namespace gcs
 }  // namespace ray
