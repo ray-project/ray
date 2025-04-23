@@ -458,6 +458,7 @@ doctest(
             "source/data/inspecting-data.rst",
             "source/data/loading-data.rst",
             "source/data/performance-tips.rst",
+            "source/data/saving-data.rst",
             "source/data/working-with-images.rst",
             "source/data/working-with-llms.rst",
             "source/data/working-with-pytorch.rst",
