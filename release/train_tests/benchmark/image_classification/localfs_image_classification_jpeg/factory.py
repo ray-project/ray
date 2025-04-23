@@ -39,36 +39,28 @@ class LocalFSImageClassificationRayDataLoaderFactory(
     def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
         """Get Ray datasets for training and validation from local filesystem."""
         # Create training dataset
-        train_ds = (
-            ray.data.read_images(
-                LOCALFS_JPEG_SPLIT_DIRS["train"],
-                mode="RGB",
-                include_paths=True,
-                partitioning=Partitioning(
-                    "dir",
-                    base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
-                    field_names=["class"],
-                ),
-            )
-            .limit(self.benchmark_config.limit_training_rows)
-            .map(get_preprocess_map_fn(random_transforms=True))
-        )
+        train_ds = ray.data.read_images(
+            LOCALFS_JPEG_SPLIT_DIRS["train"],
+            mode="RGB",
+            include_paths=True,
+            partitioning=Partitioning(
+                "dir",
+                base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
+                field_names=["class"],
+            ),
+        ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
-        val_ds = (
-            ray.data.read_images(
-                LOCALFS_JPEG_SPLIT_DIRS["val"],
-                mode="RGB",
-                include_paths=True,
-                partitioning=Partitioning(
-                    "dir",
-                    base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
-                    field_names=["class"],
-                ),
-            )
-            .limit(self.benchmark_config.limit_validation_rows)
-            .map(get_preprocess_map_fn(random_transforms=False))
-        )
+        val_ds = ray.data.read_images(
+            LOCALFS_JPEG_SPLIT_DIRS["val"],
+            mode="RGB",
+            include_paths=True,
+            partitioning=Partitioning(
+                "dir",
+                base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
+                field_names=["class"],
+            ),
+        ).map(get_preprocess_map_fn(random_transforms=False))
 
         return {"train": train_ds, "val": val_ds}
 
