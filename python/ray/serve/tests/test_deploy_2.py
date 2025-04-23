@@ -386,9 +386,11 @@ def test_unallocated_replica_shutdown(serve_instance):
     stopping it should be immediate and not wait for the graceful shutdown timeout.
     """
 
+    deployment_name = "CustomResourceDeployment"
+
     @serve.deployment(
         ray_actor_options={"resources": {"custom": 1}},  # Require non-existent resource
-        graceful_shutdown_timeout_s=10,
+        graceful_shutdown_timeout_s=100,
     )
     class CustomResourceDeployment:
         def __init__(self):
@@ -397,26 +399,34 @@ def test_unallocated_replica_shutdown(serve_instance):
         def __call__(self):
             return "ready"
 
-    serve.run(CustomResourceDeployment.bind())
+    serve.run(CustomResourceDeployment.bind(), name="test_app")
     wait_for_condition(
         check_deployment_status,
-        name="CustomResourceDeployment",
+        name=deployment_name,
         expected_status=DeploymentStatus.UNHEALTHY,
     )
 
-    check_num_replicas_eq("CustomResourceDeployment", 1)
+    check_num_replicas_eq(deployment_name, 1)
+    actors_before = [
+        actor for actor in list_actors() if deployment_name in actor["name"]
+    ]
+    assert len(actors_before) == 1
 
-    start = time.time()
-    serve.delete("CustomResourceDeployment")
-    deletion_time = time.time() - start
-    # deletion_time should be under the graceful shutdown timeout
-    assert deletion_time < 5, f"Deletion took {deletion_time}s, expected < 5s"
+    serve.delete("test_app", blocking=False)
+
+    def check_actor_stopped():
+        current_actors = [
+            actor for actor in list_actors() if deployment_name in actor["name"]
+        ]
+        return len(current_actors) == 0
+
+    wait_for_condition(check_actor_stopped, timeout=15)
 
     def check_deployment_removed():
-        app_status = serve.status().applications["default"]
-        return "CustomResourceDeployment" not in app_status.deployments
+        app_status = serve.status().applications["test_app"]
+        return deployment_name not in app_status.deployments
 
-    wait_for_condition(check_deployment_removed)
+    wait_for_condition(check_deployment_removed, timeout=15)
 
 
 if __name__ == "__main__":
