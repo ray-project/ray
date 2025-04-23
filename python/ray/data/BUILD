@@ -1336,7 +1336,7 @@ py_test(
     ],
 )
 
-py_test(  
+py_test(
     name = "test_state_export",
     size = "small",
     srcs = ["tests/test_state_export.py"],
