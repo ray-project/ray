@@ -42,6 +42,9 @@ config = (
     .learners(
         num_learners=0,
     )
+    .env_runners(
+        rollout_fragment_length="auto",
+    )
     .training(
         lr=1e-4,
         train_batch_size_per_learner=256,
