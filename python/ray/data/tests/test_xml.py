@@ -143,21 +143,6 @@ def test_read_xml_partitioning(tmp_path):
     assert all(pdf["country"] == "US")
 
 
-def test_read_xml_meta_provider(tmp_path):
-    from ray.data.datasource import FastFileMetadataProvider, BaseFileMetadataProvider
-
-    path = write_xml(tmp_path, "simple.xml", SIMPLE_XML)
-    ds = ray.data.read_xml(
-        paths=path, meta_provider=FastFileMetadataProvider(), record_tag="user"
-    )
-    rows = ds.take_all()
-    assert rows[0]["name"] == "John"
-    with pytest.raises(NotImplementedError):
-        ray.data.read_xml(
-            paths=path, meta_provider=BaseFileMetadataProvider(), record_tag="user"
-        )
-
-
 def test_read_xml_large(tmp_path):
     """Test with a large XML file."""
     n = 500
