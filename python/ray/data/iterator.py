@@ -12,9 +12,12 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    Generic,
 )
 
 import numpy as np
+import pyarrow
+import torch
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
@@ -54,6 +57,270 @@ class _IterableFromIterator(Iterable[T]):
 
     def __iter__(self):
         return self.iterator_gen()
+
+
+class CollateFn(Generic[T]):
+    """A function that converts a DataBatch to a CollatedData."""
+
+    def __init__(
+        self,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        self.dtypes = dtypes
+        self.device = device
+
+    @abc.abstractmethod
+    def __call__(self, batch: T) -> "CollatedData":
+        """Convert a batch of data to collated format.
+
+        Args:
+            batch: The input batch to collate
+
+        Returns:
+            The collated data in the format expected by the model
+        """
+        ...
+
+
+class ArrowBatchCollateFn(CollateFn[pyarrow.Table]):
+    """Collate function for converting Arrow tables to PyTorch tensors."""
+
+    def __init__(
+        self,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        super().__init__(dtypes=dtypes, device=device)
+
+    def __call__(self, batch: pyarrow.Table) -> "CollatedData":
+        """Convert a PyArrow table to PyTorch tensors.
+
+        Args:
+            batch: PyArrow table to convert
+
+        Returns:
+            Collated PyTorch tensors
+        """
+        ...
+
+
+class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
+    """Collate function for converting Numpy batches to PyTorch tensors."""
+
+    def __init__(
+        self,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        super().__init__(dtypes=dtypes, device=device)
+
+    def _numpy_batch_to_torch_tensors(
+        self,
+        batch: Dict[str, np.ndarray],
+        device: Optional[str] = None,
+    ) -> Union["torch.Tensor", Dict[str, "torch.Tensor"]]:
+        """Convert a dictionary of numpy arrays to PyTorch tensors.
+
+        Args:
+            batch: Dictionary mapping column names to numpy arrays
+
+        Returns:
+            Either a single PyTorch tensor or a dict mapping column names to tensors
+        """
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        return convert_ndarray_batch_to_torch_tensor_batch(
+            batch,
+            dtypes=self.dtypes,
+            device=device,
+        )
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> "CollatedData":
+        """Convert a Numpy batch to PyTorch tensors.
+
+        Args:
+            batch: Numpy batch to convert
+
+        Returns:
+            Collated PyTorch tensors
+        """
+        ...
+
+
+class DefaultCollateFn(ArrowBatchCollateFn):
+    """Default collate function for converting Arrow batches to PyTorch tensors."""
+
+    def __init__(
+        self,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        super().__init__(dtypes=dtypes, device=device)
+
+    def __call__(
+        self, batch: pyarrow.Table
+    ) -> Union[
+        "torch.Tensor",
+        List["torch.Tensor"],
+        Dict[str, "torch.Tensor"],
+        Dict[str, List["torch.Tensor"]],
+    ]:
+        """Convert an Arrow batch to PyTorch tensors.
+
+        Args:
+            batch: PyArrow Table to convert
+
+        Returns:
+            Collated PyTorch tensors, can be:
+            - A single tensor
+            - A list of tensors
+            - A dict of column name to tensor
+            - A dict of column name to list of tensors
+        """
+        from ray.air._internal.torch_utils import (
+            arrow_table_to_gpu_tensors,
+        )
+
+        combine_chunks = self.device is None or self.device == "cpu"
+        return arrow_table_to_gpu_tensors(
+            batch, combine_chunks=combine_chunks, dtypes=self.dtypes, device=self.device
+        )
+
+
+class DefaultFinalizeFn:
+    """Default finalize function for moving PyTorch tensors to device."""
+
+    def __init__(
+        self,
+        device: Optional[str] = None,
+    ):
+        """Initialize the finalize function.
+
+        Args:
+            device: Optional device to place tensors on
+        """
+        self.device = device
+
+    @staticmethod
+    def _concat_tensors_to_device(
+        tensor_list: List["torch.Tensor"],
+        device: str,
+    ) -> "torch.Tensor":
+        """Stack list of tensors into a contiguous GPU tensor.
+
+        Args:
+            tensor_list: List of tensors to stack
+
+        Returns:
+            A contiguous tensor on the target device
+        """
+        # Assumes tensors have the same shape/dtype
+        assert tensor_list, "Cannot stack empty list of tensors"
+        assert all(
+            isinstance(t, torch.Tensor) for t in tensor_list
+        ), "All items must be torch.Tensor"
+        assert all(
+            t.dtype == tensor_list[0].dtype for t in tensor_list
+        ), "All tensors must have the same dtype"
+        assert all(
+            t.shape[1:] == tensor_list[0].shape[1:] for t in tensor_list
+        ), "All tensors must have the same shape[1:]"
+
+        first = tensor_list[0]
+        dtype = first.dtype
+        shape_tail = first.shape[1:]
+        total_rows = sum(t.shape[0] for t in tensor_list)
+
+        # Allocate an empty Tensor on device
+        result = torch.empty((total_rows, *shape_tail), dtype=dtype, device=device)
+
+        row_start = 0
+        for t in tensor_list:
+            row_end = row_start + t.shape[0]
+            if t.is_pinned():
+                # Perform non-blocking transfer if the tensor is pinned
+                result[row_start:row_end].copy_(t, non_blocking=True)
+            else:
+                # Perform blocking transfer if the tensor is not pinned
+                result[row_start:row_end].copy_(t)
+            row_start = row_end
+
+        return result
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        batch: Union[
+            "torch.Tensor",
+            List["torch.Tensor"],
+            Dict[str, "torch.Tensor"],
+            Dict[str, List["torch.Tensor"]],
+        ],
+    ) -> Union[
+        "torch.Tensor",
+        List["torch.Tensor"],
+        Dict[str, "torch.Tensor"],
+        Dict[str, List["torch.Tensor"]],
+    ]:
+        """Move tensors to device.
+
+        Args:
+            batch: Tensor or collection of tensors to move to device
+
+        Returns:
+            Tensor or collection of tensors moved to the target device
+        """
+        if self.device is None:
+            return batch
+
+        if isinstance(batch, dict):
+            for k, v in batch.items():
+                if isinstance(v, list) and all(isinstance(t, torch.Tensor) for t in v):
+                    batch[k] = self._concat_tensors_to_device(v, device=self.device)
+                elif isinstance(v, torch.Tensor):
+                    if v.is_pinned():
+                        batch[k] = v.to(device=self.device, non_blocking=True)
+                    else:
+                        batch[k] = v.to(device=self.device)
+        elif isinstance(batch, list) and all(
+            isinstance(t, torch.Tensor) for t in batch
+        ):
+            batch = self._concat_tensors_to_device(batch, device=self.device)
+        else:
+            assert isinstance(batch, torch.Tensor), "Batch must be a Tensor"
+            if batch.is_pinned():
+                batch = batch.to(device=self.device, non_blocking=True)
+            else:
+                batch = batch.to(device=self.device)
+
+        return batch
 
 
 @PublicAPI
@@ -242,7 +509,9 @@ class DataIterator(abc.ABC):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: str = "auto",
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], "CollatedData"]] = None,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -301,17 +570,17 @@ class DataIterator(abc.ABC):
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
                 Otherwise, defaults to CPU. You can't use this parameter with
                 ``collate_fn``.
-            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
+            collate_fn: A function to convert a PyArrow Table or Numpy batch to PyTorch tensors.
                 When this parameter is specified, the user should manually handle the
                 host to device data transfer outside of ``collate_fn``.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
                 handling batches of different length tensors. If not provided, the
-                default collate function is used which simply converts the batch of
-                numpy arrays to a batch of PyTorch tensors. This API is still
-                experimental and is subject to change. You can't use this parameter in
-                conjunction with ``dtypes`` or ``device``.
+                default collate function is used which simply converts the batch to
+                PyTorch tensors. This API is still experimental and is subject to
+                change. You can't use this parameter in conjunction with ``dtypes``
+                or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -327,9 +596,6 @@ class DataIterator(abc.ABC):
             An iterable over Torch Tensor batches.
         """
 
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
         from ray.train.torch import get_device
 
         if collate_fn is not None and (dtypes is not None or device != "auto"):
@@ -344,35 +610,27 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device()
 
+        finalize_fn = None
         if collate_fn is None:
-            # The default collate_fn handles formatting and Tensor creation.
-            # Here, we set device=None to defer host to device data transfer
-            # to the subsequent finalize_fn.
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-                return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch,
-                    dtypes=dtypes,
-                    device=None,
-                )
-
-            # The default finalize_fn handles the host to device data transfer.
-            # This is executed in a 1-thread pool separately from collate_fn
-            # to allow independent parallelism of these steps.
-            def finalize_fn(batch: Union["torch.Tensor", Dict[str, "torch.Tensor"]]):
-                if device is not None:
-                    if isinstance(batch, dict):
-                        for k, t in batch.items():
-                            batch[k] = t.to(device=device)
-                    else:
-                        batch = batch.to(device=device)
-                return batch
-
+            collate_fn = DefaultCollateFn(
+                dtypes=dtypes,
+                device=device,
+            )
+            finalize_fn = DefaultFinalizeFn(device=device)
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif callable(collate_fn):
+            batch_format = "numpy"
         else:
-            finalize_fn = None
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
         return self.iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
+            batch_format=batch_format,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
+import pyarrow
 
 from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
@@ -292,3 +293,104 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
             metadata[newkey] = metadata.pop(key)
 
     return state_dict
+
+
+def convert_ndarray_list_to_torch_tensor_list(
+    ndarrays: Union[List[np.ndarray], Dict[str, List[np.ndarray]]],
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    device: Optional[str] = None,
+) -> Union[List[torch.Tensor], Dict[str, List[torch.Tensor]]]:
+    """Convert a list of NumPy ndarrays or dict of lists of ndarrays to Torch Tensors.
+
+    Args:
+        ndarrays: A list of NumPy ndarrays or a dict mapping column names to lists of
+            ndarrays that we wish to convert to Torch Tensors.
+        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        device: The device on which the tensor(s) should be placed; if None, the Torch
+            tensor(s) will be constructed on the CPU.
+
+    Returns: A list of Torch Tensors or a dict mapping column names to lists of Tensors.
+    """
+    if isinstance(ndarrays, list):
+        # Single column case - list of ndarrays
+        if isinstance(dtypes, dict):
+            if len(dtypes) != 1:
+                raise ValueError(
+                    "When constructing a single-column batch, only a single dtype "
+                    f"should be given, instead got: {dtypes}"
+                )
+            dtypes = next(iter(dtypes.values()))
+        return [
+            convert_ndarray_batch_to_torch_tensor_batch(
+                ndarray, dtypes=dtypes, device=device
+            )
+            for ndarray in ndarrays
+        ]
+    else:
+        # Multi-column case - dict of lists of ndarrays
+        return {
+            col_name: [
+                convert_ndarray_batch_to_torch_tensor_batch(
+                    ndarray,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    device=device,
+                )
+                for ndarray in col_ndarrays
+            ]
+            for col_name, col_ndarrays in ndarrays.items()
+        }
+
+
+def arrow_table_to_gpu_tensors(
+    batch: pyarrow.Table,
+    combine_chunks: bool = True,
+    dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
+    device: Optional[str] = None,
+) -> Union[
+    "torch.Tensor",
+    List["torch.Tensor"],
+    Dict[str, "torch.Tensor"],
+    Dict[str, List["torch.Tensor"]],
+]:
+    """Convert PyArrow table to PyTorch tensors.
+
+    Args:
+        batch: PyArrow table to convert
+        combine_chunks: Whether to combine chunks or keep separate
+        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        device: Optional device to place tensors on
+
+    Returns:
+        PyTorch tensors converted from the Arrow table, can be:
+        - A single tensor
+        - A list of tensors
+        - A dict of column name to tensor
+        - A dict of column name to list of tensors
+    """
+
+    from ray.data._internal.arrow_ops import transform_pyarrow
+
+    if combine_chunks:
+        numpy_batch = transform_pyarrow.table_to_numpy_dict_combined(
+            batch,
+            zero_copy_only=False,
+        )
+        result = convert_ndarray_batch_to_torch_tensor_batch(
+            numpy_batch,
+            dtypes=dtypes,
+            device=device,
+        )
+    else:
+        numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
+            batch,
+            zero_copy_only=False,
+        )
+        result = convert_ndarray_list_to_torch_tensor_list(
+            numpy_list,
+            dtypes=dtypes,
+            device=device,
+        )
+
+    return result
