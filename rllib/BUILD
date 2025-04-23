@@ -574,7 +574,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/bc/cartpole_bc.py",
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
         "exclusive",
         "learning_tests",
