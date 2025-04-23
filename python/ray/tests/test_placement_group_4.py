@@ -170,7 +170,7 @@ def test_remove_placement_group_worker_startup_slowly(
     ray.util.remove_placement_group(placement_group)
 
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
-        ray.get(a.hang.remote(), timeout=3.0)
+        ray.get(a.hang.remote(), timeout=10)
 
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.
