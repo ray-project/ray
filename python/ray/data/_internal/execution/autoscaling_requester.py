@@ -53,6 +53,7 @@ class AutoscalingRequester:
         ray.autoscaler.sdk.request_resources(bundles=self._aggregate_requests())
 
     def request_resources(self, req: List[Dict], execution_id: str):
+
         # Purge expired requests before making request to autoscaler.
         self._purge()
         # For the same execution_id, we track the latest resource request and
@@ -77,12 +78,13 @@ class AutoscalingRequester:
         for _, (r, _) in self._resource_requests.items():
             req.extend(r)
 
-        def get_cpus(req):
-            num_cpus = 0
+        def get_grouped_cpu_crd(req):
+            grouped_cpu_crd = {}
             for r in req:
                 if "CPU" in r:
-                    num_cpus += r["CPU"]
-            return num_cpus
+                    cpu_crd = str(r)
+                    grouped_cpu_crd[cpu_crd] = grouped_cpu_crd.get(cpu_crd, 0) + 1
+            return grouped_cpu_crd
 
         # Round up CPUs to exceed total cluster CPUs so it can actually upscale.
         # This is to handle the issue where the autoscaling is driven by memory
@@ -90,15 +92,22 @@ class AutoscalingRequester:
         # asking for incremental CPUs (e.g. 1 CPU for each ready operator) may not
         # actually be able to trigger autoscaling if existing CPUs in cluster can
         # already satisfy the incremental CPUs request.
-        num_cpus = get_cpus(req)
+        grouped_cpu_crd = get_grouped_cpu_crd(req)
+        num_cpus = 0
+        for cpu_crd, count in grouped_cpu_crd.items():
+            cpu_crd = eval(cpu_crd)
+            num_cpus += cpu_crd["CPU"] * count
+        num_cpus = math.ceil(num_cpus)
         if num_cpus > 0:
             total = ray.cluster_resources()
             if "CPU" in total and num_cpus <= total["CPU"]:
                 delta = (
                     math.ceil(ARTIFICIAL_CPU_SCALING_FACTOR * total["CPU"]) - num_cpus
                 )
-                req.extend([{"CPU": 1}] * delta)
-
+                avg_delta = delta // len(grouped_cpu_crd)
+                for cpu_crd, count in grouped_cpu_crd.items():
+                    cpu_crd = eval(cpu_crd)
+                    req.extend([cpu_crd] * (avg_delta  // cpu_crd["CPU"]))
         return req
 
     def _test_set_timeout(self, ttl):
