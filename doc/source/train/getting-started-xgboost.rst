@@ -40,7 +40,7 @@ Compare a XGBoost training script with and without Ray Train.
 
     .. tab-item:: XGBoost
 
-        .. code-block:: python
+        .. testcode:: python
 
             import xgboost
             from sklearn.datasets import load_iris
@@ -49,7 +49,7 @@ Compare a XGBoost training script with and without Ray Train.
             # 1. Load your data as an `xgboost.DMatrix`.
             data = load_iris(as_frame=True)
             train_X, eval_X, train_y, eval_y = train_test_split(
-                data['data'], data['target'], test_size=.2
+                data["data"], data["target"], test_size=.2
             )
 
             dtrain = xgboost.DMatrix(train_X, label=train_y)
@@ -75,31 +75,41 @@ Compare a XGBoost training script with and without Ray Train.
 
     .. tab-item:: XGBoost + Ray Train
 
-        .. code-block:: python
-            :emphasize-lines: 5-7, 9, 12-13, 39, 43, 46-47, 50-53, 58-59, 62-66
+        .. testcode:: python
 
             from sklearn.datasets import load_iris
-            from sklearn.model_selection import train_test_split
             import xgboost
 
             import ray
-            from ray.train import ScalingConfig, RunConfig, CheckpointConfig
-            from ray.train.xgboost import XGBoostTrainer
+            from ray.train import ScalingConfig
+            from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 
+            # 1. Load your data as a Ray Data Dataset.
+            data = load_iris(as_frame=True).frame
+            dataset = ray.data.from_pandas(data)
+            train_dataset, eval_dataset = dataset.train_test_split(test_size=.2)
+                
             def train_func():
-                # 1. Load your data as an `xgboost.DMatrix`.
-                # This will be a Ray Data Dataset shard.
-                dataset = ray.train.get_dataset_shard("iris")
-                data = dataset.materialize().to_pandas()
-
-                train_X, eval_X, train_y, eval_y = train_test_split(
-                    data['data'], data['target'], test_size=.2
-                )
+                # 2. Load your data shard as an `xgboost.DMatrix`.
+                
+                # Get dataset shards for this worker
+                train_shard = ray.train.get_dataset_shard("train")
+                eval_shard = ray.train.get_dataset_shard("eval")
+                
+                # Convert shards to pandas DataFrames
+                train_df = train_shard.materialize().to_pandas()
+                eval_df = eval_shard.materialize().to_pandas()
+                
+                # Extract features and labels
+                train_X = train_df.drop("target", axis=1)
+                train_y = train_df["target"]
+                eval_X = eval_df.drop("target", axis=1)
+                eval_y = eval_df["target"]
 
                 dtrain = xgboost.DMatrix(train_X, label=train_y)
                 deval = xgboost.DMatrix(eval_X, label=eval_y)
 
-                # 2. Define your xgboost model training parameters.
+                # 3. Define your xgboost model training parameters.
                 params = {
                     "tree_method": "approx",
                     "objective": "reg:squarederror",
@@ -108,7 +118,7 @@ Compare a XGBoost training script with and without Ray Train.
                     "max_depth": 2,
                 }
 
-                # 3. Do distributed data-parallel training.
+                # 4. Do distributed data-parallel training.
                 # Ray Train sets up the necessary coordinator processes and
                 # environment variables for your workers to communicate with each other.
                 bst = xgboost.train(
@@ -116,33 +126,29 @@ Compare a XGBoost training script with and without Ray Train.
                     dtrain=dtrain,
                     evals=[(deval, "validation")],
                     num_boost_round=10,
-                    callbacks=[RayTrainReportCallback(metrics={"loss": "eval-logloss"})],
+                    callbacks=[RayTrainReportCallback()],
                 )
 
-            # Configure scaling and resource requirements.
+            # 5. Configure scaling and resource requirements.
             scaling_config = ScalingConfig(num_workers=2, resources_per_worker={"CPU": 4})
 
-            # Load your data as a Ray Data Dataset.
-            data = load_iris(as_frame=True)
-            dataset = ray.data.from_pandas(data)
-
-            # Launch distributed training job.
+            # 6. Launch distributed training job.
             trainer = XGBoostTrainer(
                 train_func,
                 scaling_config=scaling_config,
-                datasets = {"iris": dataset},
+                datasets = {"train": train_dataset, "eval": eval_dataset},
                 # If running in a multi-node cluster, this is where you
                 # should configure the run's persistent storage that is accessible
                 # across all worker nodes.
-                # run_config=RunConfig(storage_path="s3://..."),
+                # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result = trainer.fit()
 
-            # Load the trained model
+            # 7. Load the trained model
             import os
             with result.checkpoint.as_directory() as checkpoint_dir:
-                model_path = os.path.join(checkpoint_dir, "xgboost_model.json")
-                model = xgb.Booster()
+                model_path = os.path.join(checkpoint_dir, RayTrainReportCallback.CHECKPOINT_NAME)
+                model = xgboost.Booster()
                 model.load_model(model_path)
 
 
@@ -208,7 +214,7 @@ Report metrics and save checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To persist your checkpoints and monitor training progress, add a
-:class:`ray.train.xgboost.XGBoostTrainer.RayTrainReportCallback` utility callback to your Trainer:
+:class:`ray.train.xgboost.RayTrainReportCallback` utility callback to your Trainer:
 
 
 .. code-block:: diff
@@ -217,7 +223,7 @@ To persist your checkpoints and monitor training progress, add a
      from ray.train.xgboost import RayTrainReportCallback
 
      def train_func():
-         ...
+        ...
         bst = xgboost.train(
             ...,
             callbacks=[
@@ -226,10 +232,80 @@ To persist your checkpoints and monitor training progress, add a
                 )
             ],
         )
-         ...
+        ...
 
 
 Reporting metrics and checkpoints to Ray Train enables integration with Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
+
+Loading data
+------------
+
+When running distributed XGBoost training, you will need each worker to access a different shard of the dataset.
+
+
+.. testcode:: python
+    :skipif: True
+
+    def get_train_dataset(world_rank) -> xgboost.DMatrix:
+        # Define logic to get the DMatrix for each worker
+        ...
+
+    def get_eval_dataset(world_rank) -> xgboost.DMatrix:
+        # Define logic to get the DMatrix for each worker
+        ...
+
+    def train_func():
+        rank = ray.train.get_world_rank()
+        dtrain = get_train_dataset(rank)
+        deval = get_eval_dataset(rank)
+        ...
+
+A common way to do this is to pre-shard the dataset, so each worker reads from a different partition of the dataset. 
+
+For more flexibility, Ray Data provides a solution for sharding the dataset at runtime.
+
+Use Ray Data to shard the dataset
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+:ref:`Ray Data <data>` is a distributed data processing library that allows you to easily shard and distribute your data across multiple workers. 
+
+First, load your entire dataset as a Ray Data Dataset.
+
+.. testcode:: python
+    :skipif: True
+
+    train_dataset = ray.data.from_parquet("s3://...")
+    eval_dataset = ray.data.from_parquet("s3://...")
+
+In the training function, you can access the dataset shards for this worker using :meth:`ray.train.get_dataset_shard`. Convert this into the DMatrix.
+
+
+.. testcode:: python
+    :skipif: True
+
+    def get_dmatrix(dataset_name: str) -> xgboost.DMatrix:
+        shard = ray.train.get_dataset_shard(dataset_name)
+        df = shard.materialize().to_pandas()
+        X, y = df.drop("target", axis=1), df["target"]
+        return xgboost.DMatrix(X, label=y)
+
+    def train_func():
+        dtrain = get_dmatrix("train")
+        deval = get_dmatrix("eval")
+        ...
+
+
+Finally, pass the dataset to the Trainer. This will automatically shard the dataset across the workers. These keys must match the keys used when calling ``get_dataset_shard`` in the training function.
+
+
+.. testcode:: python
+    :skipif: True
+
+    trainer = XGBoostTrainer(..., datasets={"train": train_dataset, "eval": eval_dataset})
+    trainer.fit()
+
+
+For more details, see :ref:`data-ingest-torch`.
 
 Configure scale and GPUs
 ------------------------
@@ -252,6 +328,23 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
     # 4 nodes with 8 CPUs and 4 GPUs each.
     scaling_config = ScalingConfig(num_workers=16, use_gpu=True)
+
+When using GPUs, you will also need to update your training function to use the GPU. This can be done by setting the `"device"` parameter as `"cuda"`.
+
+.. code-block:: diff
+
+    def train_func():
+        ...
+
+        params = {
+            ...,
+  +         "device": "cuda",
+        }
+
+        bst = xgboost.train(
+            params,
+            ...
+        )
 
 
 Configure persistent storage
