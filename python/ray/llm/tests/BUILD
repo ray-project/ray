@@ -54,27 +54,11 @@ py_test_module_list(
 )
 
 # Serve test
-# Small tests
+# CPU tests
 py_test_module_list(
-    size = "small",
+    size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/small/**/test_*.py"]),
-    tags = [
-        "cpu",
-        "exclusive",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-# Medium tests
-py_test_module_list(
-    size = "medium",
-    data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/medium/**/test_*.py"]),
+    files = glob(["serve/cpu/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
