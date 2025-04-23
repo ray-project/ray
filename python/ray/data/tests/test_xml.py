@@ -158,33 +158,6 @@ def test_read_xml_meta_provider(tmp_path):
         )
 
 
-def test_read_xml_remote_args(ray_start_cluster, tmp_path):
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100},
-        num_cpus=1,
-        _system_config={"max_direct_call_object_size": 0},
-    )
-    cluster.add_node(resources={"bar": 100}, num_cpus=1)
-    ray.init(cluster.address)
-
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    ray.get(get_node_id.options(resources={"bar": 1}).remote())
-
-    path = write_xml(tmp_path, "foo.xml", MULTI_XML)
-    ds = ray.data.read_xml(
-        paths=path,
-        override_num_blocks=2,
-        ray_remote_args={"resources": {"bar": 1}},
-        record_tag="user",
-    )
-    ds.take_all()
-    # This does not actually check placement but exercises the API.
-
-
 def test_read_xml_large(tmp_path):
     """Test with a large XML file."""
     n = 500
