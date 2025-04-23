@@ -164,7 +164,6 @@ class TestGC:
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
         disable_temporary_uri_pinning,
-        tmp_working_dir,
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
@@ -182,7 +181,7 @@ class TestGC:
 
         A = A.options(
             runtime_env={
-                "working_dir": tmp_working_dir,
+                "working_dir": S3_PACKAGE_URI,
                 "py_modules": [
                     S3_PACKAGE_URI,
                 ],
