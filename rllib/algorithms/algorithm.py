@@ -1113,8 +1113,6 @@ class Algorithm(Checkpointable, Trainable):
             A ResultDict only containing the offline evaluation results from the current
             iteration.
         """
-        # Call the `_before_evaluate_offline` hook.
-        self._before_evaluate_offline()
 
         # First synchronize weights.
         self.offline_eval_runner_group.sync_weights(
@@ -3080,10 +3078,6 @@ class Algorithm(Checkpointable, Trainable):
         """Pre-evaluation callback."""
         pass
 
-    @DeveloperAPI
-    def _before_evaluate_offline(self):
-        pass
-
     @staticmethod
     def _get_env_id_and_creator(
         env_specifier: Union[str, EnvType, None], config: AlgorithmConfig
@@ -3553,6 +3547,9 @@ class Algorithm(Checkpointable, Trainable):
             or eval_config.evaluation_interval
         )
 
+    # TODO (simon, sven): Flexibilize the different env/offline components and move
+    # away from the currently hard-coded: (1) eval `EnvRunnerGroup`, (2) OfflineData
+    # and (3) `OfflineEvaluationRunnerGroup`.
     @classmethod
     def _should_create_offline_evaluation_runners(cls, eval_config: "AlgorithmConfig"):
         """Determines whether we need to create offline evaluation workers."""

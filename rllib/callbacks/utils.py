@@ -103,6 +103,8 @@ def _make_multi_callbacks(callback_class_list):
             for callback in self._callback_list:
                 callback.on_evaluate_end(**kwargs)
 
+        # TODO (simon, sven): Fix the test such that we can simply remove
+        # these.
         def on_evaluate_offline_start(self, **kwargs):
             for callback in self._callback_list:
                 callback.on_evaluate_offline_start(**kwargs)

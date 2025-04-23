@@ -272,14 +272,13 @@ class RLlibCallback(metaclass=_CallbackMeta):
                         else:
                             offline_eval_runner._custom_property_for_training = 1
 
-                    # Use the `foreach_env_runner` method of the worker set and
+                    # Use the `foreach_runner` method of the worker set and
                     # only loop through those worker IDs that have been restarted.
-                    # Note that we set `local_worker=False` to NOT include it (local
-                    # workers are never recreated; if they fail, the entire Algorithm
-                    # fails).
+                    # Note that `local_runner=False` as long as there are remote
+                    # runners.
                     offline_eval_runner_group.foreach_runner(
                         func,
-                        remote_worker_ids=offline_eval_runner_indices,
+                        remote_runner_ids=offline_eval_runner_indices,
                         local_runner=False,
                     )
 
