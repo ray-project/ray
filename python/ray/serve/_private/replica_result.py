@@ -63,7 +63,7 @@ class ActorReplicaResult(ReplicaResult):
         self._is_streaming: bool = metadata.is_streaming
         self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
-        self.__lazy_object_ref_or_gen_asyncio_lock = None
+        self._lazy_object_ref_or_gen_asyncio_lock = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -78,10 +78,10 @@ class ActorReplicaResult(ReplicaResult):
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
         """Lazy `asyncio.Lock` object."""
-        if self.__lazy_object_ref_or_gen_asyncio_lock is None:
-            self.__lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+        if self._lazy_object_ref_or_gen_asyncio_lock is None:
+            self._lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
 
-        return self.__lazy_object_ref_or_gen_asyncio_lock
+        return self._lazy_object_ref_or_gen_asyncio_lock
 
     def _process_response(f: Union[Callable, Coroutine]):
         @wraps(f)
