@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import torch
 import pyarrow
+import pandas as pd
 
 import ray
 
@@ -199,7 +200,11 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 @pytest.fixture
 def custom_collate_fns():
     """Fixture that provides both Arrow and Numpy custom collate functions."""
-    from ray.data.iterator import ArrowBatchCollateFn, NumpyBatchCollateFn
+    from ray.data.iterator import (
+        ArrowBatchCollateFn,
+        NumpyBatchCollateFn,
+        PandasBatchCollateFn,
+    )
 
     class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
         def __init__(
@@ -241,13 +246,33 @@ def custom_collate_fns():
                 modified_batch, dtypes=self.dtypes, device=self.device
             )["id"]
 
+    class CustomPandasBatchCollateFn(PandasBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            super().__init__(dtypes=dtypes, device=device)
+
+        def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
+            """Add 5 to the "id" column."""
+            modified_batch = pd.DataFrame({"id": batch["id"] + 5})
+            from ray.air._internal.torch_utils import (
+                convert_ndarray_batch_to_torch_tensor_batch,
+            )
+
+            return convert_ndarray_batch_to_torch_tensor_batch(
+                modified_batch.to_dict("series"), dtypes=self.dtypes, device=self.device
+            )["id"]
+
     return {
         "arrow": CustomArrowBatchCollateFn(),
         "numpy": CustomNumpyBatchCollateFn(),
+        "pandas": CustomPandasBatchCollateFn(),
     }
 
 
-@pytest.mark.parametrize("collate_type", ["arrow", "numpy"])
+@pytest.mark.parametrize("collate_type", ["arrow", "numpy", "pandas"])
 def test_custom_batch_collate_fn(
     ray_start_regular_shared, custom_collate_fns, collate_type
 ):

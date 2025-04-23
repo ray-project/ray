@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     import pyarrow
+    import pandas
 
     from ray.data.dataset import (
         CollatedData,
@@ -58,8 +59,11 @@ class _IterableFromIterator(Iterable[T]):
         return self.iterator_gen()
 
 
+DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
+
+
 @DeveloperAPI
-class CollateFn(Generic[T]):
+class CollateFn(Generic[DataBatchType]):
     """A function that converts a DataBatch to a CollatedData."""
 
     def __init__(
@@ -77,7 +81,7 @@ class CollateFn(Generic[T]):
         self.device = device
 
     @abc.abstractmethod
-    def __call__(self, batch: T) -> "CollatedData":
+    def __call__(self, batch: DataBatchType) -> "CollatedData":
         """Convert a batch of data to collated format.
 
         Args:
@@ -140,6 +144,35 @@ class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
 
         Args:
             batch: Numpy batch to convert
+
+        Returns:
+            Collated PyTorch tensors
+        """
+        ...
+
+
+@DeveloperAPI
+class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
+    """Collate function for converting Pandas batches to PyTorch tensors."""
+
+    def __init__(
+        self,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+    ):
+        """Initialize the collate function.
+
+        Args:
+            dtypes: Optional torch dtype(s) for the tensors
+            device: Optional device to place tensors on
+        """
+        super().__init__(dtypes=dtypes, device=device)
+
+    def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
+        """Convert a Pandas batch to PyTorch tensors.
+
+        Args:
+            batch: Pandas batch to convert
 
         Returns:
             Collated PyTorch tensors
@@ -534,6 +567,8 @@ class DataIterator(abc.ABC):
             batch_format = "pyarrow"
         elif isinstance(collate_fn, NumpyBatchCollateFn):
             batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
         elif callable(collate_fn):
             batch_format = "numpy"
         else:

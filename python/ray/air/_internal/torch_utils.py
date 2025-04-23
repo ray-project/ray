@@ -430,6 +430,7 @@ def numpy_batch_to_torch_tensors(
     )
 
 
+@torch.no_grad()
 def concat_tensors_to_device(
     tensor_list: List[torch.Tensor],
     device: str,
@@ -477,6 +478,7 @@ def concat_tensors_to_device(
     return result
 
 
+@torch.no_grad()
 def move_tensors_to_device(
     batch: Union[
         torch.Tensor,
