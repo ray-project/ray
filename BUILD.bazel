@@ -608,7 +608,7 @@ ray_cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         "//src/ray/object_manager:object_manager",
-        "//src/ray/object_manager:ownership_based_object_directory",
+        "//src/ray/object_manager:ownership_object_directory",
         "//src/ray/pubsub:pubsub_lib",
         ":raylet_agent_manager",
         ":runtime_env_agent_client",

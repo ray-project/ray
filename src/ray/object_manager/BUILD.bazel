@@ -41,7 +41,7 @@ ray_cc_library(
     hdrs = ["pull_manager.h"],
     deps = [
         ":object_manager_common",
-        ":ownership_based_object_directory",
+        ":ownership_object_directory",
         "//:object_manager_rpc",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -59,9 +59,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "ownership_based_object_directory",
-    srcs = ["ownership_based_object_directory.cc"],
-    hdrs = ["ownership_based_object_directory.h"],
+    name = "ownership_object_directory",
+    srcs = ["ownership_object_directory.cc"],
+    hdrs = ["ownership_object_directory.h"],
     deps = [
         ":object_directory",
         "//:worker_rpc",

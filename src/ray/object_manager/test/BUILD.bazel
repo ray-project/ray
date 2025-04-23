@@ -27,15 +27,15 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "ownership_based_object_directory_test",
+    name = "ownership_object_directory_test",
     size = "small",
     srcs = [
-        "ownership_based_object_directory_test.cc",
+        "ownership_object_directory_test.cc",
     ],
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/object_manager:ownership_based_object_directory",
+        "//src/ray/object_manager:ownership_object_directory",
         "@com_google_googletest//:gtest_main",
     ],
 )
