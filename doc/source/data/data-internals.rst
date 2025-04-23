@@ -139,7 +139,7 @@ To add custom optimization rules, implement a class that extends ``Rule`` and co
         def apply(self, plan):
             ...
 
-    ray.data._internal.logical.optimizers.DEFAULT_LOGICAL_RULES.append(CustomRule)
+    ray.data._internal.logical.optimizers.get_logical_ruleset().add(CustomRule)
 
 Types of physical operators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
