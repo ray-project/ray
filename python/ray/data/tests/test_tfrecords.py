@@ -485,6 +485,7 @@ def test_read_tfrecords_ray_remote_args(
     assert isinstance(ds, Dataset)
     mock_ray_data_read_tfrecords.assert_called_once()
     args, kwargs = mock_ray_data_read_tfrecords.call_args
+    assert kwargs["paths"] == [path]
     assert kwargs["ray_remote_args"] == ray_remote_args
 
 
