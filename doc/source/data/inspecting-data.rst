@@ -52,7 +52,7 @@ For more information like the number of rows, print the Dataset.
 .. testoutput::
 
     Dataset(
-       num_rows=150,
+       num_rows=?,
        schema={
           sepal length (cm): double,
           sepal width (cm): double,

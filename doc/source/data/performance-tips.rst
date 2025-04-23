@@ -213,7 +213,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 
 .. testoutput::
 
-    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
+    Dataset(num_rows=?, schema={sepal.length: double, variety: string})
 
 
 .. _data_memory:
