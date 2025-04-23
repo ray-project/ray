@@ -421,10 +421,10 @@ def test_unallocated_replica_shutdown(serve_instance):
         ]
         return len(current_actors) == 0
 
-    wait_for_condition(check_actor_stopped, timeout=50)
+    wait_for_condition(check_actor_stopped, timeout=15)
     deletion_time = time.time() - start_time
     # deletion_time should be under the graceful shutdown timeout
-    assert deletion_time < 50, f"Deletion took {deletion_time}s, expected < 50s"
+    assert deletion_time < 15, f"Deletion took {deletion_time}s, expected < 15s"
 
     def check_deployment_removed():
         app_status = serve.status().applications["test_app"]
