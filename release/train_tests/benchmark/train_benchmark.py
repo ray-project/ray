@@ -91,8 +91,9 @@ class TrainLoopRunner:
     def ship_batch_tensor_to_device(self, batch):
         if batch:
             input_batch, labels = batch
-            input_batch = input_batch.to(ray.train.torch.get_device())
-            labels = labels.to(ray.train.torch.get_device())
+            device = ray.train.torch.get_device()
+            input_batch = input_batch.to(device=device)
+            labels = labels.to(device=device)
             return input_batch, labels
         else:
             return None
@@ -205,8 +206,10 @@ class TrainLoopRunner:
 
         with self._metrics["validation/iter_first_batch"].timer():
             batch = self.get_next_batch(val_dataloader)
+            batch = self.ship_batch_tensor_to_device(batch)
 
         while batch:
+            batch = self.ship_batch_tensor_to_device(batch)
             input_batch, labels = batch
 
             with self._metrics["validation/step"].timer():
@@ -218,6 +221,7 @@ class TrainLoopRunner:
 
             with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(val_dataloader)
+                batch = self.ship_batch_tensor_to_device(batch)
 
         return {"validation/loss": total_loss.item() / num_rows}
 
