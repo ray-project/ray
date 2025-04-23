@@ -1335,3 +1335,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(  
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
