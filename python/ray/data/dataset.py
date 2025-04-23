@@ -103,7 +103,6 @@ from ray.data.block import (
     DataBatchColumn,
     T,
     U,
-    _CallableClassProtocol,
     UserDefinedFunction,
     _apply_batch_format,
 )
@@ -263,10 +262,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Union[
-            Callable[[Dict[str, Any]], Dict[str, Any]],
-            "_CallableClassProtocol",
-        ],
+        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
