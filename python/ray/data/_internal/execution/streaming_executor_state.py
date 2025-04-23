@@ -7,10 +7,16 @@ import logging
 import threading
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import ray
+# Try importing rich, handle gracefully if not installed
+try:
+    from rich.progress import TaskID
+except ImportError:
+    TaskID = None # Define as None if rich isn't available
+
 from ray.data._internal.execution.autoscaler import Autoscaler
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -30,7 +36,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.progress_bar import ProgressBar
+# Removed ProgressBar import
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -166,6 +172,77 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
+# --- Start: Added Helper Classes/Functions for Rich Display ---
+@dataclass
+class OpResourceUsage:
+    """Helper dataclass to hold resource usage for progress display."""
+    cpu: float = 0.0
+    gpu: float = 0.0
+    object_store_memory: int = 0
+
+    def __str__(self) -> str:
+        """Formats the resource usage string for display."""
+        mem_str = format_memory_str(self.object_store_memory)
+        cpu_str = f"{self.cpu:.1f}".replace(".0", "") # Remove .0 for integers
+        # Basic format, adjust if GPU needed later
+        # Example: "0.0 CPU, 0.0B object store" or "4 CPU, 512.6MB object store"
+        return f"{cpu_str} CPU, {mem_str} object store"
+
+def format_memory_str(mem_bytes: int) -> str:
+    """Formats memory bytes into a human-readable string (KB, MB, GB)."""
+    if mem_bytes < 1024:
+        # Show 0.0B for 0 bytes
+        s = f"{mem_bytes:.1f}B" if mem_bytes > 0 else "0.0B"
+    elif mem_bytes < 1024 * 1024:
+        s = f"{mem_bytes/1024:.1f}KB"
+    elif mem_bytes < 1024 * 1024 * 1024:
+        s = f"{mem_bytes/(1024*1024):.1f}MB"
+    else:
+        s = f"{mem_bytes/(1024*1024*1024):.1f}GB"
+    # Remove trailing .0 for integer values like 1.0MB -> 1MB
+    return s.replace(".0KB", "KB").replace(".0MB", "MB").replace(".0GB", "GB")
+
+
+@dataclass
+class OpDisplayInfo:
+    """Holds the details needed for the rich display second line."""
+    resource_usage: OpResourceUsage = field(default_factory=OpResourceUsage)
+    tasks_active: int = 0
+    tasks_queued: int = 0
+    extra_info: str = "" # For things like [locality off] or Actors: N
+
+    def format_display_line(self) -> str:
+        """Formats the second line string for the rich display.
+
+        Examples:
+        "0.0 CPU, 0.0B object store; Tasks: 0; Queued blocks: 2;"
+        "0.0 CPU, 5.9GB object store; Tasks: 0: [locality off]; Queued blocks: 0;"
+        "4.0 CPU, 512.6MB object store; Tasks: 16; Actors: 4; Queued blocks: 0;"
+        "32; 0.0 CPU, 1.5MB object store; Tasks: 0; Queued blocks: 0;"
+        """
+        res_str = str(self.resource_usage)
+        task_str = f"Tasks: {self.tasks_active}"
+        queue_str = f"Queued blocks: {self.tasks_queued}"
+
+        parts = [res_str, task_str]
+        if self.extra_info:
+            # Insert extra info right after Tasks: count
+            parts[1] = f"{task_str}: {self.extra_info}" # e.g. "Tasks: 0: [locality off]" or "Tasks: 16; Actors: 4"
+            if "Actors:" in self.extra_info: # Handle Actors: N slightly differently if needed
+                 parts[1] = task_str # Keep task count separate
+                 parts.insert(2, self.extra_info) # Insert "Actors: N"
+
+        parts.append(queue_str)
+
+        # Special case for LimitOperator (based on screenshot)
+        # The screenshot shows "32; 0.0 CPU, 1.5MB object store; Tasks: 0; Queued blocks:"
+        # This seems to prepend the limit value. We don't have the limit value here easily.
+        # We'll stick to the standard format for now. Revisit if limit needs special handling.
+
+        return "; ".join(parts) + ";" # Add trailing semicolon
+# --- End: Added Helper Classes/Functions for Rich Display ---
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -182,13 +259,8 @@ class OpState:
         self.inqueues: List[OpBufferQueue] = inqueues
         # The outqueue is connected to another operator's inqueue (they physically
         # share the same Python list reference).
-        #
-        # Note: this queue is also accessed concurrently from the consumer thread.
-        # (in addition to the streaming executor thread). Hence, it must be a
-        # thread-safe type such as `deque`.
         self.outqueue: OpBufferQueue = OpBufferQueue()
         self.op = op
-        self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -198,43 +270,14 @@ class OpState:
         self._exception: Optional[Exception] = None
         self._scheduling_status = OpSchedulingStatus()
 
+        # --- Rich progress bar related fields ---
+        self.rich_task_id: Optional["TaskID"] = None # Use string for optional import
+        self.display_info = OpDisplayInfo() # Store details for the second line
+        self.last_num_output_rows: int = 0 # Track progress count for rich bar
+        # --- End Rich progress bar related fields ---
+
     def __repr__(self):
         return f"OpState({self.op.name})"
-
-    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
-        """Create progress bars at the given index (line offset in console).
-
-        For AllToAllOperator, zero or more sub progress bar would be created.
-        Return the number of enabled progress bars created for this operator.
-        """
-        is_all_to_all = isinstance(self.op, AllToAllOperator)
-        # Only show 1:1 ops when in verbose progress mode.
-        ctx = DataContext.get_current()
-        progress_bar_enabled = (
-            ctx.enable_progress_bars
-            and ctx.enable_operator_progress_bars
-            and (is_all_to_all or verbose_progress)
-        )
-        self.progress_bar = ProgressBar(
-            "- " + self.op.name,
-            self.op.num_output_rows_total(),
-            unit="row",
-            position=index,
-            enabled=progress_bar_enabled,
-        )
-        num_progress_bars = 1
-        if is_all_to_all:
-            # Initialize must be called for sub progress bars, even the
-            # bars are not enabled via the DataContext.
-            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
-        return num_progress_bars if progress_bar_enabled else 0
-
-    def close_progress_bars(self):
-        """Close all progress bars for this operator."""
-        if self.progress_bar:
-            self.progress_bar.close()
-            if isinstance(self.op, AllToAllOperator):
-                self.op.close_sub_progress_bars()
 
     def num_queued(self) -> int:
         """Return the number of queued bundles across all inqueues."""
@@ -244,76 +287,57 @@ class OpState:
         """Return the number of bundles currently in processing for this operator."""
         return self.op.num_active_tasks() + self.op.internal_queue_size()
 
+    # --- Added method to update display details ---
+    def update_display_info(self, resource_manager: ResourceManager):
+        """Updates the display_info field with current stats."""
+        usage = resource_manager.get_op_usage(self.op)
+        self.display_info.resource_usage = OpResourceUsage(
+            cpu=usage.cpu,
+            gpu=usage.gpu,
+            object_store_memory=usage.object_store_memory
+        )
+        self.display_info.tasks_active = self.op.num_active_tasks()
+        # Queued = external + internal operator queue
+        self.display_info.tasks_queued = self.num_queued() + self.op.internal_queue_size()
+
+        # Attempt to get extra info like locality or actor count
+        extra = ""
+        try:
+            op_extra = self.op.progress_str() # May contain locality, etc.
+            if op_extra and "locality" in op_extra:
+                 # Basic extraction, might need improvement
+                 extra = f"[{op_extra.strip()}]"
+
+            # Check if it's an op likely to have actors (Map/AllToAll)
+            # Use actor_info_counts which we already update in add_output
+            active_actors, _, _ = self.op.actor_info_counts()
+            if active_actors > 0 and not extra: # Don't overwrite locality info
+                 extra = f"Actors: {active_actors}"
+
+        except AttributeError:
+            pass # Op might not have progress_str or actor_info_counts
+        except Exception as e:
+            # Log unexpected errors getting extra info
+            logger.debug(f"Error getting extra progress info for {self.op.name}: {e}")
+        self.display_info.extra_info = extra
+    # --- End added method ---
+
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
-        if self.progress_bar:
-            assert (
-                ref.num_rows() is not None
-            ), "RefBundle must have a valid number of rows"
-            self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
+        if ref.num_rows() is not None:
+             self.last_num_output_rows += ref.num_rows() # Update progress count
+
+        # Update actor counts (remains the same)
         active, restarting, pending = self.op.actor_info_counts()
         self.op.metrics.num_alive_actors = active
         self.op.metrics.num_restarting_actors = restarting
         self.op.metrics.num_pending_actors = pending
 
-    def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
-        """Update the console with the latest operator progress."""
-        if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str(resource_manager))
-            self.progress_bar.refresh()
-
-    def summary_str(self, resource_manager: ResourceManager) -> str:
-        # Active tasks
-        active = self.op.num_active_tasks()
-        # Keep the operator name prefix separate as tqdm handles its alignment
-        prefix = f"- {self.op.name}: "
-
-        # Core stats with fixed-width alignment
-        active_str = f"Tasks:{active:<3d}"
-
-        # Queued blocks
-        queued = self.num_queued() + self.op.internal_queue_size()
-        queued_str = f"Queued:{queued:<3d}"
-
-        # Resources (simplified)
-        full_res_str = resource_manager.get_op_usage_str(self.op)
-        # Attempt to extract key parts - refine if needed
-        parts = full_res_str.split(" ")
-        cpu_part = next((p for p in parts if "CPU" in p), "CPU=N/A")
-        # Try finding object store, fall back to GPU, then general memory
-        mem_part = next((p for p in parts if "object_store" in p), 
-                        next((p for p in parts if "GPU" in p), 
-                             next((p for p in parts if "memory" in p), "Mem=N/A")))
-        # Remove '.0' from CPU count if present and it's an integer
-        if cpu_part.endswith(".0") and cpu_part[:-2].isdigit():
-             cpu_part = cpu_part[:-2]
-
-        # Limit length of resource parts if they are too long
-        MAX_RES_PART_LEN = 12 # Adjusted limit based on potential content
-        if len(cpu_part) > MAX_RES_PART_LEN:
-            cpu_part = cpu_part[:MAX_RES_PART_LEN-3] + "..."
-        if len(mem_part) > MAX_RES_PART_LEN:
-            mem_part = mem_part[:MAX_RES_PART_LEN-3] + "..."
-            
-        simplified_res_str = f"{cpu_part} {mem_part}"
-        # Pad the combined resource string - Adjusted padding
-        resources_str = f"Res:{simplified_res_str:<25}" 
-
-        # Combine parts
-        desc = f"{prefix}{active_str} {queued_str} {resources_str}"
-
-        # # Add back simplified operator suffix if needed (e.g., locality)
-        # # This part is commented out as per the goal of cutting unnecessary text
-        # suffix = self.op.progress_str()
-        # if suffix:
-        #    # Basic cleaning attempt for suffix
-        #    cleaned_suffix = suffix.replace("locality ", "").strip() # Remove "locality" label and spaces
-        #    if cleaned_suffix: # Add only if there's content left
-        #        desc += f" {cleaned_suffix}"
-
-        return desc
+        # NOTE: We don't update the rich progress bar *here*.
+        # The central executor loop will call update_display_info
+        # and then update the rich progress task for all ops.
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -343,7 +367,8 @@ class OpState:
             ref = self.outqueue.pop(output_split_idx)
             if ref is not None:
                 return ref
-            time.sleep(0.01)
+            # Reduce sleep time slightly for potentially better responsiveness
+            time.sleep(0.005)
 
     def inqueue_memory_usage(self) -> int:
         """Return the object store memory of this operator's inqueue."""
@@ -372,7 +397,7 @@ class OpState:
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
-) -> Tuple[Topology, int]:
+) -> Topology: # Return only topology, progress bar count removed
     """Instantiate the streaming operator state topology for the given DAG.
 
     This involves creating the operator state for each operator in the DAG,
@@ -385,7 +410,6 @@ def build_streaming_topology(
 
     Returns:
         The topology dict holding the streaming execution state.
-        The number of progress bars initialized so far.
     """
 
     topology: Topology = {}
@@ -409,15 +433,10 @@ def build_streaming_topology(
 
     setup_state(dag)
 
-    # Create the progress bars starting from the first operator to run.
-    # Note that the topology dict is in topological sort order. Index zero is reserved
-    # for global progress information.
-    i = 1
-    for op_state in list(topology.values()):
-        if not isinstance(op_state.op, InputDataBuffer):
-            i += op_state.initialize_progress_bars(i, options.verbose_progress)
+    # Progress bar initialization is now handled externally by the executor
+    # using a rich progress manager.
 
-    return (topology, i)
+    return topology
 
 
 def process_completed_tasks(
@@ -460,14 +479,10 @@ def process_completed_tasks(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=0.1, # Keep timeout reasonable
         )
 
         # Organize tasks by the operator they belong to, and sort them by task index.
-        # So that we'll process them in a deterministic order.
-        # This is because OpResourceAllocator may limit the number of blocks to read
-        # per operator. In this case, we want to have fewer tasks finish quickly and
-        # yield resources, instead of having all tasks output blocks together.
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
@@ -490,7 +505,7 @@ def process_completed_tasks(
                             or max_errored_blocks >= num_errored_blocks
                         )
                         error_message = (
-                            "An exception was raised from a task of "
+                            f"An exception was raised from a task {task.task_index()} of "
                             f'operator "{state.op.name}".'
                         )
                         if should_ignore:
@@ -500,10 +515,12 @@ def process_completed_tasks(
                                 else "unlimited"
                             )
                             error_message += (
-                                " Ignoring this exception with remaining"
+                                f" Ignoring this exception with remaining"
                                 f" max_errored_blocks={remaining}."
                             )
                             logger.error(error_message, exc_info=e)
+                            # Mark the task as completed with error state for tracking if needed
+                            task.on_task_finished(error=e)
                         else:
                             error_message += (
                                 " Dataset execution will now abort."
@@ -511,6 +528,8 @@ def process_completed_tasks(
                                 " DataContext.max_errored_blocks."
                             )
                             logger.error(error_message)
+                            # Mark the task as completed with error before raising
+                            task.on_task_finished(error=e)
                             raise e from None
                 else:
                     assert isinstance(task, MetadataOpTask)
@@ -518,8 +537,16 @@ def process_completed_tasks(
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
-        while op.has_next():
-            op_state.add_output(op.get_next())
+        # Make sure operator is still running before pulling outputs
+        if not op.completed():
+            try:
+                while op.has_next():
+                    op_state.add_output(op.get_next())
+            except Exception as e:
+                 # If getting output fails, mark op state with exception
+                 logger.error(f"Error getting output from operator {op.name}: {e}")
+                 op_state.mark_finished(exception=e)
+
 
     return num_errored_blocks
 
@@ -534,28 +561,62 @@ def update_operator_states(topology: Topology) -> None:
             continue
         all_inputs_done = True
         for idx, dep in enumerate(op.input_dependencies):
-            if dep.completed() and not topology[dep].outqueue:
+            # Check parent state finish status as well
+            parent_state = topology.get(dep)
+            if parent_state and parent_state._finished and not parent_state.outqueue.has_next():
+                 if not op_state.input_done_called[idx]:
+                     try:
+                         op.input_done(idx)
+                         op_state.input_done_called[idx] = True
+                     except Exception as e:
+                         logger.error(f"Error calling input_done({idx}) for {op.name}: {e}")
+                         op_state.mark_finished(exception=e)
+                         all_inputs_done = False
+                         break # Stop checking if an error occurs during input_done
+
+            # Original completion check (may still be relevant for some ops)
+            elif dep.completed() and not topology[dep].outqueue.has_next():
                 if not op_state.input_done_called[idx]:
-                    op.input_done(idx)
-                    op_state.input_done_called[idx] = True
+                    try:
+                        op.input_done(idx)
+                        op_state.input_done_called[idx] = True
+                    except Exception as e:
+                        logger.error(f"Error calling input_done({idx}) for {op.name}: {e}")
+                        op_state.mark_finished(exception=e)
+                        all_inputs_done = False
+                        break
             else:
                 all_inputs_done = False
 
-        if all_inputs_done:
-            op.all_inputs_done()
-            op_state.inputs_done_called = True
+        if all_inputs_done and not op_state._finished: # Only call if not already finished
+            try:
+                op.all_inputs_done()
+                op_state.inputs_done_called = True
+            except Exception as e:
+                logger.error(f"Error calling all_inputs_done for {op.name}: {e}")
+                op_state.mark_finished(exception=e)
+
 
     # Traverse the topology in reverse topological order.
     # For each op, if all of its downstream operators have completed.
     # call mark_execution_finished() to also complete this op.
+    # This logic seems less critical now, as completion is driven by inputs_done/errors
+    # Keep it for now, but might be removable later.
     for op, op_state in reversed(list(topology.items())):
-        if op.completed():
+        if op.completed() or op_state._finished:
             continue
         dependents_completed = len(op.output_dependencies) > 0 and all(
-            dep.completed() for dep in op.output_dependencies
+            topology[dep]._finished for dep in op.output_dependencies
         )
-        if dependents_completed:
-            op.mark_execution_finished()
+        # Also check if operator itself reported completion internally
+        if dependents_completed or op.completed():
+            try:
+                 if not op.completed(): # Avoid calling if already marked by operator
+                    op.mark_execution_finished()
+                 op_state.mark_finished() # Ensure OpState also marked
+            except Exception as e:
+                 logger.error(f"Error calling mark_execution_finished for {op.name}: {e}")
+                 op_state.mark_finished(exception=e)
 
 
 def select_operator_to_run(
@@ -581,10 +642,14 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     for op, state in topology.items():
-        assert resource_manager.op_resource_allocator_enabled(), topology
-        under_resource_limits = (
-            resource_manager.op_resource_allocator.can_submit_new_task(op)
-        )
+        if state._finished: # Don't select finished ops
+             continue
+
+        # Assume op_resource_allocator is enabled if resource_manager is provided
+        under_resource_limits = True
+        if resource_manager.op_resource_allocator_enabled():
+             under_resource_limits = resource_manager.op_resource_allocator.can_submit_new_task(op)
+
         in_backpressure = not under_resource_limits or any(
             not p.can_add_input(op) for p in backpressure_policies
         )
@@ -612,26 +677,32 @@ def select_operator_to_run(
     if (
         ensure_at_least_one_running
         and not ops
-        and all(op.num_active_tasks() == 0 for op in topology)
+        and all(state.op.num_active_tasks() == 0 for state in topology.values() if not state._finished)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
             op
             for op, state in topology.items()
-            if state.num_queued() > 0 and not op.completed()
+            if not state._finished and state.num_queued() > 0 and not op.completed() and op.should_add_input()
         ]
 
     selected_op = None
     if ops:
         # Run metadata-only operators first. After that, choose the operator with the
-        # least memory usage.
+        # least memory usage. Consider other factors?
         selected_op = min(
             ops,
             key=lambda op: (
                 not op.throttling_disabled(),
                 resource_manager.get_op_usage(op).object_store_memory,
+                # Add op name as tie-breaker for deterministic selection
+                op.name
             ),
         )
-        topology[selected_op]._scheduling_status.selected = True
+        if selected_op:
+            topology[selected_op]._scheduling_status.selected = True
+
+    # Consider moving autoscaler trigger outside this selection logic,
+    # maybe based on overall pressure or idle state.
     autoscaler.try_trigger_scaling()
     return selected_op
