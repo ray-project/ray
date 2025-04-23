@@ -242,9 +242,8 @@ class TestGC:
         class A:
             def test_import(self):
                 import test_module
+                import pip_install_test  # noqa: F401
 
-                if option == "py_modules":
-                    import pip_install_test  # noqa: F401
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()
