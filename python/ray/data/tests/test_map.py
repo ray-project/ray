@@ -782,8 +782,10 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
     with pytest.raises(UserCodeException):
         fake_column_ds.to_pandas()
 
+
 @pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="TODO(zhaoch23): pyarrow 13.0.0+ is not compatible with Python 3.12"
+    sys.version_info >= (3, 12),
+    reason="TODO(zhaoch23): pyarrow 13.0.0+ is not compatible with Python 3.12",
 )
 def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     """Test filtering with dictionary column."""
@@ -791,10 +793,14 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
 
     # NOTE: `pa.infer_type` doesn’t support complex PyArrow types (e.g., dictionaries and nested structs) until v13.0.0.
     # The tests therefore run with PyArrow==13.0.0.
-    ray.init(runtime_env={"pip": [
-        "pyarrow==13.0.0",
-        "numpy<=1.26.4", # PyArrow 13.0.0 is not compatible with NumPy 2+
-        ]})
+    ray.init(
+        runtime_env={
+            "pip": [
+                "pyarrow==13.0.0",
+                "numpy<=1.26.4",  # PyArrow 13.0.0 is not compatible with NumPy 2+
+            ]
+        }
+    )
 
     file_path = tmp_path / "dictionary_test.parquet"
 
