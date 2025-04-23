@@ -1714,7 +1714,7 @@ def check_local_files_gced(cluster, whitelist=None):
             if whitelist and set(items).issubset(whitelist):
                 continue
             if len(items) > 0:
-                print("Local files not GC'd:", items)
+                print(f"Local files not GC'd from subdir '{subdir}'", items)
                 return False
     return True
 
