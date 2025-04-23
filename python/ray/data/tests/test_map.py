@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import math
 import os
+import sys
 import threading
 import time
 from typing import Iterator
@@ -781,9 +782,19 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
     with pytest.raises(UserCodeException):
         fake_column_ds.to_pandas()
 
-
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(zhaoch23): pyarrow 13.0.0+ is not compatible with Python 3.12"
+)
 def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     """Test filtering with dictionary column."""
+    ray.shutdown()
+
+    # NOTE: `pa.infer_type` doesn’t support complex PyArrow types (e.g., dictionaries and nested structs) until v13.0.0.
+    # The tests therefore run with PyArrow==13.0.0.
+    ray.init(runtime_env={"pip": [
+        "pyarrow==13.0.0",
+        "numpy<=1.26.4", # PyArrow 13.0.0 is not compatible with NumPy 2+
+        ]})
 
     file_path = tmp_path / "dictionary_test.parquet"
 
@@ -803,11 +814,15 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     # Get schema and validate column types
     original_schema = ds.schema().types
 
-    # Apply a trivial filter to test schema stability
-    ds_filtered = ds.filter(lambda row: True)
-    filtered_schema = ds_filtered.schema().types
+    @ray.remote
+    def _test(ds):
+        # Apply a trivial filter to test schema stability
+        ds_filtered = ds.filter(lambda row: True)
+        return ds_filtered.schema().types
 
     # Ensure schema remains unchanged
+    filtered_schema = ray.get(_test.remote(ds))
+    assert filtered_schema
     assert (
         original_schema == filtered_schema
     ), f"Schema changed after filtering, original_schema: \
