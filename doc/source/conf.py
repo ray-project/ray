@@ -305,7 +305,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": False,
+    "announcement": """$100 to Try Ray on Anyscale — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start Now</a>.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
