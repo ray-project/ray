@@ -499,13 +499,6 @@ jobs:
       if: '!cancelled()'
       run: |
         python ci/ray_ci/report_gen.py summary ${{ env.REPORT_LABEL_1 }} ${{ env.REPORT_LABEL_2 }} ${{ env.REPORT_LABEL_3 }} ${{ env.REPORT_LABEL_4 }} ${{ env.REPORT_LABEL_5 }} ${{ env.REPORT_LABEL_6 }} ${{ env.REPORT_LABEL_7 }} ${{ env.REPORT_LABEL_8 }}
-    - name: Cleanup Containers
-      if: always()
-      continue-on-error: true
-      run: |
-        docker ps -a --filter ancestor=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
-        # Clean up any dangling containers
-        docker ps -a --filter status=exited -q | xargs -r docker rm || true
 
     - name: Upload Test Reports
       id: artifact-upload-step
@@ -516,6 +509,17 @@ jobs:
         name: test-reports-${{ github.sha }}
         path: ${{ env.artifacts_path }}/reports/
         retention-days: 90
+
+    - name: Cleanup Containers
+      if: always()
+      continue-on-error: true
+      run: |
+        docker ps -a --filter ancestor=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
+        # Clean up any dangling containers
+        docker ps -a --filter status=exited -q | xargs -r docker rm || true
+        # Clean up all volumes
+        docker volume prune -f || true
+
 
     - name: Create Summary
       if: '!cancelled()'
