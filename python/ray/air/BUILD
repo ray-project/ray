@@ -333,7 +333,7 @@ py_test(
 
 py_test(
     name = "test_resource_manager_placement_group",
-    size = "small",
+    size = "medium",
     srcs = ["tests/execution/test_resource_manager_placement_group.py"],
     tags = [
         "exclusive",

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/asio/thread_pool.hpp>
-#include <boost/thread.hpp>
 #include <list>
 #include <memory>
 #include <queue>
@@ -37,7 +35,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
@@ -93,7 +90,7 @@ class TaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(const rpc::PushTaskRequest &request,
+  void HandleTask(rpc::PushTaskRequest request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 
@@ -166,7 +163,7 @@ class TaskReceiver {
   bool execute_out_of_order_ = false;
   /// The repr name of the actor instance for an anonymous actor.
   /// This is only available after the actor creation task.
-  std::string actor_repr_name_ = "";
+  std::string actor_repr_name_;
 };
 
 }  // namespace core
