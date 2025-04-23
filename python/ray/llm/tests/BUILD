@@ -58,7 +58,7 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/unit/**/test_*.py"]),
+    files = glob(["serve/cpu/small/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -74,7 +74,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/integration/**/test_*.py"]),
+    files = glob(["serve/cpu/medium/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
