@@ -344,6 +344,8 @@ void RayletClient::PushMutableObject(
   }
 
   char *ptr = reinterpret_cast<char *>(aligned_malloc(kMaxGrpcPayloadSize, BUFFER_ALIGNMENT));
+  RAY_CHECK(ptr != nullptr);
+  RAY_CHECK(ptr != NULL);
 
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
