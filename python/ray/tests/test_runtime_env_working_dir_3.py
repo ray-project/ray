@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.experimental.internal_kv as kv
@@ -105,7 +104,7 @@ class TestGC:
         cluster, address = start_cluster
         cluster.add_node(
             num_cpus=1,
-            runtime_env_dir_name=f"worker_node_runtime_resources",
+            runtime_env_dir_name="worker_node_runtime_resources",
             dashboard_agent_listen_port=find_free_port(),
         )
 
@@ -121,7 +120,7 @@ class TestGC:
             },
         )
         assert not check_internal_kv_gced()
-        print(f'kv check 1 passed with source "{source}".')
+        print("kv check 1 passed.")
 
         @ray.remote(num_cpus=1)
         class A:
@@ -141,7 +140,7 @@ class TestGC:
         print("Got responses from all actors.")
 
         assert not check_internal_kv_gced()
-        print(f'kv check 2 passed with source "{source}".')
+        print("kv check 2 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -170,7 +169,7 @@ class TestGC:
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
         cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"worker_node_runtime_resources"
+            num_cpus=1, runtime_env_dir_name="worker_node_runtime_resources"
         )
         ray.init(address)
 
@@ -255,7 +254,7 @@ class TestGC:
         print('Got response from "test" actor.')
 
         assert not check_internal_kv_gced()
-        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+        print("kv check 2 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -267,7 +266,7 @@ class TestGC:
         print(f'Reconnected to Ray at address "{address}" and namespace "test".')
 
         assert not check_internal_kv_gced()
-        print(f'kv check 3 passed with source "{source}" and option "{option}".')
+        print("kv check 3 passed.")
 
         assert not check_local_files_gced(cluster)
         print("check_local_files_gced() check passed.")
@@ -294,7 +293,7 @@ class TestGC:
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         cluster, address = start_cluster
         cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"worker_node_runtime_resources"
+            num_cpus=1, runtime_env_dir_name="worker_node_runtime_resources"
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
