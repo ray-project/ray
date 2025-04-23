@@ -429,7 +429,7 @@ class StandardAutoscaler:
         num_workers = len(self.non_terminated_nodes.worker_ids)
         self.prom_metrics.running_workers.set(num_workers)
 
-        # Remove from LoadMetrics the ips unknown to the NodeProvider.
+        # Remove IPs from LoadMetrics that are not known to the NodeProvider.
         self.load_metrics.prune_active_ips(
             active_ips=[
                 self.provider.internal_ip(node_id)
