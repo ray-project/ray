@@ -12,7 +12,7 @@ py_library(
 # Common tests
 py_test_module_list(
     size = "small",
-    files = glob(["common/**/test_cloud_utils.py"]),
+    files = glob(["common/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -58,20 +58,7 @@ py_test_module_list(
 py_test_module_list(
     size = "small",
     data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/config_generator/test_input_converter.py",
-        "serve/config_generator/test_text_completion.py",
-        "serve/configs/test_json_mode_utils.py",
-        "serve/configs/test_models.py",
-        "serve/configs/test_prompt_formats.py",
-        "serve/deployments/llm/multiplex/test_lora_model_loader.py",
-        "serve/deployments/llm/multiplex/test_multiplex_deployment.py",
-        "serve/deployments/llm/multiplex/test_multiplex_utils.py",
-        "serve/deployments/llm/test_image_retriever.py",
-        "serve/deployments/llm/vllm/test_vllm_engine.py",
-        "serve/deployments/test_streaming_error_handler.py",
-        "serve/observability/usage_telemetry/test_usage.py",
-    ],
+    files = glob(["serve/cpu/unit/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -87,10 +74,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/builders/test_application_builders.py",
-        "serve/deployments/llm/multiplex/test_lora_deployment_base_client.py",
-    ],
+    files = glob(["serve/cpu/integration/**/test_*.py"]),
     tags = [
         "cpu",
         "exclusive",
@@ -106,11 +90,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = [
-        "serve/deployments/llm/vllm/test_vllm_engine_gpu.py",
-        "serve/integration/test_openai_compatibility.py",
-        "serve/integration/test_openai_compatibility_no_accelerator_type.py",
-    ],
+    files = glob(["serve/gpu/**/test_*.py"]),
     tags = [
         "exclusive",
         "gpu",
