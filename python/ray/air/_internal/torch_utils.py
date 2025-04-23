@@ -347,10 +347,10 @@ def arrow_table_to_tensors(
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
 ) -> Union[
-    "torch.Tensor",
-    List["torch.Tensor"],
-    Dict[str, "torch.Tensor"],
-    Dict[str, List["torch.Tensor"]],
+    torch.Tensor,
+    List[torch.Tensor],
+    Dict[str, torch.Tensor],
+    Dict[str, List[torch.Tensor]],
 ]:
     """Convert PyArrow table to PyTorch tensors.
 
@@ -367,16 +367,18 @@ def arrow_table_to_tensors(
         - A dict of column name to tensor
         - A dict of column name to list of tensors
     """
-
     from ray.data._internal.arrow_ops import transform_pyarrow
 
+    # Handle both single dtype and dict of dtypes
+    has_object_dtype = False
+    if dtypes is not None:
+        if isinstance(dtypes, dict):
+            has_object_dtype = any(dtype is object for dtype in dtypes.values())
+        else:
+            has_object_dtype = dtypes is object
+
     combine_chunks: bool = (
-        dtypes is None
-        or not any(
-            dtype is object for dtype in dtypes.values() if isinstance(dtypes, dict)
-        )
-        or device is None
-        or device == "cpu"
+        dtypes is None or not has_object_dtype or device is None or device == "cpu"
     )
 
     if combine_chunks:
@@ -384,7 +386,7 @@ def arrow_table_to_tensors(
             batch,
             zero_copy_only=False,
         )
-        result = convert_ndarray_batch_to_torch_tensor_batch(
+        return convert_ndarray_batch_to_torch_tensor_batch(
             numpy_batch,
             dtypes=dtypes,
             device=device,
@@ -394,24 +396,25 @@ def arrow_table_to_tensors(
             batch,
             zero_copy_only=False,
         )
-        result = convert_ndarray_list_to_torch_tensor_list(
+        return convert_ndarray_list_to_torch_tensor_list(
             numpy_list,
             dtypes=dtypes,
             device=device,
         )
-
-    return result
 
 
 def numpy_batch_to_torch_tensors(
     batch: Dict[str, np.ndarray],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
-) -> Union["torch.Tensor", Dict[str, "torch.Tensor"]]:
+) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     """Convert a dictionary of numpy arrays to PyTorch tensors.
 
     Args:
         batch: Dictionary mapping column names to numpy arrays
+        dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
+            will be inferred from the NumPy ndarray data.
+        device: Optional device to place tensors on
 
     Returns:
         Either a single PyTorch tensor or a dict mapping column names to tensors
@@ -428,13 +431,14 @@ def numpy_batch_to_torch_tensors(
 
 
 def concat_tensors_to_device(
-    tensor_list: List["torch.Tensor"],
+    tensor_list: List[torch.Tensor],
     device: str,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Stack list of tensors into a contiguous GPU tensor.
 
     Args:
         tensor_list: List of tensors to stack
+        device: The device to move tensors to
 
     Returns:
         A contiguous tensor on the target device

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import torch
+import pyarrow
 
 import ray
 
@@ -193,6 +194,56 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         assert all(
             kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+@pytest.fixture
+def custom_collate_fns():
+    """Fixture that provides both Arrow and Numpy custom collate functions."""
+    from ray.data.iterator import ArrowBatchCollateFn, NumpyBatchCollateFn
+
+    class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+        def __call__(self, batch: pyarrow.Table) -> torch.Tensor:
+            """Add 5 to the "id" column at the Arrow level."""
+            modified_batch = pyarrow.Table.from_arrays(
+                [pyarrow.compute.add(batch["id"], 5)], names=["id"]
+            )
+            from ray.air._internal.torch_utils import (
+                arrow_table_to_tensors,
+            )
+
+            return arrow_table_to_tensors(
+                modified_batch, dtypes=self.dtypes, device=self.device
+            )["id"]
+
+    class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
+        def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
+            """Add 5 to the "id" array."""
+            modified_batch = {"id": batch["id"] + 5}
+            from ray.air._internal.torch_utils import (
+                convert_ndarray_batch_to_torch_tensor_batch,
+            )
+
+            return convert_ndarray_batch_to_torch_tensor_batch(
+                modified_batch, dtypes=self.dtypes, device=self.device
+            )["id"]
+
+    return {
+        "arrow": CustomArrowBatchCollateFn(),
+        "numpy": CustomNumpyBatchCollateFn(),
+    }
+
+
+@pytest.mark.parametrize("collate_type", ["arrow", "numpy"])
+def test_custom_batch_collate_fn(
+    ray_start_regular_shared, custom_collate_fns, collate_type
+):
+    """Tests that custom batch collate functions can be used to modify
+    the batch before it is converted to a PyTorch tensor."""
+    ds = ray.data.range(5)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches(collate_fn=custom_collate_fns[collate_type]):
+        assert isinstance(batch, torch.Tensor)
+        assert batch.tolist() == list(range(5, 10))
 
 
 def test_iterator_to_materialized_dataset(ray_start_regular_shared):
