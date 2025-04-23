@@ -495,7 +495,7 @@ def _unwrap_s3_serialization_workaround(
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
         wrap_retries = filesystem._wrap_retries
-        retryable_errors = filesystem._retryable_erros
+        retryable_errors = filesystem._retryable_errors
         filesystem = filesystem.unwrap()
         if wrap_retries:
             filesystem = RetryingPyFileSystem.wrap(
@@ -513,7 +513,7 @@ class _S3FileSystemWrapper:
     ):
         self._fs = fs
         self._wrap_retries = wrap_retries
-        self._retryable_erros = retryable_errors
+        self._retryable_errors = retryable_errors
 
     def unwrap(self):
         return self._fs
@@ -553,7 +553,7 @@ def _resolve_kwargs(
 
 
 def _validate_shuffle_arg(
-    shuffle: Union[Literal["files"], FileShuffleConfig, None]
+    shuffle: Union[Literal["files"], FileShuffleConfig, None],
 ) -> None:
     if not (
         shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
