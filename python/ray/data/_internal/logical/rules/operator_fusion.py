@@ -307,6 +307,7 @@ class FuseOperators(Rule):
         # Merge minimum block sizes.
         down_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
         up_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
+
         if (
             down_min_rows_per_bundled_input is not None
             and up_min_rows_per_bundled_input is not None
