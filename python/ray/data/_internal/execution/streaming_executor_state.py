@@ -267,32 +267,51 @@ class OpState:
     def summary_str(self, resource_manager: ResourceManager) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: Tasks: {active}"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            backpressure_types = []
-            if self.op._in_task_submission_backpressure:
-                # The op is backpressured from submitting new tasks.
-                backpressure_types.append("tasks")
-            if self.op._in_task_output_backpressure:
-                # The op is backpressured from producing new outputs.
-                backpressure_types.append("outputs")
-            desc += f" [backpressured:{','.join(backpressure_types)}]"
+        # Keep the operator name prefix separate as tqdm handles its alignment
+        prefix = f"- {self.op.name}: "
 
-        # Actors info
-        desc += self.op.actor_info_progress_str()
+        # Core stats with fixed-width alignment
+        active_str = f"Tasks:{active:<3d}"
 
         # Queued blocks
         queued = self.num_queued() + self.op.internal_queue_size()
-        desc += f"; Queued blocks: {queued}"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+        queued_str = f"Queued:{queued:<3d}"
 
-        # Any additional operator specific information.
-        suffix = self.op.progress_str()
-        if suffix:
-            desc += f"; {suffix}"
+        # Resources (simplified)
+        full_res_str = resource_manager.get_op_usage_str(self.op)
+        # Attempt to extract key parts - refine if needed
+        parts = full_res_str.split(" ")
+        cpu_part = next((p for p in parts if "CPU" in p), "CPU=N/A")
+        # Try finding object store, fall back to GPU, then general memory
+        mem_part = next((p for p in parts if "object_store" in p), 
+                        next((p for p in parts if "GPU" in p), 
+                             next((p for p in parts if "memory" in p), "Mem=N/A")))
+        # Remove '.0' from CPU count if present and it's an integer
+        if cpu_part.endswith(".0") and cpu_part[:-2].isdigit():
+             cpu_part = cpu_part[:-2]
+
+        # Limit length of resource parts if they are too long
+        MAX_RES_PART_LEN = 12 # Adjusted limit based on potential content
+        if len(cpu_part) > MAX_RES_PART_LEN:
+            cpu_part = cpu_part[:MAX_RES_PART_LEN-3] + "..."
+        if len(mem_part) > MAX_RES_PART_LEN:
+            mem_part = mem_part[:MAX_RES_PART_LEN-3] + "..."
+            
+        simplified_res_str = f"{cpu_part} {mem_part}"
+        # Pad the combined resource string - Adjusted padding
+        resources_str = f"Res:{simplified_res_str:<25}" 
+
+        # Combine parts
+        desc = f"{prefix}{active_str} {queued_str} {resources_str}"
+
+        # # Add back simplified operator suffix if needed (e.g., locality)
+        # # This part is commented out as per the goal of cutting unnecessary text
+        # suffix = self.op.progress_str()
+        # if suffix:
+        #    # Basic cleaning attempt for suffix
+        #    cleaned_suffix = suffix.replace("locality ", "").strip() # Remove "locality" label and spaces
+        #    if cleaned_suffix: # Add only if there's content left
+        #        desc += f" {cleaned_suffix}"
 
         return desc
 
