@@ -3159,7 +3159,7 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
@@ -3217,7 +3217,7 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  530.0/544.0 CPU
  2/2 GPU
  2.00GiB/8.00GiB memory
@@ -3610,7 +3610,7 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
  2/2 GPU
@@ -3792,7 +3792,7 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
-Usage:
+Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
  2/2 GPU
