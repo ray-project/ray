@@ -98,6 +98,10 @@ class Work {
     return grant_or_reject || is_selected_based_on_locality;
   }
 
+  int32_t GetPriority() const {
+    return task.GetTaskSpecification().GetMessage().priority();
+  }
+
  private:
   WorkStatus status_ = WorkStatus::WAITING;
   UnscheduledWorkCause unscheduled_work_cause_ =
@@ -105,5 +109,9 @@ class Work {
 };
 
 using NodeInfoGetter = std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)>;
+
+using WorkQueueMap = absl::flat_hash_map<
+    SchedulingClass,
+    absl::btree_map<int32_t, std::deque<std::shared_ptr<internal::Work>>>>;
 
 }  // namespace ray::raylet::internal

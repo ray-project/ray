@@ -28,14 +28,9 @@ namespace raylet {
 /// Helper class that reports resource_load and resource_load_by_shape to gcs.
 class SchedulerResourceReporter {
  public:
-  SchedulerResourceReporter(
-      const absl::flat_hash_map<SchedulingClass,
-                                std::deque<std::shared_ptr<internal::Work>>>
-          &tasks_to_schedule,
-      const absl::flat_hash_map<SchedulingClass,
-                                std::deque<std::shared_ptr<internal::Work>>>
-          &infeasible_tasks,
-      const ILocalTaskManager &local_task_manager);
+  SchedulerResourceReporter(const internal::WorkQueueMap &tasks_to_schedule,
+                            const internal::WorkQueueMap &infeasible_tasks,
+                            const ILocalTaskManager &local_task_manager);
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
@@ -55,14 +50,12 @@ class SchedulerResourceReporter {
   int64_t TotalBacklogSize(SchedulingClass scheduling_class) const;
 
   const int64_t max_resource_shapes_per_load_report_;
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &tasks_to_schedule_;
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &tasks_to_dispatch_;
+  const internal::WorkQueueMap &tasks_to_schedule_;
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &infeasible_tasks_;
+  const internal::WorkQueueMap &tasks_to_dispatch_;
+
+  const internal::WorkQueueMap &infeasible_tasks_;
 
   const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
       &backlog_tracker_;

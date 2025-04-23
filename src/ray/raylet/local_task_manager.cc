@@ -95,7 +95,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
         {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
-      tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
+      tasks_to_dispatch_[scheduling_key][work->GetPriority()].push_back(std::move(work));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
@@ -106,7 +106,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
+    tasks_to_dispatch_[scheduling_key][work->GetPriority()].push_back(std::move(work));
   }
   return can_dispatch;
 }
@@ -127,307 +127,340 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
   // blocking where a task which cannot be dispatched because
   // there are not enough available resources blocks other
   // tasks from being dispatched.
-  for (auto shapes_it = tasks_to_dispatch_.begin();
-       shapes_it != tasks_to_dispatch_.end();) {
-    auto &scheduling_class = shapes_it->first;
-    auto &dispatch_queue = shapes_it->second;
-
-    auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
-    if (sched_cls_iter == info_by_sched_cls_.end()) {
-      // Initialize the class info.
-      sched_cls_iter = info_by_sched_cls_
-                           .emplace(scheduling_class,
-                                    SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(
-                                        scheduling_class)))
-                           .first;
+  // TODO(dayshah): Reconsider SchedulingClass as outer key and priority as inner key for
+  // this or keep this set pre-computed.
+  absl::flat_hash_set<int32_t> priorities;
+  for (const auto &[_, priority_map] : tasks_to_dispatch_) {
+    for (const auto &[priority, _] : priority_map) {
+      priorities.insert(priority);
     }
-    auto &sched_cls_info = sched_cls_iter->second;
-
-    // Fair scheduling is applied only when the total CPU requests exceed the node's
-    // capacity. This skips scheduling classes whose number of running tasks exceeds the
-    // average number of tasks per scheduling class.
-
-    // The purpose of fair scheduling is to ensure that each scheduling class has an
-    // equal chance of being selected for dispatch. For instance, in a pipeline with both
-    // data producers and consumers, we aim for consumers to have the same chance to be
-    // dispatched as producers. This prevents memory peak caused by dispatching all
-    // producer tasks first.
-    // A scheduling class is skipped from dispatching if its number of running tasks
-    // exceeds the fair_share, which is the average number of running tasks among all
-    // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
-    // scheduling classes, `f` and `g`, each with 4 tasks.
-    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
-    // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
-    //           with 3 `f` tasks running.
-    // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
-    //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
-    //           We calculate fair_share as follows:
-    //           fair_share = number of running tasks / number of scheduling classes
-    //                       = 2 / 2 = 1.
-    //           Since the number of running `f` tasks (2) is greater than the
-    //           fair_share (1), we skip `f` and choose to dispatch `g`.
-    // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
-    //         / (number of scheduling classes in tasks_to_dispatch_).
-    // Note 2: The decision to skip a scheduling class happens when loop through the
-    //         scheduling classes (keys of tasks_to_dispatch_). This means we check for
-    //         fair dispatching when looping through the scheduling classes rather than
-    //         for each individual task, reducing the number of checks required.
-    //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
-    //         we chose `f` for dispatch,and we continue dispatching all `f`
-    //         tasks until resources are fully utilized.
-
-    // Currently, fair dispatching is implemented only for tasks that require CPU
-    // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
-
-    // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
-    double total_cpu_requests_ = 0.0;
-
-    // Count the number of scheduling classes that require CPU and sum their total CPU
-    // requests.
-    size_t num_classes_with_cpu = 0;
-    for (const auto &entry : tasks_to_dispatch_) {
-      const auto &cur_dispatch_queue = entry.second;
-      for (const auto &work : cur_dispatch_queue) {
-        const auto &task_spec = work->task.GetTaskSpecification();
-        auto cpu_request_ =
-            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
-        if (cpu_request_ > 0) {
-          num_classes_with_cpu++;
-          total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
-          break;
-        }
+  }
+  for (const auto &priority : priorities) {
+    for (auto shapes_it = tasks_to_dispatch_.begin();
+         shapes_it != tasks_to_dispatch_.end();) {
+      auto &scheduling_class = shapes_it->first;
+      auto &priority_map = shapes_it->second;
+      auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
+      if (sched_cls_iter == info_by_sched_cls_.end()) {
+        // Initialize the class info.
+        sched_cls_iter =
+            info_by_sched_cls_
+                .emplace(scheduling_class,
+                         SchedulingClassInfo(
+                             MaxRunningTasksPerSchedulingClass(scheduling_class)))
+                .first;
       }
-    }
-    const auto &sched_cls_desc =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
-    double total_cpus =
-        cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
+      auto &sched_cls_info = sched_cls_iter->second;
 
-    // Compare total CPU requests with the node's total CPU capacity. If the requests
-    // exceed the capacity, check if fair dispatching is needed.
-    if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
-        total_cpu_requests_ > total_cpus) {
-      RAY_LOG(DEBUG)
-          << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
-          << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
-          << ").";
-      // Get the total number of running tasks requires CPU.
-      size_t total_cpu_running_tasks = 0;
-      for (auto &entry : info_by_sched_cls_) {
-        // Only consider CPU requests
-        const auto &cur_sched_cls_desc =
-            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
-        if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() >
-            0) {
-          total_cpu_running_tasks += entry.second.running_tasks.size();
-        }
-      }
-
-      // 1. We have confirmed that this is a scheduling class that requires CPU resources,
-      //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
-      //    tasks_to_dispatch_.
-      // 2. We will compute fair_share as the ideal distribution of tasks among all
-      //    scheduling classes in tasks_to_dispatch_. Then, we will check if the number of
-      //    running tasks for this scheduling class exceeds its ideal fair_share.
-      // 3. Note: We should get the num_classes_with_cpu from tasks_to_dispatch_
-      //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets from
-      //    the task running. First, info_by_sched_cls_ may not be initialized yet for
-      //    some scheduling classes (as we initialize it in the loop). Second, we expect
-      //    the number of running tasks for this scheduling class to not be much. However,
-      //    if no tasks of this scheduling class are running, it will not be skipped.
-
-      size_t fair_share = total_cpu_running_tasks / num_classes_with_cpu;
-      if (sched_cls_info.running_tasks.size() > fair_share) {
-        RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
-                       << ". Running tasks (" << sched_cls_info.running_tasks.size()
-                       << ") exceed fair share (" << fair_share << ").";
+      auto priority_iter = priority_map.find(priority);
+      if (priority_iter == priority_map.end()) {
+        // No tasks with this priority in this scheduling class.
         shapes_it++;
         continue;
       }
-    }
+      auto &dispatch_queue = priority_iter->second;
 
-    /// We cap the maximum running tasks of a scheduling class to avoid
-    /// scheduling too many tasks of a single type/depth, when there are
-    /// deeper/other functions that should be run. We need to apply back
-    /// pressure to limit the number of worker processes started in scenarios
-    /// with nested tasks.
-    bool is_infeasible = false;
-    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
-      auto &work = *work_it;
-      const auto &task = work->task;
-      const auto &spec = task.GetTaskSpecification();
-      TaskID task_id = spec.TaskId();
-      if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        work_it++;
-        continue;
+      // Fair scheduling is applied only when the total CPU requests exceed the node's
+      // capacity. This skips scheduling classes whose number of running tasks exceeds
+      // the average number of tasks per scheduling class.
+
+      // The purpose of fair scheduling is to ensure that each scheduling class has an
+      // equal chance of being selected for dispatch. For instance, in a pipeline with
+      // both data producers and consumers, we aim for consumers to have the same chance
+      // to be dispatched as producers. This prevents memory peak caused by dispatching
+      // all producer tasks first. A scheduling class is skipped from dispatching if its
+      // number of running tasks exceeds the fair_share, which is the average number of
+      // running tasks among all scheduling classes. For example, consider a scenario
+      // where we have 3 CPUs and 2 scheduling classes, `f` and `g`, each with 4 tasks.
+      // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
+      // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
+      //           with 3 `f` tasks running.
+      // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
+      //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
+      //           We calculate fair_share as follows:
+      //           fair_share = number of running tasks / number of scheduling classes
+      //                       = 2 / 2 = 1.
+      //           Since the number of running `f` tasks (2) is greater than the
+      //           fair_share (1), we skip `f` and choose to dispatch `g`.
+      // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
+      //         / (number of scheduling classes in tasks_to_dispatch_).
+      // Note 2: The decision to skip a scheduling class happens when loop through the
+      //         scheduling classes (keys of tasks_to_dispatch_). This means we check
+      //         for fair dispatching when looping through the scheduling classes rather
+      //         than for each individual task, reducing the number of checks required.
+      //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
+      //         we chose `f` for dispatch,and we continue dispatching all `f`
+      //         tasks until resources are fully utilized.
+
+      // Currently, fair dispatching is implemented only for tasks that require CPU
+      // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
+
+      // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
+      double total_cpu_requests = 0.0;
+
+      // Count the number of scheduling classes that require CPU and sum their total CPU
+      // requests.
+      // TODO(dayshah): Fair scheduling only considers tasks with this priority. See if
+      // there's a better way we can incorporate priority.
+      size_t num_classes_with_cpu = 0;
+      for (const auto &[_, priority_map] : tasks_to_dispatch_) {
+        auto queue_iter = priority_map.find(priority);
+        if (queue_iter == priority_map.end()) {
+          continue;
+        }
+        const auto &cur_dispatch_queue = queue_iter->second;
+        for (const auto &work : cur_dispatch_queue) {
+          const auto &task_spec = work->task.GetTaskSpecification();
+          auto cpu_request_ = task_spec.GetRequiredResources()
+                                  .Get(scheduling::ResourceID::CPU())
+                                  .Double();
+          if (cpu_request_ > 0) {
+            num_classes_with_cpu++;
+            total_cpu_requests += cur_dispatch_queue.size() * cpu_request_;
+            break;
+          }
+        }
       }
+      const auto &sched_cls_desc =
+          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+      double total_cpus =
+          cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
 
-      // Check if the scheduling class is at capacity now.
-      if (sched_cls_cap_enabled_ &&
-          sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
-          work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
-                       << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_ms_() < sched_cls_info.next_update_time) {
-          // We're over capacity and it's not time to admit a new task yet.
-          // Calculate the next time we should admit a new task.
-          int64_t current_capacity = sched_cls_info.running_tasks.size();
-          int64_t allowed_capacity = sched_cls_info.capacity;
-          int64_t exp = current_capacity - allowed_capacity;
-          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
-          if (wait_time > sched_cls_cap_max_ms_) {
-            wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
+      // Compare total CPU requests with the node's total CPU capacity. If the requests
+      // exceed the capacity, check if fair dispatching is needed.
+      if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
+          total_cpu_requests > total_cpus) {
+        RAY_LOG(DEBUG)
+            << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
+            << total_cpu_requests << ") exceed total CPUs available (" << total_cpus
+            << ").";
+        // Get the total number of running tasks requires CPU.
+        size_t total_cpu_running_tasks = 0;
+        for (auto &entry : info_by_sched_cls_) {
+          // Only consider CPU requests
+          const auto &cur_sched_cls_desc =
+              TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+          if (cur_sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU())
+                  .Double() > 0) {
+            total_cpu_running_tasks += entry.second.running_tasks.size();
           }
+        }
 
-          int64_t target_time = get_time_ms_() + wait_time;
-          sched_cls_info.next_update_time =
-              std::min(target_time, sched_cls_info.next_update_time);
+        // 1. We have confirmed that this is a scheduling class that requires CPU
+        // resources,
+        //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is
+        //    in tasks_to_dispatch_.
+        // 2. We will compute fair_share as the ideal distribution of tasks among all
+        //    scheduling classes in tasks_to_dispatch_. Then, we will check if the
+        //    number of running tasks for this scheduling class exceeds its ideal
+        //    fair_share.
+        // 3. Note: We should get the num_classes_with_cpu from tasks_to_dispatch_
+        //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets
+        //    from the task running. First, info_by_sched_cls_ may not be initialized
+        //    yet for some scheduling classes (as we initialize it in the loop). Second,
+        //    we expect the number of running tasks for this scheduling class to not be
+        //    much. However, if no tasks of this scheduling class are running, it will
+        //    not be skipped.
 
-          // While we're over capacity and cannot run the task,
-          // try to spill to a node that can run it.
-          bool did_spill = TrySpillback(work, is_infeasible);
-          if (did_spill) {
-            work_it = dispatch_queue.erase(work_it);
-            continue;
-          }
-
-          break;
+        size_t fair_share = total_cpu_running_tasks / num_classes_with_cpu;
+        if (sched_cls_info.running_tasks.size() > fair_share) {
+          RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
+                         << ". Running tasks (" << sched_cls_info.running_tasks.size()
+                         << ") exceed fair share (" << fair_share << ").";
+          shapes_it++;
+          continue;
         }
       }
 
-      bool args_missing = false;
-      bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
-      // An argument was evicted since this task was added to the dispatch
-      // queue. Move it back to the waiting queue. The caller is responsible
-      // for notifying us when the task is unblocked again.
-      if (!success) {
-        if (args_missing) {
-          // Insert the task at the head of the waiting queue because we
-          // prioritize spilling from the end of the queue.
-          // TODO(scv119): where does pulling happen?
-          auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
-                                               std::move(*work_it));
-          RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+      /// We cap the maximum running tasks of a scheduling class to avoid
+      /// scheduling too many tasks of a single type/depth, when there are
+      /// deeper/other functions that should be run. We need to apply back
+      /// pressure to limit the number of worker processes started in scenarios
+      /// with nested tasks.
+      bool is_infeasible = false;
+      for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+        auto &work = *work_it;
+        const auto &task = work->task;
+        const auto &spec = task.GetTaskSpecification();
+        TaskID task_id = spec.TaskId();
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+          work_it++;
+          continue;
+        }
+
+        // Check if the scheduling class is at capacity now.
+        if (sched_cls_cap_enabled_ &&
+            sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
+            work->GetState() == internal::WorkStatus::WAITING) {
+          RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+                         << " next update time=" << sched_cls_info.next_update_time;
+          if (get_time_ms_() < sched_cls_info.next_update_time) {
+            // We're over capacity and it's not time to admit a new task yet.
+            // Calculate the next time we should admit a new task.
+            int64_t current_capacity = sched_cls_info.running_tasks.size();
+            int64_t allowed_capacity = sched_cls_info.capacity;
+            int64_t exp = current_capacity - allowed_capacity;
+            int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
+            if (wait_time > sched_cls_cap_max_ms_) {
+              wait_time = sched_cls_cap_max_ms_;
+              RAY_LOG(WARNING)
+                  << "Starting too many worker processes for a single type of "
+                     "task. Worker process startup is being throttled.";
+            }
+
+            int64_t target_time = get_time_ms_() + wait_time;
+            sched_cls_info.next_update_time =
+                std::min(target_time, sched_cls_info.next_update_time);
+
+            // While we're over capacity and cannot run the task,
+            // try to spill to a node that can run it.
+            bool did_spill = TrySpillback(work, is_infeasible);
+            if (did_spill) {
+              work_it = dispatch_queue.erase(work_it);
+              continue;
+            }
+            break;
+          }
+        }
+
+        bool args_missing = false;
+        bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
+        // An argument was evicted since this task was added to the dispatch
+        // queue. Move it back to the waiting queue. The caller is responsible
+        // for notifying us when the task is unblocked again.
+        if (!success) {
+          if (args_missing) {
+            // Insert the task at the head of the waiting queue because we
+            // prioritize spilling from the end of the queue.
+            // TODO(scv119): where does pulling happen?
+            auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
+                                                 std::move(*work_it));
+            RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+            work_it = dispatch_queue.erase(work_it);
+          } else {
+            // The task's args cannot be pinned due to lack of memory. We should
+            // retry dispatching the task once another task finishes and releases
+            // its arguments.
+            RAY_LOG(DEBUG) << "Dispatching task " << task_id
+                           << " would put this node over the max memory allowed for "
+                              "arguments of executing tasks ("
+                           << max_pinned_task_arguments_bytes_
+                           << "). Waiting to dispatch task until other tasks complete";
+            RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
+                << "Cannot dispatch task " << task_id
+                << " until another task finishes and releases its arguments, but no "
+                   "other "
+                   "task is running";
+            work->SetStateWaiting(
+                internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
+            work_it++;
+          }
+          continue;
+        }
+
+        const auto owner_worker_id =
+            WorkerID::FromBinary(spec.CallerAddress().worker_id());
+        const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
+
+        // If the owner has died since this task was queued, cancel the task by
+        // killing the worker (unless this task is for a detached actor).
+        if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
+          RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
+                           << "'s caller is no longer running. Cancelling task.";
+          if (!spec.GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(task_id);
+          }
+          ReleaseTaskArgs(task_id);
+          work_it = dispatch_queue.erase(work_it);
+          continue;
+        }
+
+        // Check if the node is still schedulable. It may not be if dependency
+        // resolution took a long time.
+        auto allocated_instances = std::make_shared<TaskResourceInstances>();
+        bool schedulable =
+            !cluster_resource_scheduler_.GetLocalResourceManager()
+                 .IsLocalNodeDraining() &&
+            cluster_resource_scheduler_.GetLocalResourceManager()
+                .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
+                                            allocated_instances);
+        if (!schedulable) {
+          ReleaseTaskArgs(task_id);
+          // The local node currently does not have the resources to run the task, so we
+          // should try spilling to another node.
+          bool did_spill = TrySpillback(work, is_infeasible);
+          if (!did_spill) {
+            // There must not be any other available nodes in the cluster, so the task
+            // should stay on this node. We can skip the rest of the shape because the
+            // scheduler will make the same decision.
+            work->SetStateWaiting(
+                internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
+            break;
+          }
           work_it = dispatch_queue.erase(work_it);
         } else {
-          // The task's args cannot be pinned due to lack of memory. We should
-          // retry dispatching the task once another task finishes and releases
-          // its arguments.
-          RAY_LOG(DEBUG) << "Dispatching task " << task_id
-                         << " would put this node over the max memory allowed for "
-                            "arguments of executing tasks ("
-                         << max_pinned_task_arguments_bytes_
-                         << "). Waiting to dispatch task until other tasks complete";
-          RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
-              << "Cannot dispatch task " << task_id
-              << " until another task finishes and releases its arguments, but no other "
-                 "task is running";
-          work->SetStateWaiting(
-              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY);
+          // Force us to recalculate the next update time the next time a task
+          // comes through this queue. We should only do this when we're
+          // confident we're ready to dispatch the task after all checks have
+          // passed.
+          sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
+          sched_cls_info.running_tasks.insert(spec.TaskId());
+          // The local node has the available resources to run the task, so we should
+          // run it.
+          work->allocated_instances = allocated_instances;
+          work->SetStateWaitingForWorker();
+          bool is_detached_actor = spec.IsDetachedActor();
+          auto &owner_address = spec.CallerAddress();
+          /// TODO(scv119): if a worker is not started, the resources is leaked and
+          // task might be hanging.
+          worker_pool_.PopWorker(
+              spec,
+              [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
+                  const std::shared_ptr<WorkerInterface> worker,
+                  PopWorkerStatus status,
+                  const std::string &runtime_env_setup_error_message) -> bool {
+                // TODO(hjiang): After getting the ready-to-use worker and task id,
+                // we're able to get physical execution context.
+                //
+                // ownership chain: raylet has-a node manager, node manager has-a local
+                // task manager.
+                //
+                // - PID: could get from available worker
+                // - Attempt id: could pass a global attempt id generator from raylet
+                // - Cgroup application folder: could pass from raylet
+
+                return PoppedWorkerHandler(worker,
+                                           status,
+                                           task_id,
+                                           scheduling_class,
+                                           work,
+                                           is_detached_actor,
+                                           owner_address,
+                                           runtime_env_setup_error_message);
+              });
           work_it++;
         }
-        continue;
       }
-
-      const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
-      const auto owner_node_id = NodeID::FromBinary(spec.CallerAddress().raylet_id());
-
-      // If the owner has died since this task was queued, cancel the task by
-      // killing the worker (unless this task is for a detached actor).
-      if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
-        RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
-                         << "'s caller is no longer running. Cancelling task.";
-        if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(task_id);
-        }
-        ReleaseTaskArgs(task_id);
-        work_it = dispatch_queue.erase(work_it);
-        continue;
+      // In the beginning of the loop, we add scheduling_class
+      // to the `info_by_sched_cls_` map.
+      // In cases like dead owners, we may not add any tasks
+      // to `running_tasks` so we can remove the map entry
+      // for that scheduling_class to prevent memory leaks.
+      if (sched_cls_info.running_tasks.size() == 0) {
+        info_by_sched_cls_.erase(scheduling_class);
       }
-
-      // Check if the node is still schedulable. It may not be if dependency resolution
-      // took a long time.
-      auto allocated_instances = std::make_shared<TaskResourceInstances>();
-      bool schedulable =
-          !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
-          cluster_resource_scheduler_.GetLocalResourceManager()
-              .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
-                                          allocated_instances);
-      if (!schedulable) {
-        ReleaseTaskArgs(task_id);
-        // The local node currently does not have the resources to run the task, so we
-        // should try spilling to another node.
-        bool did_spill = TrySpillback(work, is_infeasible);
-        if (!did_spill) {
-          // There must not be any other available nodes in the cluster, so the task
-          // should stay on this node. We can skip the rest of the shape because the
-          // scheduler will make the same decision.
-          work->SetStateWaiting(
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
-          break;
+      if (is_infeasible) {
+        // TODO(scv119): fail the request.
+        // Call CancelTask
+        tasks_to_dispatch_.erase(shapes_it++);
+      } else if (dispatch_queue.empty()) {
+        priority_map.erase(priority_iter);
+        if (priority_map.empty()) {
+          tasks_to_dispatch_.erase(shapes_it++);
         }
-        work_it = dispatch_queue.erase(work_it);
       } else {
-        // Force us to recalculate the next update time the next time a task
-        // comes through this queue. We should only do this when we're
-        // confident we're ready to dispatch the task after all checks have
-        // passed.
-        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-        sched_cls_info.running_tasks.insert(spec.TaskId());
-        // The local node has the available resources to run the task, so we should run
-        // it.
-        work->allocated_instances = allocated_instances;
-        work->SetStateWaitingForWorker();
-        bool is_detached_actor = spec.IsDetachedActor();
-        auto &owner_address = spec.CallerAddress();
-        /// TODO(scv119): if a worker is not started, the resources is leaked and
-        // task might be hanging.
-        worker_pool_.PopWorker(
-            spec,
-            [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
-                const std::shared_ptr<WorkerInterface> worker,
-                PopWorkerStatus status,
-                const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
-              // able to get physical execution context.
-              //
-              // ownership chain: raylet has-a node manager, node manager has-a local task
-              // manager.
-              //
-              // - PID: could get from available worker
-              // - Attempt id: could pass a global attempt id generator from raylet
-              // - Cgroup application folder: could pass from raylet
-
-              return PoppedWorkerHandler(worker,
-                                         status,
-                                         task_id,
-                                         scheduling_class,
-                                         work,
-                                         is_detached_actor,
-                                         owner_address,
-                                         runtime_env_setup_error_message);
-            });
-        work_it++;
+        shapes_it++;
       }
-    }
-    // In the beginning of the loop, we add scheduling_class
-    // to the `info_by_sched_cls_` map.
-    // In cases like dead owners, we may not add any tasks
-    // to `running_tasks` so we can remove the map entry
-    // for that scheduling_class to prevent memory leaks.
-    if (sched_cls_info.running_tasks.size() == 0) {
-      info_by_sched_cls_.erase(scheduling_class);
-    }
-    if (is_infeasible) {
-      // TODO(scv119): fail the request.
-      // Call CancelTask
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else if (dispatch_queue.empty()) {
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else {
-      shapes_it++;
     }
   }
 }
@@ -461,7 +494,7 @@ void LocalTaskManager::SpillWaitingTasks() {
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
                    << " to remote node. Dependencies blocked? "
                    << task_dependencies_blocked;
-    bool is_infeasible;
+    bool is_infeasible = false;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
@@ -579,7 +612,10 @@ bool LocalTaskManager::PoppedWorkerHandler(
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
     RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
-    auto &dispatch_queue = shapes_it->second;
+    auto &priority_map = shapes_it->second;
+    auto priority_iter = priority_map.find(work->GetPriority());
+    RAY_CHECK(priority_iter != priority_map.end());
+    auto &dispatch_queue = priority_iter->second;
     bool erased = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();
          work_it++) {
@@ -590,7 +626,10 @@ bool LocalTaskManager::PoppedWorkerHandler(
       }
     }
     if (dispatch_queue.empty()) {
-      tasks_to_dispatch_.erase(shapes_it);
+      priority_map.erase(priority_iter);
+      if (priority_map.empty()) {
+        tasks_to_dispatch_.erase(shapes_it);
+      }
     }
     RAY_CHECK(erased);
 
@@ -729,7 +768,7 @@ void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      tasks_to_dispatch_[scheduling_key][work->GetPriority()].push_back(std::move(work));
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
     }
@@ -883,7 +922,7 @@ bool LocalTaskManager::CancelTasks(
     const std::string &scheduling_failure_message) {
   bool tasks_cancelled = false;
 
-  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+  ray::erase_if<SchedulingClass, int32_t, std::shared_ptr<internal::Work>>(
       tasks_to_dispatch_, [&](const std::shared_ptr<internal::Work> &work) {
         if (predicate(work)) {
           const TaskID task_id = work->task.GetTaskSpecification().TaskId();
@@ -948,38 +987,39 @@ bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-  for (const auto &shapes_it : tasks_to_dispatch_) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      const auto &work = *work_it;
-      const auto &task = work_it->task;
+  for (const auto &[_, priority_map] : tasks_to_dispatch_) {
+    for (const auto &[_, work_queue] : priority_map) {
+      for (const auto &work_it : work_queue) {
+        const auto &work = *work_it;
+        const auto &task = work_it->task;
 
-      // If the work is not in the waiting state, it will be scheduled soon or won't be
-      // scheduled. Consider as non-pending.
-      if (work.GetState() != internal::WorkStatus::WAITING) {
-        continue;
-      }
+        // If the work is not in the waiting state, it will be scheduled soon or won't be
+        // scheduled. Consider as non-pending.
+        if (work.GetState() != internal::WorkStatus::WAITING) {
+          continue;
+        }
 
-      // If the work is not waiting for acquiring resources, we don't consider it as
-      // there's resource deadlock.
-      if (work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
-          work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
-          work.GetUnscheduledCause() !=
-              internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
-        continue;
-      }
+        // If the work is not waiting for acquiring resources, we don't consider it as
+        // there's resource deadlock.
+        if (work.GetUnscheduledCause() !=
+                internal::UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION &&
+            work.GetUnscheduledCause() !=
+                internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE &&
+            work.GetUnscheduledCause() !=
+                internal::UnscheduledWorkCause::WAITING_FOR_AVAILABLE_PLASMA_MEMORY) {
+          continue;
+        }
 
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        *num_pending_actor_creation += 1;
-      } else {
-        *num_pending_tasks += 1;
-      }
+        if (task.GetTaskSpecification().IsActorCreationTask()) {
+          *num_pending_actor_creation += 1;
+        } else {
+          *num_pending_tasks += 1;
+        }
 
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
+        if (!*any_pending) {
+          *exemplar = task;
+          *any_pending = true;
+        }
       }
     }
   }
