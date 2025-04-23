@@ -54,21 +54,21 @@ class FuseMapOperators(Rule):
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
         # we need a better abstraction for manipulating the DAG.
-        self._remove_output_depes(fused_dag)
-        self._update_output_depes(fused_dag)
+        self._remove_output_deps(fused_dag)
+        self._update_output_deps(fused_dag)
 
         new_plan = PhysicalPlan(fused_dag, self._op_map, plan.context)
         return new_plan
 
-    def _remove_output_depes(self, op: PhysicalOperator) -> None:
+    def _remove_output_deps(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
             input._output_dependencies = []
-            self._remove_output_depes(input)
+            self._remove_output_deps(input)
 
-    def _update_output_depes(self, op: PhysicalOperator) -> None:
+    def _update_output_deps(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
             input._output_dependencies.append(op)
-            self._update_output_depes(input)
+            self._update_output_deps(input)
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
         """Starting at the given operator, traverses up the DAG of operators
@@ -156,6 +156,7 @@ class FuseMapOperators(Rule):
         ):
             return False
 
+
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
@@ -175,6 +176,7 @@ class FuseMapOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
+                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
@@ -458,6 +460,9 @@ class FuseMapOperators(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
+
+    def _can_fuse_map_ops(self, up_op: AbstractMap, down_op: AbstractMap) -> bool:
+        pass
 
 
 def _are_remote_args_compatible(prev_args, next_args):
