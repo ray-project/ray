@@ -16,7 +16,6 @@ from typing import (
 )
 
 import numpy as np
-import pyarrow
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.execution.interfaces import RefBundle
@@ -31,6 +30,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
+    import pyarrow
 
     from ray.data.dataset import (
         CollatedData,
@@ -90,7 +90,7 @@ class CollateFn(Generic[T]):
 
 
 @DeveloperAPI
-class ArrowBatchCollateFn(CollateFn[pyarrow.Table]):
+class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
     """Collate function for converting Arrow tables to PyTorch tensors."""
 
     def __init__(
@@ -106,7 +106,7 @@ class ArrowBatchCollateFn(CollateFn[pyarrow.Table]):
         """
         super().__init__(dtypes=dtypes, device=device)
 
-    def __call__(self, batch: pyarrow.Table) -> "CollatedData":
+    def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
         """Convert a PyArrow table to PyTorch tensors.
 
         Args:
@@ -165,7 +165,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         super().__init__(dtypes=dtypes, device=device)
 
     def __call__(
-        self, batch: pyarrow.Table
+        self, batch: "pyarrow.Table"
     ) -> Union[
         "torch.Tensor",
         List["torch.Tensor"],

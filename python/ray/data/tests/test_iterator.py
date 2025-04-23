@@ -1,6 +1,6 @@
 import sys
 import threading
-from typing import Dict
+from typing import Dict, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -202,6 +202,13 @@ def custom_collate_fns():
     from ray.data.iterator import ArrowBatchCollateFn, NumpyBatchCollateFn
 
     class CustomArrowBatchCollateFn(ArrowBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            super().__init__(dtypes=dtypes, device=device)
+
         def __call__(self, batch: pyarrow.Table) -> torch.Tensor:
             """Add 5 to the "id" column at the Arrow level."""
             modified_batch = pyarrow.Table.from_arrays(
@@ -216,6 +223,13 @@ def custom_collate_fns():
             )["id"]
 
     class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
+        def __init__(
+            self,
+            dtypes: Optional[Dict[str, torch.dtype]] = None,
+            device: Optional[str] = None,
+        ):
+            super().__init__(dtypes=dtypes, device=device)
+
         def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
             """Add 5 to the "id" array."""
             modified_batch = {"id": batch["id"] + 5}
