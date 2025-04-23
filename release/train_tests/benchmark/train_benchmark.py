@@ -22,6 +22,9 @@ from image_classification.image_classification_parquet.factory import (
 from image_classification.image_classification_jpeg.factory import (
     ImageClassificationJpegFactory,
 )
+from image_classification.localfs_image_classification_jpeg.factory import (
+    LocalFSImageClassificationFactory,
+)
 from logger_utils import ContextLoggerAdapter
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -365,8 +368,10 @@ def main():
         factory = ImageClassificationParquetFactory(benchmark_config)
     elif benchmark_config.task == "image_classification_jpeg":
         factory = ImageClassificationJpegFactory(benchmark_config)
+    elif benchmark_config.task == "localfs_image_classification_jpeg":
+        factory = LocalFSImageClassificationFactory(benchmark_config)
     else:
-        raise ValueError
+        raise ValueError(f"Unknown task: {benchmark_config.task}")
 
     ray_data_execution_options = ray.train.DataConfig.default_ingest_options()
     ray_data_execution_options.locality_with_output = (
