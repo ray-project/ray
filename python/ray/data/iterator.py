@@ -216,8 +216,6 @@ class DefaultCollateFn(ArrowBatchCollateFn):
 class DefaultFinalizeFn:
     """Default finalize function for moving PyTorch tensors to device."""
 
-    import torch
-
     def __init__(
         self,
         device: Optional[str] = None,
@@ -277,7 +275,6 @@ class DefaultFinalizeFn:
 
         return result
 
-    @torch.no_grad()
     def __call__(
         self,
         batch: Union[
