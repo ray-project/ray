@@ -2149,7 +2149,7 @@
     - __suffix__: full_training.jpeg.torch_dataloader
       run:
         timeout: 2000
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
 
     - __suffix__: skip_training.jpeg
       run:
@@ -2159,7 +2159,22 @@
     - __suffix__: skip_training.jpeg.torch_dataloader
       run:
         timeout: 1200
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --prefetch_batches 32 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification_jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=ray_data --num_workers=1 --skip_train_step --skip_validation_at_epoch_end
+      cluster:
+        cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+
+    - __suffix__: skip_training.jpeg.local_fs.torch_dataloader
+      run:
+        timeout: 1200
+        script: bash image_classification/localfs_image_classification_jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=localfs_image_classification_jpeg --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step --skip_validation_at_epoch_end
+
 
 - name: train_horovod_multi_node_test
   group: Train tests
