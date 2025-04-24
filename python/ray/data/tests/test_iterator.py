@@ -4,6 +4,7 @@ from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 import torch
 
@@ -193,6 +194,20 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         assert all(
             kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+def test_torch_conversion_null_type(ray_start_regular_shared):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    table = pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+
+    ds = ray.data.from_arrow(table)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch, dict)
+        assert "fruit_apple" in batch
+        assert isinstance(batch["fruit_apple"], torch.Tensor)
+        assert torch.isnan(batch["fruit_apple"]).all()
+        assert batch["fruit_apple"].shape == (3,)
 
 
 def test_iterator_to_materialized_dataset(ray_start_regular_shared):
