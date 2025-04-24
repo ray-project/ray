@@ -71,9 +71,9 @@ class VideoDatasource(FileBasedDatasource):
                 self._column_names[self._FRAME_INDEX]: frame_index,
             }
             if self.include_timestamps is True:
-                item[self._column_names[self._FRAME_TIMESTAMP]] = (
-                    reader.get_frame_timestamp(frame_index)
-                )
+                item[
+                    self._column_names[self._FRAME_TIMESTAMP]
+                ] = reader.get_frame_timestamp(frame_index)
 
             builder = DelegatingBlockBuilder()
             builder.add(item)
