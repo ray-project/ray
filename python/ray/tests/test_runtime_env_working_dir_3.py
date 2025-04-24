@@ -159,6 +159,11 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
+    # NOTE(edoakes): I tried removing the parametrization here and setting working_dir
+    # and py_modules to the same thing, but the test fails. This appears to be due to a
+    # bug in the reference counting logic: we key the reference table on URI only, not
+    # (option, URI), so there is a collision when both options have the same value.
+    # See: https://github.com/ray-project/ray/issues/52578.
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self,
