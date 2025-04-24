@@ -1,5 +1,6 @@
 # Use 'API' judiciously: https://developers.google.com/style/word-list#api.
 [Aa]pplication
+[Aa]sync
 [Cc]odec
 [Cc]omposable
 [Dd]eduplication
@@ -13,6 +14,8 @@
 [Pp]erformant
 [Pp]rofiler
 [Ss]ubclassing
+[Tt][Ll][Ss]
+[Vv]ision LMs
 Alibaba
 Alpaca
 Anyscale
@@ -20,36 +23,32 @@ API[s]
 ARM
 async
 autoscales
+bool
 breakpoint
 BTS
 CLI
-CPU[s]
-deduplicate[s]
-[Dd]eduplication
-[Aa]sync
-g[Rr][Pp][Cc]
-http
-kubectl
-[Tt][Ll][Ss]
-subprocess
-UUID
-bool
-deserializes
-PACK
 configs
-disable
+CPU[s]
+CRD[s]
 deduplicate(s)?
+deduplicate[s]
 DeepSpeed
 deserialization
 deserialize
+deserializes
 dev
 dev to prod
+disable
 DPO
+g[Rr][Pp][Cc]
 GGUF
 GKE
 GPTQ
 GPU[s]
+http
+Kaggle
 KTO
+kubectl
 Kueue
 LMs
 LSH
@@ -59,6 +58,8 @@ NER
 Nsight
 NumPy
 Nvidia
+PACK
+preemptible
 pretraining
 Pythonic
 QPS
@@ -66,13 +67,11 @@ RISECamp
 rollouts
 SFT
 ShareGPT
+subprocess
 teardown
-deserialization
-VPC[s]
-preemptible
-CRD[s]
-VM[s]
 uncaptured
 URI[s]
-[Vv]ision LMs
+UUID
+VM[s]
+VPC[s]
 VS Code
