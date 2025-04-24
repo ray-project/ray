@@ -41,7 +41,7 @@ class ResourceRequest {
 
   /// Construct a ResourceRequest with a given resource map.
   explicit ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
-      : ResourceRequest(resource_map, false, rpc::LabelSelector()){};
+      : ResourceRequest(std::move(resource_map), false, rpc::LabelSelector()){};
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
