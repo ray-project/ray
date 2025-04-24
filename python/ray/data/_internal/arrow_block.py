@@ -73,11 +73,7 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
 
 
 def is_nested_arrow_type(items: Any) -> bool:
-    if (
-        isinstance(items[0].type, pyarrow.lib.DictionaryType)
-        or isinstance(items[0].type, pyarrow.lib.StructType)
-        or isinstance(items[0].type, pyarrow.lib.ListType)
-    ):
+    if isinstance(items[0].type, pyarrow.lib.DictionaryType):
         return True
 
 

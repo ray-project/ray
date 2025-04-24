@@ -154,9 +154,9 @@ def convert_to_pyarrow_array(
             _object_extension_type_allowed,
         )
 
-        enable_fallback_config: Optional[bool] = (
-            DataContext.get_current().enable_fallback_to_arrow_object_ext_type
-        )
+        enable_fallback_config: Optional[
+            bool
+        ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
         if not _object_extension_type_allowed():
             object_ext_type_fallback_allowed = False
@@ -323,7 +323,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray],
+    column_values: Union[List[Any], np.ndarray]
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -405,7 +405,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray],
+    column_values: Union[List[Any], np.ndarray]
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this
