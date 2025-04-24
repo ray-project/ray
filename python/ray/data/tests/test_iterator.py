@@ -196,11 +196,29 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         ), iter_batches_calls_kwargs
 
 
-def test_torch_conversion_null_type(ray_start_regular_shared):
-    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
-    table = pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+@pytest.fixture(params=["regular", "chunked"])
+def null_array_table(request):
+    """Fixture that returns a PyArrow table with either a regular or chunked null array."""
+    if request.param == "regular":
+        # Regular array
+        return pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+    else:
+        # Chunked array
+        return pa.table(
+            {
+                "fruit_apple": pa.chunked_array(
+                    [
+                        pa.array([None], type=pa.null()),
+                        pa.array([None, None], type=pa.null()),
+                    ]
+                )
+            }
+        )
 
-    ds = ray.data.from_arrow(table)
+
+def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    ds = ray.data.from_arrow(null_array_table)
     it = ds.iterator()
     for batch in it.iter_torch_batches():
         assert isinstance(batch, dict)
