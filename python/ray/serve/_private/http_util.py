@@ -12,7 +12,6 @@ from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 import starlette.responses
 import starlette
 import uvicorn
-from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
@@ -26,7 +25,6 @@ from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders, generate_request_id
 from ray.serve.exceptions import RayServeException
-from ray.serve.exceptions import BackPressureError
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -435,14 +433,6 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if serve_cls is not None and serve_cls != cls:
             routes_to_remove.append(route)
     fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
-
-    # The reason we need to do this is because BackPressureError is a serve internal exception
-    # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-    # With same reasoning, we are not handling TimeoutError because it's a generic exception
-    # the FastAPI knows how to handle.
-    @fastapi_app.exception_handler(BackPressureError)
-    async def handle_backpressure_error(request: Request, exc: BackPressureError):
-        return starlette.responses.Response(exc.message, status_code=503)
 
 
 def set_socket_reuse_port(sock: socket.socket) -> bool:
