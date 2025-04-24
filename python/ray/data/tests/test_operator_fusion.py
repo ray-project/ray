@@ -1,3 +1,7 @@
+import numpy as np
+import pytest
+
+import ray
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -69,7 +73,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     assert map4.name == "Filter(<lambda>)"
     assert (
         physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
-                            "->FlatMap(<lambda>)->Filter(<lambda>)"
+        "->FlatMap(<lambda>)->Filter(<lambda>)"
     )
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
@@ -269,7 +273,7 @@ def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
     # Ops are still fused.
     assert (
         physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
-                            "MapBatches(<lambda>)->MapBatches(<lambda>)"
+        "MapBatches(<lambda>)->MapBatches(<lambda>)"
     )
     assert isinstance(physical_op, MapOperator)
     # Target block size is set to max.

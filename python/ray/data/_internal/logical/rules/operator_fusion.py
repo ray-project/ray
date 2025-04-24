@@ -156,7 +156,6 @@ class FuseOperators(Rule):
         ):
             return False
 
-
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
