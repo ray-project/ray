@@ -390,18 +390,23 @@ class FuseOperators(Rule):
         cls,
         down_logical_op: AbstractMap,
         up_logical_op: AbstractMap,
-    ) -> int:
-        ds_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
+    ) -> Optional[int]:
         us_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
+        ds_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
 
-        assert (
-            ds_min_rows_per_bundled_input is not None
-            and us_min_rows_per_bundled_input is not None
-        ), (
-            "Both downstream and upstream `_min_rows_per_bundled_input` have to be "
-            f"not None (got {us_min_rows_per_bundled_input} and "
-            f"{ds_min_rows_per_bundled_input})"
+        # In case neither of the ops specify `min_rows_per_bundled_input`,
+        # return None
+        if us_min_rows_per_bundled_input is None and ds_min_rows_per_bundled_input is None:
+            return None
+
+        # If at least one of the operators has `min_rows_per_bundled_input` specified,
+        # fusion could not proceed unless upstream operator has it specified
+        assert us_min_rows_per_bundled_input is not None, (
+            "Upstream `_min_rows_per_bundled_input` have to be not None "
+            f"(got {us_min_rows_per_bundled_input})"
         )
+
+        ds_min_rows_per_bundled_input = ds_min_rows_per_bundled_input or 0
 
         # NOTE: If ratio of downstream to upstream min num rows requirement is exceeding
         #       `_DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO` we log a warning
