@@ -213,7 +213,8 @@ def custom_collate_fns():
             dtypes: Optional[Dict[str, torch.dtype]] = None,
             device: Optional[str] = None,
         ):
-            super().__init__(dtypes=dtypes, device=device)
+            self.dtypes = dtypes
+            self.device = device
 
         def __call__(self, batch: pyarrow.Table) -> torch.Tensor:
             """Add 5 to the "id" column at the Arrow level."""
@@ -237,7 +238,8 @@ def custom_collate_fns():
             dtypes: Optional[Dict[str, torch.dtype]] = None,
             device: Optional[str] = None,
         ):
-            super().__init__(dtypes=dtypes, device=device)
+            self.dtypes = dtypes
+            self.device = device
 
         def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
             """Add 5 to the "id" array."""
@@ -256,7 +258,8 @@ def custom_collate_fns():
             dtypes: Optional[Dict[str, torch.dtype]] = None,
             device: Optional[str] = None,
         ):
-            super().__init__(dtypes=dtypes, device=device)
+            self.dtypes = dtypes
+            self.device = device
 
         def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
             """Add 5 to the "id" column."""

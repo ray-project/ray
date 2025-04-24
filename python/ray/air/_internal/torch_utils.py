@@ -347,12 +347,7 @@ def arrow_batch_to_tensors(
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
     combine_chunks: bool = False,
-) -> Union[
-    torch.Tensor,
-    List[torch.Tensor],
-    Dict[str, torch.Tensor],
-    Dict[str, List[torch.Tensor]],
-]:
+) -> Dict[str, List[torch.Tensor]]:
     """Convert PyArrow batch to PyTorch tensors.
 
     Args:
@@ -364,11 +359,7 @@ def arrow_batch_to_tensors(
             tensors.
 
     Returns:
-        PyTorch tensors converted from the Arrow batch, can be:
-        - A single tensor
-        - A list of tensors
-        - A dict of column name to tensor
-        - A dict of column name to list of tensors
+        A dictionary of column name to list of tensors
     """
     from ray.data._internal.arrow_ops import transform_pyarrow
 
@@ -398,7 +389,7 @@ def numpy_batch_to_torch_tensors(
     batch: Dict[str, np.ndarray],
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
-) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+) -> Dict[str, List[torch.Tensor]]:
     """Convert a dictionary of numpy arrays to PyTorch tensors.
 
     Args:
@@ -408,7 +399,7 @@ def numpy_batch_to_torch_tensors(
         device: Optional device to place tensors on
 
     Returns:
-        Either a single PyTorch tensor or a dict mapping column names to tensors
+        A dictionary of column name to list of tensors
     """
     from ray.air._internal.torch_utils import (
         convert_ndarray_batch_to_torch_tensor_batch,

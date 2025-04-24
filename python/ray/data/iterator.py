@@ -12,8 +12,8 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
-    Generic,
 )
+import warnings
 
 import numpy as np
 
@@ -25,13 +25,19 @@ from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
+from ray.data.collate_fn import (
+    CollateFn,
+    ArrowBatchCollateFn,
+    NumpyBatchCollateFn,
+    PandasBatchCollateFn,
+    DefaultArrowCollateFn,
+    default_finalize_fn,
+)
 
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
-    import pyarrow
-    import pandas
 
     from ray.data.dataset import (
         CollatedData,
@@ -57,286 +63,6 @@ class _IterableFromIterator(Iterable[T]):
 
     def __iter__(self):
         return self.iterator_gen()
-
-
-DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
-
-
-@DeveloperAPI
-class CollateFn(Generic[DataBatchType]):
-    """A function that converts a DataBatch to a CollatedData."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        self.dtypes = dtypes
-        self.device = device
-
-    @abc.abstractmethod
-    def __call__(self, batch: DataBatchType) -> "CollatedData":
-        """Convert a batch of data to collated format.
-
-        Args:
-            batch: The input batch to collate
-
-        Returns:
-            The collated data in the format expected by the model
-        """
-        ...
-
-
-@DeveloperAPI
-class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
-    """Collate function for converting Arrow tables to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
-        """Convert a PyArrow table to PyTorch tensors.
-
-        Args:
-            batch: PyArrow table to convert
-
-        Returns:
-            Collated PyTorch tensors
-        """
-        ...
-
-
-@DeveloperAPI
-class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
-    """Collate function for converting Numpy batches to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(self, batch: Dict[str, np.ndarray]) -> "CollatedData":
-        """Convert a Numpy batch to PyTorch tensors.
-
-        Args:
-            batch: Numpy batch to convert
-
-        Returns:
-            Collated PyTorch tensors
-        """
-        ...
-
-
-@DeveloperAPI
-class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
-    """Collate function for converting Pandas batches to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
-        """Convert a Pandas batch to PyTorch tensors.
-
-        Args:
-            batch: Pandas batch to convert
-
-        Returns:
-            Collated PyTorch tensors
-        """
-        ...
-
-
-@DeveloperAPI
-class DefaultArrowCollateFn(ArrowBatchCollateFn):
-    """Default collate function for converting Arrow batches to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(
-        self, batch: "pyarrow.Table"
-    ) -> Union[
-        "torch.Tensor",
-        List["torch.Tensor"],
-        Dict[str, "torch.Tensor"],
-        Dict[str, List["torch.Tensor"]],
-    ]:
-        """Convert an Arrow batch to PyTorch tensors.
-
-        Args:
-            batch: PyArrow Table to convert
-
-        Returns:
-            Collated PyTorch tensors, can be:
-            - A single tensor
-            - A list of tensors
-            - A dict of column name to tensor
-            - A dict of column name to list of tensors
-        """
-        from ray.air._internal.torch_utils import (
-            arrow_batch_to_tensors,
-        )
-
-        combine_chunks = self.device == "cpu"
-        return arrow_batch_to_tensors(
-            batch, dtypes=self.dtypes, device=None, combine_chunks=combine_chunks
-        )
-
-
-@DeveloperAPI
-class DefaultNumpyCollateFn(NumpyBatchCollateFn):
-    """Default collate function for converting Numpy batches to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
-        """Convert a Pandas batch to PyTorch tensors.
-
-        Args:
-            batch: Pandas batch to convert
-
-        Returns:
-            Collated PyTorch tensors
-        """
-        from ray.air._internal.torch_utils import (
-            numpy_batch_to_torch_tensors,
-        )
-
-        return numpy_batch_to_torch_tensors(batch, dtypes=self.dtypes, device=None)
-
-
-@DeveloperAPI
-class DefaultPandasCollateFn(PandasBatchCollateFn):
-    """Default collate function for converting Pandas batches to PyTorch tensors."""
-
-    def __init__(
-        self,
-        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-    ):
-        """Initialize the collate function.
-
-        Args:
-            dtypes: Optional torch dtype(s) for the tensors
-            device: Optional device to place tensors on
-        """
-        super().__init__(dtypes=dtypes, device=device)
-
-    def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
-        """Convert a Pandas batch to PyTorch tensors.
-
-        Args:
-            batch: Pandas batch to convert
-
-        Returns:
-            Collated PyTorch tensors
-        """
-        from ray.air._internal.torch_utils import (
-            convert_pandas_batch_to_torch_tensor_batch,
-        )
-
-        return convert_pandas_batch_to_torch_tensor_batch(
-            batch, dtypes=self.dtypes, device=None
-        )
-
-
-@DeveloperAPI
-class DefaultFinalizeFn:
-    """Default finalize function for moving PyTorch tensors to device."""
-
-    def __init__(
-        self,
-        device: Optional[str] = None,
-    ):
-        """Initialize the finalize function.
-
-        Args:
-            device: Optional device to place tensors on
-        """
-        self.device = device
-
-    def __call__(
-        self,
-        batch: Union[
-            "torch.Tensor",
-            List["torch.Tensor"],
-            Dict[str, "torch.Tensor"],
-            Dict[str, List["torch.Tensor"]],
-        ],
-    ) -> Union[
-        "torch.Tensor",
-        List["torch.Tensor"],
-        Dict[str, "torch.Tensor"],
-        Dict[str, List["torch.Tensor"]],
-    ]:
-        """Move tensors to device.
-
-        Args:
-            batch: Tensor or collection of tensors to move to device
-
-        Returns:
-            Tensor or collection of tensors moved to the target device
-        """
-        from ray.air._internal.torch_utils import (
-            move_tensors_to_device,
-        )
-
-        return move_tensors_to_device(batch, device=self.device)
 
 
 @PublicAPI
@@ -586,17 +312,24 @@ class DataIterator(abc.ABC):
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
                 Otherwise, defaults to CPU. You can't use this parameter with
                 ``collate_fn``.
-            collate_fn: A function to convert a PyArrow Table or Numpy batch to PyTorch tensors.
-                When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of ``collate_fn``.
-                This is useful for further processing the data after it has been
-                batched. Potential use cases include collating along a dimension other
-                than the first, padding sequences of various lengths, or generally
-                handling batches of different length tensors. If not provided, the
-                default collate function is used which simply converts the batch to
-                PyTorch tensors. This API is still experimental and is subject to
-                change. You can't use this parameter in conjunction with ``dtypes``
-                or ``device``.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. If not provided, `iter_torch_batches` automatically
+                converts batches to `torch.Tensor`s and moves them to the device
+                assigned to the current worker. The input to `collate_fn` may be:
+                    (1) dict of np.ndarray, where you should provide a function that
+                        takes in a dict of Numpy arrays
+                    (2) pd.DataFrame, where you should provide a callable class that
+                        subclasses `PandasCollateFn`
+                    (3) pyarrow.Table, where you should provide a callable class that
+                        subclasses `ArrowCollateFn` (recommended for best performance)
+                The output can be any type. If the output is a `torch.Tensor`,
+                `dict[str, torch.Tensor]`, or `list/tuple[torch.Tensor]`, it will be
+                automatically moved to the current worker's device. For other types,
+                you must handle device transfer manually in your training loop.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -632,7 +365,7 @@ class DataIterator(abc.ABC):
                 dtypes=dtypes,
                 device=device,
             )
-            finalize_fn = DefaultFinalizeFn(device=device)
+            finalize_fn = default_finalize_fn
             batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
             batch_format = "pyarrow"
@@ -642,6 +375,10 @@ class DataIterator(abc.ABC):
             batch_format = "pandas"
         elif callable(collate_fn):
             batch_format = "numpy"
+            warnings.warn(
+                "Passing a callable to `iter_torch_batches` is deprecated and suggest using `ArrowBatchCollateFn` for the best performance.",
+                DeprecationWarning,
+            )
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 
