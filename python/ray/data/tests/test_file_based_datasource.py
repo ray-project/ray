@@ -73,9 +73,12 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.input_files() == [csv_path]
 
 
-def test_flaky_datasource(ray_start_regular_shared):
-
-    from ray.data._internal.datasource.csv_datasource import CSVDatasource
+def test_flaky_datasource(ray_start_regular_shared, tmp_path):
+    """Test that flaky read tasks are retried for both the
+    default set of retried errors and a custom set of retried errors."""
+    csv_path = os.path.join(tmp_path, "file.csv")
+    with open(csv_path, "w") as file:
+        file.write("spam")
 
     class Counter:
         def __init__(self):
@@ -85,21 +88,29 @@ def test_flaky_datasource(ray_start_regular_shared):
             self.value += 1
             return self.value
 
-    class FlakyCSVDatasource(CSVDatasource):
-        def __init__(self, paths, **csv_datasource_kwargs):
-            super().__init__(paths, **csv_datasource_kwargs)
+    default_retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
+    custom_retried_error = "AWS Error ACCESS_DENIED"
+
+    class FlakyFileBasedDatasource(MockFileBasedDatasource):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
             CounterActor = ray.remote(Counter)
+            # This actor ref is shared across all read tasks.
             self.counter = CounterActor.remote()
 
         def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-            count = self.counter.increment.remote()
-            if ray.get(count) == 1:
-                raise RuntimeError("AWS Error INTERNAL_FAILURE")
+            count = ray.get(self.counter.increment.remote())
+            if count == 1:
+                raise RuntimeError(default_retried_error)
+            elif count == 2:
+                raise RuntimeError(custom_retried_error)
             else:
-                for block in CSVDatasource._read_stream(self, f, path):
-                    yield block
+                yield super()._read_stream(f, path)
 
-    datasource = FlakyCSVDatasource(["example://iris.csv"])
+    ray.data.DataContext.get_current().retried_io_errors.append(custom_retried_error)
+
+    datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
     assert len(ds.take()) == 20
 
