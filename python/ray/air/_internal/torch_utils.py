@@ -342,7 +342,7 @@ def convert_ndarray_list_to_torch_tensor_list(
         }
 
 
-def arrow_table_to_tensors(
+def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
@@ -352,16 +352,16 @@ def arrow_table_to_tensors(
     Dict[str, torch.Tensor],
     Dict[str, List[torch.Tensor]],
 ]:
-    """Convert PyArrow table to PyTorch tensors.
+    """Convert PyArrow batch to PyTorch tensors.
 
     Args:
-        batch: PyArrow table to convert
+        batch: PyArrow batch to convert
         dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
             will be inferred from the NumPy ndarray data.
         device: Optional device to place tensors on
 
     Returns:
-        PyTorch tensors converted from the Arrow table, can be:
+        PyTorch tensors converted from the Arrow batch, can be:
         - A single tensor
         - A list of tensors
         - A dict of column name to tensor

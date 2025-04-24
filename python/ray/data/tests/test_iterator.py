@@ -220,10 +220,10 @@ def custom_collate_fns():
                 [pyarrow.compute.add(batch["id"], 5)], names=["id"]
             )
             from ray.air._internal.torch_utils import (
-                arrow_table_to_tensors,
+                arrow_batch_to_tensors,
             )
 
-            return arrow_table_to_tensors(
+            return arrow_batch_to_tensors(
                 modified_batch, dtypes=self.dtypes, device=self.device
             )["id"]
 

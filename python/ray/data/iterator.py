@@ -218,10 +218,10 @@ class DefaultArrowCollateFn(ArrowBatchCollateFn):
             - A dict of column name to list of tensors
         """
         from ray.air._internal.torch_utils import (
-            arrow_table_to_tensors,
+            arrow_batch_to_tensors,
         )
 
-        return arrow_table_to_tensors(batch, dtypes=self.dtypes, device=self.device)
+        return arrow_batch_to_tensors(batch, dtypes=self.dtypes, device=self.device)
 
 
 @DeveloperAPI
@@ -251,10 +251,10 @@ class DefaultNumpyCollateFn(NumpyBatchCollateFn):
             Collated PyTorch tensors
         """
         from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
+            numpy_batch_to_torch_tensors,
         )
 
-        return convert_ndarray_batch_to_torch_tensor_batch(
+        return numpy_batch_to_torch_tensors(
             batch, dtypes=self.dtypes, device=self.device
         )
 
@@ -627,12 +627,12 @@ class DataIterator(abc.ABC):
 
         finalize_fn = None
         if collate_fn is None:
-            collate_fn = DefaultNumpyCollateFn(
+            collate_fn = DefaultArrowCollateFn(
                 dtypes=dtypes,
                 device=device,
             )
             finalize_fn = DefaultFinalizeFn(device=device)
-            batch_format = "numpy"
+            batch_format = "pyarrow"
         elif isinstance(collate_fn, ArrowBatchCollateFn):
             batch_format = "pyarrow"
         elif isinstance(collate_fn, NumpyBatchCollateFn):
