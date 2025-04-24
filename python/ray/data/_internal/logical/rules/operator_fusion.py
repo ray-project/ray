@@ -181,6 +181,7 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
+                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
@@ -499,6 +500,22 @@ class FuseOperators(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
+
+    @classmethod
+    def _can_fuse_map_ops(
+        cls,
+        upstream_op: AbstractMap,
+        downstream_op: AbstractMap,
+    ) -> bool:
+        # Do not fuse read op with downstream map op in case when downstream has
+        # `min_rows_per_input_bundle` specified (to avoid reducing reading parallelism)
+        if (
+            upstream_op.is_read_op()
+            and downstream_op._min_rows_per_bundled_input is not None
+        ):
+            return False
+
+        return True
 
 
 def _are_remote_args_compatible(prev_args, next_args):
