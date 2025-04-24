@@ -87,10 +87,10 @@ def test_deploy_with_special_characters(serve_instance, component_name):
             return await self.handler()
 
     # Check that deployment succeeds with special characters
-    with pytest.raises(Exception) as exc_info:
-        serve.run(V1.options(name=component_name).bind(), name="app")
+    serve.run(V1.options(name=component_name).bind(), name="app")
 
-    assert exc_info.type is None, f"Deployment failed with exception: {exc_info.value}"
+    status = serve.status()
+    assert status.app_status == "RUNNING"
 
 
 def test_empty_decorator(serve_instance):
@@ -127,11 +127,8 @@ def test_reconfigure_with_exception(serve_instance):
         def __call__(self, *args):
             return self.config
 
-    # Ensure the deployment is running
-    serve.run(A.options(user_config="hi").bind())
-
-    status = serve.status()
-    assert status.app_status == "RUNNING"
+    with pytest.raises(RuntimeError):
+        serve.run(A.options(user_config="hi").bind())
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
