@@ -275,7 +275,7 @@ The following example shows how you can deploy DeepSeek R1 or V3:
                 )),
                 # Change to the accelerator type of the node
                 accelerator_type="H100",
-                runtime_env=dict(env_vars=dict(VLLM_USE_V1="1")),
+                runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
                 # Customize engine arguments as needed (e.g. vLLM engine kwargs)
                 engine_kwargs=dict(
                     tensor_parallel_size=8,
