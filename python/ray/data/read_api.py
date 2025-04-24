@@ -528,6 +528,7 @@ def read_videos(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
+    include_timestamps: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -571,6 +572,8 @@ def read_videos(
             that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each image. File paths are
             stored in the ``'path'`` column.
+        include_timestmaps: If ``True``, include the frame timestamps from the video
+            as a ``'frame_timestamp'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -593,6 +596,7 @@ def read_videos(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_timestamps=include_timestamps,
         file_extensions=file_extensions,
     )
     return read_datasource(

@@ -562,6 +562,29 @@ py_test(
     ],
 )
 
+py_test(
+    name = "learning_tests_cartpole_bc_with_offline_evaluation",
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # CQL
 # Pendulum
 py_test(
@@ -1859,40 +1882,6 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks_on_algorithm",
-    size = "large",
-    srcs = ["algorithms/tests/test_callbacks_on_algorithm.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "test_callbacks_on_env_runner",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-# @OldAPIStack
-py_test(
-    name = "test_callbacks_old_api_stack",
-    size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_old_api_stack.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "test_registry",
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
@@ -2105,6 +2094,37 @@ py_test(
 #
 # Tag: callbacks
 # --------------------------------------------------------------------
+py_test(
+    name = "test_callbacks_on_algorithm",
+    size = "large",
+    srcs = ["callbacks/tests/test_callbacks_on_algorithm.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_callbacks_on_env_runner",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_on_env_runner.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
+# @OldAPIStack
+py_test(
+    name = "test_callbacks_old_api_stack",
+    size = "medium",
+    srcs = ["callbacks/tests/test_callbacks_old_api_stack.py"],
+    tags = [
+        "callbacks_dir",
+        "team:rllib",
+    ],
+)
+
 py_test(
     name = "test_multicallback",
     size = "medium",
@@ -2636,6 +2656,34 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "test_offline_evaluation_runner_group",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
     ],
     tags = [
         "offline",

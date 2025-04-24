@@ -122,6 +122,17 @@ def _get_env_runner_bundles(config):
     ]
 
 
+def _get_offline_eval_runner_bundles(config):
+    return [
+        {
+            "CPU": config.num_cpus_per_offline_eval_runner,
+            "GPU": config.num_gpus_per_offline_eval_runner,
+            **config.custom_resources_per_offline_eval_runner,
+        }
+        for _ in range(config.num_offline_eval_runners)
+    ]
+
+
 def _get_learner_bundles(config):
     try:
         from ray.rllib.extensions.algorithm_utils import _get_learner_bundles as func
