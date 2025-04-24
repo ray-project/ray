@@ -93,3 +93,7 @@ class Read(AbstractMap):
             input_files=input_files,
             exec_stats=None,
         )
+
+    @classmethod
+    def is_read_op(cls):
+        return True
