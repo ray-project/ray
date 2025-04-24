@@ -2298,8 +2298,8 @@ opencv-python-headless==4.11.0.86 \
     #   mistral-common
     #   vllm
 opentelemetry-api==1.26.0 \
-    --hash=sha256:38555cd773df903a2f7440778d6f8b48a86fd388604b171969bdbde4b746a558 \
-    --hash=sha256:704a3b2a7511d2c9065013d362a8371bc452ae6c0521941de680af2a5ca94884
+    --hash=sha256:2bd639e4bed5b18486fef0b5a520aaffde5a18fc225e808a1ac4df363f43a1ce \
+    --hash=sha256:7d7ea33adf2ceda2dd680b18b1677e4152000b37ca76e679da71ff103b943064
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2310,8 +2310,8 @@ opentelemetry-api==1.26.0 \
     #   opentelemetry-semantic-conventions
     #   vllm
 opentelemetry-exporter-otlp==1.26.0 \
-    --hash=sha256:2a2135f87cdad417408d34fc6131879d5cee1d7af7546b4a1f67fd178b262f4e \
-    --hash=sha256:61ee0a6e9a12dd7191aedca34a8a3e7cc4e8e92504a71adf390b6d2bcc36d0d4
+    --hash=sha256:cf0e093f080011951d9f97431a83869761e4d4ebe83a4195ee92d7806223299c \
+    --hash=sha256:f839989f54bda85ee33c5dae033c44dcec9ccbb0dafc6a43d585df44da1d2036
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2325,8 +2325,8 @@ opentelemetry-exporter-otlp-proto-common==1.26.0 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-grpc==1.26.0 \
-    --hash=sha256:281e9bbce73b08c1c93781cf7f4282396f74895987fdc051bea335f7dd086199 \
-    --hash=sha256:5a4a86becf4f9fdf2910a5b869fc40ec9978044f93045fdce240fecb6c64681a
+    --hash=sha256:a65b67a9a6b06ba1ec406114568e21afe88c1cdb29c464f2507d529eb906d8ae \
+    --hash=sha256:e2be5eff72ebcb010675b818e8d7c2e7d61ec451755b8de67a140bc49b9b0280
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   opentelemetry-exporter-otlp
@@ -2337,16 +2337,16 @@ opentelemetry-exporter-otlp-proto-http==1.26.0 \
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   opentelemetry-exporter-otlp
 opentelemetry-proto==1.26.0 \
-    --hash=sha256:237ef4fdd7f752b2fe740352643f8ef82733bd8e0db8b46ed808125ac7c7f112 \
-    --hash=sha256:ff1ad9a3c572075883c2af0053cefdfaba005d71eade783c4524d34660d53b60
+    --hash=sha256:6c4d7b4d4d9c88543bcf8c28ae3f8f0448a753dc291c18c5390444c90b76a725 \
+    --hash=sha256:c5c18796c0cab3751fc3b98dee53855835e90c0422924b484432ac852d93dc1e
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.26.0 \
-    --hash=sha256:ba29274aab656572e97e0339afaad6f2bded4102324b1475ab7412079498df6e \
-    --hash=sha256:da7dfa6188e8a39f34b99495260e6a1d398c86a9de064c7f0805db6f16733d94
+    --hash=sha256:c90d2868f8805619535c05562d699e2f4fb1f00dbd55a86dcefca4da6fa02f85 \
+    --hash=sha256:feb5056a84a88670c041ea0ded9921fca559efec03905dddeb3885525e0af897
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2355,8 +2355,8 @@ opentelemetry-sdk==1.26.0 \
     #   opentelemetry-exporter-otlp-proto-http
     #   vllm
 opentelemetry-semantic-conventions==0.47b0 \
-    --hash=sha256:ecae7367203e5204c70518e6d24b438480d6a6f1e5c8ee9dc2145f176ff4452e \
-    --hash=sha256:fac014ac2098b1a05fe58af77cbe74c825ff869d6d53d316c393cc77f507ec15
+    --hash=sha256:4ff9d595b85a59c1c1413f02bba320ce7ea6bf9e2ead2b0913c4395c7bbc1063 \
+    --hash=sha256:a8d57999bbe3495ffd4d510de26a97dadc1dace53e0275001b2c1b2f67992a7e
     # via
     #   -c python/requirements_compiled_ray_test_py311_cpu.txt
     #   opentelemetry-sdk
