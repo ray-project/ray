@@ -412,10 +412,10 @@ class FuseOperators(Rule):
 
         if min_num_rows_ratio > ratio_threshold:
             logger.warning(
-                "Ratio of `min_rows_per_bundled_input` of downstream to upstream map "
-                f"operator is {round(min_num_rows_ratio, 2)} > {ratio_threshold} entailing "
-                f"that operator fusion could potentially reduce parallelism level of the "
-                f"upstream '{up_logical_op}' operator")
+                f"Value of `min_rows_per_bundled_input` of upstream operator "
+                f"'{up_logical_op}' is increasing from {us_min_rows_per_bundled_input} "
+                f"to {ds_min_rows_per_bundled_input} due to operator fusion. This could "
+                f"substantially reduce parallelism level of the operator.")
 
         # Target min bundle size is selected as max of upstream and downstream ones
         # such that it could satisfy both of their requirements
