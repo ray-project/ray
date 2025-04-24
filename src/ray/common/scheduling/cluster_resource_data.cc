@@ -91,7 +91,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  auto label_selector = resource_request.GetLabelSelector();
+  const auto &label_selector = resource_request.GetLabelSelector();
   if (!HasRequiredLabels(label_selector)) {
     return false;
   }
