@@ -293,7 +293,7 @@ The following example shows how you can deploy DeepSeek R1 or V3:
             # Deploy the application
             deployment = LLMServer.as_deployment(
                 llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
-            llm_app = LLMRouter.as_deployment().bind([deployment])
+            llm_app = build_openai_app({"llm_configs": [llm_config]})
             serve.run(llm_app)
 
 Production Deployment
