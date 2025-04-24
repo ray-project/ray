@@ -207,12 +207,6 @@ backcall==0.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
-backoff==1.10.0 \
-    --hash=sha256:5e73e2cbe780e1915a204799dba0a01896f45f4385e636bcca7a0614d879d0cd \
-    --hash=sha256:b8fba021fac74055ac05eb7c7bfce4723aedde6cd0a504e5326bcb0bdd6d19a4
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   opentelemetry-exporter-otlp-proto-grpc
 beautifulsoup4==4.11.1 \
     --hash=sha256:58d5c3d29f5a36ffeb94f02f0d786cd53014cf9b3b3951d42e0080d8a9498d30 \
     --hash=sha256:ad9aa55b65ef2808eb405f46cf74df7fcb7044d5cbc26487f96eb2ef2e436693
@@ -525,6 +519,14 @@ defusedxml==0.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   nbconvert
+deprecated==1.2.18 \
+    --hash=sha256:422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d \
+    --hash=sha256:bd5011788200372a32418f888e326a09ff80d0214bd961147cfed01b5c018eec
+    # via
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-semantic-conventions
 distlib==0.3.7 \
     --hash=sha256:2e24928bc811348f0feb63014e97aaae3037f2cf48712d51ae61df7fd6075057 \
     --hash=sha256:9dafe54b34a028eafd95039d5e5d4851a13734540f1331060d31c9916e7147a8
@@ -919,6 +921,7 @@ googleapis-common-protos==1.61.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   google-api-core
     #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
 grpcio==1.66.2 \
     --hash=sha256:02697eb4a5cbe5a9639f57323b4c37bcb3ab2d48cec5da3dc2f13334d72790dd \
     --hash=sha256:03b0b307ba26fae695e067b94cbb014e27390f8bc5ac7a3a39b7723fed085604 \
@@ -1026,6 +1029,12 @@ imageio==2.34.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   scikit-image
+importlib-metadata==6.11.0 \
+    --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
+    --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   opentelemetry-api
 iniconfig==2.0.0 \
     --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
     --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
@@ -1767,7 +1776,7 @@ opencensus-context==0.1.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opencensus
-opentelemetry-api==1.1.0 \
+opentelemetry-api==1.26.0 \
     --hash=sha256:38555cd773df903a2f7440778d6f8b48a86fd388604b171969bdbde4b746a558 \
     --hash=sha256:704a3b2a7511d2c9065013d362a8371bc452ae6c0521941de680af2a5ca94884
     # via
@@ -1775,27 +1784,41 @@ opentelemetry-api==1.1.0 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
-opentelemetry-exporter-otlp==1.1.0 \
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-otlp==1.26.0 \
     --hash=sha256:2a2135f87cdad417408d34fc6131879d5cee1d7af7546b4a1f67fd178b262f4e \
     --hash=sha256:61ee0a6e9a12dd7191aedca34a8a3e7cc4e8e92504a71adf390b6d2bcc36d0d4
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
-opentelemetry-exporter-otlp-proto-grpc==1.1.0 \
+opentelemetry-exporter-otlp-proto-common==1.26.0 \
+    --hash=sha256:bdbe50e2e22a1c71acaa0c8ba6efaadd58882e5a5978737a44a4c4b10d304c92 \
+    --hash=sha256:ee4d8f8891a1b9c372abf8d109409e5b81947cf66423fd998e56880057afbc71
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.26.0 \
     --hash=sha256:281e9bbce73b08c1c93781cf7f4282396f74895987fdc051bea335f7dd086199 \
     --hash=sha256:5a4a86becf4f9fdf2910a5b869fc40ec9978044f93045fdce240fecb6c64681a
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-exporter-otlp
-opentelemetry-proto==1.1.0 \
+opentelemetry-exporter-otlp-proto-http==1.26.0 \
+    --hash=sha256:5801ebbcf7b527377883e6cbbdda35ee712dc55114fff1e93dfee210be56c908 \
+    --hash=sha256:ee72a87c48ec977421b02f16c52ea8d884122470e0be573905237b540f4ee562
+    # via opentelemetry-exporter-otlp
+opentelemetry-proto==1.26.0 \
     --hash=sha256:237ef4fdd7f752b2fe740352643f8ef82733bd8e0db8b46ed808125ac7c7f112 \
     --hash=sha256:ff1ad9a3c572075883c2af0053cefdfaba005d71eade783c4524d34660d53b60
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.1.0 \
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.26.0 \
     --hash=sha256:ba29274aab656572e97e0339afaad6f2bded4102324b1475ab7412079498df6e \
     --hash=sha256:da7dfa6188e8a39f34b99495260e6a1d398c86a9de064c7f0805db6f16733d94
     # via
@@ -1803,7 +1826,8 @@ opentelemetry-sdk==1.1.0 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.20b0 \
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.47b0 \
     --hash=sha256:ecae7367203e5204c70518e6d24b438480d6a6f1e5c8ee9dc2145f176ff4452e \
     --hash=sha256:fac014ac2098b1a05fe58af77cbe74c825ff869d6d53d316c393cc77f507ec15
     # via
@@ -2602,6 +2626,7 @@ requests==2.31.0 \
     #   google-api-core
     #   google-cloud-storage
     #   jupyterlab-server
+    #   opentelemetry-exporter-otlp-proto-http
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
@@ -3004,6 +3029,7 @@ typing-extensions==4.12.2 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fastapi
     #   gymnasium
+    #   opentelemetry-sdk
     #   pydantic
     #   pydantic-core
     #   referencing
@@ -3175,6 +3201,7 @@ wrapt==1.14.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   deprecated
 y-py==0.6.2 \
     --hash=sha256:015f7f6c1ce8a83d57955d1dc7ddd57cb633ae00576741a4fc9a0f72ed70007d \
     --hash=sha256:032365dfe932bfab8e80937ad6093b4c22e67d63ad880096b5fa8768f8d829ba \
@@ -3346,6 +3373,12 @@ ypy-websocket==0.8.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-server-ydoc
+zipp==3.19.2 \
+    --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
+    --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   importlib-metadata
 
 # The following packages were excluded from the output:
 # grpcio-tools
