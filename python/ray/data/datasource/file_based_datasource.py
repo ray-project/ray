@@ -474,19 +474,13 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     import pyarrow as pa
     import pyarrow.fs
 
-    wrap_retries = False
-    fs_to_be_wrapped = filesystem  # Only unwrap for S3FileSystemWrapper
-    retryable_errors = []
-    if isinstance(fs_to_be_wrapped, RetryingPyFileSystem):
-        wrap_retries = True
-        retryable_errors = fs_to_be_wrapped.retryable_errors
-        fs_to_be_wrapped = fs_to_be_wrapped.unwrap()
-    if isinstance(fs_to_be_wrapped, pa.fs.S3FileSystem):
-        return _S3FileSystemWrapper(
-            fs_to_be_wrapped,
-            wrap_retries=wrap_retries,
-            retryable_errors=retryable_errors,
-        )
+    base_fs = filesystem
+    if isinstance(filesystem, RetryingPyFileSystem):
+        base_fs = filesystem.unwrap()
+
+    if isinstance(base_fs, pa.fs.S3FileSystem):
+        return _S3FileSystemWrapper(filesystem)
+
     return filesystem
 
 
@@ -494,26 +488,22 @@ def _unwrap_s3_serialization_workaround(
     filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
-        wrap_retries = filesystem._wrap_retries
-        retryable_errors = filesystem._retryable_errors
         filesystem = filesystem.unwrap()
-        if wrap_retries:
-            filesystem = RetryingPyFileSystem.wrap(
-                filesystem, retryable_errors=retryable_errors
-            )
     return filesystem
 
 
 class _S3FileSystemWrapper:
-    def __init__(
-        self,
-        fs: "pyarrow.fs.S3FileSystem",
-        wrap_retries: bool = False,
-        retryable_errors: List[str] = tuple(),
-    ):
+    """pyarrow.fs.S3FileSystem wrapper that can be deserialized safely.
+
+    Importing pyarrow.fs during reconstruction triggers the pyarrow
+    S3 subsystem initialization.
+
+    NOTE: This is only needed for pyarrow<14.0.0 and should be removed
+        once the minimum supported pyarrow version exceeds that.
+    """
+
+    def __init__(self, fs: "pyarrow.fs.FileSystem"):
         self._fs = fs
-        self._wrap_retries = wrap_retries
-        self._retryable_errors = retryable_errors
 
     def unwrap(self):
         return self._fs
