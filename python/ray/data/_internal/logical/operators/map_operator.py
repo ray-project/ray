@@ -37,8 +37,8 @@ class AbstractMap(AbstractOneToOne):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
+            min_rows_per_bundled_input: Min number of rows a single bundle of blocks
+                passed on to the task must possess.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
