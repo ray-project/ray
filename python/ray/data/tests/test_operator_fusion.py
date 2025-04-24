@@ -270,7 +270,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_with_map_batches_no_fusion(
+def test_read_with_map_batches_fused_successfully(
     ray_start_regular_shared_2_cpus, temp_dir
 ):
     """Since MapBatches does NOT specify `batch_size`, successfully fused with
@@ -281,21 +281,24 @@ def test_read_with_map_batches_no_fusion(
     ds = ray.data.read_parquet(temp_dir)
 
     mapped_ds = (
-        ds.map_batches(lambda x: x,).map_batches(lambda x: x)
+        ds.map_batches(lambda x: x).map_batches(lambda x: x)
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
-
-    # All Map ops are fused (however Read is not)
     assert isinstance(physical_op, MapOperator)
+
+    actual_plan_str = physical_op.dag_str
+
+    # All Map ops are fused with Read
     assert (
-        "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)" ==
-        physical_op.name
+        "InputDataBuffer[Input] -> "
+        "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        == actual_plan_str
     )
 
-    # Target block size is set to max.
+    # # Target min-rows requirement is not set
     assert physical_op._block_ref_bundler._min_rows_per_bundle is None
 
     assert (
@@ -304,7 +307,7 @@ def test_read_with_map_batches_no_fusion(
     )
 
 
-def test_read_with_map_batches_fused_successfully(
+def test_read_with_map_batches_no_fusion(
     ray_start_regular_shared_2_cpus, temp_dir
 ):
     """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
@@ -328,22 +331,22 @@ def test_read_with_map_batches_fused_successfully(
 
     physical_op = physical_plan.dag
 
-    # All Map ops are fused (however Read is not)
     assert isinstance(physical_op, MapOperator)
+
+    actual_plan_str = physical_op.dag_str
+
+    # All Map ops are fused (however Read is not)
     assert (
-        "MapBatches(<lambda>)->MapBatches(<lambda>)" ==
-        physical_op.name
+        "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+        "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]" ==
+        actual_plan_str
     )
 
-    # Target block size is set to max.
+    # Target min-rows requirement is set to max of upstream and downstream
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     
     assert len(physical_op.input_dependencies) == 1
     
-    # Assert input is a Read
-    input_op = physical_op.input_dependencies[0]
-    assert "ReadParquet" == input_op.name
-
     assert (
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
