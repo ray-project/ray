@@ -169,7 +169,8 @@ class TestGC:
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
         cluster.add_node(
-            num_cpus=1, runtime_env_dir_name="worker_node_runtime_resources",
+            num_cpus=1,
+            runtime_env_dir_name="worker_node_runtime_resources",
             dashboard_agent_listen_port=find_free_port(),
         )
         ray.init(address)
@@ -184,7 +185,9 @@ class TestGC:
         A = A.options(
             runtime_env={
                 "working_dir": S3_PACKAGE_URI,
-            } if option == "working_dir" else {
+            }
+            if option == "working_dir"
+            else {
                 "py_modules": [
                     S3_PACKAGE_URI,
                 ],
