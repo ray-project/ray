@@ -57,7 +57,7 @@ def test_deploy_basic(serve_instance, use_handle):
     assert pid3 != pid2
 
 
-@pytest.mark.parametrize("use_handle", 
+@pytest.mark.parametrize("component_name", 
 [
     "test@component",
     "test#123",
