@@ -174,7 +174,7 @@ def test_log_files_exist(shutdown_only):
     job_id = ray.get_runtime_context().get_job_id()
     worker_filename = PROCESS_TYPE_WORKER + f"-{worker_id}-{job_id}-{worker_pid}"
 
-    component_to_suffixes = [
+    component_to_extensions = [
         (PROCESS_TYPE_DASHBOARD, [".log", ".out", ".err"]),
         (PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
         (PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
@@ -190,24 +190,23 @@ def test_log_files_exist(shutdown_only):
     paths = list(log_dir_path.iterdir())
 
     def _assert_component_logs_exist(
-        paths: List[str], component_name: str, suffixes: List[str]
+        paths: List[str], component_name: str, extensions: List[str]
     ):
-        suffixes_to_find = deepcopy(suffixes)
+        extensions_to_find = set(extensions)
         for path in paths:
             if path.stem != component_name:
                 continue
 
-            for suffix in suffixes:
-                if suffix == path.suffix:
-                    suffixes_to_find.remove(suffix)
+            if path.suffix in extensions_to_find:
+                extensions_to_find.remove(path.suffix)
 
-        assert len(suffixes_to_find) == 0, (
-            f"Missing suffixes {(suffixes_to_find)} for component '{component_name}'. "
+        assert len(extensions_to_find) == 0, (
+            f"Missing extensions {(extensions_to_find)} for component '{component_name}'. "
             f"All paths: {paths}."
         )
 
-    for (component_name, suffixes) in component_to_suffixes:
-        _assert_component_logs_exist(paths, component_name, suffixes)
+    for (component_name, extensions) in component_to_extensions:
+        _assert_component_logs_exist(paths, component_name, extensions)
 
 
 # Rotation is disable in the unit test.
@@ -220,7 +219,7 @@ def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    # NOTICE: There's no PROCESS_TYPE_WORKER because "worker" is a
+    # NOTE: There's no PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_components = [
         PROCESS_TYPE_DASHBOARD,
@@ -308,7 +307,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
-    # NOTICE: There's no PROCESS_TYPE_WORKER because "worker" is a
+    # NOTE: There's no PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_components = [
         PROCESS_TYPE_DASHBOARD,
