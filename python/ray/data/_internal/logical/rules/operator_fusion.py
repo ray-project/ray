@@ -175,7 +175,6 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
-                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
@@ -460,9 +459,6 @@ class FuseOperators(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
-
-    def _can_fuse_map_ops(self, up_op: AbstractMap, down_op: AbstractMap) -> bool:
-        pass
 
 
 def _are_remote_args_compatible(prev_args, next_args):
