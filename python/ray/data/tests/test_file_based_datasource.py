@@ -124,6 +124,12 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     [True, False],
 )
 def test_s3_filesystem_serialization(fs, wrap_with_retries):
+    """Tests that the S3FileSystem can be serialized and deserialized with
+    the serialization workaround (_S3FileSystemWrapper).
+
+    Also checks that filesystems wrapped with RetryingPyFileSystem are
+    properly unwrapped.
+    """
     from ray.data.datasource.file_based_datasource import (
         _wrap_s3_serialization_workaround,
         _unwrap_s3_serialization_workaround,
@@ -138,15 +144,14 @@ def test_s3_filesystem_serialization(fs, wrap_with_retries):
 
     wrapped_fs = _wrap_s3_serialization_workaround(fs)
     unpickled_fs = ray_pickle.loads(ray_pickle.dumps(wrapped_fs))
-
-    _unwrap_s3_serialization_workaround(unpickled_fs)
+    unwrapped_fs = _unwrap_s3_serialization_workaround(unpickled_fs)
 
     if wrap_with_retries:
-        assert isinstance(unpickled_fs, RetryingPyFileSystem)
-        assert isinstance(unpickled_fs.unwrap(), orig_fs.__class__)
-        assert unpickled_fs.retryable_errors == ["DUMMY ERROR"]
+        assert isinstance(unwrapped_fs, RetryingPyFileSystem)
+        assert isinstance(unwrapped_fs.unwrap(), orig_fs.__class__)
+        assert unwrapped_fs.retryable_errors == ["DUMMY ERROR"]
     else:
-        assert isinstance(unpickled_fs, orig_fs.__class__)
+        assert isinstance(unwrapped_fs, orig_fs.__class__)
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])

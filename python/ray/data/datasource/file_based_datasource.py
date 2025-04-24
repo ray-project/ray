@@ -500,6 +500,7 @@ class _S3FileSystemWrapper:
 
     NOTE: This is only needed for pyarrow<14.0.0 and should be removed
         once the minimum supported pyarrow version exceeds that.
+        See https://github.com/apache/arrow/pull/38375 for context.
     """
 
     def __init__(self, fs: "pyarrow.fs.FileSystem"):
