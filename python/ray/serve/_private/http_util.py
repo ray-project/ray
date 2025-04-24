@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from packaging import version
 from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
-import starlette.responses
 import starlette
 import uvicorn
 from fastapi.encoders import jsonable_encoder
