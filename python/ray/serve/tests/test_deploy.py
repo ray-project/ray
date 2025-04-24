@@ -57,6 +57,60 @@ def test_deploy_basic(serve_instance, use_handle):
     assert pid3 != pid2
 
 
+@pytest.mark.parametrize("use_handle", 
+[
+    "test@component",
+    "test#123",
+    "component/name",
+    "component.name",
+    "component!name",
+    "component$name",
+    "component%name",
+    "component^name",
+    "component&name",
+    "component*name",
+    "component(name",
+    "component)name",
+    "component+name",
+    "component=name",
+    "component{name",
+    "component}name",
+    "component[name",
+    "component]name",
+    "component:name",
+    "component;name",
+    "component'name",
+    'component"name',
+    "component<name",
+    "component>name",
+    "component,name",
+    "component?name",
+    "component|name",
+    "component\\name",
+])
+def test_deploy_with_special_characters(serve_instance, component_name):
+    """The function should not fail when the deployment name contains special characters.
+    The deployment will use the names without special characters replaced by underscores.
+    """
+    signal = SignalActor.options(name="some_signal").remote()
+
+    # V1 blocks on signal
+    @serve.deployment(name="some_name")
+    class V1:
+        async def handler(self):
+            await signal.wait.remote()
+            return 1, os.getpid()
+
+        async def __call__(self):
+            return await self.handler()
+
+    # Check that deployment succeeds with special characters
+    with pytest.raises(Exception) as exc_info:
+        serve.run(V1.options(name=component_name).bind(), name="app")
+        
+    assert exc_info.type is None, f"Deployment failed with exception: {exc_info.value}"
+
+
 def test_empty_decorator(serve_instance):
     @serve.deployment
     def func(*args):

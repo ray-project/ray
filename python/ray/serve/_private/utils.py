@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from ray.serve.config import gRPCOptions
 import requests
-
+import re
 import ray
 import ray.util.serialization_addons
 from ray._common.utils import import_attr
@@ -556,7 +556,20 @@ def get_component_file_name(
     component_type: Optional[ServeComponentType],
     suffix: str = "",
 ) -> str:
-    """Get the component's file name."""
+    """Get the component's file name.
+
+    Args:
+        component_name: Name of the component.
+        component_id: ID of the component.
+        component_type: Type of the component.
+        suffix: Optional suffix to append to the file name.
+
+    Returns:
+        str: The formatted file name.
+    """
+    # Sanitize component_name and component_id by replacing special characters with underscores
+    component_name = re.sub(r'[^a-zA-Z0-9_-]', '_', component_name)
+    component_id = re.sub(r'[^a-zA-Z0-9_-]', '_', component_id)
 
     # For DEPLOYMENT component type, we want to log the deployment name
     # instead of adding the component type to the component name.
