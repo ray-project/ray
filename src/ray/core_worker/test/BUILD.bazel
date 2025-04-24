@@ -124,7 +124,6 @@ ray_cc_test(
     srcs = ["object_recovery_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:object_manager_common",
         "//:ray_mock",
         "//src/ray/raylet_client:raylet_client_lib",
         "//src/ray/common:task_common",
@@ -132,6 +131,7 @@ ray_cc_test(
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:normal_task_submitter",
         "//src/ray/core_worker:object_recovery_manager",
+        "//src/ray/object_manager:object_manager_common",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -334,9 +334,9 @@ ray_cc_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
-        "//:object_manager_common",
         "//:ray_mock",
         "//src/ray/core_worker:experimental_mutable_object_provider",
+        "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
         "//src/ray/object_manager/plasma:plasma_store_server_lib",
         "@com_google_absl//absl/functional:bind_front",
