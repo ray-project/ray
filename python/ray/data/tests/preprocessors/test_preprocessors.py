@@ -165,6 +165,45 @@ def test_fit_twice(mocked_warn):
     mocked_warn.assert_called_once_with(msg)
 
 
+def test_ray_remote_args_and_fn():
+    batch_size = 2
+
+    ray_remote_args = {"num_cpus": 2}
+
+    def func(df):
+        import os
+
+        df["value"][:] = int(os.environ["__MY_TEST__"])
+        return df
+
+    class DummyPreprocessor(Preprocessor):
+        _is_fittable = False
+
+        def _get_transform_config(self):
+            return {"batch_size": batch_size}
+
+        def _transform_numpy(self, data):
+            assert (
+                ray.get_runtime_context().get_assigned_resources()["CPU"]
+                == ray_remote_args["num_cpus"]
+            )
+            assert len(data["value"]) == batch_size
+            func(data)
+            return data
+
+        def _determine_transform_to_use(self):
+            return "numpy"
+
+    prep = DummyPreprocessor(
+        ray_remote_args=ray_remote_args,
+        ray_remote_args_fn=lambda: {"runtime_env": {"env_vars": {"__MY_TEST__": "69"}}},
+    )
+    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(10))}))
+    ds = prep.transform(ds)
+
+    assert sorted([x["value"] for x in ds.take(5)]) == [69, 69, 69, 69, 69]
+
+
 def test_transform_config():
     """Tests that the transform_config of
     the Preprocessor is respected during transform."""
