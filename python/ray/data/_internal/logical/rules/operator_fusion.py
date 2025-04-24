@@ -45,8 +45,6 @@ logger = logging.getLogger(__name__)
 class FuseOperators(Rule):
     """Fuses linear chains of compatible physical operators."""
 
-    _DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO = 3.0
-
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._op_map = plan.op_map.copy()
         # Do DFS fusion on compatible pairwise operators in two passes.
@@ -400,34 +398,11 @@ class FuseOperators(Rule):
         if us_bundle_min_rows_req is None and ds_bundle_min_rows_req is None:
             return None
 
-        # If at least one of the operators has `min_rows_per_bundled_input` specified,
-        # fusion could not proceed unless upstream operator has it specified
-        assert us_bundle_min_rows_req is not None, (
-            "Upstream `_min_rows_per_bundled_input` have to be not None "
-            f"(got {us_bundle_min_rows_req})"
-        )
-
-        ds_bundle_min_rows_req = ds_bundle_min_rows_req or 0
-
-        # NOTE: If ratio of downstream to upstream min num rows requirement is exceeding
-        #       `_DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO` we log a warning
-        #       as this could potentially lead to substantial parallelism reduction due
-        #       to operator fusion
-        ratio_threshold = cls._DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO
-        min_num_rows_ratio = ds_bundle_min_rows_req / us_bundle_min_rows_req
-
-        if min_num_rows_ratio > ratio_threshold:
-            logger.warning(
-                f"Value of `min_rows_per_bundled_input` of upstream operator "
-                f"'{up_logical_op}' is increasing from {us_bundle_min_rows_req} "
-                f"to {ds_bundle_min_rows_req} due to operator fusion. This could "
-                f"substantially reduce parallelism level of the operator.")
-
         # Target min bundle size is selected as max of upstream and downstream ones
         # such that it could satisfy both of their requirements
         return max(
-            ds_bundle_min_rows_req,
-            us_bundle_min_rows_req
+            ds_bundle_min_rows_req or 0,
+            us_bundle_min_rows_req or 0,
         )
 
     def _get_fused_all_to_all_operator(
