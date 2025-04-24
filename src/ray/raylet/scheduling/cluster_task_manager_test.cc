@@ -160,6 +160,8 @@ RayTask CreateTask(
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
+  address.set_raylet_id(NodeID::FromRandom().Binary());
+  address.set_worker_id(WorkerID::FromRandom().Binary());
   spec_builder.SetCommonTaskSpec(id,
                                  "dummy_task",
                                  Language::PYTHON,
@@ -1616,7 +1618,6 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
-  // TODO(jjyao) revamp the test
   /*
     Test the race condition in which the owner of a task dies while the task is pending.
     This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
@@ -1630,23 +1631,14 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
     *callback_occurred_ptr = true;
   };
 
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
 
-  task_manager_.ScheduleAndDispatchTasks();
-  pool_.TriggerCallbacks();
-
-  ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 1);
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerWorkerId());
 
   AssertNoLeaks();
 }
