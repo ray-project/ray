@@ -651,8 +651,12 @@ def to_numpy(
     import pyarrow as pa
 
     if isinstance(array, pa.Array):
+        if pa.types.is_null(array.type):
+            return np.full(len(array), np.nan, dtype=np.float32)
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
+        if pa.types.is_null(array.type):
+            return np.full(array.length(), np.nan, dtype=np.float32)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:

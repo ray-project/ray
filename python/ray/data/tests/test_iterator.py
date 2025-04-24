@@ -4,6 +4,7 @@ from typing import Dict, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 import torch
 import pyarrow
@@ -283,6 +284,38 @@ def test_custom_batch_collate_fn(
     for batch in it.iter_torch_batches(collate_fn=custom_collate_fns[collate_type]):
         assert isinstance(batch, torch.Tensor)
         assert batch.tolist() == list(range(5, 10))
+
+        
+@pytest.fixture(params=["regular", "chunked"])
+def null_array_table(request):
+    """Fixture that returns a PyArrow table with either a regular or chunked null array."""
+    if request.param == "regular":
+        # Regular array
+        return pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+    else:
+        # Chunked array
+        return pa.table(
+            {
+                "fruit_apple": pa.chunked_array(
+                    [
+                        pa.array([None], type=pa.null()),
+                        pa.array([None, None], type=pa.null()),
+                    ]
+                )
+            }
+        )
+
+
+def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    ds = ray.data.from_arrow(null_array_table)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch, dict)
+        assert "fruit_apple" in batch
+        assert isinstance(batch["fruit_apple"], torch.Tensor)
+        assert torch.isnan(batch["fruit_apple"]).all()
+        assert batch["fruit_apple"].shape == (3,)
 
 
 def test_iterator_to_materialized_dataset(ray_start_regular_shared):
