@@ -285,7 +285,7 @@ def test_custom_batch_collate_fn(
         assert isinstance(batch, torch.Tensor)
         assert batch.tolist() == list(range(5, 10))
 
-        
+
 @pytest.fixture(params=["regular", "chunked"])
 def null_array_table(request):
     """Fixture that returns a PyArrow table with either a regular or chunked null array."""
