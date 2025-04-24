@@ -51,9 +51,9 @@ class ResourceRequest {
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory,
                   rpc::LabelSelector label_selector)
-      : resources_(resource_map),
+      : resources_(std::move(resource_map)),
         requires_object_store_memory_(requires_object_store_memory),
-        label_selector_(label_selector) {}
+        label_selector_(std::move(label_selector)) {}
 
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
