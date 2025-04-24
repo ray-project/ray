@@ -101,6 +101,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID &node_id,
                        std::string node_address,
                        std::function<int64_t()> get_num_cpus_available,
+                       int max_io_workers_per_io_type,
                        int num_prestarted_python_workers,
                        int maximum_startup_concurrency,
                        int min_worker_port,
@@ -118,6 +119,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       node_id_(node_id),
       node_address_(std::move(node_address)),
       get_num_cpus_available_(std::move(get_num_cpus_available)),
+      max_io_workers_per_io_type_(max_io_workers_per_io_type),
       maximum_startup_concurrency_(
           RayConfig::instance().worker_maximum_startup_concurrency() > 0
               ?
@@ -1675,7 +1677,7 @@ void WorkerPool::WarnAboutSize() {
           starting_process.second.is_pending_registration ? 0 : 1;
     }
     // Don't count IO workers towards the warning message threshold.
-    num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
+    num_workers_started_or_registered -= max_io_workers_per_io_type_ * 2;
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
     if (multiple >= 4 && multiple > state.last_warning_multiple) {
@@ -1729,9 +1731,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
 
   int available_io_workers_num =
       io_worker_state.num_starting_io_workers + io_worker_state.started_io_workers.size();
-  int max_workers_to_start =
-      RayConfig::instance().max_io_workers() - available_io_workers_num;
-  // Compare first to prevent unsigned underflow.
+  int max_workers_to_start = max_io_workers_per_io_type_ - available_io_workers_num;
   if (io_worker_state.pending_io_tasks.size() > io_worker_state.idle_io_workers.size()) {
     int expected_workers_num =
         io_worker_state.pending_io_tasks.size() - io_worker_state.idle_io_workers.size();

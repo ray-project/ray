@@ -261,6 +261,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const NodeID &node_id,
              std::string node_address,
              std::function<int64_t()> get_num_cpus_available,
+             int max_io_workers_per_io_type,
              int num_prestarted_python_workers,
              int maximum_startup_concurrency,
              int min_worker_port,
@@ -806,6 +807,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// A callback to get the number of CPUs available. We use this to determine
   /// how many idle workers to keep around.
   std::function<int64_t()> get_num_cpus_available_;
+  /// The maximum number of I/O Workers that can be created per I/O type.
+  /// Currently supported I/O types are spill and restore.
+  int max_io_workers_per_io_type_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.

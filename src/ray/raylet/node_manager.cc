@@ -142,6 +142,7 @@ NodeManager::NodeManager(
                 cluster_resource_scheduler_->GetLocalResourceManager()
                     .GetLocalAvailableCpus());
           },
+          config.max_io_workers_per_io_type,
           config.num_prestart_python_workers,
           config.maximum_startup_concurrency,
           config.min_worker_port,
@@ -265,7 +266,7 @@ NodeManager::NodeManager(
           RayConfig::instance().free_objects_period_milliseconds(),
           worker_pool_,
           worker_rpc_pool_,
-          /*max_io_workers*/ config.max_io_workers,
+          /*max_io_workers_per_io_type*/ config.max_io_workers_per_io_type,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
           /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),

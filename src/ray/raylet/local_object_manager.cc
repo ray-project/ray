@@ -168,7 +168,7 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
     if (!TryToSpillObjects()) {
       break;
     }
-    can_spill_more = num_active_workers_ < max_active_workers_;
+    can_spill_more = num_active_workers_ < max_active_spill_workers_;
   }
 }
 

@@ -18,6 +18,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
@@ -50,7 +51,7 @@ class LocalObjectManager {
       int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
       rpc::CoreWorkerClientPool &owner_client_pool,
-      int max_io_workers,
+      int max_io_workers_per_io_type,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
@@ -58,19 +59,19 @@ class LocalObjectManager {
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory)
       : self_node_id_(node_id),
-        self_node_address_(self_node_address),
+        self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
-        on_objects_freed_(on_objects_freed),
+        on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
-        max_active_workers_(max_io_workers),
-        is_plasma_object_spillable_(is_plasma_object_spillable),
+        max_active_spill_workers_(max_io_workers_per_io_type),
+        is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
@@ -317,7 +318,7 @@ class LocalObjectManager {
   std::atomic<int64_t> num_active_workers_;
 
   /// The max number of active spill workers.
-  const int64_t max_active_workers_;
+  const int64_t max_active_spill_workers_;
 
   /// Callback to check if a plasma object is pinned in workers.
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.

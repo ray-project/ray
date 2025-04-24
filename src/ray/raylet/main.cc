@@ -418,7 +418,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;
-        node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+        node_manager_config.max_io_workers_per_io_type =
+            RayConfig::instance().max_io_workers_per_io_type();
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;
