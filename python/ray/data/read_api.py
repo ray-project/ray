@@ -173,7 +173,7 @@ def from_items(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_name: The name of the column. Defaults to 'item'
     Returns:
         A :class:`~ray.data.Dataset` holding the items.
     """
@@ -262,7 +262,7 @@ def range(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_name: The name of the column. Defaults to 'id'
     Returns:
         A :class:`~ray.data.Dataset` producing the integers from the range 0 to n.
 
@@ -320,7 +320,7 @@ def range_tensor(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_name: The name of the column. Defaults to 'data'
     Returns:
         A :class:`~ray.data.Dataset` producing the tensor data from range 0 to n.
 
@@ -498,7 +498,8 @@ def read_audio(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-
+        column_names: A mapping from the intended column name -> provided column name.
+            Default keys are `amplitude` and `sample-rate`.
     Returns:
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
         metadata.
@@ -588,7 +589,8 @@ def read_videos(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-
+        column_names: A mapping from the intended column name -> provided column name.
+            Defaults to 'frame', 'frame_index' and 'frame_timestamp'.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
@@ -1086,7 +1088,8 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_names: A mapping from the intended column name -> provided column name.
+            Defaults to 'image'
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
         the specified paths. For information on working with tensors, read the
@@ -1675,7 +1678,8 @@ def read_text(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_names: A mapping from the intended column name -> provided column name.
+            Defaults to 'text'
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
@@ -1834,7 +1838,8 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None**numpy_load_args,
+    column_names: Optional[Dict[str, str]] = None,
+    **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
@@ -1887,7 +1892,8 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-
+        column_names: A mapping from the intended column name -> provided column name.
+            Defaults to 'data'.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501

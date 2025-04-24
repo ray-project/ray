@@ -107,6 +107,7 @@ class FileBasedDatasource(Datasource):
     # If zero or negative, reading will be performed in the main thread.
     _NUM_THREADS_PER_TASK = 0
 
+    # List of column names that must be used.
     _REQUIRED_COLUMN_NAMES = []
 
     def __init__(
