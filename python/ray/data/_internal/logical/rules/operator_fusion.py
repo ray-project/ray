@@ -302,21 +302,11 @@ class FuseOperators(Rule):
         assert isinstance(down_logical_op, AbstractMap)
         assert isinstance(up_logical_op, AbstractMap)
 
-        # Merge minimum block sizes.
-        down_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
-        up_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
-
-        if (
-            down_min_rows_per_bundled_input is not None
-            and up_min_rows_per_bundled_input is not None
-        ):
-            min_rows_per_bundled_input = max(
-                down_min_rows_per_bundled_input, up_min_rows_per_bundled_input
-            )
-        elif up_min_rows_per_bundled_input is not None:
-            min_rows_per_bundled_input = up_min_rows_per_bundled_input
-        else:
-            min_rows_per_bundled_input = down_min_rows_per_bundled_input
+        # Derive min num rows per input bundle
+        min_rows_per_bundled_input = self._derive_bundle_min_num_rows(
+            down_logical_op,
+            up_logical_op
+        )
 
         target_max_block_size = self._get_merged_target_max_block_size(
             up_op.target_max_block_size, down_op.target_max_block_size
@@ -388,6 +378,27 @@ class FuseOperators(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
+
+    @staticmethod
+    def _derive_bundle_min_num_rows(down_logical_op, up_logical_op):
+        ds_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
+        us_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
+
+        assert (
+            ds_min_rows_per_bundled_input is not None
+            and us_min_rows_per_bundled_input is not None
+        ), (
+            "Both downstream and upstream `_min_rows_per_bundled_input` have to be "
+            f"not None (got {us_min_rows_per_bundled_input} and "
+            f"{ds_min_rows_per_bundled_input})"
+        )
+
+        # Target min bundle size is selected as max of upstream and downstream ones
+        # such that it could satisfy both of their requirements
+        return max(
+            ds_min_rows_per_bundled_input,
+            us_min_rows_per_bundled_input
+        )
 
     def _get_fused_all_to_all_operator(
         self, down_op: AllToAllOperator, up_op: MapOperator
