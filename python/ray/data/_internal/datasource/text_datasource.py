@@ -12,6 +12,7 @@ class TextDatasource(FileBasedDatasource):
     """Text datasource, for reading and writing text files."""
 
     _COLUMN_NAME = "text"
+    _REQUIRED_COLUMN_NAMES = [_COLUMN_NAME]
 
     def __init__(
         self,
@@ -35,7 +36,7 @@ class TextDatasource(FileBasedDatasource):
         for line in lines:
             if self.drop_empty_lines and line.strip() == "":
                 continue
-            item = {self._COLUMN_NAME: line}
+            item = {self._column_names[self._COLUMN_NAME]: line}
             builder.add(item)
 
         block = builder.build()

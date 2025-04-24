@@ -34,6 +34,9 @@ class ImageDatasource(FileBasedDatasource):
     # Use 8 threads per task to read image files.
     _NUM_THREADS_PER_TASK = 8
 
+    _IMAGE = "image"
+    _REQUIRED_COLUMN_NAMES = [_IMAGE]
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -88,7 +91,7 @@ class ImageDatasource(FileBasedDatasource):
 
         builder = DelegatingBlockBuilder()
         array = np.array(image)
-        item = {"image": array}
+        item = {self._column_names[self._IMAGE]: array}
         builder.add(item)
         block = builder.build()
 
