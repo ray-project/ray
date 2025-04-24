@@ -34,22 +34,31 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
-from ray.rllib.algorithms.utils import AggregatorActor
+from ray.rllib.algorithms.utils import (
+    AggregatorActor,
+    _get_env_runner_bundles,
+    _get_offline_eval_runner_bundles,
+    _get_learner_bundles,
+    _get_main_process_bundle,
+)
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
+from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_EVAL_ENV_RUNNER,
     COMPONENT_LEARNER,
     COMPONENT_LEARNER_GROUP,
     COMPONENT_METRICS_LOGGER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -60,6 +69,7 @@ from ray.rllib.core.rl_module.multi_rl_module import (
 )
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
@@ -110,6 +120,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
+    DATASET_NUM_ITERS_EVALUATED,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     EPISODE_LEN_MEAN,
@@ -126,7 +137,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
@@ -134,8 +144,11 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
-    RESTORE_WORKERS_TIMER,
-    RESTORE_EVAL_WORKERS_TIMER,
+    OFFLINE_EVAL_RUNNER_RESULTS,
+    OFFLINE_EVALUATION_ITERATION_TIMER,
+    RESTORE_ENV_RUNNERS_TIMER,
+    RESTORE_EVAL_ENV_RUNNERS_TIMER,
+    RESTORE_OFFLINE_EVAL_RUNNERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -148,6 +161,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.metrics.stats import Stats
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer, ReplayBuffer
+from ray.rllib.utils.runners.runner_group import RunnerGroup
 from ray.rllib.utils.serialization import deserialize_type, NOT_SERIALIZABLE
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import (
@@ -183,40 +197,7 @@ from ray.tune.registry import get_trainable_cls
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
-
-try:
-    from ray.rllib.extensions import AlgorithmBase
-except ImportError:
-
-    class AlgorithmBase:
-        @staticmethod
-        def _get_learner_bundles(
-            cf: AlgorithmConfig,
-        ) -> List[Dict[str, Union[float, int]]]:
-            """Selects the right resource bundles for learner workers based off of cf.
-
-            Args:
-                cf: The AlgorithmConfig instance to extract bundle-information from.
-
-            Returns:
-                A list of resource bundles for the learner workers.
-            """
-            assert cf.num_learners > 0
-
-            _num = cf.num_learners
-            all_learners = [
-                {
-                    "CPU": _num
-                    * (
-                        (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0)
-                        + cf.num_aggregator_actors_per_learner
-                    ),
-                    "GPU": _num * max(0, cf.num_gpus_per_learner),
-                }
-            ]
-
-            return all_learners
-
+    from ray.rllib.offline.offline_data import OfflineData
 
 tf1, tf, tfv = try_import_tf()
 
@@ -224,36 +205,47 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class Algorithm(Checkpointable, Trainable, AlgorithmBase):
-    """An RLlib algorithm responsible for optimizing one or more Policies.
-
-    Algorithms contain a EnvRunnerGroup under `self.env_runner_group`. An EnvRunnerGroup
-    is composed of a single local EnvRunner (`self.env_runner_group.local_env_runner`),
-    serving as the reference copy of the NeuralNetwork(s) to be trained and optionally
-    one or more remote EnvRunners used to generate environment samples in parallel.
-    EnvRunnerGroup is fault-tolerant and elastic. It tracks health states for all
-    the managed remote EnvRunner actors. As a result, Algorithm should never
-    access the underlying actor handles directly. Instead, always access them
-    via all the foreach APIs with assigned IDs of the underlying EnvRunners.
-
-    Each EnvRunners (remotes or local) contains a PolicyMap, which itself
-    may contain either one policy for single-agent training or one or more
-    policies for multi-agent training. Policies are synchronized
-    automatically from time to time using ray.remote calls. The exact
-    synchronization logic depends on the specific algorithm used,
-    but this usually happens from local worker to all remote workers and
-    after each training update.
+class Algorithm(Checkpointable, Trainable):
+    """An RLlib algorithm responsible for training one or more neural network models.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
-    or any of its built-in sub-classes.
-    This allows you to override the `training_step` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' `training_step()` methods in their respective main .py files,
-    e.g. rllib.algorithms.dqn.dqn.py or rllib.algorithms.impala.impala.py.
+    or any of its built-in subclasses.
+    Override the `training_step` method to implement your own algorithm logic.
+    Find the various built-in `training_step()` methods for different algorithms in
+    their respective [algo name].py files, for example:
+    `ray.rllib.algorithms.dqn.dqn.py` or `ray.rllib.algorithms.impala.impala.py`.
 
-    The most important API methods a Algorithm exposes are `train()`,
-    `evaluate()`, `save_to_path()` and `restore_from_path()`.
+    The most important API methods an Algorithm exposes are `train()` for running a
+    single training iteration, `evaluate()` for running a single round of evaluation,
+    `save_to_path()` for creating a checkpoint, and `restore_from_path()` for loading a
+    state from an existing checkpoint.
     """
+
+    #: The AlgorithmConfig instance of the Algorithm.
+    config: Optional[AlgorithmConfig] = None
+    #: The MetricsLogger instance of the Algorithm. RLlib uses this to log
+    #: metrics from within the `training_step()` method. Users can use it to log
+    #: metrics from within their custom Algorithm-based callbacks.
+    metrics: Optional[MetricsLogger] = None
+    #: The `EnvRunnerGroup` of the Algorithm. An `EnvRunnerGroup` is
+    #: composed of a single local `EnvRunner` (see: `self.env_runner`), serving as
+    #: the reference copy of the models to be trained and optionally one or more
+    #: remote `EnvRunners` used to generate training samples from the RL
+    #: environment, in parallel. EnvRunnerGroup is fault-tolerant and elastic. It
+    #: tracks health states for all the managed remote EnvRunner actors. As a
+    #: result, Algorithm should never access the underlying actor handles directly.
+    #: Instead, always access them via all the foreach APIs with assigned IDs of
+    #: the underlying EnvRunners.
+    env_runner_group: Optional[EnvRunnerGroup] = None
+    #: A special EnvRunnerGroup only used for evaluation, not to
+    #: collect training samples.
+    eval_env_runner_group: Optional[EnvRunnerGroup] = None
+    #: The `LearnerGroup` instance of the Algorithm, managing either
+    #: one local `Learner` or one or more remote `Learner` actors. Responsible for
+    #: updating the models from RL environment (episode) data.
+    learner_group: Optional["LearnerGroup"] = None
+    #: An optional OfflineData instance, used for offline RL.
+    offline_data: Optional["OfflineData"] = None
 
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
@@ -304,7 +296,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def from_checkpoint(
         cls,
-        path: Optional[Union[str, Checkpoint]] = None,
+        path: Union[str, Checkpoint],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
@@ -323,20 +315,19 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """Creates a new algorithm instance from a given checkpoint.
 
         Args:
-            path: The path (str) to the checkpoint directory to use
-                or an AIR Checkpoint instance to restore from.
+            path: The path (str) to the checkpoint directory to use or a Ray Train
+                Checkpoint instance to restore from.
             filesystem: PyArrow FileSystem to use to access data at the `path`. If not
                 specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
-            policy_mapping_fn: An optional (updated) policy mapping function
-                to use from here on.
-            policies_to_train: An optional list of policy IDs to be trained
-                or a callable taking PolicyID and SampleBatchType and
-                returning a bool (trainable or not?).
-                If None, will keep the existing setup in place. Policies,
-                whose IDs are not in the list (or for which the callable
+            policy_mapping_fn: An optional (updated) policy mapping function to use from
+                here on.
+            policies_to_train: An optional list of policy IDs to be trained or a
+                callable taking PolicyID and SampleBatchType and returning a bool
+                (trainable or not?). If None, will keep the existing setup in place.
+                Policies, whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
 
         Returns:
@@ -346,19 +337,20 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             deprecation_warning(
                 old="Algorithm.from_checkpoint(checkpoint=...)",
                 new="Algorithm.from_checkpoint(path=...)",
-                error=False,
+                error=True,
             )
-            path = checkpoint
-        if path is None:
-            raise ValueError(
-                "`path` not provided in call to Algorithm.from_checkpoint()!"
-            )
-
         checkpoint_info = get_checkpoint_info(path)
+
+        # New API stack -> Use Checkpointable's default implementation.
+        if checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
+            # `path` is a Checkpoint instance: Translate to directory and continue.
+            if isinstance(path, Checkpoint):
+                path = path.to_directory()
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # Not possible for (v0.1) (algo class and config information missing
         # or very hard to retrieve).
-        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+        elif checkpoint_info["checkpoint_version"] == version.Version("0.1"):
             raise ValueError(
                 "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
                 "In this case, do the following:\n"
@@ -372,9 +364,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 "()` must be 1.0 or later! You are using a checkpoint with "
                 f"version v{checkpoint_info['checkpoint_version']}."
             )
-        # New API stack -> Use Checkpointable's default implementation.
-        elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
@@ -407,40 +396,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
         return Algorithm.from_state(state)
-
-    @OldAPIStack
-    @staticmethod
-    def from_state(state: Dict) -> "Algorithm":
-        """Recovers an Algorithm from a state object.
-
-        The `state` of an instantiated Algorithm can be retrieved by calling its
-        `get_state` method. It contains all information necessary
-        to create the Algorithm from scratch. No access to the original code (e.g.
-        configs, knowledge of the Algorithm's class, etc..) is needed.
-
-        Args:
-            state: The state to recover a new Algorithm instance from.
-
-        Returns:
-            A new Algorithm instance.
-        """
-        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
-        if algorithm_class is None:
-            raise ValueError(
-                "No `algorithm_class` key was found in given `state`! "
-                "Cannot create new Algorithm."
-            )
-        # algo_class = get_trainable_cls(algo_class_name)
-        # Create the new algo.
-        config = state.get("config")
-        if not config:
-            raise ValueError("No `config` found in given Algorithm state!")
-        new_algo = algorithm_class(config=config)
-        # Set the new algo's state.
-        new_algo.__setstate__(state)
-
-        # Return the new algo.
-        return new_algo
 
     @PublicAPI
     def __init__(
@@ -538,6 +493,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
+
             if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -651,6 +607,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         ] = defaultdict(set)
 
         self.env_runner_group: Optional[EnvRunnerGroup] = None
+        # In case there is no local EnvRunner anymore, we need to handle connector
+        # pipelines directly here.
+        self.spaces: Optional[Dict] = None
+        self.env_to_module_connector: Optional[ConnectorPipelineV2] = None
+        self.module_to_env_connector: Optional[ConnectorPipelineV2] = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
@@ -686,7 +647,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                local_env_runner=True,
+                # New API stack: User decides whether to create local env runner.
+                # Old API stack: Always create local EnvRunner.
+                local_env_runner=(
+                    True
+                    if not self.config.enable_env_runner_and_connector_v2
+                    else self.config.create_local_env_runner
+                ),
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
             )
@@ -715,6 +682,27 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
+                # New API stack: User decides whether to create local env runner.
+                # Old API stack: Always create local EnvRunner.
+                local_env_runner=(
+                    True
+                    if not self.evaluation_config.enable_env_runner_and_connector_v2
+                    else self.evaluation_config.create_local_env_runner
+                ),
+                pg_offset=self.config.num_env_runners,
+            )
+
+        if self.env_runner_group:
+            self.spaces = self.env_runner_group.get_spaces()
+        elif self.eval_env_runner_group:
+            self.spaces = self.eval_env_runner_group.get_spaces()
+
+        if self.env_runner is None and self.spaces is not None:
+            self.env_to_module_connector = self.config.build_env_to_module_connector(
+                spaces=self.spaces
+            )
+            self.module_to_env_connector = self.config.build_module_to_env_connector(
+                spaces=self.spaces
             )
 
         self.evaluation_dataset = None
@@ -771,8 +759,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
-            from ray.rllib.env import INPUT_ENV_SPACES
-
             spaces = {
                 INPUT_ENV_SPACES: (
                     self.config.observation_space,
@@ -780,7 +766,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 )
             }
             if self.env_runner_group:
-                spaces.update(self.env_runner_group.get_spaces())
+                spaces.update(self.spaces)
             elif self.eval_env_runner_group:
                 spaces.update(self.eval_env_runner_group.get_spaces())
             else:
@@ -821,22 +807,24 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 inference_only=True,
             )[COMPONENT_LEARNER]
             if self.env_runner_group:
-                self.env_runner.set_state(rl_module_state)
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
             elif self.eval_env_runner_group:
-                self.eval_env_runner.set_state(rl_module_state)
                 self.eval_env_runner_group.sync_env_runner_states(
-                    config=self.config,
+                    config=self.evaluation_config,
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     rl_module_state=rl_module_state,
+                    env_to_module=self.env_to_module_connector,
+                    module_to_env=self.module_to_env_connector,
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -856,16 +844,43 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     # Provide the actor handles for the learners for module
                     # updating during preprocessing.
                     self.offline_data.learner_handles = self.learner_group._workers
-                    # Provide the module_spec. Note, in the remote case this is needed
-                    # because the learner module cannot be copied, but must be built.
-                    self.offline_data.module_spec = module_spec
                 # Otherwise we can simply pass in the local learner.
                 else:
                     self.offline_data.learner_handles = [self.learner_group._learner]
-
+                # TODO (simon, sven): Replace these set-some-object's-attributes-
+                # directly? We should find some solution for this in the future, an API,
+                # or setting these in the OfflineData constructor?
+                # Provide the module_spec. Note, in the remote case this is needed
+                # because the learner module cannot be copied, but must be built.
+                self.offline_data.module_spec = module_spec
                 # Provide the `OfflineData` instance with space information. It might
                 # need it for reading recorded experiences.
                 self.offline_data.spaces = spaces
+
+            if self._should_create_offline_evaluation_runners(self.evaluation_config):
+                from ray.rllib.offline.offline_evaluation_runner_group import (
+                    OfflineEvaluationRunnerGroup,
+                )
+
+                # If no inference-only `RLModule` should be used in offline evaluation,
+                # get the complete learner module.
+                if not self.evaluation_config.offline_eval_rl_module_inference_only:
+                    rl_module_state = self.learner_group.get_state(
+                        components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                        inference_only=False,
+                    )[COMPONENT_LEARNER]
+                # Create the offline evaluation runner group.
+                self.offline_eval_runner_group: OfflineEvaluationRunnerGroup = OfflineEvaluationRunnerGroup(
+                    config=self.evaluation_config,
+                    # Do not create a local runner such that the dataset can be split.
+                    local_runner=False,
+                    # Provide the `RLModule`'s state for the `OfflinePreLearner`s.
+                    module_state=rl_module_state[COMPONENT_RL_MODULE],
+                    module_spec=module_spec,
+                    # Note, even if no environment is run, the `MultiRLModule` needs
+                    # spaces to construct the policy network.
+                    spaces=spaces,
+                )
 
         # Create an Aggregator actor set, if necessary.
         self._aggregator_actor_manager = None
@@ -873,12 +888,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.config.num_aggregator_actors_per_learner > 0
         ):
             rl_module_spec = self.config.get_multi_rl_module_spec(
-                spaces=self.env_runner_group.get_spaces(),
+                spaces=self.spaces,
                 inference_only=False,
             )
             agg_cls = ray.remote(
                 num_cpus=1,
-                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+                # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
             )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
@@ -894,29 +910,29 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 ),
             )
             # Get the devices of each learner.
-            learner_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            learner_locations = list(
+                enumerate(
                     self.learner_group.foreach_learner(
                         func=lambda _learner: (_learner.node, _learner.device),
                     )
                 )
-            ]
+            )
             # Get the devices of each AggregatorActor.
-            aggregator_locations = [
-                (i, loc)
-                for i, loc in enumerate(
+            aggregator_locations = list(
+                enumerate(
                     self._aggregator_actor_manager.foreach_actor(
                         func=lambda actor: (actor._node, actor._device)
                     )
                 )
-            ]
+            )
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
+                aggregator_location = aggregator_location.get()
                 for learner_idx, learner_location in learner_locations:
-                    if learner_location.get() == aggregator_location.get():
-                        # Round-robin, in case all Learners are on same device (e.g. for
-                        # CPU learners).
+                    # TODO (sven): Activate full comparison (including device) when Ray
+                    #  has figured out GPU pre-loading.
+                    if learner_location.get()[0] == aggregator_location[0]:
+                        # Round-robin, in case all Learners are on same device/node.
                         learner_locations = learner_locations[1:] + [
                             learner_locations[0]
                         ]
@@ -994,11 +1010,20 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.config.evaluation_interval
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
+
+        evaluate_offline_this_iter = (
+            self.config.offline_evaluation_interval
+            and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
+        )
+
         # Results dict for training (and if appolicable: evaluation).
         eval_results: ResultDict = {}
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
-        if evaluate_this_iter and self.config.evaluation_parallel_to_training:
+        if evaluate_this_iter and (
+            self.config.evaluation_parallel_to_training
+            or self.config.offline_evaluation_parallel_to_training
+        ):
             (
                 train_results,
                 eval_results,
@@ -1021,6 +1046,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             eval_results = self._run_one_evaluation(parallel_train_future=None)
 
+        if evaluate_offline_this_iter:
+            offline_eval_results = self._run_one_offline_evaluation()
+            # If we already have online evaluation results merge the offline
+            # evaluation results.
+            if eval_results:
+                eval_results[EVALUATION_RESULTS].update(
+                    offline_eval_results[EVALUATION_RESULTS]
+                )
+            # Otherwise, just assign.
+            else:
+                eval_results = offline_eval_results
+
         # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
         #  should be: [sample + get_metrics + get_state] -> send all these in one remote
@@ -1038,6 +1075,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
+                        env_to_module=self.env_to_module_connector,
+                        module_to_env=self.module_to_env_connector,
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
@@ -1067,6 +1106,60 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return results
 
     @PublicAPI
+    def evaluate_offline(self):
+        """Evaluates current policy offline under `evaluation_config` settings.
+
+        Returns:
+            A ResultDict only containing the offline evaluation results from the current
+            iteration.
+        """
+
+        # First synchronize weights.
+        self.offline_eval_runner_group.sync_weights(
+            from_worker_or_learner_group=self.learner_group,
+            inference_only=self.config.offline_eval_rl_module_inference_only,
+        )
+
+        # TODO (simon): Check, how we can sync without a local runner. Also,
+        # connectors are in the data pipeline not directly in the runner applied.
+        # if self.config.broadcast_offline_eval_runner_states:
+        #     # TODO (simon): Create offline equivalent.
+        #     with self.metrics.log_time(TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER):
+        #         self.offline_eval_runner_group.sync_runner_states(
+        #             from_runner=
+        #         )
+
+        make_callback(
+            "on_evaluate_offline_start",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
+            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+        )
+
+        # Evaluate with fixed duration.
+        self._evaluate_offline_with_fixed_duration()
+        # Reduce the evaluation results.
+        eval_results = self.metrics.reduce(
+            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            return_stats_obj=False,
+        )
+
+        # Trigger `on_evaluate_offline_end` callback.
+        make_callback(
+            "on_evaluate_offline_end",
+            callbacks_objects=self.callbacks,
+            callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
+            kwargs=dict(
+                algorithm=self,
+                metrics_logger=self.metrics,
+                evaluation_metrics=eval_results,
+            ),
+        )
+
+        # Also return the results here for convenience.
+        return {EVALUATION_RESULTS: {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}}
+
+    @PublicAPI
     def evaluate(
         self,
         parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
@@ -1088,27 +1181,43 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self._before_evaluate()
 
         if self.evaluation_dataset is not None:
-            return self._run_offline_evaluation()
+            return self._run_offline_evaluation_old_api_stack()
+
+        if self.config.enable_env_runner_and_connector_v2:
+            if (
+                self.env_runner_group is not None
+                and self.env_runner_group.healthy_env_runner_ids()
+            ):
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult)
+                weights_src = self.env_runner_group._worker_manager._actors[
+                    self.env_runner_group.healthy_env_runner_ids()[0]
+                ]
+            else:
+                weights_src = self.learner_group
+        else:
+            weights_src = self.env_runner
 
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
             self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group
-                if self.config.enable_env_runner_and_connector_v2
-                else self.env_runner_group.local_env_runner,
+                from_worker_or_learner_group=weights_src,
                 inference_only=True,
             )
 
+            # Merge (eval) EnvRunner states and broadcast the merged state back
+            # to the remote (eval) EnvRunner actors.
             if self.config.enable_env_runner_and_connector_v2:
-                if self.env_runner_group:
-                    # Synchronize EnvToModule and ModuleToEnv connector states
-                    # and broadcast new states back to all eval EnvRunners.
+                if self.evaluation_config.broadcast_env_runner_states:
                     with self.metrics.log_time(
                         (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
                     ):
                         self.eval_env_runner_group.sync_env_runner_states(
                             config=self.evaluation_config,
-                            from_worker=self.env_runner_group.local_env_runner,
+                            from_worker=self.env_runner,
+                            env_to_module=self.env_to_module_connector,
+                            module_to_env=self.module_to_env_connector,
                         )
             else:
                 self._sync_filters_if_needed(
@@ -1116,6 +1225,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     workers=self.eval_env_runner_group,
                     config=self.evaluation_config,
                 )
+        # Sync weights to the local EnvRunner (if no eval EnvRunnerGroup).
+        elif self.config.enable_env_runner_and_connector_v2:
+            self.env_runner_group.sync_weights(
+                from_worker_or_learner_group=weights_src,
+                inference_only=True,
+            )
 
         make_callback(
             "on_evaluate_start",
@@ -1138,15 +1253,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             else:
                 eval_results = self.config.custom_evaluation_function()
         # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
-        elif self.eval_env_runner_group is None:
+        elif self.eval_env_runner_group is None and self.env_runner:
             (
                 eval_results,
                 env_steps,
                 agent_steps,
                 batches,
-            ) = self._evaluate_on_local_env_runner(
-                self.env_runner_group.local_env_runner
-            )
+            ) = self._evaluate_on_local_env_runner(self.env_runner)
         # There is only a local eval EnvRunner -> Run on that.
         elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
             (
@@ -1258,7 +1371,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 "Can't evaluate on a local worker if this local worker does not have "
                 "an environment!\nTry one of the following:"
                 "\n1) Set `evaluation_interval` > 0 to force creating a separate "
-                "evaluation EnvRunnerGroup.\n2) Set `create_env_on_driver=True` to "
+                "evaluation EnvRunnerGroup.\n2) Set `create_local_env_runner=True` to "
                 "force the local (non-eval) EnvRunner to have an environment to "
                 "evaluate on."
             )
@@ -1369,12 +1482,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
                 _num = min(
-                    # Cap at 20k to not put too much memory strain on EnvRunners.
-                    20000,
+                    # Clamp number of steps to take between a max and a min.
+                    self.config.evaluation_auto_duration_max_env_steps_per_sample,
                     max(
-                        # Low-cap at 100 to avoid possibly negative rollouts or very
-                        # short ones.
-                        100,
+                        self.config.evaluation_auto_duration_min_env_steps_per_sample,
                         (
                             # How much time do we have left?
                             (train_mean_time - (time.time() - t0))
@@ -1384,8 +1495,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                                 (
                                     EVALUATION_RESULTS,
                                     ENV_RUNNER_RESULTS,
-                                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
+                                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
                                 ),
+                                throughput=True,
                                 default=0.0,
                             )
                             / num_healthy_workers
@@ -1485,6 +1597,88 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         return env_runner_results, env_steps, agent_steps, all_batches
 
+    def _evaluate_offline_with_fixed_duration(self) -> None:
+        # How many batches do we need to run?
+        num_workers = self.config.num_offline_eval_runners
+        time_out = self.config.offline_evaluation_timeout_s
+
+        def _offline_eval_runner_remote(runner, iter):
+
+            metrics = runner.run()
+
+            return metrics, iter
+
+        all_metrics = []
+        num_units_done = []
+
+        # How many episodes have we run (across all eval workers)?
+        num_units_done = 0
+        num_healthy_workers = self.offline_eval_runner_group.num_healthy_remote_runners
+
+        # TODO (simon): Note, agent steps might not be available, but only
+        # module steps.
+
+        t_last_result = time.time()
+        _round = -1
+        algo_iteration = self.iteration
+
+        # In case all the remote evaluation workers die during a round of
+        # evaluation, we need to stop.
+        while num_healthy_workers > 0:
+            units_left_to_do = (
+                self.config.offline_evaluation_duration * num_workers - num_units_done
+            )
+            if units_left_to_do <= 0:
+                break
+
+            _round += 1
+
+            self.offline_eval_runner_group.foreach_runner_async(
+                func=functools.partial(
+                    _offline_eval_runner_remote,
+                    iter=algo_iteration,
+                ),
+            )
+            results = self.offline_eval_runner_group.fetch_ready_async_reqs(
+                return_obj_refs=False, timeout_seconds=0.01
+            )
+            # Make sure we properly time out if we have not received any results
+            # for more than `time_out` seconds.
+            time_now = time.time()
+            if not results and time_now - t_last_result > time_out:
+                break
+            elif results:
+                t_last_result = time_now
+            for wid, (met, iter) in results:
+                if iter != self.iteration:
+                    continue
+                all_metrics.append(met)
+                num_units_done += (
+                    met[ALL_MODULES][DATASET_NUM_ITERS_EVALUATED].peek()
+                    if DATASET_NUM_ITERS_EVALUATED in met[ALL_MODULES]
+                    else 0
+                )
+
+            # Update correct number of healthy remote workers.
+            num_healthy_workers = (
+                self.offline_eval_runner_group.num_healthy_remote_runners
+            )
+
+        if num_healthy_workers == 0:
+            logger.warning(
+                "Calling `run()` on your remote offline evaluation runner(s) "
+                "resulted in all runners crashing! Make sure a) your dataset is not"
+                " corrupted, b) you have enough offline evaluation runners "
+                "(`config.evaluation(num_offline_eval_runners=...)`) to cover for "
+                "occasional losses, and c) you use the `config.fault_tolerance("
+                "restart_failed_offline_eval_runners=True)` setting."
+            )
+
+        self.metrics.merge_and_log_n_dicts(
+            all_metrics,
+            key=(EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+        )
+
     def _evaluate_with_fixed_duration(self):
         # How many episodes/timesteps do we need to run?
         unit = self.config.evaluation_duration_unit
@@ -1495,7 +1689,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
-        def _env_runner_remote(worker, num, round, iter):
+        def _env_runner_remote(worker, num, round, iter, _force_reset):
             # Sample AND get_metrics, but only return metrics (and steps actually taken)
             # to save time. Also return the iteration to check, whether we should
             # discard and outdated result (from a slow worker).
@@ -1504,7 +1698,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     num[worker.worker_index] if unit == "timesteps" else None
                 ),
                 num_episodes=(num[worker.worker_index] if unit == "episodes" else None),
-                force_reset=force_reset and round == 0,
+                force_reset=_force_reset and round == 0,
             )
             metrics = worker.get_metrics()
             env_steps = sum(e.env_steps() for e in episodes)
@@ -1542,7 +1736,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 ]
                 self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
+                        _env_runner_remote,
+                        num=_num,
+                        round=_round,
+                        iter=algo_iteration,
+                        _force_reset=force_reset,
                     ),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
@@ -1676,8 +1874,64 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return env_runner_results, env_steps, agent_steps, all_batches
 
     @OverrideToImplementCustomLogic
-    @DeveloperAPI
-    def restore_workers(self, workers: EnvRunnerGroup) -> None:
+    def restore_offline_eval_runners(self, runner_group: RunnerGroup) -> None:
+        if not runner_group or not runner_group.local_runner:
+            return
+
+        restored = runner_group.probe_unhealthy_runners()
+
+        if restored:
+            # Count the restored workers.
+            self._counters["total_num_restored_workers"] += len(restored)
+
+            # Get the state of the correct (reference) worker.
+            from_runner = runner_group.healthy_runner_ids()[0]
+            state = runner_group.foreach_runner(
+                "get_state",
+                local_runner=False,
+                remote_worker_ids=from_runner,
+            )[0]
+            state_ref = ray.put(state)
+
+            def _sync_runner(r):
+                r.set_state(ray.get(state_ref))
+
+            # By default, entire `Runner`` state is synced after restoration
+            # to bring the previously failed `Runner` up to date.
+            runner_group.foreach_runner(
+                func=_sync_runner,
+                remote_worker_ids=restored,
+                # Don't update the local `Runner`.
+                local_runner=False,
+                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
+            )
+            # Restore the correct data iterator split stream.
+            # TODO (simon): Define a `restore` method in the `RunnerGroup`
+            # such that we do not have to check here for the group.
+            # Also get a different streaming split if a runner fails and is not
+            # recreated.
+            runner_group.foreach_runner(
+                func="set_dataset_iterator",
+                remote_worker_ids=restored,
+                local_runner=False,
+                timeout_seconds=self.evaluation_config.offline_eval_runner_restore_timeout_s,
+                kwargs={"iterator": runner_group._offline_data_iterators[restored]},
+            )
+
+            # Fire the callback for re-created workers.
+            make_callback(
+                "on_offline_eval_runners_recreated",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_offline_eval_runners_recreated,
+                kwargs=dict(
+                    algorithm=self,
+                    env_runner_group=runner_group,
+                    env_runner_indices=restored,
+                ),
+            )
+
+    @OverrideToImplementCustomLogic
+    def restore_env_runners(self, env_runner_group: EnvRunnerGroup) -> None:
         """Try bringing back unhealthy EnvRunners and - if successful - sync with local.
 
         Algorithms that use custom EnvRunners may override this method to
@@ -1686,33 +1940,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         after such a restart of a (previously failed) worker.
 
         Args:
-            workers: The EnvRunnerGroup to restore. This may be the training or the
-                evaluation EnvRunnerGroup.
+            env_runner_group: The EnvRunnerGroup to restore. This may be the training or
+                the evaluation EnvRunnerGroup.
         """
-        # If `workers` is None, or
-        # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
+        # If `env_runner_group` is None, or
+        # 1. `env_runner_group` (EnvRunnerGroup) does not have a local worker, and
         # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
-        # local EnvRunner -> we don't have a local worker to get state from, so we can't
-        # recover remote EnvRunners in this case.
-        if not workers or (
-            not workers.local_env_runner and not self.env_runner_group.local_env_runner
+        # local EnvRunner -> we don't have an EnvRunner to get state from, so we can't
+        # recover remote EnvRunner actors in this case.
+        if not env_runner_group or (
+            not env_runner_group.local_env_runner and not self.env_runner
         ):
             return
 
-        # This is really cheap, since probe_unhealthy_workers() is a no-op
+        # This is really cheap, since probe_unhealthy_env_runners() is a no-op
         # if there are no unhealthy workers.
-        restored = workers.probe_unhealthy_workers()
+        restored = env_runner_group.probe_unhealthy_env_runners()
 
         if restored:
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = (
-                workers.local_env_runner or self.env_runner_group.local_env_runner
-            )
+            from_env_runner = env_runner_group.local_env_runner or self.env_runner
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state = from_worker.get_state()
+            state = from_env_runner.get_state()
             state_ref = ray.put(state)
 
             def _sync_env_runner(er):
@@ -1725,7 +1977,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             elif self.config.is_multi_agent:
 
-                multi_rl_module_spec = MultiRLModuleSpec.from_module(from_worker.module)
+                multi_rl_module_spec = MultiRLModuleSpec.from_module(
+                    from_env_runner.module
+                )
 
                 def _sync_env_runner(er):  # noqa
                     # Remove modules, if necessary.
@@ -1743,7 +1997,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # By default, entire local EnvRunner state is synced after restoration
             # to bring the previously failed EnvRunner up to date.
-            workers.foreach_env_runner(
+            env_runner_group.foreach_env_runner(
                 func=_sync_env_runner,
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
@@ -1759,9 +2013,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_functions=self.config.callbacks_on_env_runners_recreated,
                 kwargs=dict(
                     algorithm=self,
-                    env_runner_group=workers,
+                    env_runner_group=env_runner_group,
                     env_runner_indices=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
             # TODO (sven): Deprecate this call.
@@ -1770,9 +2026,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 callbacks_objects=self.callbacks,
                 kwargs=dict(
                     algorithm=self,
-                    worker_set=workers,
+                    worker_set=env_runner_group,
                     worker_ids=restored,
-                    is_evaluation=workers.local_env_runner.config.in_evaluation,
+                    is_evaluation=(
+                        env_runner_group.local_env_runner.config.in_evaluation
+                    ),
                 ),
             )
 
@@ -1831,7 +2089,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -1851,7 +2109,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
     @PublicAPI
-    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> Optional[RLModule]:
         """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
 
         Args:
@@ -1859,12 +2117,20 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 used by the local EnvRunner.
 
         Returns:
-            The SingleAgentRLModule sitting under the ModuleID key inside the
-            local worker's (EnvRunner's) MARLModule.
+            The RLModule found under the ModuleID key inside the local EnvRunner's
+            MultiRLModule. None if `module_id` doesn't exist.
         """
-        module = self.env_runner.module
+        if self.env_runner is not None:
+            module = self.env_runner.module
+        else:
+            module = self.env_runner_group.foreach_env_runner(
+                lambda er: er.module,
+                remote_worker_ids=[1],
+                local_env_runner=False,
+            )[0]
+
         if isinstance(module, MultiRLModule):
-            return module[module_id]
+            return module.get(module_id)
         else:
             return module
 
@@ -2157,321 +2423,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self.env_runner_group.local_env_runner.set_weights(weights)
 
     @OldAPIStack
-    def compute_single_action(
-        self,
-        observation: Optional[TensorStructType] = None,
-        state: Optional[List[TensorStructType]] = None,
-        *,
-        prev_action: Optional[TensorStructType] = None,
-        prev_reward: Optional[float] = None,
-        info: Optional[EnvInfoDict] = None,
-        input_dict: Optional[SampleBatch] = None,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-        full_fetch: bool = False,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        episode=None,
-        unsquash_action: Optional[bool] = None,
-        clip_action: Optional[bool] = None,
-        # Kwargs placeholder for future compatibility.
-        **kwargs,
-    ) -> Union[
-        TensorStructType,
-        Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]],
-    ]:
-        """Computes an action for the specified policy on the local worker.
-
-        Note that you can also access the policy object through
-        self.get_policy(policy_id) and call compute_single_action() on it
-        directly.
-
-        Args:
-            observation: Single (unbatched) observation from the
-                environment.
-            state: List of all RNN hidden (single, unbatched) state tensors.
-            prev_action: Single (unbatched) previous action value.
-            prev_reward: Single (unbatched) previous reward value.
-            info: Env info dict, if any.
-            input_dict: An optional SampleBatch that holds all the values
-                for: obs, state, prev_action, and prev_reward, plus maybe
-                custom defined views of the current env trajectory. Note
-                that only one of `obs` or `input_dict` must be non-None.
-            policy_id: Policy to query (only applies to multi-agent).
-                Default: "default_policy".
-            full_fetch: Whether to return extra action fetch results.
-                This is always set to True if `state` is specified.
-            explore: Whether to apply exploration to the action.
-                Default: None -> use self.config.explore.
-            timestep: The current (sampling) time step.
-            episode: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-            unsquash_action: Should actions be unsquashed according to the
-                env's/Policy's action space? If None, use the value of
-                self.config.normalize_actions.
-            clip_action: Should actions be clipped according to the
-                env's/Policy's action space? If None, use the value of
-                self.config.clip_actions.
-
-        Keyword Args:
-            kwargs: forward compatibility placeholder
-
-        Returns:
-            The computed action if full_fetch=False, or a tuple of a) the
-            full output of policy.compute_actions() if full_fetch=True
-            or we have an RNN-based Policy.
-
-        Raises:
-            KeyError: If the `policy_id` cannot be found in this Algorithm's local
-                worker.
-        """
-        # `unsquash_action` is None: Use value of config['normalize_actions'].
-        if unsquash_action is None:
-            unsquash_action = self.config.normalize_actions
-        # `clip_action` is None: Use value of config['clip_actions'].
-        elif clip_action is None:
-            clip_action = self.config.clip_actions
-
-        # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
-        # are all None.
-        err_msg = (
-            "Provide either `input_dict` OR [`observation`, ...] as "
-            "args to `Algorithm.compute_single_action()`!"
-        )
-        if input_dict is not None:
-            assert (
-                observation is None
-                and prev_action is None
-                and prev_reward is None
-                and state is None
-            ), err_msg
-            observation = input_dict[Columns.OBS]
-        else:
-            assert observation is not None, err_msg
-
-        # Get the policy to compute the action for (in the multi-agent case,
-        # Algorithm may hold >1 policies).
-        policy = self.get_policy(policy_id)
-        if policy is None:
-            raise KeyError(
-                f"PolicyID '{policy_id}' not found in PolicyMap of the "
-                f"Algorithm's local worker!"
-            )
-        # Just preprocess observations, similar to how it used to be done before.
-        pp = policy.agent_connectors[ObsPreprocessorConnector]
-
-        # convert the observation to array if possible
-        if not isinstance(observation, (np.ndarray, dict, tuple)):
-            try:
-                observation = np.asarray(observation)
-            except Exception:
-                raise ValueError(
-                    f"Observation type {type(observation)} cannot be converted to "
-                    f"np.ndarray."
-                )
-        if pp:
-            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-            pp = pp[0]
-
-            if not pp.is_identity():
-                # Note(Kourosh): This call will leave the policy's connector
-                # in eval mode. would that be a problem?
-                pp.in_eval()
-                if observation is not None:
-                    _input_dict = {Columns.OBS: observation}
-                elif input_dict is not None:
-                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
-                else:
-                    raise ValueError(
-                        "Either observation or input_dict must be provided."
-                    )
-
-                # TODO (Kourosh): Create a new util method for algorithm that
-                # computes actions based on raw inputs from env and can keep track
-                # of its own internal state.
-                acd = AgentConnectorDataType("0", "0", _input_dict)
-                # make sure the state is reset since we are only applying the
-                # preprocessor
-                pp.reset(env_id="0")
-                ac_o = pp([acd])[0]
-                observation = ac_o.data[Columns.OBS]
-
-        # Input-dict.
-        if input_dict is not None:
-            input_dict[Columns.OBS] = observation
-            action, state, extra = policy.compute_single_action(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-        # Individual args.
-        else:
-            action, state, extra = policy.compute_single_action(
-                obs=observation,
-                state=state,
-                prev_action=prev_action,
-                prev_reward=prev_reward,
-                info=info,
-                explore=explore,
-                timestep=timestep,
-                episode=episode,
-            )
-
-        # If we work in normalized action space (normalize_actions=True),
-        # we re-translate here into the env's action space.
-        if unsquash_action:
-            action = space_utils.unsquash_action(action, policy.action_space_struct)
-        # Clip, according to env's action space.
-        elif clip_action:
-            action = space_utils.clip_action(action, policy.action_space_struct)
-
-        # Return 3-Tuple: Action, states, and extra-action fetches.
-        if state or full_fetch:
-            return action, state, extra
-        # Ensure backward compatibility.
-        else:
-            return action
-
-    @OldAPIStack
-    def compute_actions(
-        self,
-        observations: TensorStructType,
-        state: Optional[List[TensorStructType]] = None,
-        *,
-        prev_action: Optional[TensorStructType] = None,
-        prev_reward: Optional[TensorStructType] = None,
-        info: Optional[EnvInfoDict] = None,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-        full_fetch: bool = False,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        episodes=None,
-        unsquash_actions: Optional[bool] = None,
-        clip_actions: Optional[bool] = None,
-        **kwargs,
-    ):
-        """Computes an action for the specified policy on the local Worker.
-
-        Note that you can also access the policy object through
-        self.get_policy(policy_id) and call compute_actions() on it directly.
-
-        Args:
-            observation: Observation from the environment.
-            state: RNN hidden state, if any. If state is not None,
-                then all of compute_single_action(...) is returned
-                (computed action, rnn state(s), logits dictionary).
-                Otherwise compute_single_action(...)[0] is returned
-                (computed action).
-            prev_action: Previous action value, if any.
-            prev_reward: Previous reward, if any.
-            info: Env info dict, if any.
-            policy_id: Policy to query (only applies to multi-agent).
-            full_fetch: Whether to return extra action fetch results.
-                This is always set to True if RNN state is specified.
-            explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config.explore).
-            timestep: The current (sampling) time step.
-            episodes: This provides access to all of the internal episodes'
-                state, which may be useful for model-based or multi-agent
-                algorithms.
-            unsquash_actions: Should actions be unsquashed according
-                to the env's/Policy's action space? If None, use
-                self.config.normalize_actions.
-            clip_actions: Should actions be clipped according to the
-                env's/Policy's action space? If None, use
-                self.config.clip_actions.
-
-        Keyword Args:
-            kwargs: forward compatibility placeholder
-
-        Returns:
-            The computed action if full_fetch=False, or a tuple consisting of
-            the full output of policy.compute_actions_from_input_dict() if
-            full_fetch=True or we have an RNN-based Policy.
-        """
-        # `unsquash_actions` is None: Use value of config['normalize_actions'].
-        if unsquash_actions is None:
-            unsquash_actions = self.config.normalize_actions
-        # `clip_actions` is None: Use value of config['clip_actions'].
-        elif clip_actions is None:
-            clip_actions = self.config.clip_actions
-
-        # Preprocess obs and states.
-        state_defined = state is not None
-        policy = self.get_policy(policy_id)
-        filtered_obs, filtered_state = [], []
-        for agent_id, ob in observations.items():
-            worker = self.env_runner_group.local_env_runner
-            if worker.preprocessors.get(policy_id) is not None:
-                preprocessed = worker.preprocessors[policy_id].transform(ob)
-            else:
-                preprocessed = ob
-            filtered = worker.filters[policy_id](preprocessed, update=False)
-            filtered_obs.append(filtered)
-            if state is None:
-                continue
-            elif agent_id in state:
-                filtered_state.append(state[agent_id])
-            else:
-                filtered_state.append(policy.get_initial_state())
-
-        # Batch obs and states
-        obs_batch = np.stack(filtered_obs)
-        if state is None:
-            state = []
-        else:
-            state = list(zip(*filtered_state))
-            state = [np.stack(s) for s in state]
-
-        input_dict = {Columns.OBS: obs_batch}
-
-        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
-        # Explicitly check for None here to avoid the error message "The truth value of
-        # an array with more than one element is ambiguous.", when np arrays are passed
-        # as arguments.
-        if prev_action is not None:
-            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward is not None:
-            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
-        if info:
-            input_dict[Columns.INFOS] = info
-        for i, s in enumerate(state):
-            input_dict[f"state_in_{i}"] = s
-
-        # Batch compute actions
-        actions, states, infos = policy.compute_actions_from_input_dict(
-            input_dict=input_dict,
-            explore=explore,
-            timestep=timestep,
-            episodes=episodes,
-        )
-
-        # Unbatch actions for the environment into a multi-agent dict.
-        single_actions = space_utils.unbatch(actions)
-        actions = {}
-        for key, a in zip(observations, single_actions):
-            # If we work in normalized action space (normalize_actions=True),
-            # we re-translate here into the env's action space.
-            if unsquash_actions:
-                a = space_utils.unsquash_action(a, policy.action_space_struct)
-            # Clip, according to env's action space.
-            elif clip_actions:
-                a = space_utils.clip_action(a, policy.action_space_struct)
-            actions[key] = a
-
-        # Unbatch states into a multi-agent dict.
-        unbatched_states = {}
-        for idx, agent_id in enumerate(observations):
-            unbatched_states[agent_id] = [s[idx] for s in states]
-
-        # Return only actions or full tuple
-        if state_defined or full_fetch:
-            return actions, unbatched_states, infos
-        else:
-            return actions
-
-    @OldAPIStack
     def add_policy(
         self,
         policy_id: PolicyID,
@@ -2664,6 +2615,40 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.eval_env_runner_group.foreach_env_runner(fn, local_env_runner=True)
 
     @OldAPIStack
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
+        if algorithm_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! "
+                "Cannot create new Algorithm."
+            )
+        # algo_class = get_trainable_cls(algo_class_name)
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algorithm_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+
+        # Return the new algo.
+        return new_algo
+
+    @OldAPIStack
     def export_policy_model(
         self,
         export_dir: str,
@@ -2837,24 +2822,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         state = {}
 
         # Get (local) EnvRunner state (w/o RLModule).
-        if self.env_runner_group and self._check_component(
-            COMPONENT_ENV_RUNNER, components, not_components
-        ):
-            state[
-                COMPONENT_ENV_RUNNER
-            ] = self.env_runner_group.local_env_runner.get_state(
-                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
-                not_components=force_list(
-                    self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
+        if self._check_component(COMPONENT_ENV_RUNNER, components, not_components):
+            if self.env_runner:
+                state[COMPONENT_ENV_RUNNER] = self.env_runner.get_state(
+                    components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                    not_components=force_list(
+                        self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
+                    )
+                    # We don't want the RLModule state from the EnvRunners (it's
+                    # `inference_only` anyway and already provided in full by the
+                    # Learners).
+                    + [COMPONENT_RL_MODULE],
+                    **kwargs,
                 )
-                # We don't want the RLModule state from the EnvRunners (it's
-                # `inference_only` anyway and already provided in full by the Learners).
-                + [COMPONENT_RL_MODULE],
-                **kwargs,
-            )
+            else:
+                state[COMPONENT_ENV_RUNNER] = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                        self.env_to_module_connector.get_state()
+                    ),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                        self.module_to_env_connector.get_state()
+                    ),
+                }
 
-        # Get (local) evaluation EnvRunner state (w/o RLModule).
-        if self.eval_env_runner_group and self._check_component(
+                # Get (local) evaluation EnvRunner state (w/o RLModule).
+        if self.eval_env_runner and self._check_component(
             COMPONENT_EVAL_ENV_RUNNER, components, not_components
         ):
             state[COMPONENT_EVAL_ENV_RUNNER] = self.eval_env_runner.get_state(
@@ -2891,16 +2883,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def set_state(self, state: StateDict) -> None:
         # Set the (training) EnvRunners' states.
         if COMPONENT_ENV_RUNNER in state:
-            self.env_runner_group.local_env_runner.set_state(
-                state[COMPONENT_ENV_RUNNER]
+            if self.env_runner:
+                self.env_runner.set_state(state[COMPONENT_ENV_RUNNER])
+            else:
+                self.env_to_module_connector.set_state(
+                    state[COMPONENT_ENV_RUNNER][COMPONENT_ENV_TO_MODULE_CONNECTOR]
+                )
+                self.module_to_env_connector.set_state(
+                    state[COMPONENT_ENV_RUNNER][COMPONENT_MODULE_TO_ENV_CONNECTOR]
+                )
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                from_worker=self.env_runner,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
             )
-            self.env_runner_group.sync_env_runner_states(config=self.config)
 
         # Set the (eval) EnvRunners' states.
         if self.eval_env_runner_group and COMPONENT_EVAL_ENV_RUNNER in state:
-            self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
+            if self.eval_env_runner:
+                self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
             self.eval_env_runner_group.sync_env_runner_states(
-                config=self.evaluation_config
+                config=self.evaluation_config,
+                from_worker=self.env_runner,
+                env_to_module=self.env_to_module_connector,
+                module_to_env=self.module_to_env_connector,
             )
 
         # Set the LearnerGroup's state.
@@ -2929,11 +2936,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         components = [
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
-        if not self.config.is_offline:
+        if not self.config.is_offline and self.env_runner:
             components.append(
-                (COMPONENT_ENV_RUNNER, self.env_runner_group.local_env_runner),
+                (COMPONENT_ENV_RUNNER, self.env_runner),
             )
-        if self.eval_env_runner_group:
+        if self.eval_env_runner:
             components.append(
                 (
                     COMPONENT_EVAL_ENV_RUNNER,
@@ -2991,6 +2998,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Trainable)
     def cleanup(self) -> None:
+        # Stop all Learners.
+        if hasattr(self, "learner_group") and self.learner_group is not None:
+            self.learner_group.shutdown()
+
+        # Stop all aggregation actors.
+        if hasattr(self, "_aggregator_actor_manager") and (
+            self._aggregator_actor_manager is not None
+        ):
+            self._aggregator_actor_manager.clear()
+
         # Stop all EnvRunners.
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
@@ -3000,108 +3017,60 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         ):
             self.eval_env_runner_group.stop()
 
-        # Stop all Learners.
-        if hasattr(self, "learner_group") and self.learner_group is not None:
-            self.learner_group.shutdown()
-
     @OverrideToImplementCustomLogic
     @classmethod
     @override(Trainable)
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-        # Default logic for RLlib Algorithms:
-        # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_main_process` and `num_gpus` for the local worker and
-        # `num_cpus_per_env_runner` and `num_gpus_per_env_runner` for the remote
-        # EnvRunners to determine their CPU/GPU resource needs.
+        config = cls.get_default_config().update_from_dict(config)
+        config.validate()
+        config.freeze()
+        eval_config = config.get_evaluation_config_object()
+        eval_config.validate()
+        eval_config.freeze()
 
-        # Convenience config handles.
-        cf = cls.get_default_config().update_from_dict(config)
-        cf.validate()
-        cf.freeze()
-
-        # get evaluation config
-        eval_cf = cf.get_evaluation_config_object()
-        eval_cf.validate()
-        eval_cf.freeze()
-
-        # Resources for the main process of this Algorithm.
-        if cf.enable_rl_module_and_learner:
-            # Training is done on local Learner.
-            if cf.num_learners == 0:
-                driver = {
-                    # Sampling and training is not done concurrently when local is
-                    # used, so pick the max.
-                    "CPU": max(cf.num_cpus_per_learner, cf.num_cpus_for_main_process),
-                    "GPU": cf.num_gpus_per_learner,
-                }
-            # Training is done on n remote Learners.
-            else:
-                driver = {"CPU": cf.num_cpus_for_main_process, "GPU": 0}
+        if config.enable_rl_module_and_learner:
+            main_process = _get_main_process_bundle(config)
         else:
-            driver = {
-                "CPU": cf.num_cpus_for_main_process,
-                # Ignore `cf.num_gpus` on the new API stack.
+            main_process = {
+                "CPU": config.num_cpus_for_main_process,
                 "GPU": (
                     0
-                    if cf._fake_gpus
-                    else cf.num_gpus
-                    if not cf.enable_rl_module_and_learner
+                    if config._fake_gpus
+                    else config.num_gpus
+                    if not config.enable_rl_module_and_learner
                     else 0
                 ),
             }
 
-        # resources for remote rollout env samplers
-        rollout_bundles = [
-            {
-                "CPU": cf.num_cpus_per_env_runner,
-                "GPU": cf.num_gpus_per_env_runner,
-                **cf.custom_resources_per_env_runner,
-            }
-            for _ in range(cf.num_env_runners)
-        ]
+        env_runner_bundles = _get_env_runner_bundles(config)
 
-        # resources for remote evaluation env samplers or datasets (if any)
-        if cls._should_create_evaluation_env_runners(eval_cf):
-            # Evaluation workers.
-            # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundles = [
-                {
-                    "CPU": eval_cf.num_cpus_per_env_runner,
-                    "GPU": eval_cf.num_gpus_per_env_runner,
-                    **eval_cf.custom_resources_per_env_runner,
-                }
-                for _ in range(eval_cf.evaluation_num_env_runners)
-            ]
+        if cls._should_create_evaluation_env_runners(eval_config):
+            eval_env_runner_bundles = _get_env_runner_bundles(eval_config)
         else:
-            # resources for offline dataset readers during evaluation
-            # Note (Kourosh): we should not claim extra workers for
-            # training on the offline dataset, since rollout workers have already
-            # claimed it.
-            # Another Note (Kourosh): dataset reader will not use placement groups so
-            # whatever we specify here won't matter because dataset won't even use it.
-            # Disclaimer: using ray dataset in tune may cause deadlock when multiple
-            # tune trials get scheduled on the same node and do not leave any spare
-            # resources for dataset operations. The workaround is to limit the
-            # max_concurrent trials so that some spare cpus are left for dataset
-            # operations. This behavior should get fixed by the dataset team. more info
-            # found here:
-            # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundles = []
+            eval_env_runner_bundles = []
 
-        # resources for remote learner workers
+        if cls._should_create_offline_evaluation_runners(eval_config):
+            offline_eval_runner_bundles = _get_offline_eval_runner_bundles(eval_config)
+        else:
+            offline_eval_runner_bundles = []
+
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            learner_bundles = cls._get_learner_bundles(cf)
+        if config.enable_rl_module_and_learner:
+            learner_bundles = _get_learner_bundles(config)
 
-        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
+        bundles = (
+            [main_process]
+            + env_runner_bundles
+            + eval_env_runner_bundles
+            + offline_eval_runner_bundles
+            + learner_bundles
+        )
 
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=bundles,
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=config.placement_strategy,
         )
 
     @DeveloperAPI
@@ -3356,8 +3325,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # when we have reached `min_time_s_per_iteration`).
                 while not train_iter_ctx.should_stop(has_run_once):
                     # Before training step, try to bring failed workers back.
-                    with self.metrics.log_time((TIMERS, RESTORE_WORKERS_TIMER)):
-                        self.restore_workers(self.env_runner_group)
+                    with self.metrics.log_time((TIMERS, RESTORE_ENV_RUNNERS_TIMER)):
+                        self.restore_env_runners(self.env_runner_group)
 
                     # Try to train one step.
                     with self.metrics.log_time((TIMERS, TRAINING_STEP_TIMER)):
@@ -3414,6 +3383,38 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # result dict.
         return self.metrics.reduce(), train_iter_ctx
 
+    def _run_one_offline_evaluation(self):
+        """Runs offline evaluation step via `self.offline_evaluate()` and handling runner
+        failures.
+
+        Returns:
+            The results dict from the offline evaluation call.
+        """
+        # Restore crashed offline evaluation runners.
+        if self.offline_eval_runner_group is not None:
+            with self.metrics.log_time((TIMERS, RESTORE_OFFLINE_EVAL_RUNNERS_TIMER)):
+                self.restore_offline_eval_runners(self.offline_eval_runner_group)
+
+        # Run one offline evaluation and time it.
+        with self.metrics.log_time((TIMERS, OFFLINE_EVALUATION_ITERATION_TIMER)):
+            eval_results = self.evaluate_offline()
+
+        # After evaluation, do a round of health check on remote eval runners to see if
+        # any of the failed runners are back.
+        if self.offline_eval_runner_group is not None:
+            # Add number of healthy evaluation runners after this iteration.
+            eval_results[
+                "num_healthy_offline_eval_runners"
+            ] = self.offline_eval_runner_group.num_healthy_remote_runners
+            eval_results[
+                "offline_runners_actor_manager_num_outstanding_async_reqs"
+            ] = self.offline_eval_runner_group.num_in_flight_async_reqs
+            eval_results[
+                "num_remote_offline_eval_runners_restarts"
+            ] = self.offline_eval_runner_group.num_remote_runner_restarts
+
+        return {EVALUATION_RESULTS: eval_results}
+
     def _run_one_evaluation(
         self,
         parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
@@ -3432,11 +3433,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         if self.eval_env_runner_group is not None:
             if self.config.enable_env_runner_and_connector_v2:
-                with self.metrics.log_time((TIMERS, RESTORE_EVAL_WORKERS_TIMER)):
-                    self.restore_workers(self.eval_env_runner_group)
+                with self.metrics.log_time((TIMERS, RESTORE_EVAL_ENV_RUNNERS_TIMER)):
+                    self.restore_env_runners(self.eval_env_runner_group)
             else:
-                with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                    self.restore_workers(self.eval_env_runner_group)
+                with self._timers["restore_eval_workers"]:
+                    self.restore_env_runners(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         if self.config.enable_env_runner_and_connector_v2:
@@ -3444,22 +3445,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 eval_results = self.evaluate(
                     parallel_train_future=parallel_train_future
                 )
-            # TODO (sven): Properly support throughput/sec measurements within
-            #  `self.metrics.log_time()` call.
-            self.metrics.log_value(
-                key=(
-                    EVALUATION_RESULTS,
-                    ENV_RUNNER_RESULTS,
-                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
-                ),
-                value=(
-                    eval_results.get(ENV_RUNNER_RESULTS, {}).get(
-                        NUM_ENV_STEPS_SAMPLED, 0
-                    )
-                    / self.metrics.peek((TIMERS, EVALUATION_ITERATION_TIMER))
-                ),
-            )
-
         else:
             with self._timers[EVALUATION_ITERATION_TIMER]:
                 eval_results = self.evaluate(
@@ -3477,7 +3462,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 "num_healthy_workers"
             ] = self.eval_env_runner_group.num_healthy_remote_workers()
             eval_results[
-                "num_in_flight_async_reqs"
+                "actor_manager_num_outstanding_async_reqs"
             ] = self.eval_env_runner_group.num_in_flight_async_reqs()
             eval_results[
                 "num_remote_worker_restarts"
@@ -3521,7 +3506,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         return train_results, evaluation_results, train_iter_ctx
 
-    def _run_offline_evaluation(self):
+    def _run_offline_evaluation_old_api_stack(self):
         """Runs offline evaluation via `OfflineEvaluator.estimate_on_dataset()` API.
 
         This method will be used when `evaluation_dataset` is provided.
@@ -3560,6 +3545,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return not run_offline_evaluation and (
             eval_config.evaluation_num_env_runners > 0
             or eval_config.evaluation_interval
+        )
+
+    # TODO (simon, sven): Flexibilize the different env/offline components and move
+    # away from the currently hard-coded: (1) eval `EnvRunnerGroup`, (2) OfflineData
+    # and (3) `OfflineEvaluationRunnerGroup`.
+    @classmethod
+    def _should_create_offline_evaluation_runners(cls, eval_config: "AlgorithmConfig"):
+        """Determines whether we need to create offline evaluation workers."""
+
+        return (
+            eval_config.offline_evaluation_interval is not None
+            or eval_config.num_offline_eval_runners > 0
         )
 
     def _compile_iteration_results(self, *, train_results, eval_results):
@@ -3641,11 +3638,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def env_runner(self):
-        return self.env_runner_group.local_env_runner
+        """The local EnvRunner instance within the algo's EnvRunnerGroup."""
+        if self.env_runner_group:
+            return self.env_runner_group.local_env_runner
+        return None
 
     @property
     def eval_env_runner(self):
-        return self.eval_env_runner_group.local_env_runner
+        """The local EnvRunner instance within the algo's evaluation EnvRunnerGroup."""
+        if self.eval_env_runner_group:
+            return self.eval_env_runner_group.local_env_runner
+        return None
 
     def _record_usage(self, config):
         """Record the framework and algorithm used.
@@ -3962,6 +3965,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         ):
             return
 
+        # Add parameters, if necessary.
+        if "EpisodeReplayBuffer" in config["replay_buffer_config"]["type"]:
+            # TODO (simon): Subclassing needs a proper class and therefore
+            # we need at this moment the string checking. Because we add
+            # this keyword argument the old stack ReplayBuffer constructors
+            # will exit with an error b/c tje keyword argument is unknown to them.
+            config["replay_buffer_config"][
+                "metrics_num_episodes_for_smoothing"
+            ] = self.config.metrics_num_episodes_for_smoothing
+
         return from_config(ReplayBuffer, config["replay_buffer_config"])
 
     @OldAPIStack
@@ -3974,8 +3987,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             training_step_results = None
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 while not train_iter_ctx.should_stop(training_step_results):
-                    with self._timers[RESTORE_WORKERS_TIMER]:
-                        self.restore_workers(self.env_runner_group)
+                    with self._timers["restore_workers"]:
+                        self.restore_env_runners(self.env_runner_group)
 
                     with self._timers[TRAINING_STEP_TIMER]:
                         training_step_results = self.training_step()
@@ -4038,7 +4051,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             "num_healthy_workers"
         ] = self.env_runner_group.num_healthy_remote_workers()
         results[
-            "num_in_flight_async_sample_reqs"
+            "actor_manager_num_outstanding_async_reqs"
         ] = self.env_runner_group.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"
@@ -4103,6 +4116,212 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results["info"].update(counters)
 
         return results
+
+    @OldAPIStack
+    @Deprecated(
+        help="`Algorithm.compute_single_action` should no longer be used. Get the "
+        "RLModule instance through `Algorithm.get_module([module ID])`, then compute "
+        "actions through `RLModule.forward_inference({'obs': [obs batch]})`.",
+        error=False,
+    )
+    def compute_single_action(
+        self,
+        observation: Optional[TensorStructType] = None,
+        state: Optional[List[TensorStructType]] = None,
+        *,
+        prev_action: Optional[TensorStructType] = None,
+        prev_reward: Optional[float] = None,
+        info: Optional[EnvInfoDict] = None,
+        input_dict: Optional[SampleBatch] = None,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        full_fetch: bool = False,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        episode=None,
+        unsquash_action: Optional[bool] = None,
+        clip_action: Optional[bool] = None,
+    ) -> Union[
+        TensorStructType,
+        Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]],
+    ]:
+        if unsquash_action is None:
+            unsquash_action = self.config.normalize_actions
+        elif clip_action is None:
+            clip_action = self.config.clip_actions
+
+        err_msg = (
+            "Provide either `input_dict` OR [`observation`, ...] as "
+            "args to `Algorithm.compute_single_action()`!"
+        )
+        if input_dict is not None:
+            assert (
+                observation is None
+                and prev_action is None
+                and prev_reward is None
+                and state is None
+            ), err_msg
+            observation = input_dict[Columns.OBS]
+        else:
+            assert observation is not None, err_msg
+
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(
+                f"PolicyID '{policy_id}' not found in PolicyMap of the "
+                f"Algorithm's local worker!"
+            )
+        pp = policy.agent_connectors[ObsPreprocessorConnector]
+
+        if not isinstance(observation, (np.ndarray, dict, tuple)):
+            try:
+                observation = np.asarray(observation)
+            except Exception:
+                raise ValueError(
+                    f"Observation type {type(observation)} cannot be converted to "
+                    f"np.ndarray."
+                )
+        if pp:
+            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+            pp = pp[0]
+
+            if not pp.is_identity():
+                pp.in_eval()
+                if observation is not None:
+                    _input_dict = {Columns.OBS: observation}
+                elif input_dict is not None:
+                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
+                else:
+                    raise ValueError(
+                        "Either observation or input_dict must be provided."
+                    )
+
+                acd = AgentConnectorDataType("0", "0", _input_dict)
+                pp.reset(env_id="0")
+                ac_o = pp([acd])[0]
+                observation = ac_o.data[Columns.OBS]
+
+        if input_dict is not None:
+            input_dict[Columns.OBS] = observation
+            action, state, extra = policy.compute_single_action(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+        else:
+            action, state, extra = policy.compute_single_action(
+                obs=observation,
+                state=state,
+                prev_action=prev_action,
+                prev_reward=prev_reward,
+                info=info,
+                explore=explore,
+                timestep=timestep,
+                episode=episode,
+            )
+
+        if unsquash_action:
+            action = space_utils.unsquash_action(action, policy.action_space_struct)
+        elif clip_action:
+            action = space_utils.clip_action(action, policy.action_space_struct)
+
+        if state or full_fetch:
+            return action, state, extra
+        else:
+            return action
+
+    @OldAPIStack
+    @Deprecated(
+        help="`Algorithm.compute_actions` should no longer be used. Get the RLModule "
+        "instance through `Algorithm.get_module([module ID])`, then compute actions "
+        "through `RLModule.forward_inference({'obs': [obs batch]})`.",
+        error=False,
+    )
+    def compute_actions(
+        self,
+        observations: TensorStructType,
+        state: Optional[List[TensorStructType]] = None,
+        *,
+        prev_action: Optional[TensorStructType] = None,
+        prev_reward: Optional[TensorStructType] = None,
+        info: Optional[EnvInfoDict] = None,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+        full_fetch: bool = False,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        episodes=None,
+        unsquash_actions: Optional[bool] = None,
+        clip_actions: Optional[bool] = None,
+    ):
+        if unsquash_actions is None:
+            unsquash_actions = self.config.normalize_actions
+        elif clip_actions is None:
+            clip_actions = self.config.clip_actions
+
+        state_defined = state is not None
+        policy = self.get_policy(policy_id)
+        filtered_obs, filtered_state = [], []
+        for agent_id, ob in observations.items():
+            worker = self.env_runner_group.local_env_runner
+            if worker.preprocessors.get(policy_id) is not None:
+                preprocessed = worker.preprocessors[policy_id].transform(ob)
+            else:
+                preprocessed = ob
+            filtered = worker.filters[policy_id](preprocessed, update=False)
+            filtered_obs.append(filtered)
+            if state is None:
+                continue
+            elif agent_id in state:
+                filtered_state.append(state[agent_id])
+            else:
+                filtered_state.append(policy.get_initial_state())
+
+        obs_batch = np.stack(filtered_obs)
+        if state is None:
+            state = []
+        else:
+            state = list(zip(*filtered_state))
+            state = [np.stack(s) for s in state]
+
+        input_dict = {Columns.OBS: obs_batch}
+
+        if prev_action is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action
+        if prev_reward is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward
+        if info:
+            input_dict[Columns.INFOS] = info
+        for i, s in enumerate(state):
+            input_dict[f"state_in_{i}"] = s
+
+        actions, states, infos = policy.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            explore=explore,
+            timestep=timestep,
+            episodes=episodes,
+        )
+
+        single_actions = space_utils.unbatch(actions)
+        actions = {}
+        for key, a in zip(observations, single_actions):
+            if unsquash_actions:
+                a = space_utils.unsquash_action(a, policy.action_space_struct)
+            elif clip_actions:
+                a = space_utils.clip_action(a, policy.action_space_struct)
+            actions[key] = a
+
+        unbatched_states = {}
+        for idx, agent_id in enumerate(observations):
+            unbatched_states[agent_id] = [s[idx] for s in states]
+
+        if state_defined or full_fetch:
+            return actions, unbatched_states, infos
+        else:
+            return actions
+
+    @Deprecated(new="Algorithm.restore_env_runners", error=False)
+    def restore_workers(self, *args, **kwargs):
+        return self.restore_env_runners(*args, **kwargs)
 
     @Deprecated(
         new="Algorithm.env_runner_group",

@@ -11,7 +11,6 @@ import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
 import time
-from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
@@ -19,13 +18,14 @@ from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.channel.utils import get_devices
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
     get_log_message,
     init_log_pubsub,
 )
 
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
 
@@ -40,7 +40,7 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 @ray.remote
 class TorchTensorWorker:
     def __init__(self):
-        self.device = torch_utils.get_devices()[0]
+        self.device = get_devices()[0]
 
     def init_distributed(self, world_size, rank):
         torch.distributed.init_process_group(
@@ -59,6 +59,9 @@ class TorchTensorWorker:
             results[key] = torch.ones(shape, dtype=dtype) * value
         return results
 
+    def send_tensor(self, tensor):
+        return tensor.to(self.device)
+
     def send_or_raise(self, shape, dtype, value: int, raise_exception=False):
         if raise_exception:
             raise RuntimeError()
@@ -68,8 +71,10 @@ class TorchTensorWorker:
         return value
 
     def recv(self, tensor):
-        # Check that tensor got loaded to the correct device.
-        assert tensor.device == self.device
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
+
+    def recv_on_gpu(self, tensor):
+        assert tensor.device.type == "cuda"
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
@@ -82,7 +87,6 @@ class TorchTensorWorker:
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2
         assert two_d_tensor.size(0) == two_d_tensor.size(1)
-        assert two_d_tensor.device == self.device
         torch.matmul(two_d_tensor, two_d_tensor)
         return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
 
@@ -92,13 +96,22 @@ class TorchTensorWorker:
             vals[i] = self.recv(tensor)
         return vals
 
+    def recv_dict_on_gpu(self, tensor_dict):
+        """
+        Receive a dict of tensors and return a dict of tensors on GPU.
+        It also verifies that the tensors are on GPU.
+        """
+        vals = {}
+        for i, tensor in tensor_dict.items():
+            vals[i] = self.recv_on_gpu(tensor)
+        return vals
+
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
         tensor = torch.ones(shape, dtype=dtype, device=self.device) * value
         return tensor
 
     def recv_tensor(self, tensor):
-        assert tensor.device == self.device
         return tensor
 
     def ping(self):
@@ -127,20 +140,6 @@ class TrainWorker:
         return torch.randn(10, 10)
 
 
-@ray.remote
-class Worker:
-    def __init__(self):
-        self.device = None
-
-    def echo(self, tensor):
-        assert isinstance(tensor, torch.Tensor)
-        self.device = tensor.device
-        return tensor
-
-    def get_device(self):
-        return self.device
-
-
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_p2p(ray_start_regular):
     if USE_GPU:
@@ -159,7 +158,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType())
+        dag = dag.with_tensor_transport()
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -191,7 +190,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(TorchTensorType())
+        torch_inp = inp.with_tensor_transport()
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
@@ -208,15 +207,13 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     assert ray.get(ref) == (i, (5,), dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("enable_profiling", [False, True])
 @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
 def test_torch_tensor_nccl(
     ray_start_regular, monkeypatch, enable_profiling, overlap_gpu_communication
 ):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -236,11 +233,11 @@ def test_torch_tensor_nccl(
     # Test normal execution.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
     )
 
     # Test that we can pass different shapes and data.
@@ -249,10 +246,15 @@ def test_torch_tensor_nccl(
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # We need to explicitly teardown because Python will not del right
+    # when the reassign happens, so channels will not be properly closed
+    # before we open new ones on these actors below.
+    compiled_dag.teardown()
+
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -264,15 +266,116 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_shm(ray_start_regular):
+    sender = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+    receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=1).remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Test transferring a single tensor.
+    with InputNode() as inp:
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        # Specify device="gpu" because the default device is "cpu".
+        data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
+        dag = receiver.recv_on_gpu.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    # Check that the transport is set to AUTO (host shared memory and gRPC)
+    # even though sender and receiver have GPUs.
+    assert data_annotated.type_hint.transport == TorchTensorType.AUTO
+    for i in range(3):
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+    compiled_dag.teardown()
+
+    # Test transferring a dict of tensors.
+    with InputNode() as inp:
+        data = sender.send_dict.bind(inp)
+        # Specify device="gpu" because the default device is "cpu".
+        data_annotated = data.with_tensor_transport(transport="shm", device="gpu")
+        dag = receiver.recv_dict_on_gpu.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == TorchTensorType.AUTO
+    for i in range(3):
+        dtype = torch.float16
+        args = {j: (j, (10 * j,), dtype) for j in range(1, i + 1)}
+
+        ref = compiled_dag.execute(args)
+        result = ray.get(ref)
+        assert result == args
+    compiled_dag.teardown()
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
+def test_torch_tensor_auto(ray_start_regular, num_gpus):
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    sender = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[0]).remote()
+    receiver = TorchTensorWorker.options(num_cpus=0, num_gpus=num_gpus[1]).remote()
+    # Use NCCL only when sender and receiver are on different GPUs.
+    # When each actor has 0.5 GPU, sender and receiver are allocated
+    # on the same GPU, so we use auto.
+    expected_transport = "nccl" if num_gpus == [1, 1] else "auto"
+
+    shape = (10,)
+    dtype = torch.float16
+    device = "cpu" if num_gpus[0] == 0 or num_gpus[1] == 0 else "default"
+
+    # Test normal execution.
+    with InputNode() as inp:
+        data = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        data_annotated = data.with_tensor_transport(transport="auto", device=device)
+        dag = receiver.recv.bind(data_annotated)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+    # We need to explicitly teardown because Python will not del right
+    # when the reassign happens, so channels will not be properly closed
+    # before we open new ones on these actors below.
+    compiled_dag.teardown()
+
+    # Test that actors can be reused for a new DAG.
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="auto", device=device)
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    assert isinstance(data_annotated.type_hint, TorchTensorType)
+    assert data_annotated.type_hint.transport == expected_transport
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
     [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
     indirect=["ray_start_regular"],
 )
 def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communication):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 4
     ), "This test requires at least 4 GPUs"
@@ -288,10 +391,8 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     with InputNode() as inp:
         branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
         branches = [
-            branch.with_type_hint(
-                TorchTensorType(
-                    transport="nccl", _static_shape=True, _direct_return=True
-                )
+            branch.with_tensor_transport(
+                transport="nccl", _static_shape=True, _direct_return=True
             )
             for branch in branches
         ]
@@ -300,7 +401,7 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
 
     # Test normal execution.
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
     )
 
     start = time.monotonic()
@@ -314,15 +415,13 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     compiled_dag.teardown()
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
     and output nodes cannot have a TorchTensorType(transport="nccl")
     annotation.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -337,7 +436,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
 
     # Test that InputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(TorchTensorType(transport="nccl"))
+        torch_inp = inp.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(torch_inp)
     with pytest.raises(
         ValueError,
@@ -351,7 +450,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     # Test that OutputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
 
     with pytest.raises(
         ValueError,
@@ -360,11 +459,9 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         dag.experimental_compile()
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -431,6 +528,14 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ) -> "torch.Tensor":
             return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
 
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            self._inner.allgather(send_buf, recv_buf)
+            recv_buf += 1
+
         def allreduce(
             self,
             send_buf: "torch.Tensor",
@@ -438,6 +543,15 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
+            recv_buf += 1
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
 
         @property
@@ -460,7 +574,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -478,148 +592,9 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         assert result == (i, shape, dtype)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_custom_comm_invalid(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    actor1 = actor_cls.remote()
-    actor2 = actor_cls.remote()
-
-    class MockNcclGroup(Communicator):
-        """
-        A mock NCCL group for testing. Send and recv are not implemented.
-        """
-
-        import cupy as cp
-
-        def __init__(self, world_size, actor_handles):
-            self._world_size = world_size
-            self._actor_handles = actor_handles
-            self._rank = None
-
-        def initialize(self, rank: int) -> None:
-            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
-            assert (
-                rank == expected_rank
-            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
-            self._rank = rank
-            self._device = torch_utils.get_devices()[0]
-
-        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-            actor_ids = [a._ray_actor_id for a in self._actor_handles]
-            try:
-                rank = actor_ids.index(actor._ray_actor_id)
-            except ValueError:
-                raise ValueError("Actor is not in the NCCL group.")
-            return rank
-
-        def get_world_size(self) -> int:
-            return self._world_size
-
-        def get_self_rank(self) -> Optional[int]:
-            return self._rank
-
-        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
-            return self._actor_handles
-
-        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
-            return None
-
-        def recv(
-            self,
-            shape: Tuple[int],
-            dtype: "torch.dtype",
-            peer_rank: int,
-            allocator: Optional[TorchTensorAllocator] = None,
-        ) -> "torch.Tensor":
-            return None
-
-        def allreduce(
-            self,
-            send_buf: "torch.Tensor",
-            recv_buf: "torch.Tensor",
-            op: ReduceOp,
-        ) -> None:
-            raise NotImplementedError
-
-        @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            return None
-
-        @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            return None
-
-        def destroy(self) -> None:
-            pass
-
-        def get_transport_name(self) -> str:
-            return "nccl"
-
-    nccl_group = MockNcclGroup(2, [actor1, actor2])
-
-    # Mixed usage of NCCL groups should throw an error
-    # Case 1: custom NCCL group first, then default NCCL group
-    with InputNode() as inp:
-        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
-        dag = actor2.recv.options(num_returns=3).bind(dag)
-        dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = actor1.recv.bind(dag)
-    with pytest.raises(
-        ValueError,
-        match=r"Compiled Graphs do not support mixed usage of type hints.*",
-    ):
-        dag.experimental_compile()
-
-    # Case 2: default NCCL group first, then custom NCCL group
-    with InputNode() as inp:
-        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = actor2.recv.options(num_returns=3).bind(dag)
-        dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
-        dag = actor1.recv.bind(dag)
-    with pytest.raises(
-        ValueError,
-        match=r"Compiled Graphs do not support mixed usage of type hints.*",
-    ):
-        dag.experimental_compile()
-
-    nccl_group2 = MockNcclGroup(2, [actor1, actor2])
-
-    # Using two different custom NCCL groups are currently not supported
-    with InputNode() as inp:
-        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
-        dag = actor2.recv.options(num_returns=3).bind(dag)
-        dag = actor2.send.bind(*dag)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group2))
-        dag = actor1.recv.bind(dag)
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Compiled Graphs currently only support "
-            "a single custom NCCL group, but multiple "
-            "have been specified."
-        ),
-    ):
-        dag.experimental_compile()
-
-
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm_inited(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -662,7 +637,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_devices()[0]
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -695,11 +670,26 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             torch.distributed.recv(tensor, peer_rank)
             return tensor
 
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            raise NotImplementedError
+
         def allreduce(
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp,
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -725,7 +715,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
-        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = dag.with_tensor_transport(transport=nccl_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -743,6 +733,318 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         assert result == (i, shape, dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "transports",
+    [["auto", "nccl"], ["custom", "nccl"], ["auto", "nccl"], ["custom", "custom"]],
+)
+def test_torch_tensor_default_comm(ray_start_regular, transports):
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 2
+    ), "This test requires at least 3 GPUs"
+    runtime_env = {
+        "env_vars": {
+            "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
+            "MASTER_PORT": "8888",
+        }
+    }
+    actor_cls = TorchTensorWorker.options(
+        num_cpus=0, num_gpus=1, runtime_env=runtime_env
+    )
+
+    worker0 = actor_cls.remote()
+    worker1 = actor_cls.remote()
+    worker2 = actor_cls.remote()
+
+    # Simulates that the distributed environment (e.g., torch.distributed)
+    # have already been set up
+    refs = [
+        worker0.init_distributed.remote(3, 0),
+        worker1.init_distributed.remote(3, 1),
+        worker2.init_distributed.remote(3, 2),
+    ]
+    ray.wait(refs)
+
+    class InitedNcclGroup(Communicator):
+        """
+        A custom NCCL group based on existing torch.distributed setup.
+        """
+
+        import cupy as cp
+
+        def __init__(self, world_size, actor_handles):
+            self._world_size = world_size
+            self._actor_handles = actor_handles
+            self._rank = None
+
+        def initialize(self, rank: int) -> None:
+            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
+            assert (
+                rank == expected_rank
+            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
+            self._rank = rank
+            self._device = get_devices()[0]
+
+        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+            actor_ids = [a._ray_actor_id for a in self._actor_handles]
+            try:
+                rank = actor_ids.index(actor._ray_actor_id)
+            except ValueError:
+                raise ValueError("Actor is not in the NCCL group.")
+            return rank
+
+        def get_world_size(self) -> int:
+            return self._world_size
+
+        def get_self_rank(self) -> Optional[int]:
+            return self._rank
+
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
+
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+            torch.distributed.send(value, peer_rank)
+
+        def recv(
+            self,
+            shape: Tuple[int],
+            dtype: "torch.dtype",
+            peer_rank: int,
+            allocator: Optional[TorchTensorAllocator] = None,
+        ) -> "torch.Tensor":
+            tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
+            torch.distributed.recv(tensor, peer_rank)
+            return tensor
+
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            raise NotImplementedError
+
+        def allreduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        def destroy(self) -> None:
+            pass
+
+        def get_transport_name(self) -> str:
+            return "nccl"
+
+    default_comm = InitedNcclGroup(3, [worker0, worker1, worker2])
+    custom_comm = InitedNcclGroup(3, [worker0, worker1, worker2])
+    custom_comm_count = 0
+    for i in range(2):
+        if transports[i] == "custom":
+            transports[i] = custom_comm
+            custom_comm_count += 1
+
+    with InputNode() as inp:
+        dag = worker0.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport=transports[0])
+        dag = worker1.recv_tensor.bind(dag)
+        dag = dag.with_tensor_transport(transport=transports[1])
+        dag = worker2.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile(_default_communicator=default_comm)
+    for i in range(3):
+        i += 1
+        shape = (i * 10,)
+        dtype = torch.float16
+        kwargs = {
+            "shape": shape,
+            "dtype": dtype,
+            "value": i,
+        }
+        ref = compiled_dag.execute(**kwargs)
+        result = ray.get(ref)
+        assert result == (i, shape, dtype)
+
+    # No communicators are created, the default communicator is used
+    assert len(compiled_dag._actors_to_created_communicator_id) == 0
+    assert compiled_dag._default_communicator == default_comm
+    if custom_comm_count == 0:
+        assert len(compiled_dag._communicator_to_type_hints) == 1
+    elif custom_comm_count == 1:
+        assert len(compiled_dag._communicator_to_type_hints) == 2
+    else:
+        assert custom_comm_count == 2
+        assert len(compiled_dag._communicator_to_type_hints) == 1
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_invalid_custom_comm(ray_start_regular):
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+    runtime_env = {
+        "env_vars": {
+            "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
+            "MASTER_PORT": "8888",
+        }
+    }
+    actor_cls = TorchTensorWorker.options(
+        num_cpus=0, num_gpus=1, runtime_env=runtime_env
+    )
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    # Simulates that the distributed environment (e.g., torch.distributed)
+    # have already been set up
+    refs = [
+        sender.init_distributed.remote(2, 0),
+        receiver.init_distributed.remote(2, 1),
+    ]
+    ray.wait(refs)
+
+    class UserCreatedNcclGroup(Communicator):
+        """
+        A custom NCCL group based on existing torch.distributed setup.
+        """
+
+        import cupy as cp
+
+        def __init__(self, world_size, actor_handles):
+            self._world_size = world_size
+            self._actor_handles = actor_handles
+            self._rank = None
+
+        def initialize(self, rank: int) -> None:
+            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
+            assert (
+                rank == expected_rank
+            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
+            self._rank = rank
+            self._device = get_devices()[0]
+
+        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+            actor_ids = [a._ray_actor_id for a in self._actor_handles]
+            try:
+                rank = actor_ids.index(actor._ray_actor_id)
+            except ValueError:
+                raise ValueError("Actor is not in the NCCL group.")
+            return rank
+
+        def get_world_size(self) -> int:
+            return self._world_size
+
+        def get_self_rank(self) -> Optional[int]:
+            return self._rank
+
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
+
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+            torch.distributed.send(value, peer_rank)
+
+        def recv(
+            self,
+            shape: Tuple[int],
+            dtype: "torch.dtype",
+            peer_rank: int,
+            allocator: Optional[TorchTensorAllocator] = None,
+        ) -> "torch.Tensor":
+            tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
+            torch.distributed.recv(tensor, peer_rank)
+            return tensor
+
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            raise NotImplementedError
+
+        def allreduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        def destroy(self) -> None:
+            pass
+
+        def get_transport_name(self) -> str:
+            return "nccl"
+
+    comm2 = UserCreatedNcclGroup(2, [sender, receiver])
+    comm1 = UserCreatedNcclGroup(1, [sender])
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="The passed-in communicator must include all of the actors used in the P2P operation.",
+    ):
+        dag.experimental_compile(_default_communicator=comm1)
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_tensor_transport(transport=comm1)
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="The passed-in communicator must include all of the actors used in the P2P operation.",
+    ):
+        dag.experimental_compile(_default_communicator=comm2)
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_static_shape(ray_start_regular):
     if not USE_GPU:
@@ -759,7 +1061,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
+        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -781,11 +1083,9 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
         ref = compiled_dag.execute(i, shape=(21,), dtype=dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_direct_return(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -797,7 +1097,7 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -818,15 +1118,13 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
         ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
     """
     Test nested torch.Tensor passed via NCCL. Its shape and dtype is
     dynamically declared, and there may be multiple tensors.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -838,7 +1136,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv_dict.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -852,6 +1150,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         assert result == args
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
@@ -862,9 +1161,6 @@ def test_torch_tensor_exceptions(
     """
     Test exceptions being thrown by a NCCL sending task's execution.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -878,17 +1174,15 @@ def test_torch_tensor_exceptions(
         dag = sender.send_or_raise.bind(
             inp.shape, inp.dtype, inp.value, inp.raise_exception
         )
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                _static_shape=static_shape,
-                _direct_return=direct_return,
-                transport="nccl",
-            )
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _static_shape=static_shape,
+            _direct_return=direct_return,
         )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
+        _overlap_gpu_communication=overlap_gpu_communication,
     )
 
     shape = (10,)
@@ -942,6 +1236,7 @@ def test_torch_tensor_exceptions(
         assert result == (i, shape, dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_exceptions2(
     ray_start_regular,
@@ -949,9 +1244,6 @@ def test_torch_tensor_exceptions2(
     """
     Test exceptions being thrown by a NCCL sending task's write operation.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -962,12 +1254,10 @@ def test_torch_tensor_exceptions2(
 
     with InputNode() as inp:
         dag = sender.send_int.bind(inp)
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                transport="nccl",
-                _direct_return=True,
-                _static_shape=True,
-            )
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+            _static_shape=True,
         )
         dag = receiver.recv.bind(dag)
 
@@ -989,14 +1279,68 @@ def test_torch_tensor_exceptions2(
         ref = compiled_dag.execute(2)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce(ray_start_regular):
-    """
-    Test basic all-reduce.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
+def test_torch_tensor_explicit_communicator(ray_start_regular):
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
 
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="nccl")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Please specify a custom communicator for the DAGNode using "
+            r"`with_tensor_transport\(\)`, or specify a communicator or 'create' for "
+            "_default_communicator when calling experimental_compile()."
+        ),
+    ):
+        dag.experimental_compile(_default_communicator=None)
+
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_tensor_transport(transport="auto")
+        dag = receiver.recv.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "This requires specifying a default communicator or 'create' for "
+            "_default_communicator when calling experimental_compile()."
+        ),
+    ):
+        dag.experimental_compile(_default_communicator=None)
+
+
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "operation, reduce_op",
+    [
+        (collective.allgather, None),
+        (collective.allreduce, ReduceOp.SUM),
+        (collective.allreduce, ReduceOp.PRODUCT),
+        (collective.allreduce, ReduceOp.MIN),
+        (collective.allreduce, ReduceOp.MAX),
+        (collective.reducescatter, ReduceOp.SUM),
+        (collective.reducescatter, ReduceOp.PRODUCT),
+        (collective.reducescatter, ReduceOp.MIN),
+        (collective.reducescatter, ReduceOp.MAX),
+    ],
+)
+def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_op):
+    """
+    Test basic collective operations.
+    """
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1008,12 +1352,14 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
 
     with InputNode() as inp:
         computes = [
-            worker.compute_with_tuple_args.bind(inp, i)
-            for i, worker in enumerate(workers)
+            worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        if operation == collective.allgather:
+            collectives = operation.bind(computes)
+        else:
+            collectives = operation.bind(computes, op=reduce_op)
         recvs = [
-            worker.recv.bind(collective)
+            worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
@@ -1022,24 +1368,79 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
 
     for i in range(3):
         i += 1
-        shape = (i * 10,)
+        shape = (num_workers * i, i)
         dtype = torch.float16
-        ref = compiled_dag.execute(
-            [(shape, dtype, i + idx) for idx in range(num_workers)]
-        )
+        input_tensors = [torch.randn(*shape, dtype=dtype) for _ in range(num_workers)]
+        ref = compiled_dag.execute(*input_tensors)
         result = ray.get(ref)
-        reduced_val = sum(i + idx for idx in range(num_workers))
-        assert result == [(reduced_val, shape, dtype) for _ in workers]
+
+        if operation == collective.allgather:
+            expected_tensors = [
+                torch.cat(input_tensors, dim=0) for _ in range(num_workers)
+            ]
+        elif operation == collective.allreduce:
+            if reduce_op == ReduceOp.SUM:
+                expected_tensors = [
+                    torch.sum(torch.stack(input_tensors), dim=0)
+                    for _ in range(num_workers)
+                ]
+            elif reduce_op == ReduceOp.PRODUCT:
+                expected_tensors = [
+                    torch.prod(torch.stack(input_tensors), dim=0)
+                    for _ in range(num_workers)
+                ]
+            elif reduce_op == ReduceOp.MIN:
+                expected_tensors = [
+                    torch.min(torch.stack(input_tensors), dim=0).values
+                    for _ in range(num_workers)
+                ]
+            elif reduce_op == ReduceOp.MAX:
+                expected_tensors = [
+                    torch.max(torch.stack(input_tensors), dim=0).values
+                    for _ in range(num_workers)
+                ]
+            else:
+                raise ValueError(f"Unknown reduce_op: {reduce_op}")
+        elif operation == collective.reducescatter:
+            if reduce_op == ReduceOp.SUM:
+                expected_tensors = list(
+                    torch.sum(torch.stack(input_tensors), dim=0).chunk(
+                        num_workers, dim=0
+                    )
+                )
+            elif reduce_op == ReduceOp.PRODUCT:
+                expected_tensors = list(
+                    torch.prod(torch.stack(input_tensors), dim=0).chunk(
+                        num_workers, dim=0
+                    )
+                )
+            elif reduce_op == ReduceOp.MIN:
+                expected_tensors = list(
+                    torch.min(torch.stack(input_tensors), dim=0).values.chunk(
+                        num_workers, dim=0
+                    )
+                )
+            elif reduce_op == ReduceOp.MAX:
+                expected_tensors = list(
+                    torch.max(torch.stack(input_tensors), dim=0).values.chunk(
+                        num_workers, dim=0
+                    )
+                )
+            else:
+                raise ValueError(f"Unknown reduce_op: {reduce_op}")
+        else:
+            raise ValueError(f"Unknown operation: {operation}")
+
+        for result_tensor, expected_tensor in zip(result, expected_tensors):
+            assert torch.equal(result_tensor.to("cpu"), expected_tensor)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     """
     Test getting partial results from an all-reduce does not hang.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1057,7 +1458,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(computes)
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
@@ -1077,14 +1478,12 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         assert torch.equal(tensor, expected_tensor_val)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     """
     Test an error is thrown when an all-reduce takes tensors of wrong shapes.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1101,7 +1500,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        collectives = collective.allreduce.bind(computes)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1121,22 +1520,20 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     with pytest.raises(RayChannelError):
         ray.get(ref)
 
-    # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch.Tensors of the wrong
-    # shape or dtype. Check that we can no longer submit to the DAG.
+    # Since we have buffered channels, the execution should not error, but the
+    # get should error, as the dag should no longer work after the application-
+    # level exception.
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
     """
     Test all-reduce works with a custom communicator.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1205,6 +1602,14 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         ) -> "torch.Tensor":
             return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
 
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            self._inner.allgather(send_buf, recv_buf)
+            recv_buf += 1
+
         def allreduce(
             self,
             send_buf: "torch.Tensor",
@@ -1212,6 +1617,15 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
+            recv_buf += 1
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
 
         @property
@@ -1257,6 +1671,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     """
@@ -1273,9 +1688,6 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     actor 0 starts sending t, then actor 1 waits for actor 0 to join the all-reduce
     while actor 1 waits for actor 0 to receive t.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1292,9 +1704,9 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         x = workers[0].send.bind(shape, dtype, inp)
         y = workers[1].send.bind(shape, dtype, inp)
 
-        # Tensor to be sent from workes[0] to workers[1].
+        # Tensor to be sent from workers[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport="nccl"))
+        t.with_tensor_transport(transport="nccl")
 
         collectives = collective.allreduce.bind([x, y])
         recv = workers[1].recv.bind(t)
@@ -1307,19 +1719,17 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     result = ray.get(ref)
     reduced_value = value * 2
     expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_value
-    assert torch.equal(result[0], expected_tensor_val)
-    assert torch.equal(result[1], expected_tensor_val)
+    assert torch.equal(result[0].cpu(), expected_tensor_val)
+    assert torch.equal(result[1].cpu(), expected_tensor_val)
     assert result[2] == (value, shape, dtype)
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     """
     Test all-reduce with class method output node.
     """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1332,7 +1742,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective.allreduce.bind([t1, t4], ReduceOp.SUM)
+        tensors = collective.allreduce.bind([t1, t4])
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()
@@ -1349,6 +1759,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
         assert result == [t1 + t4, t1 + t4, t2, t3]
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_tensor_writable_warning_suppressed(ray_start_regular):
     """When we move cpu tensor to gpu, Compiled Graph does zero-copy with is_writable=False.
@@ -1357,9 +1768,6 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     printed in this scenario.
 
     """
-    if not USE_GPU:
-        pytest.skip("Test requires GPU")
-
     p = init_log_pubsub()
 
     @ray.remote(num_gpus=1)
@@ -1373,7 +1781,7 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     with InputNode() as inp:
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when _direct_return=True.
-        torch_inp = inp.with_type_hint(TorchTensorType())
+        torch_inp = inp.with_tensor_transport()
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
@@ -1388,203 +1796,9 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     compiled_dag.teardown()
 
 
-class TestTorchTensorTypeHintCustomSerializer:
-    # All tests inside this file are running in the same process, so we need to
-    # manually deregister the custom serializer for `torch.Tensor` before and
-    # after each test to avoid side effects.
-    def setup_method(self):
-        ray.util.serialization.deregister_serializer(torch.Tensor)
-
-    def teardown_method(self):
-        ray.util.serialization.deregister_serializer(torch.Tensor)
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
-    def test_input_node_without_type_hint(self, ray_start_regular, tensor_device):
-        """
-        Since no TorchTensorType hint is provided in this compiled graph,
-        normal serialization and deserialization functions are used, which will
-        not move the tensor to GPU/CPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = worker.echo.bind(inp)
-
-        compiled_dag = dag.experimental_compile()
-        tensor = torch.tensor([5])
-        if tensor_device == "cuda":
-            tensor = tensor.cuda()
-        ref = compiled_dag.execute(tensor)
-        t = ray.get(ref)
-        assert torch.equal(t, tensor)
-
-        device = ray.get(worker.get_device.remote())
-        assert device.type == tensor_device
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
-    def test_input_node_with_type_hint(self, ray_start_regular, tensor_device):
-        """
-        Since `inp` has a TorchTensorType hint, both the driver and `worker` will
-        use the custom serializer.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `input_tensor` and
-                move the tensor to CPU if it is on GPU.
-        Step 2: The `worker` calls `deserialize_tensor` to deserialize `input_tensor`
-               and moves it to GPU.
-        Step 3: The `worker` calls `serialize_tensor` to serialize the result of
-               `echo` and moves it to CPU.
-        Step 4: The driver calls `deserialize_tensor` to deserialize the result of
-               `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
-               the tensor will not be moved to GPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = worker.echo.bind(inp.with_type_hint(TorchTensorType()))
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor = torch.tensor([1])
-        input_tensor = cpu_tensor
-        if tensor_device == "cuda":
-            input_tensor = input_tensor.cuda()
-        ref = compiled_dag.execute(input_tensor)
-        # Verify Step 4
-        t = ray.get(ref)
-        assert torch.equal(t, cpu_tensor)
-
-        # Verify Step 2
-        device = ray.get(worker.get_device.remote())
-        assert device.type == "cuda"
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_attr_nodes_with_all_tensor_type_hint(self, ray_start_regular):
-        """
-        Since both `inp[0]` and `inp[1]` have tensor type hint, both workers will
-        use the custom serializer.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
-        and `cpu_tensor_2`.
-
-        Step 2:
-        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
-          and moves it to GPU.
-        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
-          and moves it to GPU.
-
-        Step 3:
-        * The `worker1` calls `serialize_tensor` to serialize the result of
-          `echo` and moves it to CPU.
-        * The `worker2` calls `serialize_tensor` to serialize the result of
-          `echo` and moves it to CPU.
-
-        Step 4: The driver calls `deserialize_tensor` to deserialize the result
-        of `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
-        the tensor will not be moved to GPU.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
-        with InputNode() as inp:
-            dag = inp[0].with_type_hint(TorchTensorType())
-            branch1 = worker1.echo.bind(dag)
-            dag = inp[1].with_type_hint(TorchTensorType())
-            branch2 = worker2.echo.bind(dag)
-            dag = MultiOutputNode([branch1, branch2])
-
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor_1 = torch.tensor([1])
-        cpu_tensor_2 = torch.tensor([2])
-        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
-
-        # Verify Step 4
-        t1, t2 = ray.get(ref)
-        assert torch.equal(t1, cpu_tensor_1)
-        assert torch.equal(t2, cpu_tensor_2)
-
-        # Verify Step 2
-        device1 = ray.get(worker1.get_device.remote())
-        device2 = ray.get(worker2.get_device.remote())
-        assert device1.type == "cuda"
-        assert device2.type == "cuda"
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_attr_nodes_with_and_without_type_hint(self, ray_start_regular):
-        """
-        Only `inp[0]` has a tensor type hint, so only `worker1` will use the custom
-        serializer. Note that although we don't register the custom serializer for
-        `worker2`, it still uses the custom deserializer. This is because when custom
-        serializers are registered with Ray, the registered deserializer is shipped
-        with the serialized value and used on the receiving end. See the comment in
-        `ChannelOutputType.register_custom_serializer` for more details.
-
-        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
-        and `cpu_tensor_2`.
-
-        Step 2:
-        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
-          and moves it to GPU.
-        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
-          and moves it to GPU.
-
-        Step 3:
-        * The `worker1` calls `serialize_tensor` to serialize the result of `echo`
-          and moves it to CPU.
-        * The `worker2` calls the normal serialization function to serialize the
-          result of `echo` because it doesn't have a custom serializer, so the
-          tensor is still on GPU.
-
-        Step 4:
-        * The driver calls `deserialize_tensor` to deserialize the tensor from
-          `worker1`. Since the driver's `ChannelContext.torch_device` is CPU,
-          the tensor will not be moved to GPU.
-        * The driver calls normal deserialization function to deserialize the
-          tensor from `worker2`.
-        """
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        worker1 = Worker.options(num_gpus=1).remote()
-        worker2 = Worker.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = inp[0].with_type_hint(TorchTensorType())
-            branch1 = worker1.echo.bind(dag)
-            dag = inp[1]
-            branch2 = worker2.echo.bind(dag)
-            dag = MultiOutputNode([branch1, branch2])
-
-        compiled_dag = dag.experimental_compile()
-        cpu_tensor_1 = torch.tensor([1])
-        cpu_tensor_2 = torch.tensor([2])
-        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
-        t1, t2 = ray.get(ref)
-        # Verify Step 3-1
-        assert torch.equal(t1, cpu_tensor_1)
-        # Verify Step 3-2
-        gpu_tensor_2 = cpu_tensor_2.cuda()
-        assert torch.equal(t2, gpu_tensor_2)
-
-        # Verify Step 2
-        device1 = ray.get(worker1.get_device.remote())
-        device2 = ray.get(worker2.get_device.remote())
-        assert device1.type == "cuda"
-        assert device2.type == "cuda"
-
-
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_local_reader(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1600,7 +1814,7 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = w1.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         branch1 = w1.recv.bind(dag)
         branch2 = w2.recv.bind(dag)
         dag = MultiOutputNode([branch1, branch2])
@@ -1617,10 +1831,9 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype)]
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
@@ -1635,7 +1848,7 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = w1.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         branch1 = w1.recv.bind(dag)
         branch2 = w1.recv.bind(dag)
         branch3 = w2.recv.bind(dag)
@@ -1653,10 +1866,9 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
     assert ray.get(ref) == [(i, (5,), dtype), (i, (5,), dtype), (i, (5,), dtype)]
 
 
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
     ), "This test requires at least 1 GPU"
@@ -1666,7 +1878,7 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
 
     with InputNode() as inp:
         dag = worker.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = MultiOutputNode([worker.recv.bind(dag)])
     with pytest.raises(
         AssertionError,

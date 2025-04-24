@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-external-env-setups-doc:
-
 
 External Environments and Applications
 ======================================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib.
 For example, if you train a policy inside a complex simulator that operates its own execution loop,
@@ -18,6 +17,7 @@ of training the policies, but wouldn't pose any restrictions on when and how oft
 should step.
 
 .. figure:: images/envs/external_env_setup_client_inference.svg
+    :align: left
     :width: 600
 
     **External application with client-side inference**: An external simulator (for example a game engine)

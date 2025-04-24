@@ -27,7 +27,7 @@ class VPGTorchRLModule(TorchRLModule):
         )
 
     def _forward(self, batch, **kwargs):
-        # Push the observations from the batch through our pi-head.
+        # Push the observations from the batch through our `self._policy_net`.
         action_logits = self._policy_net(batch[Columns.OBS])
         # Return parameters for the (default) action distribution, which is
         # `TorchCategorical` (due to our action space being `gym.spaces.Discrete`).

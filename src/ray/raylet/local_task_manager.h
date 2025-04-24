@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -87,7 +94,7 @@ class LocalTaskManager : public ILocalTaskManager {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
+          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -162,9 +169,9 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
-                        int64_t backlog_size);
+                        int64_t backlog_size) override;
 
-  void ClearWorkerBacklog(const WorkerID &worker_id);
+  void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetTaskToDispatch() const override {
@@ -277,6 +284,7 @@ class LocalTaskManager : public ILocalTaskManager {
 
  private:
   const NodeID &self_node_id_;
+  const scheduling::NodeID self_scheduling_node_id_;
   /// Responsible for resource tracking/view of the cluster.
   ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
@@ -292,7 +300,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo(int64_t cap)
+    explicit SchedulingClassInfo(int64_t cap)
         : running_tasks(),
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
@@ -318,6 +326,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
+  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_dispatch_;
 
@@ -337,6 +346,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
+  /// Note that if a queue exists, it should be guaranteed to be non-empty.
   std::list<std::shared_ptr<internal::Work>> waiting_task_queue_;
 
   /// An index for the above queue.

@@ -167,6 +167,8 @@ that sets up and invokes a model. Then, call
     {'text': 'Beautiful is better than ugly.', 'label': 'POSITIVE'}
     {'text': 'Explicit is better than implicit.', 'label': 'POSITIVE'}
 
+For more information on handling large language models, see :ref:`Working with LLMs <working-with-llms>`.
+
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
 and :ref:`Stateful Transforms <stateful_transforms>`.

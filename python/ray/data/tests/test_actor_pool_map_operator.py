@@ -10,6 +10,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
@@ -23,6 +24,9 @@ class PoolWorker:
 
     def get_location(self) -> str:
         return self.node_id
+
+    def on_exit(self):
+        pass
 
 
 class TestActorPool(unittest.TestCase):
@@ -55,6 +59,7 @@ class TestActorPool(unittest.TestCase):
                 max_tasks_in_flight_per_actor=max_tasks_in_flight,
             ),
             create_actor_fn=self._create_actor_fn,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
         )
         return pool
 
@@ -278,7 +283,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor, _ = self._add_pending_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -300,7 +305,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
@@ -324,7 +329,7 @@ class TestActorPool(unittest.TestCase):
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was NOT killed.
         assert not killed
         # Check that the active actor is still in the pool.
@@ -339,7 +344,7 @@ class TestActorPool(unittest.TestCase):
         # Add idle worker.
         idle_actor = self._add_ready_actor(pool)
         # Kill inactive actor.
-        killed = pool.kill_inactive_actor()
+        killed = pool._kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that the idle actor is still in the pool.
@@ -359,137 +364,6 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 4
 
-    def test_kill_all_inactive_pending_actor_killed(self):
-        # Test that pending actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor, ready_ref = self._add_pending_actor(pool)
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that actor is not in pool.
-        assert pool.get_pending_actor_refs() == []
-        # Check that actor is no longer in the pool as pending, to protect against
-        # ready/killed races.
-        assert not pool.pending_to_running(ready_ref)
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_idle_actor_killed(self):
-        # Test that idle actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_active_actor_not_killed(self):
-        # Test that active actors are NOT killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor
-
-    def test_kill_all_inactive_future_idle_actors_killed(self):
-        # Test that future idle actors are killed after the kill_all_inactive_actors()
-        # call.
-        pool = self._create_actor_pool()
-        actor = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor
-        # Kill inactive actors, of which there are currently none.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor
-        # Return the actor to the pool twice, which should set it as idle and cause it
-        # to be killed.
-        for _ in range(2):
-            pool.return_actor(actor)
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor._actor_id.hex()
-        del actor
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
-    def test_kill_all_inactive_mixture(self):
-        # Test that in a mixture of pending, idle, and active actors, only the pending
-        # and idle actors are killed on the kill_all_inactive_actors() call.
-        pool = self._create_actor_pool()
-        # Add active actor.
-        actor1 = self._add_ready_actor(pool)
-        # Pick actor (and double-check that the actor was picked).
-        assert pool.pick_actor() == actor1
-        # Add idle actor.
-        self._add_ready_actor(pool)
-        # Add pending actor.
-        actor3, ready_ref = self._add_pending_actor(pool)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 3
-        assert pool.num_pending_actors() == 1
-        assert pool.num_running_actors() == 2
-        assert pool.num_active_actors() == 1
-        assert pool.num_idle_actors() == 1
-        assert pool.num_free_slots() == 7
-        # Kill inactive actors.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor1
-        # Check that adding a pending actor raises an error.
-        with pytest.raises(AssertionError):
-            pool.add_pending_actor(actor3, ready_ref)
-        # Check that kill_all_inactive_actors() is idempotent.
-        pool.kill_all_inactive_actors()
-        # Check that the active actor is still in the pool.
-        assert pool.pick_actor() == actor1
-        # Return the actor to the pool thrice, which should set it as idle and cause it
-        # to be killed.
-        for _ in range(3):
-            pool.return_actor(actor1)
-        # Check that actor is not in pool.
-        assert pool.pick_actor() is None
-        # Check that actor is dead.
-        actor_id = actor1._actor_id.hex()
-        del actor1
-        self._wait_for_actor_dead(actor_id)
-        # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_slots() == 0
-
     def test_all_actors_killed(self):
         # Test that all actors are killed after the kill_all_actors() call.
         pool = self._create_actor_pool()
@@ -498,7 +372,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.pick_actor() == active_actor
         idle_actor = self._add_ready_actor(pool)
         # Kill all actors, including active actors.
-        pool.kill_all_actors()
+        pool.shutdown()
         # Check that the pool is empty.
         assert pool.pick_actor() is None
 

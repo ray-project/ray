@@ -130,6 +130,21 @@ def test_single_deployment_custom_name():
         ],
     )
 
+    # Change to `with pytest.raises(ValueError)` when the warning is removed.
+    with pytest.warns(UserWarning):
+
+        @serve.deployment(name="test#deployment")
+        def my_deployment():
+            return "Hello!"
+
+    with pytest.warns(UserWarning):
+
+        @serve.deployment()
+        def my_deployment():
+            return "Hello!"
+
+        my_deployment.options(name="test#deployment")
+
 
 def test_multi_deployment_basic():
     @serve.deployment(num_replicas=3)

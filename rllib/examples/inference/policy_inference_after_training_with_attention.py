@@ -12,8 +12,7 @@ import numpy as np
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -21,6 +20,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune.registry import get_trainable_cls
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -116,10 +116,10 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         args.run,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=2,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=1,
                 checkpoint_at_end=True,
             ),

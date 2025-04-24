@@ -121,7 +121,7 @@ nitpicky = True
 nitpick_ignore_regex = [
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
-    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -230,6 +230,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -304,23 +305,21 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Influence the future of Ray with our <a target="_blank" href="https://www.surveymonkey.com/r/RayPulse2025?utm_source=ray_docs&utm_medium=website&utm_campaign=banner">Ray Community Pulse survey</a>. Complete it by Monday, January 27th, 2025 to get exclusive swag for eligible participants.""",
+    "announcement": """$100 to try Ray on Anyscale — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a>.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
+        "community-card.html",
         "page-toc",
         "edit-on-github",
     ],
@@ -345,9 +344,11 @@ html_context = {
 
 html_sidebars = {
     "**": [
-        "main-sidebar-readthedocs"
-        if os.getenv("READTHEDOCS") == "True"
-        else "main-sidebar"
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
     ],
     "ray-overview/examples": [],
 }
@@ -562,6 +563,19 @@ def setup(app):
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
 
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
+
 
 redoc = [
     {
@@ -580,22 +594,25 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
-    "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
     "datasets",
     "fastapi",
     "filelock",
-    "frozenlist",
     "fsspec",
     "google",
     "grpc",
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -618,11 +635,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",
@@ -690,3 +709,5 @@ intersphinx_mapping = {
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"

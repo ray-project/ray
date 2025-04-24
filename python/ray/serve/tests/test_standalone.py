@@ -442,7 +442,7 @@ def test_http_root_path(ray_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 

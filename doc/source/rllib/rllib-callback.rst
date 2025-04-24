@@ -1,9 +1,11 @@
-.. include:: /_includes/rllib/new_api_stack.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-callback-docs:
 
 Callbacks
 =========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Callbacks are the most straightforward way to inject code into experiments. You can define the code to execute at certain events and pass it to your
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
@@ -223,8 +225,10 @@ The following are two examples showing you how to setup custom callbacks on the
 :ref:`EnvRunner <rllib-key-concepts-env-runners>` processes.
 
 
+.. _rllib-callback-example-on-train-result:
+
 Example 1: `on_train_result`
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example demonstrates how to implement a simple custom function writing the replay buffer
 contents to disk from time to time.
@@ -270,8 +274,11 @@ controlled fashion through a custom callback could be a good compromise.
 
 See :ref:`Callbacks invoked in Algorithm <rllib-callback-reference-algorithm-bound>` for the exact call signatures of all available callbacks and the argument types that they expect.
 
+
+.. _rllib-callback-example-on-episode-step-and-end:
+
 Example 2: `on_episode_step` and `on_episode_end`
--------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following example demonstrates how to implement a custom :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` class
 computing the average "first-joint angle" of the
@@ -289,13 +296,11 @@ computing the average "first-joint angle" of the
         `theta1` is the angle of the first joint, where an angle of 0.0 indicates that the first
         link is pointing directly downwards.
 
-This example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger`
-API to log the custom computations of the injected code of the Algorithm's main results system.
+This example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API to log the custom computations
+of the injected code. See :ref:`rllib-metric-logger-docs` for more details about the MetricsLogger API.
 
-.. todo: uncomment this once metrics-logger.rst page is online.
-   Read :ref:`more about the MetricsLogger API here <rllib-metric-logger-doc>`__ or also ...
-
-See this more complex example that `generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
+Also, see this more complex example that
+`generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
 .. testcode::
 

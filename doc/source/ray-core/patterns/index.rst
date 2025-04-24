@@ -27,3 +27,4 @@ This section is a collection of common design patterns and anti-patterns for wri
     closure-capture-large-objects
     global-variables
     out-of-band-object-ref-serialization
+    fork-new-processes

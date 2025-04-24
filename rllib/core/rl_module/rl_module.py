@@ -361,7 +361,18 @@ class RLModule(Checkpointable, abc.ABC):
 
 
     Args:
-        config: The config for the RLModule.
+        observation_space: The observation space of the model. Note that in multi-agent
+            setups, this is typically the observation space of an agent that maps to
+            this RLModule.
+        action_space: The action space of the model. Note that in multi-agent
+            setups, this is typically the action space of an agent that maps to
+            this RLModule.
+        inference_only: If True, this RLModule should construct itself in an inference-
+            only fashion. This is done automatically, if the user implements the
+            `InferenceOnlyAPI` with their custom RLModule subclass. False by default.
+        learner_only: If True, RLlib won't built this RLModule on EnvRunner actors.
+            False by default.
+        model_config: A config dict to specify features of this RLModule.
 
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
@@ -409,22 +420,23 @@ class RLModule(Checkpointable, abc.ABC):
             self.inference_only = inference_only
             self.learner_only = learner_only
             self.model_config = model_config
-            try:
-                self.catalog = catalog_class(
-                    observation_space=self.observation_space,
-                    action_space=self.action_space,
-                    model_config_dict=self.model_config,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Could not create a Catalog object for your RLModule! If you are "
-                    "not using the new API stack yet, make sure to switch it off in "
-                    "your config: `config.api_stack(enable_rl_module_and_learner=False"
-                    ", enable_env_runner_and_connector_v2=False)`. All algos "
-                    "use the new stack by default. Ignore this message, if your "
-                    "RLModule does not use a Catalog to build its sub-components."
-                )
-                self._catalog_ctor_error = e
+            if catalog_class is not None:
+                try:
+                    self.catalog = catalog_class(
+                        observation_space=self.observation_space,
+                        action_space=self.action_space,
+                        model_config_dict=self.model_config,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Didn't create a Catalog object for your RLModule! If you are "
+                        "not using the new API stack yet, make sure to switch it off in"
+                        " your config: `config.api_stack(enable_rl_module_and_learner="
+                        "False, enable_env_runner_and_connector_v2=False)`. All algos "
+                        "use the new stack by default. Ignore this message, if your "
+                        "RLModule does not use a Catalog to build its sub-components."
+                    )
+                    self._catalog_ctor_error = e
 
         # TODO (sven): Deprecate this. We keep it here for now in case users
         #  still have custom models (or subclasses of RLlib default models)
@@ -453,7 +465,11 @@ class RLModule(Checkpointable, abc.ABC):
                 "[Algo]RLModule) and that you are NOT overriding the constructor, but "
                 "only the `setup()` method of your subclass."
             )
-        self.setup()
+        try:
+            self.setup()
+        except AttributeError as e:
+            if "'NoneType' object has no attribute " in e.args[0]:
+                raise (self._catalog_ctor_error or e)
         self._is_setup = True
 
     @OverrideToImplementCustomLogic

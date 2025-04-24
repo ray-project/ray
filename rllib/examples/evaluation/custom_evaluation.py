@@ -65,7 +65,7 @@ Training iteration 1 -> evaluation round 2
 """
 from typing import Tuple
 
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
@@ -180,6 +180,7 @@ if __name__ == "__main__":
             SimpleCorridor,
             env_config={"corridor_length": args.corridor_length_training},
         )
+        .env_runners(create_env_on_local_worker=True)
         .evaluation(
             # Do we use the custom eval function defined above?
             custom_evaluation_function=(

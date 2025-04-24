@@ -188,11 +188,11 @@ We refer to these saved files as **trial artifacts**.
 
 .. note::
 
-    If :class:`SyncConfig(sync_artifacts=True) <ray.train.SyncConfig>`, trial artifacts
+    If :class:`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial artifacts
     are uploaded periodically from each trial (or from each remote training worker for Ray Train)
-    to the :class:`RunConfig(storage_path) <ray.train.RunConfig>`.
+    to the :class:`RunConfig(storage_path) <ray.tune.RunConfig>`.
 
-    See the :class:`~ray.train.SyncConfig` API reference for artifact syncing configuration options.
+    See the :class:`~ray.tune.SyncConfig` API reference for artifact syncing configuration options.
 
 You can save trial artifacts directly in the trainable, as shown below:
 
@@ -228,7 +228,7 @@ You can save trial artifacts directly in the trainable, as shown below:
                     with open(f"./artifact_{step}.txt", "w") as f:
                         f.write("Artifact Data")
 
-                    train.report(results)
+                    tune.report(results)
 
 
     .. tab-item:: Class API
@@ -272,7 +272,7 @@ You can save trial artifacts directly in the trainable, as shown below:
 
 In the code snippet above, ``logging_library`` refers to whatever 3rd party logging library you are using.
 Note that ``logging_library.set_log_path(os.getcwd())`` is an imaginary API that we are using
-for demonstation purposes, and it highlights that the third-party library
+for demonstration purposes, and it highlights that the third-party library
 should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.
@@ -320,11 +320,12 @@ You can then pass in your own logger as follows:
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=RunConfig(name="experiment_name", callbacks=[CustomLoggerCallback("log_test.txt")])
+        run_config=tune.RunConfig(
+            name="experiment_name", callbacks=[CustomLoggerCallback("log_test.txt")]
+        )
     )
     results = tuner.fit()
 

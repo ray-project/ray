@@ -189,6 +189,7 @@ class GLOOGroup(BaseGroup):
         group_name,
         store_type="ray_internal_kv",
         device_type="tcp",
+        gloo_timeout=30000,
     ):
         """Init an GLOO collective group.
 
@@ -200,9 +201,12 @@ class GLOOGroup(BaseGroup):
                               "file", "hash".
             device_type: The device type to transport.
                                Optional: "tcp", "uv".
+            gloo_timeout: The timeout for GLOO rendezvous in ms.
+                               Optional: int, default: 30000.
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
         self._gloo_context = gloo_util.create_gloo_context(self.rank, self.world_size)
+        self._gloo_context.setTimeout(gloo_timeout)
         self._rendezvous = Rendezvous(
             self.group_name, self._gloo_context, store_type, device_type
         )

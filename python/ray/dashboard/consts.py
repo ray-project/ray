@@ -1,9 +1,10 @@
 import os
 
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import env_bool, env_integer, env_float
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
-DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
+DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
+DASHBOARD_AGENT_ADDR_IP_PREFIX = "DASHBOARD_AGENT_ADDR_IP_PREFIX:"
 DASHBOARD_AGENT_LOG_FILENAME = "dashboard_agent.log"
 DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S_ENV_NAME = (
     "RAY_DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S"  # noqa
@@ -28,8 +29,6 @@ RAY_DASHBOARD_STATS_PURGING_INTERVAL = env_integer(
 RAY_DASHBOARD_STATS_UPDATING_INTERVAL = env_integer(
     "RAY_DASHBOARD_STATS_UPDATING_INTERVAL", 15
 )
-DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
-DASHBOARD_RPC_PORT = env_integer("RAY_DASHBOARD_RPC_PORT", 0)
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
@@ -45,7 +44,7 @@ DEFAULT_JOB_ID = "ffff"
 # Environment variable stored here should be a callable that does not
 # take any arguments and should return a dictionary mapping
 # activity component type (str) to
-# ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
+# ray.dashboard.modules.api.api_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
 
@@ -72,6 +71,7 @@ CLUSTER_TAG_KEYS = ["node_type", "Version", "SessionName"]
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
+# Note that for dashboard subprocess module, the component name is "dashboard_[module_name]".
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",
     "raylet",
@@ -82,9 +82,15 @@ AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
 METRICS_INPUT_ROOT = os.path.join(
     os.path.dirname(__file__), "modules", "metrics", "export"
 )
+METRICS_RECORD_INTERVAL_S = env_integer("METRICS_RECORD_INTERVAL_S", 5)
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
+)
+
+# Maximum time to wait for the subprocess module to be ready.
+SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
+    "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0
 )

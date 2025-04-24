@@ -1,14 +1,49 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _utils-reference-docs:
 
 RLlib Utilities
 ===============
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 Here is a list of all the utilities available in RLlib.
+
+MetricsLogger API
+-----------------
+
+RLlib uses the MetricsLogger API to log stats and metrics for the various components. Users can also
+
+For example:
+
+.. testcode::
+
+    from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+
+    logger = MetricsLogger()
+
+    # Log a scalar float value under the `loss` key. By default, all logged
+    # values under that key are averaged, once `reduce()` is called.
+    logger.log_value("loss", 0.05, reduce="mean", window=2)
+    logger.log_value("loss", 0.1)
+    logger.log_value("loss", 0.2)
+
+    logger.peek("loss")  # expect: 0.15 (mean of last 2 values: 0.1 and 0.2)
+
+
+.. currentmodule:: ray.rllib.utils.metrics.metrics_logger
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    MetricsLogger
+    MetricsLogger.peek
+    MetricsLogger.log_value
+    MetricsLogger.log_dict
+    MetricsLogger.merge_and_log_n_dicts
+    MetricsLogger.log_time
+
 
 Scheduler API
 -------------

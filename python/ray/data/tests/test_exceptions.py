@@ -9,6 +9,22 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
+def test_handle_debugger_exception(ray_start_regular_shared):
+    def _bad(batch):
+        if batch["id"][0] == 5:
+            raise Exception("Test exception")
+
+        return batch
+
+    dataset = ray.data.range(8, override_num_blocks=8).map_batches(_bad)
+
+    with pytest.raises(
+        UserCodeException,
+        match=r"Failed to process the following data block: \{'id': array\(\[5\]\)\}",
+    ):
+        dataset.materialize()
+
+
 @pytest.mark.parametrize("log_internal_stack_trace_to_stdout", [True, False])
 def test_user_exception(
     log_internal_stack_trace_to_stdout,
@@ -21,8 +37,7 @@ def test_user_exception(
     ctx.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
 
     def f(row):
-        1 / 0
-        return row
+        _ = 1 / 0
 
     with pytest.raises(UserCodeException) as exc_info:
         ray.data.range(1).map(f).take_all()
@@ -80,7 +95,7 @@ def test_full_traceback_logged_with_ray_debugger(
     monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", 1)
 
     def f(row):
-        1 / 0
+        _ = 1 / 0
         return row
 
     with pytest.raises(Exception) as exc_info:

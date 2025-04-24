@@ -1,17 +1,15 @@
 from functools import partial
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     BlockAccessor,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
-    _get_block_boundaries,
 )
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
@@ -30,14 +28,17 @@ class GroupedData:
         self,
         dataset: Dataset,
         key: Optional[Union[str, List[str]]],
+        *,
+        num_partitions: Optional[int],
     ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
-        self._dataset = dataset
-        self._key = key
+        self._dataset: Dataset = dataset
+        self._key: Optional[Union[str, List[str]]] = key
+        self._num_partitions: Optional[int] = num_partitions
 
     def __repr__(self) -> str:
         return (
@@ -63,6 +64,7 @@ class GroupedData:
             self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
@@ -102,16 +104,19 @@ class GroupedData:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
-            * It may be slower than using more specific methods such as min(), max().
-            * It requires that each group fits in memory on a single node.
 
-        In general, prefer to use aggregate() instead of map_groups().
+        * It may be slower than using more specific methods such as min(), max().
+        * It requires that each group fits in memory on a single node.
+
+        In general, prefer to use `aggregate()` instead of `map_groups()`.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -151,10 +156,7 @@ class GroupedData:
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
                 batch of zero or more records, similar to map_batches().
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
+            compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
                 select ``pyarrow.Table``, or ``"numpy"`` to select
@@ -172,6 +174,31 @@ class GroupedData:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor or task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
+            concurrency: The semantics of this argument depend on the type of ``fn``:
+
+                * If ``fn`` is a function and ``concurrency`` isn't set (default), the
+                  actual concurrency is implicitly determined by the available
+                  resources and number of input blocks.
+
+                * If ``fn`` is a function and ``concurrency`` is an  int ``n``, Ray Data
+                  launches *at most* ``n`` concurrent tasks.
+
+                * If ``fn`` is a class and ``concurrency`` is an int ``n``, Ray Data
+                  uses an actor  pool with *exactly* ``n`` workers.
+
+                * If ``fn`` is a class and  ``concurrency`` is a tuple ``(m, n)``, Ray
+                  Data uses an autoscaling actor pool from ``m`` to ``n`` workers.
+
+                * If ``fn`` is a class and ``concurrency`` isn't set (default), this
+                  method raises an error.
+
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -179,6 +206,11 @@ class GroupedData:
         Returns:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
+
+        .. seealso::
+
+            :meth:`GroupedData.aggregate`
+                Use this method for common aggregation use cases.
         """
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
@@ -194,20 +226,19 @@ class GroupedData:
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
-            # Get the list of boundaries including first start and last end indices
-            if self._key:
-                projected_block = block_accessor.to_numpy(self._key)
-
-                # get_block_boundaries() expects a list of arrays
-                if isinstance(self._key, str):
-                    projected_block = [projected_block]
-                else:
-                    # projected_block is a dict of arrays
-                    projected_block = list(projected_block.values())
-
-                boundaries = _get_block_boundaries(projected_block)
+            if self._key is None:
+                keys = []
+            elif isinstance(self._key, str):
+                keys = [self._key]
+            elif isinstance(self._key, List):
+                keys = self._key
             else:
-                boundaries = [0, block_accessor.num_rows()]
+                raise ValueError(
+                    f"Group-by keys are expected to either be a single column (str) "
+                    f"or a list of columns (got '{self._key}')"
+                )
+
+            boundaries = block_accessor._get_group_boundaries_sorted(keys)
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 group_block = block_accessor.slice(start, end, copy=False)
@@ -254,8 +285,9 @@ class GroupedData:
             fn_constructor_kwargs=fn_constructor_kwargs,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             concurrency=concurrency,
-            ray_remote_args_fn=None,
+            ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
         )
 
@@ -286,14 +318,14 @@ class GroupedData:
             >>> import ray
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3)  # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
             >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -324,15 +356,15 @@ class GroupedData:
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped min aggregation.
+        r"""Compute grouped min aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -363,15 +395,15 @@ class GroupedData:
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped max aggregation.
+        r"""Compute grouped max aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -402,15 +434,15 @@ class GroupedData:
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped mean aggregation.
+        r"""Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -444,15 +476,15 @@ class GroupedData:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
-        """Compute grouped standard deviation aggregation.
+        r"""Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style

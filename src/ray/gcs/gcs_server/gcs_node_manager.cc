@@ -14,8 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <limits>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -38,12 +42,14 @@ GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
-      cluster_id_(cluster_id) {}
+      cluster_id_(cluster_id) {
+  export_event_write_enabled_ = IsExportAPIEnabledNode();
+}
 
 void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
@@ -290,7 +296,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
+std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {

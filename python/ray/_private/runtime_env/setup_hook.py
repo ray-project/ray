@@ -7,7 +7,7 @@ from typing import Dict, Any, Callable, Union, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.storage import _load_class
+from ray._private.utils import load_class
 import ray.cloudpickle as pickle
 from ray.runtime_env import RuntimeEnv
 
@@ -138,7 +138,7 @@ def load_and_execute_setup_hook_module(
     worker_process_setup_hook_key: str,
 ) -> Optional[str]:
     try:
-        setup_func = _load_class(worker_process_setup_hook_key)
+        setup_func = load_class(worker_process_setup_hook_key)
         setup_func()
         return None
     except Exception:

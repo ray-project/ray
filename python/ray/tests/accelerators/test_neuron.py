@@ -25,7 +25,7 @@ def test_auto_detected_more_than_visible(
     # Test more neuron_cores are detected than visible.
     monkeypatch.setenv("NEURON_RT_VISIBLE_CORES", "0,1,2")
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["neuron_cores"] == 3
 
 
@@ -36,7 +36,7 @@ def test_auto_detected_more_than_visible(
 def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     # Test that ray node resources are filled with auto detected count.
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["neuron_cores"] == 2
 
 

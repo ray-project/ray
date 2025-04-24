@@ -5,7 +5,6 @@ import inspect
 import logging
 import os
 import random
-import string
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -14,12 +13,14 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
+from ray.serve.config import gRPCOptions
 import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import import_attr
+from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
@@ -140,12 +141,8 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-# Match the standard alphabet used for UUIDs.
-RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
-
-
-def get_random_string(length=8):
-    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
+def get_random_string(length: int = 8):
+    return get_random_alphanumeric_string(length)
 
 
 def format_actor_name(actor_name, *modifiers):
@@ -594,7 +591,7 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', may not contain wildcards."
         )
 
 
@@ -610,3 +607,19 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
     elif isinstance(obj, DeploymentResponse):
         # Launch async task to convert DeploymentResponse to an object ref
         return asyncio.create_task(obj._to_object_ref())
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise
+
+
+def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
+    return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0

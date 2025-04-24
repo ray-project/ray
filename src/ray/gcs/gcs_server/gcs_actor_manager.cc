@@ -14,8 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <algorithm>
 #include <boost/regex.hpp>
+#include <limits>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -242,9 +247,9 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 void GcsActor::WriteActorExportEvent() const {
-  /// Write actor_table_data_ as a export actor event if
-  /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  /// Verify actor export events should be written to file
+  /// and then write actor_table_data_ as an export event.
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
@@ -267,6 +272,8 @@ void GcsActor::WriteActorExportEvent() const {
   export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
   export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+  export_actor_data_ptr->mutable_labels()->insert(task_spec_.get()->labels().begin(),
+                                                  task_spec_.get()->labels().end());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }
@@ -689,18 +696,28 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
                                             rpc::KillActorViaGcsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   const auto &actor_id = ActorID::FromBinary(request.actor_id());
-  bool force_kill = request.force_kill();
-  bool no_restart = request.no_restart();
-  if (no_restart) {
-    DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
-  } else {
-    KillActor(actor_id, force_kill);
-  }
+  auto it = registered_actors_.find(actor_id);
+  if (it != registered_actors_.end()) {
+    bool force_kill = request.force_kill();
+    bool no_restart = request.no_restart();
+    if (no_restart) {
+      DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
+    } else {
+      KillActor(actor_id, force_kill);
+    }
 
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-      << "Finished killing actor, force_kill = " << force_kill
-      << ", no_restart = " << no_restart;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Finished killing actor, force_kill = " << force_kill
+        << ", no_restart = " << no_restart;
+  } else {
+    GCS_RPC_SEND_REPLY(send_reply_callback,
+                       reply,
+                       Status::NotFound(absl::StrFormat(
+                           "Could not find actor with ID %s.", actor_id.Hex())));
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Could not find actor with ID " << actor_id.Hex();
+  }
   ++counts_[CountType::KILL_ACTOR_REQUEST];
 }
 
@@ -1279,7 +1296,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
                                  const std::string node_ip_address) {
   const auto node_id = NodeID::FromBinary(node->node_id());
-  RAY_LOG(INFO).WithField(node_id) << "Node failed, reconstructing actors.";
+  RAY_LOG(INFO).WithField(node_id) << "Node is dead, reconstructing actors.";
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {

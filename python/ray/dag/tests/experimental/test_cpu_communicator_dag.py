@@ -6,8 +6,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.exceptions import RayChannelError
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
@@ -83,7 +82,7 @@ def test_p2p_basic(ray_start_cluster):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport=cpu_group))
+        dag = dag.with_tensor_transport(transport=cpu_group)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -108,9 +107,6 @@ def test_allreduce_basic(ray_start_cluster):
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
 
     cpu_group = CPUCommunicator(num_workers, workers)
-
-    shape = (10,)
-    dtype = torch.float16
 
     with InputNode() as inp:
         computes = [
@@ -194,6 +190,9 @@ def test_allreduce_get_partial(ray_start_cluster):
     indirect=True,
 )
 def test_allreduce_wrong_shape(ray_start_cluster):
+    """
+    Test an error is thrown when the tensors in an all-reduce have different shapes.
+    """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
 
@@ -222,16 +221,16 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # Execution hangs because of shape mismatch and a timeout error is raised.
-    with pytest.raises(RayChannelError):
+    # Execution hangs because of shape mismatch and a task error is raised.
+    with pytest.raises(RayTaskError):
         ray.get(ref)
 
-    # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch.Tensors of the wrong
-    # shape or dtype. Check that we can no longer submit to the DAG.
+    # Since we have buffered channels, the execution should not error, but the
+    # get should error, as the dag should no longer work after the application-
+    # level exception.
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
 @pytest.mark.parametrize(
@@ -273,9 +272,9 @@ def test_allreduce_scheduling(ray_start_cluster):
         x = workers[0].send.bind(shape, dtype, inp)
         y = workers[1].send.bind(shape, dtype, inp)
 
-        # Tensor to be sent from workes[0] to workers[1].
+        # Tensor to be sent from workers[0] to workers[1].
         t = workers[0].send.bind(shape, dtype, inp)
-        t.with_type_hint(TorchTensorType(transport=cpu_group))
+        t = t.with_tensor_transport(transport=cpu_group)
 
         collectives = collective.allreduce.bind([x, y], transport=cpu_group)
         recv = workers[1].recv.bind(t)

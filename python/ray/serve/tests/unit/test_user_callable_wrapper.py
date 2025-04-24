@@ -556,18 +556,12 @@ def test_grpc_unary_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable().result()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
-
+    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
-    _, result_bytes = user_callable_wrapper.call_user_method(
+    result = user_callable_wrapper.call_user_method(
         request_metadata, (grpc_request,), dict()
     ).result()
-    assert isinstance(result_bytes, bytes)
-
-    result = serve_pb2.UserDefinedResponse()
-    result.ParseFromString(result_bytes)
+    assert isinstance(result, serve_pb2.UserDefinedResponse)
     assert result.greeting == "Hello world!"
 
 
@@ -579,9 +573,7 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     )
     user_callable_wrapper.initialize_callable()
 
-    grpc_request = gRPCRequest(
-        pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
-    )
+    grpc_request = gRPCRequest(serve_pb2.UserDefinedResponse(greeting="world"))
 
     result_list = []
 
@@ -596,11 +588,8 @@ def test_grpc_streaming_request(run_sync_methods_in_threadpool: bool):
     ).result()
 
     assert len(result_list) == 10
-    for i, (_, result_bytes) in enumerate(result_list):
-        assert isinstance(result_bytes, bytes)
-
-        result = serve_pb2.UserDefinedResponse()
-        result.ParseFromString(result_bytes)
+    for i, result in enumerate(result_list):
+        assert isinstance(result, serve_pb2.UserDefinedResponse)
         assert result.greeting == f"Hello world {i}!"
 
 

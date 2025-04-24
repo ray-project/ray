@@ -15,6 +15,9 @@
 #include "ray/gcs/gcs_server/store_client_kv.h"
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -48,7 +51,7 @@ std::string ExtractKey(const std::string &key) {
 
 StoreClientInternalKV::StoreClientInternalKV(std::unique_ptr<StoreClient> store_client)
     : delegate_(std::move(store_client)),
-      table_name_(TablePrefix_Name(TablePrefix::KV)) {}
+      table_name_(TablePrefix_Name(rpc::TablePrefix::KV)) {}
 
 void StoreClientInternalKV::Get(const std::string &ns,
                                 const std::string &key,
@@ -58,9 +61,9 @@ void StoreClientInternalKV::Get(const std::string &ns,
       MakeKey(ns, key),
       std::move(callback).TransformArg(
           [](ray::Status status,
-             std::optional<std::string> &&result) -> std::optional<std::string> {
+             std::optional<std::string> result) -> std::optional<std::string> {
             RAY_CHECK(status.ok()) << "Fails to get key from storage " << status;
-            return std::move(result);
+            return result;
           })));
 }
 

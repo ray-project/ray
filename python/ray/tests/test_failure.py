@@ -518,7 +518,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 
     @ray.remote
     def f():
-        large_object
+        _ = large_object
 
     # Invoke the function so that the definition is exported.
     f.remote()
@@ -531,7 +531,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     @ray.remote
     class Foo:
         def __init__(self):
-            large_object
+            _ = large_object
 
     Foo.remote()
 
@@ -733,6 +733,36 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     assert str(exc_info.value.cause) == "MyFinalException from task"
 
     caplog.clear()
+
+
+def test_transient_error_retry(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        # Inject transient errors into the RPC client. There is a 25% chance
+        # that the RPC request will fail, a 25% chance that the RPC reply
+        # will fail, and a 50% chance that the RPC will succeed. This test
+        # submits 200 tasks with infinite retries and verifies that all tasks
+        # eventually succeed in the unstable network environment.
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.PushTask=100",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(
+            num_cpus=1,
+            resources={"head": 1},
+        )
+        ray.init(address=cluster.address)
+
+        @ray.remote(max_task_retries=-1, resources={"head": 1})
+        class RetryActor:
+            def echo(self, value):
+                return value
+
+        refs = []
+        actor = RetryActor.remote()
+        for i in range(200):
+            refs.append(actor.echo.remote(i))
+        assert ray.get(refs) == list(range(200))
 
 
 if __name__ == "__main__":
