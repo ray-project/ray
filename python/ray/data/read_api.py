@@ -498,8 +498,8 @@ def read_audio(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        column_names: A mapping from the intended column name -> provided column name.
-            Default keys are `amplitude` and `sample-rate`.
+        column_names: A mapping from the default column name -> provided column name.
+            Defaults to `amplitude` and `sample-rate`.
     Returns:
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
         metadata.
@@ -589,7 +589,7 @@ def read_videos(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        column_names: A mapping from the intended column name -> provided column name.
+        column_names: A mapping from the default column name -> provided column name.
             Defaults to 'frame', 'frame_index' and 'frame_timestamp'.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
@@ -1088,7 +1088,7 @@ def read_images(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the intended column name -> provided column name.
+        column_names: A mapping from the default column name -> provided column name.
             Defaults to 'image'
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -1678,7 +1678,7 @@ def read_text(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the intended column name -> provided column name.
+        column_names: A mapping from the default column name -> provided column name.
             Defaults to 'text'
     Returns:
         :class:`~ray.data.Dataset` producing lines of text read from the specified
@@ -1892,7 +1892,7 @@ def read_numpy(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        column_names: A mapping from the intended column name -> provided column name.
+        column_names: A mapping from the default column name -> provided column name.
             Defaults to 'data'.
     Returns:
         Dataset holding Tensor records read from the specified paths.
