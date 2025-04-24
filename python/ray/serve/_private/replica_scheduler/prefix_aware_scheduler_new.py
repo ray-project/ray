@@ -228,7 +228,7 @@ class MultiplexScheduleMixin:
         return candidate_replica_ids
 
 
-class PowerOfTwoChoicesReplicaScheduler(
+class PrefixAwareReplicaScheduler(
     MultiplexScheduleMixin, LocalityScheduleMixin, ReplicaScheduler
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
