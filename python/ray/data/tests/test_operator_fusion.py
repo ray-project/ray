@@ -17,7 +17,8 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows, AbstractMap,
 )
-from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.optimizers import PhysicalOptimizer, \
+    get_execution_plan
 from ray.data._internal.logical.rules import FuseOperators
 from ray.data._internal.planner.planner import Planner
 from ray.data.context import DataContext
@@ -269,22 +270,61 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_fusion_with_map_batches(
-    ray_start_regular_shared_2_cpus,
+def test_read_with_map_batches_no_fusion(
+    ray_start_regular_shared_2_cpus, temp_dir
 ):
-    ctx = DataContext.get_current()
+    """Since MapBatches does NOT specify `batch_size`, successfully fused with
+    ReadParquet"""
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    planner = Planner()
+    ds = ray.data.read_parquet(temp_dir)
 
-    read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
+    mapped_ds = (
+        ds.map_batches(lambda x: x,).map_batches(lambda x: x)
+    )
 
-    logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+
+    physical_op = physical_plan.dag
+
+    # All Map ops are fused (however Read is not)
+    assert isinstance(physical_op, MapOperator)
+    assert (
+        "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)" ==
+        physical_op.name
+    )
+
+    # Target block size is set to max.
+    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
+
+    assert (
+        physical_op.actual_target_max_block_size
+        == DataContext.get_current().target_max_block_size
+    )
+
+
+def test_read_with_map_batches_fused_successfully(
+    ray_start_regular_shared_2_cpus, temp_dir
+):
+    """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
+
+    # Test that fusion of map operators merges their block sizes in the expected way
+    # (taking the max).
+    ds = ray.data.read_parquet(temp_dir)
+
+    mapped_ds = (
+        ds.map_batches(
+            lambda x: x,
+            batch_size=2,
+        )
+        .map_batches(
+            lambda x: x,
+            batch_size=5,
+        )
+    )
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
 
