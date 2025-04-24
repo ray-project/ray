@@ -72,6 +72,15 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.concat_and_sort
 
 
+def is_nested_arrow_type(items: Any) -> bool:
+    if (
+        isinstance(items[0].type, pyarrow.lib.DictionaryType)
+        or isinstance(items[0].type, pyarrow.lib.StructType)
+        or isinstance(items[0].type, pyarrow.lib.ListType)
+    ):
+        return True
+
+
 class ArrowRow(TableRow):
     """
     Row of a tabular Dataset backed by a Arrow Table block.
@@ -101,9 +110,7 @@ class ArrowRow(TableRow):
             try:
                 # item.as_py() sometime convert special scalar types to
                 # native python types, which is lossy.
-                if len(items) > 0 and isinstance(
-                    items[0].type, pyarrow.lib.DictionaryType
-                ):
+                if len(items) > 0 and is_nested_arrow_type(items):
                     return items
                 # Try to interpret this as a pyarrow.Scalar value.
                 return tuple([item.as_py() for item in items])

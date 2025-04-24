@@ -13,9 +13,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Dataset
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -784,33 +786,28 @@ def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="TODO(zhaoch23): pyarrow 13.0.0+ is not compatible with Python 3.12",
+    get_pyarrow_version() < parse_version("13.0.0"),
+    reason="pyarrow < 13.0.0 does not support splitting columns while perserving the nested schema",
 )
 def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     """Test filtering with dictionary column."""
-    ray.shutdown()
-
-    # NOTE: `pa.infer_type` doesn’t support complex PyArrow types (e.g., dictionaries and nested structs) until v13.0.0.
-    # The tests therefore run with PyArrow==13.0.0.
-    ray.init(
-        runtime_env={
-            "pip": [
-                "pyarrow==13.0.0",
-                "numpy<=1.26.4",  # PyArrow 13.0.0 is not compatible with NumPy 2+
-            ]
-        }
-    )
 
     file_path = tmp_path / "dictionary_test.parquet"
 
     # Create the Parquet file with a dictionary column
     dict_type = pa.dictionary(index_type=pa.int32(), value_type=pa.string())
-    dict_array = pa.array(["apple", "banana", "apple"], type=dict_type)
     string_array = pa.array(["x", "y", "z"], type=pa.string())
+    dict_array = pa.array(["apple", "banana", "apple"], type=dict_type)
+    struct_array = pa.array(
+        [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}],
+        type=pa.struct([("a", pa.int32()), ("b", pa.int32())]),
+    )
+    list_type = pa.list_(pa.int32())
+    list_array = pa.array([[1, 2], [3, 4], None], type=list_type)
 
     table = pa.Table.from_arrays(
-        [dict_array, string_array], names=["dict_col", "str_col"]
+        [dict_array, string_array, struct_array, list_array],
+        names=["dict_col", "str_col", "struct_col", "list_col"],
     )
     pq.write_table(table, file_path)
 
@@ -820,15 +817,9 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     # Get schema and validate column types
     original_schema = ds.schema().types
 
-    @ray.remote
-    def _test(ds):
-        # Apply a trivial filter to test schema stability
-        ds_filtered = ds.filter(lambda row: True)
-        return ds_filtered.schema().types
+    ds_filtered = ds.filter(lambda row: True)
+    filtered_schema = ds_filtered.schema().types
 
-    # Ensure schema remains unchanged
-    filtered_schema = ray.get(_test.remote(ds))
-    assert filtered_schema
     assert (
         original_schema == filtered_schema
     ), f"Schema changed after filtering, original_schema: \
