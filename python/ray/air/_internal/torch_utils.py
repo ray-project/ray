@@ -369,18 +369,7 @@ def arrow_batch_to_tensors(
     """
     from ray.data._internal.arrow_ops import transform_pyarrow
 
-    # Handle both single dtype and dict of dtypes
-    has_object_dtype = False
-    if dtypes is not None:
-        if isinstance(dtypes, dict):
-            has_object_dtype = any(dtype is object for dtype in dtypes.values())
-        else:
-            has_object_dtype = dtypes is object
-
-    combine_chunks: bool = (
-        dtypes is None or not has_object_dtype or device is None or device == "cpu"
-    )
-
+    combine_chunks: bool = device is None or device == "cpu"
     if combine_chunks:
         numpy_batch = transform_pyarrow.table_to_numpy_dict_combined(
             batch,

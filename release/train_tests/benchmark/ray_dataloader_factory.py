@@ -1,7 +1,6 @@
 from abc import abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
-import torch
 import ray.train
 from ray.data import Dataset
 
@@ -32,42 +31,22 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         pass
 
     @abstractmethod
-    def collate_fn(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get the collate function for the dataloader.
+    def get_train_dataloader(self):
+        """Get the training dataloader.
 
         Returns:
-            A function that takes a batch and returns a tuple of tensors.
+            Iterator of training batches
         """
         pass
 
-    def get_train_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
-            "train"
-        )
-        dataloader_config = self.get_dataloader_config()
-        return iter(
-            ds_iterator.iter_torch_batches(
-                batch_size=dataloader_config.train_batch_size,
-                local_shuffle_buffer_size=(
-                    dataloader_config.local_buffer_shuffle_size
-                    if dataloader_config.local_buffer_shuffle_size > 0
-                    else None
-                ),
-                collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
-            )
-        )
-
+    @abstractmethod
     def get_val_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
-        dataloader_config = self.get_dataloader_config()
-        return iter(
-            ds_iterator.iter_torch_batches(
-                batch_size=dataloader_config.validation_batch_size,
-                collate_fn=self.collate_fn,
-                prefetch_batches=dataloader_config.prefetch_batches,
-            )
-        )
+        """Get the validation dataloader.
+
+        Returns:
+            Iterator of validation batches
+        """
+        pass
 
     def get_metrics(self) -> Dict[str, Any]:
         metrics = {}
