@@ -408,7 +408,9 @@ def _rayify_task(
 
 
 @ray.remote
-def dask_task_wrapper(task, repack, key, ray_pretask_cbs, ray_posttask_cbs, *arg_object_refs):
+def dask_task_wrapper(
+    task, repack, key, ray_pretask_cbs, ray_posttask_cbs, *arg_object_refs
+):
     """
     A Ray remote function acting as a Dask task wrapper. This function will
     repackage the given `arg_object_refs` into its original `deps` using
@@ -431,9 +433,10 @@ def dask_task_wrapper(task, repack, key, ray_pretask_cbs, ray_posttask_cbs, *arg
     """
     if ray_pretask_cbs is not None:
         pre_states = [
-            cb(key, arg_object_refs) if cb is not None else None for cb in ray_pretask_cbs
+            cb(key, arg_object_refs) if cb is not None else None
+            for cb in ray_pretask_cbs
         ]
-    repacked_deps, = repack(arg_object_refs)
+    (repacked_deps,) = repack(arg_object_refs)
     result = task(repacked_deps)
 
     if ray_posttask_cbs is not None:
