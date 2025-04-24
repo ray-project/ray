@@ -494,17 +494,17 @@ class FuseOperators(Rule):
 
         # Avoid fusing operators in cases when doing so would lead to a dramatic parallelism
         # reduction for the upstream operator
-        threshold = context.map_operator_fusion_parallelism_reduction_threshold
-        upstream_parallelism_reduction_ratio = (
-            cls._derive_upstream_parallelism_reduction_ratio(upstream_op, downstream_op)
+        factor_threshold = context.map_operator_fusion_parallelism_reduction_factor_threshold
+        upstream_parallelism_reduction_factor = (
+            cls._derive_upstream_parallelism_reduction_factor(upstream_op, downstream_op)
         )
 
-        if upstream_parallelism_reduction_ratio < threshold:
+        if upstream_parallelism_reduction_factor < factor_threshold:
             logger.warning(
                 f"Fusion of '{upstream_op}' (upstream) with '{downstream_op}' "
-                f"(downstream) will likely lead to parallelism reduction ratio of "
-                f"{round(upstream_parallelism_reduction_ratio, 2)} that's below the "
-                f"threshold of {threshold}. Skipping fusion"
+                f"(downstream) will likely lead to parallelism reduction of "
+                f"{round(upstream_parallelism_reduction_factor, 2)} that's below the "
+                f"threshold of {factor_threshold}. Aborting operator fusion."
             )
 
             return False
@@ -512,7 +512,7 @@ class FuseOperators(Rule):
         return True
 
     @classmethod
-    def _derive_upstream_parallelism_reduction_ratio(
+    def _derive_upstream_parallelism_reduction_factor(
         cls,
         upstream_op: AbstractMap,
         downstream_op: AbstractMap,

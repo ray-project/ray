@@ -418,7 +418,7 @@ class DataContext:
     #       parallelism level. For ex, default threshold of 0.25 entails
     #       that parallelism reduction of more than 4x will be considered high
     #       enough to prevent operator fusion from occurring.
-    map_operator_fusion_parallelism_reduction_threshold: float = 0.25
+    map_operator_fusion_parallelism_reduction_factor_threshold: float = 0.25
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
