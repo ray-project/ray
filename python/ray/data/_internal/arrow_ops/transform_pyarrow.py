@@ -603,11 +603,11 @@ def table_to_numpy_dict_combined(
         col = table[col_name]
         if isinstance(col, pyarrow.ChunkedArray):
             combined_array = combine_chunked_array(col)
-            numpy_batch[col_name] = combined_array.to_numpy(
-                zero_copy_only=zero_copy_only
+            numpy_batch[col_name] = to_numpy(
+                combined_array, zero_copy_only=zero_copy_only
             )
         else:
-            numpy_batch[col_name] = col.to_numpy(zero_copy_only=zero_copy_only)
+            numpy_batch[col_name] = to_numpy(col, zero_copy_only=zero_copy_only)
     return numpy_batch
 
 
@@ -633,10 +633,10 @@ def table_to_numpy_dict_chunked(
         col = table[col_name]
         if isinstance(col, pyarrow.ChunkedArray):
             numpy_batch[col_name] = [
-                chunk.to_numpy(zero_copy_only=zero_copy_only) for chunk in col.chunks
+                to_numpy(chunk, zero_copy_only=zero_copy_only) for chunk in col.chunks
             ]
         else:
-            numpy_batch[col_name] = col.to_numpy(zero_copy_only=zero_copy_only)
+            numpy_batch[col_name] = to_numpy(col, zero_copy_only=zero_copy_only)
     return numpy_batch
 
 
