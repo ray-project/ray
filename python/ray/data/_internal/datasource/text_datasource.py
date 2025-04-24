@@ -20,7 +20,7 @@ class TextDatasource(FileBasedDatasource):
         *,
         drop_empty_lines: bool = False,
         encoding: str = "utf-8",
-        **file_based_datasource_kwargs
+        **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
 

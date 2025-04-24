@@ -149,7 +149,7 @@ def from_items(
     *,
     parallelism: int = -1,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "item"
+    column_name: str = "item",
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
 
@@ -235,7 +235,7 @@ def range(
     parallelism: int = -1,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "id"
+    column_name: str = "id",
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
@@ -289,7 +289,7 @@ def range_tensor(
     parallelism: int = -1,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_name: str = "data"
+    column_name: str = "data",
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` tensors of the provided shape from range
     [0...n].
@@ -514,7 +514,7 @@ def read_audio(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names
+        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -604,7 +604,7 @@ def read_videos(
         include_paths=include_paths,
         include_timestamps=include_timestamps,
         file_extensions=file_extensions,
-        column_names=column_names
+        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -987,7 +987,7 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None
+    column_names: Optional[Dict[str, str]] = None,
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from image files.
 
@@ -1114,7 +1114,7 @@ def read_images(
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         file_extensions=file_extensions,
-        column_names=column_names
+        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -1611,7 +1611,7 @@ def read_text(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None
+    column_names: Optional[Dict[str, str]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
@@ -1698,7 +1698,7 @@ def read_text(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names
+        column_names=column_names,
     )
     return read_datasource(
         datasource,
@@ -1834,8 +1834,7 @@ def read_numpy(
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    column_names: Optional[Dict[str, str]] = None
-    **numpy_load_args,
+    column_names: Optional[Dict[str, str]] = None**numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
 
@@ -1909,7 +1908,7 @@ def read_numpy(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
-        column_names=column_names
+        column_names=column_names,
     )
     return read_datasource(
         datasource,
