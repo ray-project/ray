@@ -59,12 +59,18 @@ def main():
         )
 
         factory = ImageClassificationJpegFactory(benchmark_config)
+    elif benchmark_config.task == "localfs_image_classification_jpeg":
+        from image_classification.localfs_image_classification_jpeg.factory import (
+            LocalFSImageClassificationFactory,
+        )
+
+        factory = LocalFSImageClassificationFactory(benchmark_config)
     elif benchmark_config.task == "recsys":
         from recsys.recsys_factory import RecsysFactory
 
         factory = RecsysFactory(benchmark_config)
     else:
-        raise ValueError
+        raise ValueError(f"Unknown task: {benchmark_config.task}")
 
     start_time = time.perf_counter()
 

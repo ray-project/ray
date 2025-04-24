@@ -34,7 +34,7 @@ def shutdown_ray_and_serve():
 def use_mock_vllm_engine(monkeypatch):
     monkeypatch.setenv(
         RAYLLM_VLLM_ENGINE_CLS_ENV,
-        "ray.llm.tests.serve.deployments.mock_vllm_engine.MockVLLMEngine",
+        "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine",
     )
     yield
 

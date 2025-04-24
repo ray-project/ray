@@ -162,6 +162,9 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+ci/fossa/
+ci/docker/fossa.Dockerfile
+ci/docker/fossa.wanda.yaml
 @ tools
 ;
 
@@ -224,5 +227,6 @@ setup_hooks.sh
 .isort.cfg
 .prettierrc.toml
 build.sh
+.fossa.yml
 # pass
 ;
