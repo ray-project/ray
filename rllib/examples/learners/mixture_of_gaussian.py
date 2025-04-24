@@ -16,22 +16,22 @@ Paper: https://arxiv.org/pdf/2204.10256
 Key difference: While the paper uses a cross-entropy loss, this implementation focuses on
 a form of the negative log-likelihood loss.
 
-The parameter --num_gaussians allows the user to specify the number of gaussian components.
+The parameter --num-gaussians allows the user to specify the number of gaussian components.
 This controls the flexibility of the value function representation. A value between 3-5 generally performs well.
-The balance is computation effeciency and maintaining expressivity.
+The balance is computation efficiency and maintaining expressivity.
 
 This example shows:
-    - how to subclass an existing (torch) Learner and override its `compute_loss_for_module()` method
-    - how you can add your own loss to a custom (or non-custom) rl_module using compute_loss_for_module
-    - how to add add custom pipeline components to a custom config class using build_learner_connector
-    - how to plug in a custom Learner, rl_module, its loss, and use a custom config to train with
+    - how to subclass an existing (torch) Learner and override its `compute_loss_for_module()` method.
+    - how you can add your own loss to a custom (or non-custom) RLModule using compute_loss_for_module.
+    - how to add custom pipeline components to a custom config class using build_learner_connector.
+    - how to plug in a custom Learner, RLModule, its loss, and use a custom config to train with.
 
 See the :py:class:`~ray.rllib.examples.learners.classes.mixture_of_gaussian_learner.PPOTorchLearnerWithMOGLoss`  # noqa
 class for details on how to override the main (PPO) loss function.
 
 How to run this script
 ----------------------
-`python mixture_of_gaussian.py --enable-new-api-stack --num_gaussians=3 --lr=0.001`
+`python mixture_of_gaussian.py --enable-new-api-stack --num-gaussians=3 --lr=0.001`
 
 
 Results to expect
@@ -41,7 +41,7 @@ the same hyperparameters. Some hiccups have been the alphas going too small whic
 This has been fixed by using the log_softmax(alphas) instead of using the softmax on the alphas once out of
 the module.
 
-With --num_guassians=2 and --lr=0.0001
+With --num-gaussians=2 and --lr=0.0001
 (trying to reach 250.0 return on CartPole in 100k env steps):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
@@ -58,7 +58,7 @@ With --num_guassians=2 and --lr=0.0001
 
 
 
-With --num_guassians=2 and --lr=0.0003
+With --num-gaussians=2 and --lr=0.0003
 (trying to reach 500.0 return on HalfCheetah in 2M env steps):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
@@ -73,12 +73,19 @@ With --num_guassians=2 and --lr=0.0003
 |          ------- |                1272000 |              500.2  |
 +------------------+------------------------+---------------------+
 """
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.examples.learners.classes.mixture_of_gaussian_config import (
     PPOConfigWithMOG,
+)
+from ray.rllib.utils.metrics import (
+    EVALUATION_RESULTS,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 
 torch, _ = try_import_torch()
@@ -90,7 +97,7 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
-    "--num_gaussians",
+    "--num-gaussians",
     type=int,
     default=3,
     help="Number of gaussians to represent the value function",
@@ -111,31 +118,21 @@ if __name__ == "__main__":
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (
-        PPOConfigWithMOG(num_mog_components=args.num_gaussians)
-        .environment("HalfCheetah-v5")
-        .training()
+        PPOConfigWithMOG()
+        .environment(
+            env="HalfCheetah-v5",
+        )
+        .training(
+            lr=args.lr,
+            gamma=0.995,
+            lambda_=0.995,
+            num_gaussians=args.num_gaussians,
+        )
     )
 
-algo = base_config.build()
-total_timesteps = 0
-default_reward = 500.0
-default_timesteps = 10_000_000
-for iteration in range(1000):
-    result = algo.train()
+    stop = {
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
+        TRAINING_ITERATION: 1000,
+    }
 
-    episode_return_mean = result["env_runners"]["episode_return_mean"]
-    total_timesteps = result["env_runners"]["num_env_steps_sampled_lifetime"]
-
-    print(
-        f"Iteration {iteration}: Episode Return Mean: {episode_return_mean}, Total Timesteps: {total_timesteps}"
-    )
-    if episode_return_mean >= default_reward:
-        print(
-            f"Stopping: Reached target reward of {default_reward} at iteration {iteration}"
-        )
-        break
-    if total_timesteps >= default_timesteps:
-        print(
-            f"Stopping: Reached maximum timesteps of {default_timesteps} at iteration {iteration}"
-        )
-        break
+    run_rllib_example_script_experiment(base_config=base_config, args=args, stop=stop)

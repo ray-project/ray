@@ -1,18 +1,28 @@
-import torch
-import torch.nn as nn
 import gymnasium as gym
 from typing import Any, Dict, Optional
+
 from ray.rllib.core.columns import Columns
-from ray.rllib.utils.annotations import override
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+from ray.rllib.examples.learners.classes.mixture_of_gaussian_learner import (
+    MOG_COMPONENTS,
+    MOG_COMPONENTS_ALPHA,
+    MOG_COMPONENTS_MEANS,
+    MOG_COMPONENTS_SIGMAS,
+    NEXT_MOG_COMPONENTS,
+)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
     """
-    Custom rl_module that demonstrates setting up, defining the necessary _forward methods,
-    and overriding the ValueFunctionAPI to compute values using mixture of gaussian components.
+    Custom `RLModule` that demonstrates setting up, defining the necessary _forward methods,
+    and overriding the `ValueFunctionAPI` to compute values using Mixture of Gaussian (MoG)
+    components.
 
     This also uses a custom_config from the module_to_load_spec to get the fcnet_hiddens
     as well as custom arg num_mog_components
@@ -34,16 +44,12 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
             learner_only=learner_only,
             model_config=model_config,
         )
-        # Add mixture of gaussian components to the Columns class
-        Columns.NEXT_MOG_COMPONENTS = "next_mog_components"
-        Columns.MOG_COMPONENTS = "mog_components"
-        Columns.VF_OUT = "vf_out"
 
     def setup(self):
         input_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["fcnet_hiddens"][0]
 
-        # Set failsafe for action space dim
+        # Set failsafe for action space dim.
         if isinstance(self.action_space, gym.spaces.Box):
             output_dim = self.action_space.shape[0] * 2
         elif isinstance(self.action_space, gym.spaces.Discrete):
@@ -53,9 +59,8 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
                 f"Unsupported action space type: {type(self.action_space)}"
             )
 
-        self.num_gaussians = self.model_config.get(
-            "num_mog_components", 1
-        )  # Create a base scalar as a value (normal critic)
+        # Default to a single Gaussian (normal critic).
+        self.num_gaussians = self.model_config.get("num_mog_components", 1)
 
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -71,6 +76,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
             nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(),
+            # Note, we need `num_gaussian` means and log-stds plus Dirac weigths.
             nn.Linear(hidden_dim, self.num_gaussians * 3),
         )
 
@@ -86,7 +92,7 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None):
-        obs = batch["obs"]
+        obs = batch[Columns.OBS]
         mog_output = self._compute_mog_components(obs)
         # The value of the current state is simply the means * softmax(alphas)
         return torch.sum(
@@ -123,24 +129,22 @@ class MOGTorchRLModule(TorchRLModule, ValueFunctionAPI):
         # log_softmax of the current alphas.
         alphas = mog_output[:, self.num_gaussians * 2 :]
         return {
-            "means": means,
-            "sigmas": sigmas,
-            "alphas": alphas,
+            MOG_COMPONENTS_MEANS: means,
+            MOG_COMPONENTS_SIGMAS: sigmas,
+            MOG_COMPONENTS_ALPHA: alphas,
         }
 
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         obs = batch[Columns.OBS]
-        if "new_obs" not in batch:
-            next_obs = obs
-        else:
-            next_obs = batch[Columns.NEXT_OBS]
+        assert Columns.NEXT_OBS in batch, f"No {Columns.NEXT_OBS} in batch."
+        next_obs = batch[Columns.NEXT_OBS]
         action_logits = self.policy(obs)
         value_function_out = self.compute_values(batch)
 
         return {
             Columns.ACTION_DIST_INPUTS: action_logits,
-            Columns.VF_OUT: value_function_out,
-            Columns.MOG_COMPONENTS: self._compute_mog_components(obs),
-            Columns.NEXT_MOG_COMPONENTS: self._compute_mog_components(next_obs),
+            Columns.VF_PREDS: value_function_out,
+            MOG_COMPONENTS: self._compute_mog_components(obs),
+            NEXT_MOG_COMPONENTS: self._compute_mog_components(next_obs),
         }
