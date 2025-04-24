@@ -517,6 +517,15 @@ class FuseOperators(Rule):
         upstream_op: AbstractMap,
         downstream_op: AbstractMap,
     ) -> float:
+        """This method derives potential parallelism reduction factor
+        based on `min_rows_per_bundled_input` setting of upstream and downstream
+        operators.
+
+        It returns value in the range [0, 1] that should be interpreted
+        as multiplication factor for estimated parallelism of the upstream
+        operator by potentially fusing the 2 operators.
+        """
+
         us_bundle_min_rows_req = upstream_op._min_rows_per_bundled_input
         ds_bundle_min_rows_req = downstream_op._min_rows_per_bundled_input
 
