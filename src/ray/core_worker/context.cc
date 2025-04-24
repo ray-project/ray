@@ -450,7 +450,7 @@ ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
     // return values.
     auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
     if (put_index > max_generator_returns) {
-      RAY_LOG(FATAL).WithField("task_id", current_task_id)
+      RAY_LOG(FATAL).WithField(current_task_id)
           << "The generator returns " << current_put_index
           << " items, which exceed the maximum number of return values allowed, "
           << max_generator_returns;
