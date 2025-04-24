@@ -179,7 +179,9 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
-                and self._can_fuse_map_ops(up_logical_op, down_logical_op, up_op.data_context)
+                and self._can_fuse_map_ops(
+                    up_logical_op, down_logical_op, up_op.data_context
+                )
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
@@ -309,8 +311,7 @@ class FuseOperators(Rule):
 
         # Derive min num rows per input bundle
         min_rows_per_bundled_input = self._derive_bundle_min_num_rows(
-            down_logical_op,
-            up_logical_op
+            down_logical_op, up_logical_op
         )
 
         target_max_block_size = self._get_merged_target_max_block_size(
@@ -488,10 +489,7 @@ class FuseOperators(Rule):
 
         # Do not fuse read op with downstream map op in case when downstream has
         # `min_rows_per_input_bundle` specified (to avoid reducing reading parallelism)
-        if (
-            upstream_op.is_read_op()
-            and ds_bundle_min_rows_req is not None
-        ):
+        if upstream_op.is_read_op() and ds_bundle_min_rows_req is not None:
             return False
 
         # Avoid fusing operators in cases when doing so would lead to a dramatic parallelism

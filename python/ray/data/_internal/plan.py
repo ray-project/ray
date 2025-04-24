@@ -259,7 +259,7 @@ class ExecutionPlan:
                         chars_left_for_col_name = max(
                             SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
                             MIN_FIELD_LENGTH,
-                            )
+                        )
                         col_str = (
                             f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
                         )
