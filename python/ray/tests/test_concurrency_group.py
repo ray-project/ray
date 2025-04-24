@@ -197,8 +197,9 @@ class Actor:
 
 class TestThreadingLocalData:
     """
-    This test verifies that synchronous tasks can access thread local data
-    that was set by previous synchronous tasks.
+    This test verifies that synchronous tasks can access thread-local data that
+    was set by previous synchronous tasks when the concurrency group has only
+    one thread.
     """
 
     def test_tasks_on_default_executor(self, ray_start_regular_shared):

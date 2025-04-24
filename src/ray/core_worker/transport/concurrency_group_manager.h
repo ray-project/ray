@@ -55,7 +55,9 @@ class ConcurrencyGroupManager final {
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
                                             const ray::FunctionDescriptor &fd);
 
-  /// Initialize the executor for specific language runtime.
+  /// Initialize the executor for a specific language runtime. This should be called
+  /// only when the executor has one thread, which ensures that the initializer and
+  /// releaser are called in the same thread.
   ///
   /// \param executor The executor to be initialized.
 

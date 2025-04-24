@@ -36,7 +36,9 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
     auto executor = std::make_shared<ExecutorType>(max_concurrency);
-    executor_releasers_.push_back(InitializeExecutor(executor));
+    if (max_concurrency == 1) {
+      executor_releasers_.push_back(InitializeExecutor(executor));
+    }
     auto &fds = group.function_descriptors;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
@@ -52,7 +54,9 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
                                         !concurrency_groups.empty())) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
-    executor_releasers_.push_back(InitializeExecutor(default_executor_));
+    if (max_concurrency_for_default_concurrency_group == 1) {
+      executor_releasers_.push_back(InitializeExecutor(default_executor_));
+    }
   }
 }
 
