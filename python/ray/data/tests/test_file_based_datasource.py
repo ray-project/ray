@@ -106,13 +106,13 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
             elif count == 2:
                 raise RuntimeError(custom_retried_error)
             else:
-                yield super()._read_stream(f, path)
+                yield from super()._read_stream(f, path)
 
     ray.data.DataContext.get_current().retried_io_errors.append(custom_retried_error)
 
     datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
-    assert len(ds.take()) == 20
+    assert len(ds.take()) == 1
 
 
 @pytest.mark.parametrize(
@@ -140,7 +140,7 @@ def test_s3_filesystem_serialization(fs, wrap_with_retries):
     orig_fs = fs
 
     if wrap_with_retries:
-        fs = RetryingPyFileSystem.wrap(retryable_errors=["DUMMY ERROR"])
+        fs = RetryingPyFileSystem.wrap(fs, retryable_errors=["DUMMY ERROR"])
 
     wrapped_fs = _wrap_s3_serialization_workaround(fs)
     unpickled_fs = ray_pickle.loads(ray_pickle.dumps(wrapped_fs))
