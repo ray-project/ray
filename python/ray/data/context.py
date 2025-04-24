@@ -403,6 +403,17 @@ class DataContext:
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
 
+    # Threshold for parallelism reduction ratio between map operators being fused,
+    # below which map operators will stop being fused.
+    #
+    # This entails that for 2 adjacent map operators A and B such that:
+    #
+    #   A's (estimated) parallelism / B's (estimated) parallelism < threshold
+    #
+    # Operator fusion won't happen (as parallelism of one of them will be reduced
+    # by more than 1 / threshold)
+    map_operator_fusion_parallelism_reduction_threshold: float = 0.25
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
