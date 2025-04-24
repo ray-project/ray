@@ -40,5 +40,9 @@ class NumpyDatasource(FileBasedDatasource):
         buf.write(data)
         buf.seek(0)
         yield BlockAccessor.batch_to_block(
-            {self._column_names[self._DATA]: np.load(buf, allow_pickle=True, **self.numpy_load_args)}
+            {
+                self._column_names[self._DATA]: np.load(
+                    buf, allow_pickle=True, **self.numpy_load_args
+                )
+            }
         )

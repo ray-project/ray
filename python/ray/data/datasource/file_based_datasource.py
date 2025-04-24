@@ -207,7 +207,11 @@ class FileBasedDatasource(Datasource):
         if self._include_paths:
             required_column_names.append("path")
         for name in required_column_names:
-            if column_names is not None and name in column_names and len(column_names[name]) > 0:
+            if (
+                column_names is not None
+                and name in column_names
+                and len(column_names[name]) > 0
+            ):
                 self._column_names[name] = column_names[name]
             else:
                 self._column_names[name] = name
@@ -571,7 +575,7 @@ def _resolve_kwargs(
 
 
 def _validate_shuffle_arg(
-    shuffle: Union[Literal["files"], FileShuffleConfig, None]
+    shuffle: Union[Literal["files"], FileShuffleConfig, None],
 ) -> None:
     if not (
         shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)

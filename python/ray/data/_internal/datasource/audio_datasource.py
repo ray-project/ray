@@ -57,8 +57,10 @@ class AudioDatasource(FileBasedDatasource):
         amplitude = amplitude.transpose((1, 0))
 
         builder = DelegatingBlockBuilder()
-        builder.add({
-            self._column_names[self._AMPLITUDE]: amplitude,
-            self._column_names[self._SAMPLE_RATE]: sample_rate
-        })
+        builder.add(
+            {
+                self._column_names[self._AMPLITUDE]: amplitude,
+                self._column_names[self._SAMPLE_RATE]: sample_rate,
+            }
+        )
         yield builder.build()
