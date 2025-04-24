@@ -15,15 +15,32 @@ from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
-    MapRows,
+    MapRows, AbstractMap,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.rules import FuseOperators
 from ray.data._internal.planner.planner import Planner
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.mark.parametrize("upstream_min_rows", [None, 0, 2])
+@pytest.mark.parametrize("downstream_min_rows", [None, 0, 2])
+def test_derive_upstream_parallelism_reduction_factor(upstream_min_rows, downstream_min_rows):
+    us = AbstractMap(name="A", min_rows_per_bundled_input=upstream_min_rows)
+    ds = AbstractMap(name="B", min_rows_per_bundled_input=downstream_min_rows)
+
+    if not downstream_min_rows:
+        expected_factor = 1.0
+    else:
+        expected_factor = (upstream_min_rows or 0) / downstream_min_rows
+
+    factor = FuseOperators._derive_upstream_parallelism_reduction_factor(us, ds)
+
+    assert expected_factor == factor
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
@@ -252,7 +269,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
-def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
+def test_read_fusion_with_map_batches(
     ray_start_regular_shared_2_cpus,
 ):
     ctx = DataContext.get_current()
@@ -260,26 +277,32 @@ def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
+
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
     op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
-    op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
+
     logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
+
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches(<lambda>)"
-    # Ops are still fused.
-    assert (
-        physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
-        "MapBatches(<lambda>)->MapBatches(<lambda>)"
-    )
+    # All Map ops are fused (however Read is not)
     assert isinstance(physical_op, MapOperator)
+    assert (
+        "MapBatches(<lambda>)->MapBatches(<lambda>)" ==
+        physical_op.name
+    )
+
     # Target block size is set to max.
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    
     assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    
+    # Assert input is a Read
+    input_op = physical_op.input_dependencies[0]
+    assert "ReadParquet" == input_op.name
 
     assert (
         physical_op.actual_target_max_block_size
