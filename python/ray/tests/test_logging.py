@@ -7,7 +7,6 @@ import tempfile
 import time
 import logging
 from collections import Counter, defaultdict
-from copy import deepcopy
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Dict, List, Tuple
