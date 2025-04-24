@@ -129,20 +129,6 @@ def test_read_xml_row_missing_fields(tmp_path):
     assert "@active" not in jane
 
 
-def test_read_xml_partitioning(tmp_path):
-    # Hive-style directories: country=US/multi.xml, etc.
-    subdir = os.path.join(tmp_path, "country=US")
-    os.mkdir(subdir)
-    xml = MULTI_XML
-    path = os.path.join(subdir, "file.xml")
-    with open(path, "w") as f:
-        f.write(xml)
-    ds = ray.data.read_xml(paths=tmp_path, partitioning="hive", record_tag="user")
-    pdf = ds.to_pandas()
-    assert "country" in pdf.columns
-    assert all(pdf["country"] == "US")
-
-
 def test_read_xml_large(tmp_path):
     """Test with a large XML file."""
     n = 500

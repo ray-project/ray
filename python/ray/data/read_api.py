@@ -3601,7 +3601,7 @@ def read_xml(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """
-    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+    Create a :class:`~ray.data.Dataset` from a XML file(s).
 
     Examples:
         >>> import ray
