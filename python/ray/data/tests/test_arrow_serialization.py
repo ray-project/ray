@@ -595,3 +595,7 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
     assert len(s_view) > 0.8 * len(s_t)
+
+
+def test_s3_filesystem_serialization(ray_start_regular_shared):
+    pass
