@@ -105,7 +105,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  auto label_selector = resource_request.GetLabelSelector();
+  const auto &label_selector = resource_request.GetLabelSelector();
   if (!HasRequiredLabels(label_selector)) {
     return false;
   }
