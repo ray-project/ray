@@ -22,7 +22,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 
-from python.ray.dag.tests.experimental.actor_defs import Actor, Collector
+from ray.dag.tests.experimental.actor_defs import Actor, Collector
 
 
 logger = logging.getLogger(__name__)

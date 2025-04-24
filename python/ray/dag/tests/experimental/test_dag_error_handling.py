@@ -26,7 +26,7 @@ from ray._private.test_utils import (
 import signal
 import psutil
 
-from python.ray.dag.tests.experimental.actor_defs import Actor
+from ray.dag.tests.experimental.actor_defs import Actor
 
 logger = logging.getLogger(__name__)
 
