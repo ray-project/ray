@@ -5,7 +5,7 @@ wandb==0.17.0
 
 # ML training frameworks
 xgboost==2.1.0
-lightgbm==3.3.5
+lightgbm==4.6.0
 
 # Huggingface
 transformers==4.36.2

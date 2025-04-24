@@ -8,7 +8,6 @@ import numpy as np
 
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
@@ -357,7 +356,19 @@ class Stats:
         self._set_values(values)
 
         # Shift historic reduced valued by one in our hist-tuple.
-        self._hist.append(reduced)
+        # But don't ever put tensors into the history.
+        if not (
+            torch
+            and (
+                (
+                    self._reduce_method is None
+                    and len(reduced) > 0
+                    and torch.is_tensor(reduced[0])
+                )
+                or (self._reduce_method is not None and torch.is_tensor(reduced))
+            )
+        ):
+            self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
         # (from after the reduction). Also, set `self`'s values to empty.
@@ -368,7 +379,7 @@ class Stats:
         # a new Stats object.
         else:
             values = copy.deepcopy(self.values)
-        return Stats.similar_to(self, init_value=values)
+        return Stats.similar_to(self, init_value=self._numpy_if_necessary(values))
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         # Make sure `others` have same reduction settings.
@@ -564,19 +575,13 @@ class Stats:
 
         self._set_values(list(reversed(new_values)))
 
-    def set_to_numpy_values(self, values) -> None:
-        """Converts `self.values` from tensors to actual numpy values.
-
-        Args:
-            values: The (numpy) values to set `self.values` to.
-        """
-        numpy_values = convert_to_numpy(values)
-        if self._reduce_method is None:
-            assert isinstance(values, list) and len(self.values) >= len(values)
-            self.values = numpy_values
-        else:
-            assert len(self.values) > 0
-            self._set_values(force_list(numpy_values))
+    @staticmethod
+    def _numpy_if_necessary(values):
+        # Torch tensor handling. Convert to CPU/numpy first.
+        if torch and len(values) > 0 and torch.is_tensor(values[0]):
+            # Convert all tensors to numpy values.
+            values = [v.cpu().numpy() for v in values]
+        return values
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -729,14 +734,11 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
-        # Do non-EMA reduction (possibly using a window).
+        # Non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                assert all(torch.is_tensor(v) for v in values), values
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
+                # Only one item in the
                 if len(values[0].shape) == 0:
                     reduced = values[0]
                 else:
@@ -745,22 +747,6 @@ class Stats:
                     if self._reduce_method == "mean":
                         reduce_in = reduce_in.float()
                     reduced = reduce_meth(reduce_in)
-            elif tf and tf.is_tensor(values[0]):
-                # TODO (sven): Currently, tensor metrics only work with window=1.
-                #  We might want o enforce it more formally, b/c it's probably not a
-                #  good idea to have MetricsLogger or Stats tinker with the actual
-                #  computation graph that users are trying to build in their loss
-                #  functions.
-                assert len(values) == 1
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                    reduced = reduce_meth(values)
-
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)
