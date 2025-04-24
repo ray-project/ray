@@ -520,14 +520,17 @@ class FuseOperators(Rule):
         us_bundle_min_rows_req = upstream_op._min_rows_per_bundled_input
         ds_bundle_min_rows_req = downstream_op._min_rows_per_bundled_input
 
-        # If both requirements are None or 0, there's no reduction
-        if not us_bundle_min_rows_req and not ds_bundle_min_rows_req:
+        # If downstream operator's min-rows requirement is None or 0,
+        # there's no reduction
+        if not ds_bundle_min_rows_req:
             return 1.0
 
-        # In case upstream requirement is not specified (or is 0), while downstream
-        # is specifying non-zero one we conservatively assume that downstream's
-        # `min_rows_per_bundled_input` >> than the block size (hence leading to
-        # absolute reduction in parallelism)
+        # In case downstream's requirement is > 0, while upstream's is not specified
+        # (or is 0),we conservatively assume that downstream's
+        #
+        #   `min_rows_per_bundled_input` >> than the input block size
+        #
+        # Hence potentially leading to substantial reduction in parallelism
         elif not us_bundle_min_rows_req:
             return 0.0
 
