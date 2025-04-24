@@ -1,4 +1,5 @@
 import itertools
+import logging
 from typing import List, Optional, Tuple
 
 from ray.data._internal.compute import (
@@ -38,8 +39,13 @@ from ray.data.context import DataContext
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
+logger = logging.getLogger(__name__)
+
+
 class FuseOperators(Rule):
     """Fuses linear chains of compatible physical operators."""
+
+    _DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO = 3.0
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._op_map = plan.op_map.copy()
@@ -379,8 +385,12 @@ class FuseOperators(Rule):
         # Return the fused physical operator.
         return op
 
-    @staticmethod
-    def _derive_bundle_min_num_rows(down_logical_op, up_logical_op):
+    @classmethod
+    def _derive_bundle_min_num_rows(
+        cls,
+        down_logical_op: AbstractMap,
+        up_logical_op: AbstractMap,
+    ) -> int:
         ds_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
         us_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
 
@@ -392,6 +402,20 @@ class FuseOperators(Rule):
             f"not None (got {us_min_rows_per_bundled_input} and "
             f"{ds_min_rows_per_bundled_input})"
         )
+
+        # NOTE: If ratio of downstream to upstream min num rows requirement is exceeding
+        #       `_DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO` we log a warning
+        #       as this could potentially lead to substantial parallelism reduction due
+        #       to operator fusion
+        ratio_threshold = cls._DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO
+        min_num_rows_ratio = ds_min_rows_per_bundled_input / us_min_rows_per_bundled_input
+
+        if min_num_rows_ratio > ratio_threshold:
+            logger.warning(
+                "Ratio of `min_rows_per_bundled_input` of downstream to upstream map "
+                f"operator is {round(min_num_rows_ratio, 2)} > {ratio_threshold} entailing "
+                f"that operator fusion could potentially reduce parallelism level of the "
+                f"upstream '{up_logical_op}' operator")
 
         # Target min bundle size is selected as max of upstream and downstream ones
         # such that it could satisfy both of their requirements
