@@ -412,6 +412,12 @@ class DataContext:
     #
     # Operator fusion won't happen (as parallelism of one of them will be reduced
     # by more than 1 / threshold)
+    #
+    # NOTE: This value should be in the range of (0, 1.0] and interpreted
+    #       as a multiplication factor for evaluation of impact on an estimated
+    #       parallelism level. For ex, default threshold of 0.25 entails
+    #       that parallelism reduction of more than 4x will be considered high
+    #       enough to prevent operator fusion from occurring.
     map_operator_fusion_parallelism_reduction_threshold: float = 0.25
 
     def __post_init__(self):
