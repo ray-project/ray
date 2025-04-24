@@ -221,7 +221,7 @@ class DefaultArrowCollateFn(ArrowBatchCollateFn):
             arrow_batch_to_tensors,
         )
 
-        return arrow_batch_to_tensors(batch, dtypes=self.dtypes, device=self.device)
+        return arrow_batch_to_tensors(batch, dtypes=self.dtypes, device=None)
 
 
 @DeveloperAPI
@@ -254,9 +254,7 @@ class DefaultNumpyCollateFn(NumpyBatchCollateFn):
             numpy_batch_to_torch_tensors,
         )
 
-        return numpy_batch_to_torch_tensors(
-            batch, dtypes=self.dtypes, device=self.device
-        )
+        return numpy_batch_to_torch_tensors(batch, dtypes=self.dtypes, device=None)
 
 
 @DeveloperAPI
@@ -290,7 +288,7 @@ class DefaultPandasCollateFn(PandasBatchCollateFn):
         )
 
         return convert_pandas_batch_to_torch_tensor_batch(
-            batch, dtypes=self.dtypes, device=self.device
+            batch, dtypes=self.dtypes, device=None
         )
 
 
