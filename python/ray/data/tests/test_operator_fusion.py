@@ -15,10 +15,10 @@ from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
-    MapRows, AbstractMap,
+    MapRows,
+    AbstractMap,
 )
-from ray.data._internal.logical.optimizers import PhysicalOptimizer, \
-    get_execution_plan
+from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.logical.rules import FuseOperators
 from ray.data._internal.planner.planner import Planner
 from ray.data.context import DataContext
@@ -30,7 +30,9 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.mark.parametrize("upstream_min_rows", [None, 0, 2])
 @pytest.mark.parametrize("downstream_min_rows", [None, 0, 2])
-def test_derive_upstream_parallelism_reduction_factor(upstream_min_rows, downstream_min_rows):
+def test_derive_upstream_parallelism_reduction_factor(
+    upstream_min_rows, downstream_min_rows
+):
     us = AbstractMap(name="A", min_rows_per_bundled_input=upstream_min_rows)
     ds = AbstractMap(name="B", min_rows_per_bundled_input=downstream_min_rows)
 
@@ -280,9 +282,7 @@ def test_read_with_map_batches_fused_successfully(
     # (taking the max).
     ds = ray.data.read_parquet(temp_dir)
 
-    mapped_ds = (
-        ds.map_batches(lambda x: x).map_batches(lambda x: x)
-    )
+    mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
 
@@ -307,24 +307,16 @@ def test_read_with_map_batches_fused_successfully(
     )
 
 
-def test_read_with_map_batches_no_fusion(
-    ray_start_regular_shared_2_cpus, temp_dir
-):
+def test_read_with_map_batches_no_fusion(ray_start_regular_shared_2_cpus, temp_dir):
     """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     ds = ray.data.read_parquet(temp_dir)
 
-    mapped_ds = (
-        ds.map_batches(
-            lambda x: x,
-            batch_size=2,
-        )
-        .map_batches(
-            lambda x: x,
-            batch_size=5,
-        )
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
+        lambda x: x,
+        batch_size=5,
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -338,15 +330,15 @@ def test_read_with_map_batches_no_fusion(
     # All Map ops are fused (however Read is not)
     assert (
         "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
-        "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]" ==
-        actual_plan_str
+        "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        == actual_plan_str
     )
 
     # Target min-rows requirement is set to max of upstream and downstream
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
-    
+
     assert len(physical_op.input_dependencies) == 1
-    
+
     assert (
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
@@ -360,12 +352,11 @@ def test_read_with_map_batches_no_fusion(
         (None, 2, False),
         # No fusion (reduction factor exceeds threshold, default is 0.25)
         (1, 5, False),
-
         # Fusion
         (1, 2, True),
         # Fusion (downstream batch-size has no impact)
         (1, None, True),
-    ]
+    ],
 )
 def test_map_batches_with_batch_size_specified_fusion(
     ray_start_regular_shared_2_cpus,
@@ -378,15 +369,12 @@ def test_map_batches_with_batch_size_specified_fusion(
     # (taking the max).
     ds = ray.data.read_parquet(temp_dir)
 
-    mapped_ds = (
-        ds.map_batches(
-            lambda x: x,
-            batch_size=upstream_batch_size,
-        )
-        .map_batches(
-            lambda x: x,
-            batch_size=downstream_batch_size,
-        )
+    mapped_ds = ds.map_batches(
+        lambda x: x,
+        batch_size=upstream_batch_size,
+    ).map_batches(
+        lambda x: x,
+        batch_size=downstream_batch_size,
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -421,8 +409,8 @@ def test_map_batches_with_batch_size_specified_fusion(
     # Target min-rows requirement is set to max of upstream and downstream
     if fused:
         assert (
-            max(upstream_batch_size or 0, downstream_batch_size or 0) ==
-            root_op._block_ref_bundler._min_rows_per_bundle
+            max(upstream_batch_size or 0, downstream_batch_size or 0)
+            == root_op._block_ref_bundler._min_rows_per_bundle
         )
 
 

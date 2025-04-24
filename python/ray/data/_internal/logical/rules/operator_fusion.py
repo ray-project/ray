@@ -494,9 +494,13 @@ class FuseOperators(Rule):
 
         # Avoid fusing operators in cases when doing so would lead to a dramatic parallelism
         # reduction for the upstream operator
-        factor_threshold = context.map_operator_fusion_parallelism_reduction_factor_threshold
+        factor_threshold = (
+            context.map_operator_fusion_parallelism_reduction_factor_threshold
+        )
         upstream_parallelism_reduction_factor = (
-            cls._derive_upstream_parallelism_reduction_factor(upstream_op, downstream_op)
+            cls._derive_upstream_parallelism_reduction_factor(
+                upstream_op, downstream_op
+            )
         )
 
         if upstream_parallelism_reduction_factor < factor_threshold:
