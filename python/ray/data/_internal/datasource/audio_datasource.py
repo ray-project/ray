@@ -1,5 +1,5 @@
 import io
-from typing import TYPE_CHECKING, Iterator, List, Union, Dict
+from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
