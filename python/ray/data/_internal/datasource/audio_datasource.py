@@ -33,7 +33,7 @@ class AudioDatasource(FileBasedDatasource):
     ]
 
     _AMPLITUDE = "amplitude"
-    _SAMPLE_RATE = "sample-rate"
+    _SAMPLE_RATE = "sample_rate"
     _REQUIRED_COLUMN_NAMES = [_AMPLITUDE, _SAMPLE_RATE]
 
     def __init__(
