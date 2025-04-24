@@ -1,5 +1,5 @@
 import io
-from typing import TYPE_CHECKING, Iterator, List, Union
+from typing import TYPE_CHECKING, Iterator, List, Union, Dict
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
@@ -32,6 +32,10 @@ class AudioDatasource(FileBasedDatasource):
         "caf",
     ]
 
+    _AMPLITUDE = "amplitude"
+    _SAMPLE_RATE = "sample-rate"
+    _REQUIRED_COLUMN_NAMES = [_AMPLITUDE, _SAMPLE_RATE]
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -53,5 +57,8 @@ class AudioDatasource(FileBasedDatasource):
         amplitude = amplitude.transpose((1, 0))
 
         builder = DelegatingBlockBuilder()
-        builder.add({"amplitude": amplitude, "sample_rate": sample_rate})
+        builder.add({
+            self._column_names[self._AMPLITUDE]: amplitude,
+            self._column_names[self._SAMPLE_RATE]: sample_rate
+        })
         yield builder.build()

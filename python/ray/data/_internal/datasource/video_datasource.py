@@ -38,6 +38,11 @@ class VideoDatasource(FileBasedDatasource):
         "mxf",
     ]
 
+    _FRAME = "frame"
+    _FRAME_INDEX = "frame_index"
+    _FRAME_TIMESTAMP = "frame_timestamp"
+    _REQUIRED_COLUMN_NAMES = [_FRAME, _FRAME_INDEX, _FRAME_TIMESTAMP]
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -61,9 +66,9 @@ class VideoDatasource(FileBasedDatasource):
         reader = VideoReader(f, **self.decord_load_args)
 
         for frame_index, frame in enumerate(reader):
-            item = {"frame": frame.asnumpy(), "frame_index": frame_index}
+            item = {self._column_names[self._FRAME]: frame.asnumpy(), self._column_names[self._FRAME_INDEX]: frame_index}
             if self.include_timestamps is True:
-                item["frame_timestamp"] = reader.get_frame_timestamp(frame_index)
+                item[self._column_names[self._FRAME_TIMESTAMP]] = reader.get_frame_timestamp(frame_index)
 
             builder = DelegatingBlockBuilder()
             builder.add(item)
