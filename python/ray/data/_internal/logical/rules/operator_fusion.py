@@ -484,12 +484,12 @@ class FuseOperators(Rule):
         downstream_op: AbstractMap,
         context: "DataContext",
     ) -> bool:
-        ds_bundle_min_rows_req = downstream_op._min_rows_per_bundled_input
-        us_bundle_min_rows_req = upstream_op._min_rows_per_bundled_input
-
         # Do not fuse read op with downstream map op in case when downstream has
         # `min_rows_per_input_bundle` specified (to avoid reducing reading parallelism)
-        if upstream_op.is_read_op() and ds_bundle_min_rows_req is not None:
+        if (
+            upstream_op.is_read_op()
+            and downstream_op._min_rows_per_bundled_input is not None
+        ):
             return False
 
         # Avoid fusing operators in cases when doing so would lead to a dramatic parallelism
