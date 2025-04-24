@@ -353,6 +353,79 @@ def test_read_with_map_batches_no_fusion(
     )
 
 
+@pytest.mark.parametrize(
+    "upstream_batch_size,downstream_batch_size,fused",
+    [
+        # No fusion (no batch-size in upstream)
+        (None, 2, False),
+        # No fusion (reduction factor exceeds threshold, default is 0.25)
+        (1, 5, False),
+
+        # Fusion
+        (1, 2, True),
+        # Fusion (downstream batch-size has no impact)
+        (1, None, True),
+    ]
+)
+def test_map_batches_with_batch_size_specified_fusion(
+    ray_start_regular_shared_2_cpus,
+    temp_dir,
+    upstream_batch_size,
+    downstream_batch_size,
+    fused,
+):
+    # Test that fusion of map operators merges their block sizes in the expected way
+    # (taking the max).
+    ds = ray.data.read_parquet(temp_dir)
+
+    mapped_ds = (
+        ds.map_batches(
+            lambda x: x,
+            batch_size=upstream_batch_size,
+        )
+        .map_batches(
+            lambda x: x,
+            batch_size=downstream_batch_size,
+        )
+    )
+
+    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+
+    root_op = physical_plan.dag
+    assert isinstance(root_op, MapOperator)
+
+    actual_plan_str = root_op.dag_str
+
+    if fused:
+        expected_plan_str = (
+            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
+        )
+    elif upstream_batch_size is None:
+        # NOTE: This is a special case when Map ops couldn't be fused b/w each
+        #       other but upstream could actually merge into Read
+        expected_plan_str = (
+            "InputDataBuffer[Input] -> "
+            "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)]"
+        )
+    else:
+        expected_plan_str = (
+            "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)]"
+        )
+
+    assert expected_plan_str == actual_plan_str
+
+    # Target min-rows requirement is set to max of upstream and downstream
+    if fused:
+        assert (
+            max(upstream_batch_size or 0, downstream_batch_size or 0) ==
+            root_op._block_ref_bundler._min_rows_per_bundle
+        )
+
+
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ray_start_regular_shared_2_cpus,
 ):
