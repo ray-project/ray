@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/ownership_based_object_directory.h"
+#include "ray/object_manager/ownership_object_directory.h"
 
 #include <memory>
 #include <string>

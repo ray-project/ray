@@ -766,9 +766,6 @@ def test_create_topology_metadata():
     assert len(map_op2.input_dependencies) == 1
     assert map_op2.input_dependencies[0] == map_op1.id
 
-    # Cleanup
-    executor.shutdown()
-
 
 def test_create_topology_metadata_with_sub_stages():
     """Test that _dump_dag_structure correctly handles sub-stages."""
@@ -816,9 +813,6 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage1.id.endswith("_sub_0")
     assert sub_stage2.name == "SubStage2"
     assert sub_stage2.id.endswith("_sub_1")
-
-    # Cleanup
-    executor.shutdown()
 
 
 if __name__ == "__main__":
