@@ -522,6 +522,7 @@ deprecated==1.2.18 \
     --hash=sha256:422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d \
     --hash=sha256:bd5011788200372a32418f888e326a09ff80d0214bd961147cfed01b5c018eec
     # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
@@ -1760,6 +1761,7 @@ opentelemetry-exporter-otlp-proto-common==1.26.0 \
     --hash=sha256:bdbe50e2e22a1c71acaa0c8ba6efaadd58882e5a5978737a44a4c4b10d304c92 \
     --hash=sha256:ee4d8f8891a1b9c372abf8d109409e5b81947cf66423fd998e56880057afbc71
     # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-grpc==1.26.0 \
@@ -1771,7 +1773,9 @@ opentelemetry-exporter-otlp-proto-grpc==1.26.0 \
 opentelemetry-exporter-otlp-proto-http==1.26.0 \
     --hash=sha256:5801ebbcf7b527377883e6cbbdda35ee712dc55114fff1e93dfee210be56c908 \
     --hash=sha256:ee72a87c48ec977421b02f16c52ea8d884122470e0be573905237b540f4ee562
-    # via opentelemetry-exporter-otlp
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   opentelemetry-exporter-otlp
 opentelemetry-proto==1.26.0 \
     --hash=sha256:6c4d7b4d4d9c88543bcf8c28ae3f8f0448a753dc291c18c5390444c90b76a725 \
     --hash=sha256:c5c18796c0cab3751fc3b98dee53855835e90c0422924b484432ac852d93dc1e
