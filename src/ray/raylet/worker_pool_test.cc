@@ -927,6 +927,74 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
   }
 }
 
+// Tests the following cases: XXX.
+TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerRootDetachedActor) {
+  auto job_id1 = JOB_ID;
+  auto job_id2 = JOB_ID2;
+  ASSERT_NE(job_id1, job_id2);
+  JobID job_ids[] = {job_id1, job_id2};
+
+  // The driver of job 1 is already registered. Here we register the driver for job 2.
+  RegisterDriver(Language::PYTHON, job_id2);
+
+  // Register 2 workers for each job.
+  for (auto job_id : job_ids) {
+    for (int i = 0; i < 2; i++) {
+      int runtime_env_hash = 0;
+      // Make the first worker an actor worker.
+      if (i == 0) {
+        auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+        auto task_spec = ExampleTaskSpec(
+            /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
+        runtime_env_hash = task_spec.GetRuntimeEnvHash();
+      }
+      auto worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),
+                                               Language::PYTHON,
+                                               job_id,
+                                               rpc::WorkerType::WORKER,
+                                               runtime_env_hash);
+      worker_pool_->PushWorker(worker);
+    }
+  }
+  std::unordered_set<WorkerID> worker_ids;
+  for (int round = 0; round < 2; round++) {
+    std::vector<std::shared_ptr<WorkerInterface>> workers;
+
+    // Pop workers for actor.
+    for (auto job_id : job_ids) {
+      auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+      // Pop workers for actor creation tasks.
+      auto task_spec = ExampleTaskSpec(
+          /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id);
+      auto worker = worker_pool_->PopWorkerSync(task_spec);
+      ASSERT_TRUE(worker);
+      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+      workers.push_back(worker);
+    }
+
+    // Pop workers for normal tasks.
+    for (auto job_id : job_ids) {
+      auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
+      auto worker = worker_pool_->PopWorkerSync(task_spec);
+      ASSERT_TRUE(worker);
+      ASSERT_EQ(worker->GetAssignedJobId(), job_id);
+      workers.push_back(worker);
+    }
+
+    // Return all workers.
+    for (auto worker : workers) {
+      worker_pool_->PushWorker(worker);
+      if (round == 0) {
+        // For the first round, all workers are new.
+        ASSERT_TRUE(worker_ids.insert(worker->WorkerId()).second);
+      } else {
+        // For the second round, all workers are existing ones.
+        ASSERT_GT(worker_ids.count(worker->WorkerId()), 0);
+      }
+    }
+  }
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   auto task_spec = ExampleTaskSpec();
   std::vector<Process> started_processes;
