@@ -50,12 +50,6 @@ class AcceleratorContext:
         cls._communicator_cls = communicator
         cls._torch_mod = importlib.import_module(f"torch.{cls._torch_module_name}")
 
-    def get_torch_module_name(self) -> str:
-        """
-        Returns the name of the torch module that is used for this accelerator.
-        """
-        return self._torch_module_name
-
     def get_default_device(self) -> torch.device:
         """Gets the correct torch device list configured for this process.
 

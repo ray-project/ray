@@ -16,7 +16,10 @@ from ray.experimental.channel.communicator_handle import CommunicatorHandle
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.accelerator_context import (
+    AcceleratorContext,
+    register_accelerator_context,
+)
 
 if TYPE_CHECKING:
     import torch
@@ -678,6 +681,10 @@ def _do_check_has_communicator(self) -> bool:
     return AcceleratorContext.get()._communicator_cls is not None
 
 
+def _do_set_custom_communicator(self, name: str, communicator: Communicator):
+    register_accelerator_context(name, communicator)
+
+
 def _do_get_unique_communication_id(self) -> bool:
     return AcceleratorContext.get().generate_communicator_id()
 
@@ -736,6 +743,19 @@ def _init_communicator(
     is_cpu_communicator = custom_communicator and isinstance(
         custom_communicator, CPUCommunicator
     )
+
+    # set custom communicator on all actors
+    if AcceleratorContext._communicator_cls is not None:
+        ray.get(
+            [
+                actor.__ray_call__.remote(
+                    _do_set_custom_communicator,
+                    AcceleratorContext._torch_module_name,
+                    AcceleratorContext._communicator_cls,
+                )
+                for actor in actors
+            ]
+        )
 
     has_acclerators = ray.get(
         [actor.__ray_call__.remote(_do_check_has_communicator) for actor in actors]
