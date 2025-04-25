@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import concurrent.futures
 import time
@@ -259,3 +260,7 @@ def test_shutdown():
         assert shutdown_future.result() is None
 
         assert mock_router.shutdown.call_count == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
