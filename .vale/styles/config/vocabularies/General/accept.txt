@@ -45,7 +45,7 @@ GGUF
 GKE
 GPTQ
 GPU[s]
-http
+HTTP
 Kaggle
 KTO
 kubectl
