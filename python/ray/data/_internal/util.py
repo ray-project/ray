@@ -698,7 +698,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
 
 def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
 ) -> "BlockMetadata":
     from ray.data.block import BlockAccessor, BlockExecStats
 
