@@ -11,7 +11,7 @@ from ray.llm._internal.serve.configs.server_models import (
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
 )
-from ray.llm.tests.serve.deployments.mock_vllm_engine import (
+from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockMultiplexEngine,
 )
