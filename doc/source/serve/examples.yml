@@ -28,6 +28,14 @@ examples:
       - computer vision
     link: tutorials/object-detection
     related_technology: ml applications
+ - title: Serve DeepSeek
+    skill_level: beginner
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
+    link: tutorials/serve-deepseek
+    related_technology: llm applications
   - title: Serve an Inference Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     use_cases:
@@ -73,14 +81,6 @@ examples:
       - large language models
       - natural language processing
     link: tutorials/streaming
-    related_technology: ml applications
-  - title: Serve DeepSeek
-    skill_level: beginner
-    use_cases:
-      - generative ai
-      - large language models
-      - natural language processing
-    link: tutorials/serve-deepseek
     related_technology: ml applications
   - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate

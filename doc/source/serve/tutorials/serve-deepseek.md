@@ -16,14 +16,53 @@ To run this example, install the following:
 pip install "ray[llm]"
 ```
 
-## Code Structure
+## Deployment
 
-Save the following code to a file named `deepseek.py`:
+### Quick Deployment
+
+For quick deployment and testing, save the following code to a file named `deepseek.py`,
+and run `python3 deepseek.py`.
 
 ```{literalinclude} ../doc_code/tutorial_deepseek.py
 :language: python
 :start-after: __deepseek_setup_start__
 :end-before: __deepseek_setup_end__
+```
+
+### Production Deployment
+
+For production deployments, save the following to a YAML file named `deepseek.yaml`
+and run `serve run deepseek.yaml`.
+
+```yaml
+# config.yaml
+applications:
+- args:
+    llm_configs:
+      - model_loading_config:
+          model_id: "deepseek"
+          model_source: "deepseek-ai/DeepSeek-R1"
+        accelerator_type: "H100"
+        deployment_config:
+          autoscaling_config:
+            min_replicas: 1
+            max_replicas: 1
+        runtime_env:
+          env_vars:
+            VLLM_USE_V1: "1"
+        engine_kwargs:
+          tensor_parallel_size: 8
+          pipeline_parallel_size: 2
+          gpu_memory_utilization: 0.92
+          dtype: "auto"
+          max_num_seqs: 40
+          max_model_len: 16384
+          enable_chunked_prefill: true
+          enable_prefix_caching: true
+          trust_remote_code: true
+  import_path: ray.serve.llm:build_openai_app
+  name: llm_app
+  route_prefix: "/"
 ```
 
 ## Configuration
@@ -46,9 +85,6 @@ using {ref}`Ray model caching utilities <model_cache>`.
 Note that if you have two nodes and would like to download to local file system,
 you need to download the model to the same path on both nodes.
 
-## Deployment
-
-Deploy the service with `python3 deepseek.py`.
 
 ## Testing the Service
 
