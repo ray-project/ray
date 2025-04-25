@@ -1,5 +1,4 @@
 import asyncio
-from asyncio import coroutines
 import concurrent.futures
 import logging
 import threading
@@ -12,7 +11,6 @@ from collections.abc import MutableMapping
 from contextlib import contextmanager
 from functools import lru_cache, partial
 from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
-from asyncio import ensure_future, futures
 
 import ray
 from ray.actor import ActorHandle
@@ -36,7 +34,11 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
-from ray.serve._private.utils import generate_request_id, resolve_deployment_response
+from ray.serve._private.utils import (
+    generate_request_id,
+    resolve_deployment_response,
+    run_coroutine_threadsafe,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 from ray.util import metrics
@@ -691,59 +693,6 @@ class SingletonThreadRouter(Router):
     def running_replicas_populated(self) -> bool:
         return self._asyncio_router.running_replicas_populated()
 
-    def _run_coroutine_threadsafe(self, coro, loop, asyncio_future_callback=None):
-        """Runs a coroutine on the internal asyncio event loop thread-safely.
-
-        This is a modified version of `asyncio.run_coroutine_threadsafe` that
-        allows accessing the underlying asyncio Task to attach callbacks.
-        Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991
-
-        Args:
-            coro: The coroutine object to run.
-            asyncio_future_callback: An optional callable invoked when the asyncio
-                Task created for the coroutine finishes. It receives two arguments:
-                the asyncio Future/Task and the concurrent.futures.Future.
-
-        Returns:
-            A concurrent.futures.Future that will be set with the result or
-            exception of the coroutine upon completion.
-
-        Raises:
-            TypeError: If `coro` is not a coroutine object.
-        """
-        if not coroutines.iscoroutine(coro):
-            raise TypeError("A coroutine object is required")
-
-        task: asyncio.Task = ensure_future(coro, loop=loop)
-        concurrent_future = concurrent.futures.Future()
-
-        def concurrent_future_callback():
-            # This function runs in the asyncio loop's thread.
-            # It links the asyncio Task's result/exception to the
-            # concurrent.futures.Future.
-            try:
-                futures._chain_future(task, concurrent_future)
-            except (SystemExit, KeyboardInterrupt):
-                raise
-            except BaseException as exc:
-                if concurrent_future.set_running_or_notify_cancel():
-                    concurrent_future.set_exception(exc)
-                raise
-
-        def _asyncio_task_done_callback(asyncio_future):
-            # This function also runs in the asyncio loop's thread.
-            # It's called when the asyncio Task finishes (success, exception, or cancel).
-            if asyncio_future_callback is not None:
-                asyncio_future_callback(asyncio_future, concurrent_future)
-
-        if asyncio_future_callback is not None:
-            # Add the user-provided callback
-            task.add_done_callback(_asyncio_task_done_callback)
-
-        # Schedule the concurrent_future_callback to run soon in the loop's thread.
-        loop.call_soon_threadsafe(concurrent_future_callback)
-        return concurrent_future
-
     def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -752,14 +701,10 @@ class SingletonThreadRouter(Router):
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Schedules assign_request call on the internal asyncio loop.
 
-        This method uses `_run_coroutine_threadsafe` to execute the actual request
+        This method uses `run_coroutine_threadsafe` to execute the actual request
         assignment logic (`_asyncio_router.assign_request`) on the dedicated
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
         can be awaited or queried from the calling (potentially synchronous) thread.
-
-        It also sets up a callback to handle cancellation propagation: if the
-        returned `concurrent.futures.Future` is cancelled, it attempts to cancel
-        the underlying asyncio task and the associated `ReplicaResult`.
 
         Returns:
             A concurrent.futures.Future resolving to the ReplicaResult representing
@@ -773,61 +718,37 @@ class SingletonThreadRouter(Router):
 
             This runs when the asyncio Task finishes (completes, fails, or is cancelled).
             Its primary goal is to propagate cancellation initiated via the
-            `concurrent_future` back to the `ReplicaResult` if possible.
+            `concurrent_future` back to the `ReplicaResult` in situations where
+            asyncio_future didn't see the cancellation event in time. Think of it
+            like a second line of defense for cancellation of replica results.
             """
             # Check if the cancellation originated from the concurrent.futures.Future
-            if concurrent_future.cancelled():
-                try:
-                    # Check if the asyncio task itself was successfully cancelled.
-                    # .result() will raise CancelledError if it was.
-                    asyncio_future.result()
+            if (
+                concurrent_future.cancelled()
+                and not asyncio_future.cancelled()
+                and asyncio_future.exception() is None
+            ):
+                result: ReplicaResult = asyncio_future.result()
+                logger.info(
+                    "Asyncio task completed despite cancellation attempt. "
+                    "Attempting to cancel ReplicaResult."
+                )
+                result.cancel()
 
-                    # If .result() did *not* raise CancelledError, it means the task
-                    # finished (successfully or with another exception) *before*
-                    # the cancellation request was fully processed by the asyncio loop.
-                    # We should still attempt to cancel the ReplicaResult object
-                    # obtained from the task's result.
-                    if (
-                        not asyncio_future.cancelled()
-                    ):  # Explicit check might be redundant but clear
-                        # Ensure the task actually completed successfully and returned a result
-                        if not asyncio_future.exception():
-                            result: ReplicaResult = asyncio_future.result()
-                            logger.info(
-                                "Asyncio task completed despite cancellation attempt. "
-                                "Attempting to cancel ReplicaResult."
-                            )
-                            # Calling cancel() on ReplicaResult might not be truly blocking,
-                            # but signals intent.
-                            result.cancel()
-                        else:
-                            # Task finished with an exception other than CancelledError.
-                            # Log the exception. Cancellation of ReplicaResult isn't possible.
-                            logger.warning(
-                                "Asyncio task failed with an exception while concurrent "
-                                "future was cancelled. Cannot cancel ReplicaResult.",
-                                exc_info=asyncio_future.exception(),
-                            )
-
-                except asyncio.CancelledError:
-                    # The asyncio task was successfully cancelled.
-                    logger.info(
-                        "Asyncio task for assign_request successfully cancelled."
-                    )
-                except Exception:
-                    # Catch unexpected errors during result processing or cancellation.
-                    logger.exception(
-                        "Unexpected error during cancellation callback processing."
-                    )
-
-        # Schedule the actual request assignment coroutine on the asyncio loop thread.
-        return self._run_coroutine_threadsafe(
+        asyncio_future = self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
-            ),
-            loop=self._asyncio_loop,
-            asyncio_future_callback=asyncio_future_callback,
+            )
         )
+        # Schedule the actual request assignment coroutine on the asyncio loop thread.
+        concurrent_future = run_coroutine_threadsafe(
+            asyncio_future,
+            loop=self._asyncio_loop,
+        )
+        asyncio_future.add_done_callback(
+            lambda _: asyncio_future_callback(_, concurrent_future)
+        )
+        return concurrent_future
 
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
