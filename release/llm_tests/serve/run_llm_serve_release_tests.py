@@ -22,7 +22,7 @@ from test_utils import (
     get_python_version_from_image,
     append_python_version_from_image,
     get_s3_storage_path,
-    namespace_to_command_args,
+    get_llm_configs
 )
 
 
@@ -54,7 +54,10 @@ def main(
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     if run_perf_profiler:
-        submit_benchmark_vllm_job(image_uri)
+        llm_configs = get_llm_configs(serve_config_file)
+        assert(len(llm_configs) == 0, "Expecting a single llm_config file")
+
+        submit_benchmark_vllm_job(image_uri, llm_configs[0], env_vars['HF_TOKEN'])
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -108,10 +111,9 @@ def main(
             logger.info(f"Performance test results: {results}")
 
 
-def submit_benchmark_vllm_job(image_uri: str):
+def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
     py_version = get_python_version_from_image(image_uri)
     s3_storage_path = get_s3_storage_path(suffix=py_version)
-    cmd_args = namespace_to_command_args(pargs, s3_path=s3_storage_path)
 
     working_dir = str(Path(__file__).parent)
 
@@ -122,7 +124,7 @@ def submit_benchmark_vllm_job(image_uri: str):
 
     job_config = anyscale.job.JobConfig(
         name=job_name,
-        entrypoint=f"python benchmark_vllm.py {cmd_args}",
+        entrypoint=f"python benchmark_vllm.py --llm-config {llm_config} --py-version {py_version} --remote-result-path {s3_storage_path} --hf-token {hf_token}",
         working_dir=working_dir,
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(

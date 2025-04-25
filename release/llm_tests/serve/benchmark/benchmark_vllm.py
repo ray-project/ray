@@ -5,27 +5,20 @@ import gevent.monkey
 
 gevent.monkey.patch_all()
 
-import argparse  # noqa: E402
-import json  # noqa: E402
-import logging  # noqa: E402
-import os  # noqa: E402
-import subprocess  # noqa: E402
-import threading  # noqa: E402
-import time  # noqa: E402
-from datetime import datetime  # noqa: E402
-from pathlib import Path  # noqa: E402
+import argparse
+import json
+import logging
+import os
+import subprocess
+import threading
+import time
+from datetime import datetime
 
-import openai  # noqa: E402
 from bm import run_bm
-from common import (  # noqa: E402
-    generate_config,
-    parse_benchmark_args,
+from common import (
     read_yaml,
-    update_service_metadata,
     write_to_s3,
 )
-from llmbench.locust import LLMLoadTester, LoadTestConfig  # noqa: E402
-from util import get_python_version_from_image  # noqa: E402
 
 RAYLLM_RELEASE_TEST_PERF_SERVICE_NAME = "rayllm_release_test_perf_service"
 THREAD_CLEANUP_TIMEOUT_S = 10
@@ -82,28 +75,14 @@ def stream_process_output(process, logger_func, stop_event, is_error: bool = Fal
             break
 
 
-def get_llm_config(start_args):
-    rayllm_config_file = generate_config(start_args)
-    rayllm_yaml = read_yaml(rayllm_config_file)
-    llm_config_path = rayllm_yaml["applications"][0]["args"]["llm_configs"][0]
-
-    if not Path(llm_config_path).exists():
-        llm_config_path = Path(rayllm_config_file).parent / Path(llm_config_path)
-
-    llm_config = read_yaml(llm_config_path)
-
-    return llm_config
-
-
 def get_vllm_cli_args(llm_config):
     engine_kwargs = llm_config["engine_kwargs"]
-
     # When we define tokenizer_pool size, vllm, by default, uses Ray
     # that breaks the assumption that this script should not use ray
     # TODO (Kourosh): When the job issue with non driver ray
     # subprocesses are resolved we can remove these constraints
-    engine_kwargs.pop("tokenizer_pool_extra_config")
-    engine_kwargs.pop("tokenizer_pool_size")
+    engine_kwargs.pop("tokenizer_pool_extra_config", None)
+    engine_kwargs.pop("tokenizer_pool_size", None)
     engine_kwargs["tokenizer_pool_type"] = None
 
     cli_args = ["--model", llm_config["model_loading_config"]["model_id"]]
@@ -146,7 +125,7 @@ def start_vllm_process(vllm_cli_args):
 
     return server_process
 
-def run_vllm_benchmark(vllm_cli_args, parsed_args):
+def run_vllm_benchmark(vllm_cli_args):
     stop_event = threading.Event()
     results = {}
 
@@ -266,20 +245,20 @@ def setup_hf_token(llm_config):
 
 
 def main(pargs):
-    llm_config = get_llm_config(pargs.start_args)
+    llm_config = read_yaml(pargs.llm_config)
     vllm_cli_args = get_vllm_cli_args(llm_config)
 
-    setup_hf_token(llm_config)
+    os.environ["HF_TOKEN"] = pargs.hf_token
 
-    results = run_vllm_benchmark(vllm_cli_args, pargs)
+    results = run_vllm_benchmark(vllm_cli_args)
 
     # Post the results to S3
     service_metadata = {
         "cloud_name": "",
         "service_name": "",
-        "py_version": get_python_version_from_image(pargs.image_name),
+        "py_version": pargs.py_version,
+        "tag": f"{llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
     }
-    service_metadata = update_service_metadata(service_metadata, pargs)
 
     if results:
         print(
@@ -294,18 +273,30 @@ def main(pargs):
         )
 
 
-def add_s3_to_parser(parser: argparse.ArgumentParser):
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--llm-config",
+        type=str,
+        required=True,
+        default="The LLM config to start vLLM engine",
+    )
     parser.add_argument(
         "--remote-result-path",
         type=str,
         required=True,
         help="The remote s3 path to store intermediate results on.",
     )
-
-    return parser
-
-
-if __name__ == "__main__":
-    parser = parse_benchmark_args()
-    parser = add_s3_to_parser(parser)
+    parser.add_argument(
+        "--py-version",
+        type=str,
+        required=True,
+        help="Python version associated with Ray image URI",
+    )
+    parser.add_argument(
+        "--hf-token",
+        type=str,
+        required=True,
+        help="Huggingface token",
+    )
     main(parser.parse_args())

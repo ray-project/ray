@@ -181,6 +181,13 @@ def get_applications(serve_config_file: str) -> List[Any]:
     return loaded_llm_config["applications"]
 
 
+def get_llm_configs(serve_config_file: str) -> List[Any]:
+    """Get the llm_configs from the serve config file."""
+    with open(serve_config_file, "r") as f:
+        loaded_llm_config = yaml.safe_load(f)
+    return loaded_llm_config["args"]["llm_configs"]
+
+
 def setup_client_env_vars(api_url: str, api_token: Optional[str] = None):
     """Set up the environment variables for the tests."""
     os.environ["OPENAI_API_BASE"] = f"{api_url.rstrip('/')}/v1"
@@ -219,6 +226,7 @@ def append_python_version_from_image(name: str, image_name: str) -> str:
 
     return name
 
+
 def get_s3_storage_path(suffix: str) -> str:
     build_number = os.environ.get(
         "BUILDKITE_BUILD_NUMBER", uuid.uuid4().hex[:5].upper()
@@ -229,22 +237,3 @@ def get_s3_storage_path(suffix: str) -> str:
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 
     return storage_path
-
-
-def namespace_to_command_args(namespace: Namespace, s3_path: str) -> str:
-    """Convert namespace to command line argument string."""
-    parts = []
-    for key, value in vars(namespace).items():
-        key = key.replace("_", "-")  # Convert Python style to CLI style
-        if isinstance(value, bool):
-            if value:
-                parts.append(f"--{key}")
-        elif isinstance(value, (list, tuple)):
-            if value:  # Only if non-empty
-                parts.append(f"--{key} {','.join(str(x) for x in value)}")
-        elif value is not None:  # Skip None values
-            parts.append(f"--{key} '{value}'")
-
-    parts.extend(["--remote-result-path", s3_path])
-
-    return " ".join(parts)
