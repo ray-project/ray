@@ -348,7 +348,8 @@ to access the throughput value. For example:
 Example 1: How to use MetricsLogger in EnvRunner callbacks
 ----------------------------------------------------------
 
-To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`, take a look at this end-to-end example here, which
+To demonstrate how to use the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` on an :py:class:`~ray.rllib.env.env_runner.EnvRunner`,
+take a look at this end-to-end example here, which
 makes use of the :py:class:`~ray.rllib.callbacks.callbacks.RLlibCallback` API to inject custom code into the RL environment loop.
 
 The example computes the average "first-joint angle" of the
@@ -366,15 +367,21 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
     # Define a custom RLlibCallback.
+
     class LogAcrobotAngle(RLlibCallback):
+
+        def on_episode_created(self, *, episode, **kwargs)
+            # Initialize an empty list in the `custom_data` property of `episode`.
+            episode.custom_data["theta1"] = []
+
         def on_episode_step(self, *, episode, env, **kwargs):
             # Compute the angle at every episode step and store it temporarily in episode:
             state = env.envs[0].unwrapped.state
             deg_theta1 = math.degrees(math.atan2(state[1], state[0]))
-            episode.add_temporary_timestep_data("theta1", deg_theta1)
+            episode.custom_data["theta1"].append(deg_theta1)
 
         def on_episode_end(self, *, episode, metrics_logger, **kwargs):
-            theta1s = episode.get_temporary_timestep_data("theta1")
+            theta1s = episode.custom_data["theta1"]
             avg_theta1 = np.mean(theta1s)
 
             # Log the resulting average angle - per episode - to the MetricsLogger.
