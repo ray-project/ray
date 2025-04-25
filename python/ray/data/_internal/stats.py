@@ -26,11 +26,13 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Gauge
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data._internal.metadata_exporter import Topology, get_dataset_metadata_exporter
 
 logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+UNKNOWN = "unknown"
 
 
 StatsDict = Dict[str, List[BlockStats]]
@@ -164,6 +166,9 @@ class _StatsActor:
 
         # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
+
+        # Initialize the metadata exporter
+        self._metadata_exporter = get_dataset_metadata_exporter()
 
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
@@ -478,14 +483,21 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
+    def register_dataset(
+        self,
+        job_id: str,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        start_time = time.time()
         self.datasets[dataset_tag] = {
             "job_id": job_id,
             "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
             "total_rows": 0,
-            "start_time": time.time(),
+            "start_time": start_time,
             "end_time": None,
             "operators": {
                 operator: {
@@ -497,6 +509,16 @@ class _StatsActor:
                 for operator in operator_tags
             },
         }
+        if self._metadata_exporter is not None:
+            from ray.data._internal.metadata_exporter import DatasetMetadata
+
+            dataset_metadata = DatasetMetadata(
+                job_id=job_id,
+                topology=topology,
+                dataset_id=dataset_tag,
+                start_time=start_time,
+            )
+            self._metadata_exporter.export_dataset_metadata(dataset_metadata)
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
@@ -765,11 +787,24 @@ class _StatsManager:
 
     # Other methods
 
-    def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):
+    def register_dataset_to_stats_actor(
+        self,
+        dataset_tag: str,
+        operator_tags: List[str],
+        topology: Topology,
+    ):
+        """Register a dataset with the stats actor.
+
+        Args:
+            dataset_tag: Tag for the dataset
+            operator_tags: List of operator tags
+            topology: Optional Topology representing the DAG structure to export
+        """
         self._stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),
             dataset_tag,
             operator_tags,
+            topology,
         )
 
     def get_dataset_id_from_stats_actor(self) -> str:

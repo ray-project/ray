@@ -705,6 +705,20 @@ py_test(
 )
 
 py_test(
+    name = "test_operator_fusion",
+    size = "medium",
+    srcs = ["tests/test_operator_fusion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_execution_optimizer",
     size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
@@ -1312,6 +1326,20 @@ py_test(
     name = "test_daft",
     size = "small",
     srcs = ["tests/test_daft.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
     tags = [
         "exclusive",
         "team:data",
