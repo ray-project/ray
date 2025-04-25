@@ -1,111 +1,150 @@
-from typing import Any, Collection, Dict, List, Optional
+"""TODO: describe Example using a ConnectorV2 for processing observations with a mean/std filter.
 
-import gymnasium as gym
-from gymnasium.spaces import Box
-import numpy as np
-import tree  # pip install dm_tree
+An RLlib Algorithm has 3 distinct connector pipelines:
+- An env-to-module pipeline in an EnvRunner accepting a list of episodes and producing
+a batch for an RLModule to compute actions (`forward_inference()` or
+`forward_exploration()`).
+- A module-to-env pipeline in an EnvRunner taking the RLModule's output and converting
+it into an action readable by the environment.
+- A learner connector pipeline on a Learner taking a list of episodes and producing
+a batch for an RLModule to perform the training forward pass (`forward_train()`).
 
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import AgentID, EpisodeType
-from ray.util.annotations import PublicAPI
+Each of these pipelines has a fixed set of default ConnectorV2 pieces that RLlib
+adds/prepends to these pipelines in order to perform the most basic functionalities.
+For example, RLlib adds the `AddObservationsFromEpisodesToBatch` ConnectorV2 into any
+env-to-module pipeline to make sure the batch for computing actions contains - at the
+minimum - the most recent observation.
+
+On top of these default ConnectorV2 pieces, users can define their own ConnectorV2
+pieces (or use the ones available already in RLlib) and add them to one of the 3
+different pipelines described above, as required.
+
+This example:
+    - shows how the `MeanStdFilter` ConnectorV2 piece can be added to the env-to-module
+    pipeline.
+    - demonstrates that using such a filter enhances learning behavior (or even makes
+    if possible to learn overall) in some environments, especially those with lopsided
+    observation spaces, for example `Box(-3000, -1000, ...)`.
 
 
-class XYPosToDiscreteIndex(ConnectorV2):
-    """TODO: describe """
-    @override(ConnectorV2)
-    def recompute_output_observation_space(
-        self,
-        input_observation_space,
-        input_action_space,
-    ) -> gym.Space:
-        self._input_obs_base_struct = get_base_struct_from_space(
-            self.input_observation_space
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+Running this example with the mean-std filter results in the normally expected Pendulum
+learning behavior:
++-------------------------------+------------+-----------------+--------+
+| Trial name                    | status     | loc             |   iter |
+|                               |            |                 |        |
+|-------------------------------+------------+-----------------+--------+
+| PPO_lopsided-pend_f9c96_00000 | TERMINATED | 127.0.0.1:43612 |     77 |
++-------------------------------+------------+-----------------+--------+
++------------------+------------------------+-----------------------+
+|   total time (s) |   num_env_steps_sample |   episode_return_mean |
+|                  |             d_lifetime |                       |
+|------------------+------------------------+-----------------------|
+|          30.7466 |                  40040 |                -276.3 |
++------------------+------------------------+-----------------------+
+
+If you try using the `--disable-mean-std-filter` (all other things being equal), you
+will either see no learning progress at all (or a very slow one), but more likely some
+numerical instability related error will be thrown:
+
+ValueError: Expected parameter loc (Tensor of shape (64, 1)) of distribution
+            Normal(loc: torch.Size([64, 1]), scale: torch.Size([64, 1])) to satisfy the
+            constraint Real(), but found invalid values:
+tensor([[nan],
+        [nan],
+        [nan],
+        ...
+"""
+from ray.rllib.examples.envs.classes.multi_agent.double_row_corridor_env import (
+    DoubleRowCorridorEnv,
+)
+from ray.rllib.examples.connectors.classes.multi_agent_with_different_observation_spaces import (  # noqa
+    DoubleXYPosToDiscreteIndex,
+    DoubleXYPosToSingleXYPos,
+)
+from ray.rllib.connectors.env_to_module.flatten_observations import (
+    FlattenObservations,
+)
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls
+
+torch, _ = try_import_torch()
+
+parser = add_rllib_example_script_args(
+    default_iters=500,
+    default_timesteps=500000,
+    default_reward=29.0,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+
+    assert (
+        args.enable_new_api_stack
+    ), "Must set --enable-new-api-stack when running this script!"
+
+    base_config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .environment(DoubleRowCorridorEnv)
+        .env_runners(
+            num_envs_per_env_runner=20,
+            # Define a list of two connector piece to be prepended to the env-to-module
+            # connector pipeline.
+            # One for `agent_0` (converting the global observations into
+            # position-indices for that agent), the other for `agent_1` (converting
+            # the global observations into single x/y coordinates).
+            env_to_module_connector=lambda env: [
+                DoubleXYPosToDiscreteIndex(agent_id="agent_0"),
+                DoubleXYPosToSingleXYPos(agent_id="agent_1"),
+                # Only flatten agent_0's observations (b/c these are ints that need to
+                # be one-hot'd).
+                FlattenObservations(multi_agent=True, agent_ids=["agent_0"]),
+            ],
         )
-        spaces = {}
-        for agent_id, space in self._input_obs_base_struct.items():
-            if self._agent_ids and agent_id not in self._agent_ids:
-                spaces[agent_id] = self._input_obs_base_struct[agent_id]
-            else:
-                sample = flatten_inputs_to_1d_tensor(
-                    tree.map_structure(
-                        lambda s: s.sample(),
-                        self._input_obs_base_struct[agent_id],
-                    ),
-                    self._input_obs_base_struct[agent_id],
-                    batch_axis=False,
-                )
-                spaces[agent_id] = Box(
-                    float("-inf"), float("inf"), (len(sample),), np.float32
-                )
-        return gym.spaces.Dict(spaces)
+        .training(
+            train_batch_size_per_learner=512,
+            gamma=0.95,
+            # Linearly adjust learning rate based on number of GPUs.
+            lr=0.0003 * (args.num_learners or 1),
+            vf_loss_coeff=0.01,
+        )
+        .multi_agent(
+            policies={"p0", "p1"},
+            policy_mapping_fn=lambda aid, eps, **kw: "p0" if aid == "agent_0" else "p1",
+        )
+    )
 
-    def __init__(
-        self,
-        input_observation_space: Optional[gym.Space] = None,
-        input_action_space: Optional[gym.Space] = None,
-        *,
-        agent_id: AgentID,
-        **kwargs,
-    ):
-        """Initializes a XYPosToDiscreteIndex instance.
+    # PPO specific settings.
+    if args.algo == "PPO":
+        base_config.training(
+            minibatch_size=64,
+            lambda_=0.1,
+            vf_clip_param=10.0,
+        )
 
-        Args:
-            agent_id: The agent ID, for which to convert the global observation,
-                consisting of 2 x/y coordinates for the two agents in the env,
-                into a single int index for only that agent's x/y position.
-        """
-        self._agent_id = agent_id
-
-        super().__init__(input_observation_space, input_action_space, **kwargs)
-
-    @override(ConnectorV2)
-    def __call__(
-        self,
-        *,
-        rl_module: RLModule,
-        batch: Dict[str, Any],
-        episodes: List[EpisodeType],
-        explore: Optional[bool] = None,
-        shared_data: Optional[dict] = None,
-        **kwargs,
-    ) -> Any:
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=True
-        ):
-            last_obs = sa_episode.get_observations(-1)
-
-            if self._multi_agent:
-                if (
-                    self._agent_ids is not None
-                    and sa_episode.agent_id not in self._agent_ids
-                ):
-                    flattened_obs = last_obs
-                else:
-                    flattened_obs = flatten_inputs_to_1d_tensor(
-                        inputs=last_obs,
-                        # In the multi-agent case, we need to use the specific agent's
-                        # space struct, not the multi-agent observation space dict.
-                        spaces_struct=self._input_obs_base_struct[sa_episode.agent_id],
-                        # Our items are individual observations (no batch axis present).
-                        batch_axis=False,
-                    )
-            else:
-                flattened_obs = flatten_inputs_to_1d_tensor(
-                    inputs=last_obs,
-                    spaces_struct=self._input_obs_base_struct,
-                    # Our items are individual observations (no batch axis present).
-                    batch_axis=False,
-                )
-
-            # Write new observation directly back into the episode.
-            sa_episode.set_observations(at_indices=-1, new_data=flattened_obs)
-            #  We set the Episode's observation space to ours so that we can safely
-            #  set the last obs to the new value (without causing a space mismatch
-            #  error).
-            sa_episode.observation_space = self.observation_space
-
-        return batch
+    run_rllib_example_script_experiment(base_config, args)

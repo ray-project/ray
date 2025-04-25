@@ -20,14 +20,18 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
 
         config = config or {}
 
-        self.length = config.get("length", 5)  # Number of columns
+        self.length = config.get("length", 15)
         self.terminateds = {}
         self.collided = False
 
         # Provide information about agents and possible agents.
         self.agents = self.possible_agents = ["agent_0", "agent_1"]
+        self.terminateds = {}
 
-        # Observations: positions of both agents (row, col)
+        # Observations: positions of both agents (row, col).
+        # For example: [0.0, 2.0, 1.0, 4.0] means agent_0 is in position (0, 2)
+        # and agent_1 is in position (1, 4), where the first number is the row index,
+        # the second number is the column index.
         self._global_obs_space = gym.spaces.Box(
             0.0, self.length - 1, shape=(4,), dtype=np.int32
         )
@@ -36,21 +40,24 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
     @override(MultiAgentEnv)
     def reset(self, *, seed=None, options=None):
         self.agent_pos = {
-            "agent_1": [0, 0],
-            "agent_2": [1, self.length - 1],
+            "agent_0": [0, 0],
+            "agent_1": [1, self.length - 1],
         }
         self.goals = {
-            "agent_1": [0, self.length - 1],
-            "agent_2": [1, 0],
+            "agent_0": [0, self.length - 1],
+            "agent_1": [1, 0],
         }
         self.terminateds = {agent_id: False for agent_id in self.agent_pos}
         self.collided = False
 
-        return self._get_obs()
+        return self._get_obs(), {}
 
     @override(MultiAgentEnv)
     def step(self, action_dict):
-        rewards = {agent_id: -0.1 for agent_id in self.agent_pos}
+        rewards = {
+            agent_id: -0.1
+            for agent_id in self.agent_pos if not self.terminateds[agent_id]
+        }
 
         for agent_id, action in action_dict.items():
             row, col = self.agent_pos[agent_id]
@@ -68,14 +75,19 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
             elif action == 3 and col < self.length - 1:
                 col += 1
 
-            # Update positions
+            # Update positions.
             self.agent_pos[agent_id] = [row, col]
 
-        # Check for collision
-        if self.agent_pos["agent_1"] == self.agent_pos["agent_2"]:
+        obs = self._get_obs()
+
+        # Check for collision (only if both agents are still active).
+        if (
+            not any(self.terminateds.values())
+            and self.agent_pos["agent_0"] == self.agent_pos["agent_1"]
+        ):
             if not self.collided:
+                rewards["agent_0"] += 5
                 rewards["agent_1"] += 5
-                rewards["agent_2"] += 5
                 self.collided = True
 
         # Check goals.
@@ -87,10 +99,12 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
                 rewards[agent_id] += 10
                 self.terminateds[agent_id] = True
 
-        terminateds = {agent_id: self.terminateds[agent_id] for agent_id in self.agent_pos}
+        terminateds = {
+            agent_id: self.terminateds[agent_id] for agent_id in self.agent_pos
+        }
         terminateds["__all__"] = all(self.terminateds.values())
 
-        return self._get_obs(), rewards, terminateds, {}, {}
+        return obs, rewards, terminateds, {}, {}
 
     @override(MultiAgentEnv)
     def get_observation_space(self, agent_id: AgentID) -> gym.Space:
@@ -104,8 +118,10 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
         obs = {}
         pos = self.agent_pos
         for agent_id in self.agent_pos:
+            if self.terminateds[agent_id]:
+                continue
             obs[agent_id] = np.array(
-                pos["agent_1"] + pos["agent_2"], dtype=np.int32
+                pos["agent_0"] + pos["agent_1"], dtype=np.int32
             )
         return obs
 
