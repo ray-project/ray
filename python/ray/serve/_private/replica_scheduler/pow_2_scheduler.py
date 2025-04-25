@@ -364,6 +364,8 @@ class PowerOfTwoChoicesReplicaScheduler(
         self._log_file_path = "/home/ray/default/work/_testing/logs/out.txt"
         with open(self._log_file_path, "w") as f:
             f.write("")  # Clear the log file at start
+        
+        print("PowerOfTwoChoicesReplicaScheduler initialized")
     def _log(self, message: str):
         with open(self._log_file_path, "a") as f:
             f.write(message + "\n")

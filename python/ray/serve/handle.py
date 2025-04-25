@@ -142,6 +142,7 @@ class _DeploymentHandleBase:
             handle_id=self.handle_id,
             deployment_id=self.deployment_id,
             handle_options=init_options,
+            # replica_scheduler=replica_scheduler # Where do I get this from?
         )
         self.init_options = init_options
 
@@ -172,6 +173,19 @@ class _DeploymentHandleBase:
 
         if not self.is_initialized:
             self._init()
+
+        # Beginning of injected code
+        new_replica_scheduler_cls = kwargs.get("replica_scheduler")
+        print(f"DeploymentHandle: _options: new_replica_scheduler_cls: {new_replica_scheduler_cls}")
+        if new_replica_scheduler_cls is not DEFAULT.VALUE and new_replica_scheduler_cls is not None:
+            print(f"DeploymentHandle: _options: creating new router with replica_scheduler: {new_replica_scheduler_cls}")
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
+                handle_options=self.init_options,
+                replica_scheduler=new_replica_scheduler_cls,
+            )
+        # End of injected code
 
         return DeploymentHandle(
             self.deployment_name,
@@ -670,6 +684,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        replica_scheduler = None
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -693,12 +708,14 @@ class DeploymentHandle(_DeploymentHandleBase):
                 "Modifying `_prefer_local_routing` with `options()` is "
                 "deprecated. Please use `init()` instead."
             )
+        print(f"DeploymentHandle: options: replica_scheduler: {replica_scheduler}")
 
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            replica_scheduler=replica_scheduler
         )
 
     def remote(

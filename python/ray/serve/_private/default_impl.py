@@ -24,7 +24,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler, ReplicaScheduler
 from ray.serve._private.replica_scheduler.replica_wrapper import RunningReplica
 from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
@@ -141,11 +141,15 @@ def create_scheduler(
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
     is_inside_ray_client_context: bool,
+    replica_scheduler: Optional[ReplicaScheduler] = None
 ):
     # TODO (genesu): pass and load the scheduler class. Add assertion. Try catch fallback
     node_id, availability_zone = _get_node_id_and_az()
 
-    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+    if replica_scheduler is None:
+        replica_scheduler = PowerOfTwoChoicesReplicaScheduler
+
+    replica_scheduler_instance = replica_scheduler(
         deployment_id=deployment_id,
         handle_source=handle_options._source,
         self_node_id=node_id,
@@ -160,13 +164,14 @@ def create_scheduler(
         prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
         self_availability_zone=availability_zone,
     )
-    return replica_scheduler
+    return replica_scheduler_instance
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
+    replica_scheduler: Optional[ReplicaScheduler] = None
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -176,11 +181,12 @@ def create_router(
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
-    replica_scheduler = create_scheduler(
+    replica_scheduler_instance = create_scheduler(
         actor_id,
         deployment_id,
         handle_options,
         is_inside_ray_client_context,
+        replica_scheduler
     )
 
     return SingletonThreadRouter(
@@ -189,7 +195,7 @@ def create_router(
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        replica_scheduler=replica_scheduler,
+        replica_scheduler=replica_scheduler_instance,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=not is_inside_ray_client_context,
         resolve_request_arg_func=resolve_deployment_response,

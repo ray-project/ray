@@ -415,5 +415,6 @@ RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
 
 # The default replica scheduler to use if none is specified.
 DEFAULT_REPLICA_SCHEDULER = (
-    "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
+    # "ray.serve._private.replica_scheduler:PowerOfTwoChoicesReplicaScheduler"
+    "ray.serve._private.replica_scheduler.fake_prefix_aware_scheduler:PrefixAwareReplicaScheduler"
 )

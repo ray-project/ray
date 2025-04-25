@@ -361,9 +361,11 @@ class PrefixAwareReplicaScheduler(
 
         self._request_counter = 0  # Add this in __init__
         self._request_id_map: Dict[PendingRequest, int] = {}  # For tracking
-        self._log_file_path = "/home/ray/default/work/_testing/logs/out.txt"
+        self._log_file_path = "/home/ray/default/work/_testing/logs/fake_prefix_aware_scheduler_out.txt"
         with open(self._log_file_path, "w") as f:
-            f.write("")  # Clear the log file at start
+            f.write("Working!")  # Clear the log file at start
+        
+        print("(Fake) PrefixAwareReplicaScheduler initialized")
     def _log(self, message: str):
         with open(self._log_file_path, "a") as f:
             f.write(message + "\n")

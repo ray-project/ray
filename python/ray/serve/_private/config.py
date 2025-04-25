@@ -123,7 +123,6 @@ class DeploymentConfig(BaseModel):
         user_configured_option_names: The names of options manually
             configured by the user.
     """
-
     num_replicas: Optional[NonNegativeInt] = Field(
         default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
@@ -253,12 +252,14 @@ class DeploymentConfig(BaseModel):
             replica_scheduler = (
                 f"{replica_scheduler.__module__}.{replica_scheduler.__name__}"
             )
-
+        print(f"DeploymentConfig: replica_scheduler before: {replica_scheduler}")
         if not replica_scheduler:
             replica_scheduler = DEFAULT_REPLICA_SCHEDULER
+        print(f"DeploymentConfig: replica_scheduler after: {replica_scheduler}")
 
         replica_scheduler_path = replica_scheduler
         replica_scheduler = import_attr(replica_scheduler)
+        print(f"DeploymentConfig: replica_scheduler after import_attr: {replica_scheduler}")
 
         if not values.get("_serialized_replica_scheduler_def"):
             self._serialized_replica_scheduler_def = cloudpickle.dumps(
