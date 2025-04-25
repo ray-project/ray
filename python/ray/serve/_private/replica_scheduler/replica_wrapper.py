@@ -109,7 +109,9 @@ class ActorReplicaWrapper(ReplicaWrapper):
             return ActorReplicaResult(obj_ref_gen, pr.metadata), queue_len_info
         except asyncio.CancelledError as e:
             # HTTP client disconnected or request was explicitly canceled.
-            logger.info("Cancelling replica result.")
+            logger.info(
+                "Cancelling request that has already been assigned to a replica."
+            )
             ray.cancel(obj_ref_gen)
             raise e from None
 

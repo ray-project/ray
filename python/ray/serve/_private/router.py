@@ -704,7 +704,7 @@ class SingletonThreadRouter(Router):
         This method uses `run_coroutine_threadsafe` to execute the actual request
         assignment logic (`_asyncio_router.assign_request`) on the dedicated
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
-        can be awaited or queried from the calling (potentially synchronous) thread.
+        can be awaited or queried from the calling thread.
 
         Returns:
             A concurrent.futures.Future resolving to the ReplicaResult representing
@@ -731,23 +731,21 @@ class SingletonThreadRouter(Router):
                 result: ReplicaResult = asyncio_future.result()
                 logger.info(
                     "Asyncio task completed despite cancellation attempt. "
-                    "Attempting to cancel ReplicaResult."
+                    "Attempting to cancel the request that was assigned to a replica."
                 )
                 result.cancel()
 
-        asyncio_future = self._asyncio_loop.create_task(
+        task = self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             )
         )
         # Schedule the actual request assignment coroutine on the asyncio loop thread.
         concurrent_future = run_coroutine_threadsafe(
-            asyncio_future,
+            task,
             loop=self._asyncio_loop,
         )
-        asyncio_future.add_done_callback(
-            lambda _: asyncio_future_callback(_, concurrent_future)
-        )
+        task.add_done_callback(lambda _: asyncio_future_callback(_, concurrent_future))
         return concurrent_future
 
     def shutdown(self) -> concurrent.futures.Future:
