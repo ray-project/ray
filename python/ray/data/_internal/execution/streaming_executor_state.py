@@ -491,7 +491,7 @@ def process_completed_tasks(
                                 " To ignore this exception and continue, set"
                                 " DataContext.max_errored_blocks."
                             )
-                            logger.error(error_message)
+                            logger.exception(error_message)
                             raise e from None
                 else:
                     assert isinstance(task, MetadataOpTask)
