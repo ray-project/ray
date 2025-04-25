@@ -13,12 +13,12 @@ class DataloaderType(enum.Enum):
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
     validation_batch_size: int = 256
-    prefetch_batches: int = 1
 
 
 class RayDataConfig(DataLoaderConfig):
     # NOTE: Optional[int] doesn't play well with argparse.
     local_buffer_shuffle_size: int = -1
+    ray_data_prefetch_batches: int = 4
 
 
 class TorchConfig(DataLoaderConfig):
@@ -26,6 +26,7 @@ class TorchConfig(DataLoaderConfig):
     torch_dataloader_timeout_seconds: int = 300
     torch_pin_memory: bool = True
     torch_non_blocking: bool = True
+    torch_prefetch_factor: int = -1
 
 
 class BenchmarkConfig(BaseModel):
