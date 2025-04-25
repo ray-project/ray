@@ -79,7 +79,6 @@ from ray.data.datasource import (
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
-    _unwrap_arrow_serialization_workaround,
     _validate_shuffle_arg,
 )
 from ray.data.datasource.file_meta_provider import (
@@ -3627,8 +3626,6 @@ def _get_datasource_or_legacy_reader(
     Returns:
         The datasource or a generated legacy reader.
     """
-    kwargs = _unwrap_arrow_serialization_workaround(kwargs)
-
     DataContext._set_current(ctx)
 
     if ds.should_create_reader:
