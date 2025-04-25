@@ -170,7 +170,6 @@ class vLLMEngineWrapper:
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
-            disable_log_requests=True,
         )
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
