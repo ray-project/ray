@@ -10,6 +10,7 @@ from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -24,6 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
+
+
+class _DatasetWrapper:
+    # A temporary workaround for https://github.com/ray-project/ray/issues/52549
+
+    def __init__(self, dataset: "Dataset") -> None:
+        self._dataset = dataset
 
 
 class StreamSplitDataIterator(DataIterator):
@@ -46,7 +54,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(base_dataset, n, equal, locality_hints)
+        ).remote(_DatasetWrapper(base_dataset), n, equal, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -105,6 +113,9 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
@@ -123,11 +134,12 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        dataset: "Dataset",
+        dataset_wrapper: _DatasetWrapper,
         n: int,
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        dataset = dataset_wrapper._dataset
         # Set current DataContext.
         self._data_context = dataset.context
         ray.data.DataContext._set_current(self._data_context)
@@ -145,6 +157,9 @@ class SplitCoordinator:
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
+
+        # Add a new stats field to track coordinator overhead
+        self._coordinator_overhead_s = 0.0
 
         def gen_epochs():
             while True:
@@ -174,8 +189,14 @@ class SplitCoordinator:
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats()
-        return self._base_dataset._plan.stats()
+            stats = self._executor.get_stats()
+        else:
+            stats = self._base_dataset._plan.stats()
+
+        # Set the tracked overhead time
+        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+
+        return stats
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -227,11 +248,8 @@ class SplitCoordinator:
         except StopIteration:
             return None
         finally:
-            stats = self.stats()
-            if stats and stats.streaming_split_coordinator_s:
-                stats.streaming_split_coordinator_s.add(
-                    time.perf_counter() - start_time
-                )
+            # Track overhead time in the instance variable
+            self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

@@ -72,6 +72,7 @@ COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"
 COMPONENT_GPU_TAG_KEYS = GPU_TAG_KEYS + COMPONENT_METRICS_TAG_KEYS
 
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
+# Note that for dashboard subprocess module, the component name is "dashboard_[module_name]".
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",
     "raylet",
