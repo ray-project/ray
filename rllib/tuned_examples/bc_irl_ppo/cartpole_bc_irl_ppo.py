@@ -1,7 +1,8 @@
 import warnings
+
 from pathlib import Path
 
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc_irl_ppo.bc_irl_ppo import BCIRLPPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -12,6 +13,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+
 
 parser = add_rllib_example_script_args(
     default_timesteps=5e6,
@@ -48,10 +50,10 @@ config = (
     .training(
         lr=1e-4,
         train_batch_size_per_learner=256,
-        ppo_lr=1e-4,
+        ppo_lr=8e-4,
         ppo_train_batch_size_per_learner=256 * 5,
         ppo_num_epochs=2,
-        ppo_minibatch_size=256 // 4,
+        ppo_minibatch_size=256 * 5 // 4,
         ppo_clip_param=0.2,
         ppo_vf_loss_coeff=0.5,
         ppo_entropy_coeff=0.001,
@@ -75,13 +77,14 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1,
+        dataset_num_iters_per_learner=5,
     )
     .evaluation(
         evaluation_interval=3,
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
+        evaluation_config=BCIRLPPOConfig.overrides(explore=False),
     )
 )
 
@@ -95,14 +98,9 @@ if not args.no_tune:
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
-    # TRAINING_ITERATION: 350,
+    TRAINING_ITERATION: 350,
 }
 
-algo = config.build()
-for _ in range(10):
-    results = algo.train()
-    print(results)
 
-
-# if __name__ == "__main__":
-#     run_rllib_example_script_experiment(config, args, stop=stop)
+if __name__ == "__main__":
+    run_rllib_example_script_experiment(config, args, stop=stop)

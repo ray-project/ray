@@ -1,6 +1,6 @@
 from gymnasium.spaces import Space
 import copy
-from typing import Any, Dict, Optional, Type, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import (
@@ -19,6 +19,7 @@ from ray.rllib.core.learner import Learner
 from ray.rllib.core.learner.differentiable_learner_config import (
     DifferentiableLearnerConfig,
 )
+from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -44,20 +45,13 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
 
-        # Initialize the super
+        # Initialize the super.
         super().__init__(algo_class=algo_class or BCIRLPPO)
         # ----------------------------
-        # BC configurations
 
-        # self.beta = 0.0
-        # self.bc_logstd_coeff = 0.0
-        # self.moving_average_sqd_adv_norm_update_rate = 1e-8
-        # self.moving_average_sqd_adv_norm_start = 100.0
-        # self.bc_vf_coeff = 1.0
-        # self.model["vf_shared_layers"] = False
-        
-        # Update the reward model in each training iteration.
-        
+
+        # Mateiralize all data. Set this to `False` if the data
+        # is large.
         self.materialize_data = True
         self.materialize_mapped_data = True
 
@@ -71,8 +65,9 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         self.lr = 1e-4
         self.train_batch_size_per_learner = 256
         self.minibatch_size = 256
+        # Update the reward model in each training iteration.
         self.reward_update_freq = 1
-        self.ppo_lr = 1e-4        
+        self.ppo_lr = 1e-4
         self.ppo_train_batch_size_per_learner = 1280
         self.ppo_num_epochs = 2
         self.ppo_minibatch_size = 320
@@ -91,10 +86,9 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
 
 
         from ray.rllib.algorithms.bc_irl_ppo.torch.bc_irl_ppo_torch_differentiable_learner import BCIRLPPOTorchDifferentiableLearner
-        # TODO (simon): Make a new method `get_differentiable_learner_class`.
         self.differentiable_learner_configs = [
             BCIRLPPODifferentiableLearnerConfig(
-                learner_class=BCIRLPPOTorchDifferentiableLearner,    
+                learner_class=BCIRLPPOTorchDifferentiableLearner,
                 is_multi_agent=self.is_multi_agent,
                 policies_to_update=self.policies,
                 lr=self.ppo_lr,
@@ -123,6 +117,7 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
 
             # Note, BCIRLPPO needs a `MultiRLModule` to define the reward model as
             # a standalone module.
+            # TODO (simon): Check, if a per-module reward module is possible.
             return MultiRLModuleSpec(
                 rl_module_specs={
                     # The policy is defined by the default PPO `RLModule`.
@@ -156,6 +151,22 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
             )
 
             return BCIRLPPOTorchMetaLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use `framework='torch'`."
+            )
+
+    @override(DifferentiableAlgorithmConfig)
+    def get_differentiable_learner_classes(
+        self,
+    ) -> List[Union[Type["DifferentiableLearner"], str]]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.bc_irl_ppo.torch.bc_irl_ppo_torch_differentiable_learner import (
+                BCIRLPPOTorchDifferentiableLearner,
+            )
+
+            return [BCIRLPPOTorchDifferentiableLearner]
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -294,15 +305,30 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         if ppo_grad_clip is not NotProvided:
             self.grad_clip = ppo_grad_clip
 
-        # TODO (simon): Decide, if these parameters should go into the LearnerConfig.
         return self
+
+    @override(AlgorithmConfig)
+    def validate(self):
+        super().validate()
+
+        # Torch DDP does not work with higher-level optimizations.
+        if self.num_learners > 1:
+            self._value_error(
+                "BC-IRL-PPO can use only a single learner, but "
+                f"`num_learners={self.num_learners}`. Use either `num_learners=0` "
+                "for a local learner or `num_learners=1` for a single remote learner."
+            )
 
     @property
     @override(AlgorithmConfig)
     def _model_config_auto_includes(self) -> Dict[str, Any]:
+        from ray.rllib.algorithms.bc_irl_ppo.default_bc_irl_ppo_rl_module import (
+            DefaultBCIRLRewardModelType,
+        )
+
         return super()._model_config_auto_includes | {
             "vf_share_layers": False,
-            "reward_type": "next_obs",
+            "reward_type": DefaultBCIRLRewardModelType.NEXT_STATE,
         }
 
     @property
@@ -427,15 +453,16 @@ class BCIRLPPODifferentiableLearnerConfig(DifferentiableLearnerConfig):
     def build_learner_connector(
         self, input_observation_space, input_action_space, device=None
     ):
-
         # First call the super's method.
         pipeline = super().build_learner_connector(
             input_observation_space, input_action_space, device
         )
-
+        # Note, we need to insert this before we batch the items. The next
+        # state is needed for the reward model.
         pipeline.insert_before(
             "BatchIndividualItems", AddNextObservationsFromEpisodesToTrainBatch()
         )
+        # Note, we need the episode lengths for computation of advantages.
         pipeline.insert_before(
             "BatchIndividualItems",
             AddEpisodeLengthsToTrainBatch(),

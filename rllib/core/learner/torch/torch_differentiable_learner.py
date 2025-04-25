@@ -6,6 +6,7 @@ from typing import Any, Dict, Tuple
 from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchCompileConfig,
@@ -13,6 +14,10 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import (
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    WEIGHTS_SEQ_NO,
+)
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ModuleID, NamedParamDict, TensorType
 
@@ -108,25 +113,12 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         #    group.update(), so somehow, there is still a race condition
         #    possible (learner, which performs the reduce() and learner thread, which
         #    performs the logging of tensors into metrics logger).
-        # TODO (simon): Introduce if necessary.
-        # self._compute_off_policyness(batch)
+        self._compute_off_policyness(batch)
 
         # Make a functional forward pass with the provided parameters.
         fwd_out = self._make_functional_call(params, batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
         # Compute gradients for the provided parameters.
-        import os
-
-        if not os.path.isfile("bc_irl_inner_graph.gv"):
-            from torchviz import make_dot
-
-            dot = make_dot(
-                loss_per_module["default_policy"],
-                params["default_policy"],
-                show_saved=True,
-            )
-            dot.save("bc_irl_inner_graph.gv")
-
         gradients = self.compute_gradients(loss_per_module, params)
 
         with contextlib.ExitStack() as stack:
@@ -245,13 +237,12 @@ class TorchDifferentiableLearner(DifferentiableLearner):
                             "the update be skipped entirely set `torch_skip_nan_gradients` "
                             "to `True`."
                         )
-                    # If necessary turn `nan` gradients to zero. Note this can corrupt the
+                    # If necessary turn `nan` gradients to zero. Note, this can corrupt the
                     # internal state of the optimizer, if many `nan` gradients occur.
                     grad = torch.nan_to_num(grad)
 
                 if self.config.torch_skip_nan_gradients or torch.isfinite(grad).all():
                     # Update each parameter, by a simple gradient descent step.
-                    # TODO (simon): Add a default learning rate `lr` to the `DifferentiableLearnerConfig`.
                     updated_params[module_id][name] = (
                         params[module_id][name] - self.learner_config.lr * grad
                     )
@@ -312,6 +303,25 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         length = max(len(b) for b in batch.values())
         batch = MultiAgentBatch(batch, env_steps=length)
         return batch
+
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
 
     @override(DifferentiableLearner)
     def build(self) -> None:

@@ -34,7 +34,7 @@ class DefaultBCIRLRewardTorchRLModule(TorchRLModule, DefaultBCIRLRewardRLModule)
         inputs = {}
         output = {}
 
-        if self.reward_type == "action":
+        if self.reward_type.value == "action":
             # One-hot-encode actions from discrete action spaces.
             # TODO (simon): Implement also box action-spaces.
             actions = nn.functional.one_hot(
@@ -44,12 +44,15 @@ class DefaultBCIRLRewardTorchRLModule(TorchRLModule, DefaultBCIRLRewardRLModule)
             inputs[Columns.OBS] = torch.concatenate(
                 [batch[Columns.OBS], actions, batch[Columns.NEXT_OBS]], dim=-1
             )
-        elif self.reward_type == "curr_next_obs":
-            # Concatenate state, action, and next state in the input.
+        elif self.reward_type.value == "curr_next_state":
+            # Concatenate state, and next state in the input.
             inputs[Columns.OBS] = torch.concatenate(
                 [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=-1
             )
-        elif self.reward_type == "next_obs":
+        elif self.reward_type.value == "next_state":
+            # Use the next state as input to the forward pass. Note, the
+            # state-only reward has been shown to lead to rewards that
+            # generalize better Fu et al. (2017).
             inputs[Columns.OBS] = batch[Columns.NEXT_OBS]
 
         # Run a single forward pass on the encoder.

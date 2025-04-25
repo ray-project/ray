@@ -21,7 +21,6 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY
 from ray.rllib.core.learner.torch.torch_differentiable_learner import (
     TorchDifferentiableLearner,
 )
-from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
@@ -69,8 +68,8 @@ class BCIRLPPOTorchDifferentiableLearner(
                 possibly_masked_mean = torch.mean
 
             # Compute advantages with the reward model.
-            batch[Columns.ADVANTAGES] = self._compute_general_advantage(
-                batch, fwd_out=fwd_out, module=module, config=config
+            fwd_out[Columns.ADVANTAGES] = self._compute_general_advantage(
+                fwd_out=fwd_out, batch=batch, config=config
             )
 
             action_dist_class_train = module.get_train_action_dist_cls()
@@ -103,8 +102,8 @@ class BCIRLPPOTorchDifferentiableLearner(
             mean_entropy = possibly_masked_mean(curr_entropy)
 
             surrogate_loss = torch.min(
-                batch[Columns.ADVANTAGES] * logp_ratio,
-                batch[Columns.ADVANTAGES]
+                fwd_out[Columns.ADVANTAGES] * logp_ratio,
+                fwd_out[Columns.ADVANTAGES]
                 * torch.clamp(
                     logp_ratio, 1 - config.ppo_clip_param, 1 + config.ppo_clip_param
                 ),
@@ -172,38 +171,23 @@ class BCIRLPPOTorchDifferentiableLearner(
             functional_policy_calls[mid] = torch.func.functional_call(
                 self._module[mid], params[mid], batch[mid]
             )
+            # Note, we have always embeddings.
             embeddings = functional_policy_calls[mid].get(Columns.EMBEDDINGS)
-            if embeddings is None:
-                # TODO (simon): All of this would not work, because parameters need to be adjusted to the
-                # submodules for a functional call.
-                # Separate vf-encoder.
-                if hasattr(self.encoder, "critic_encoder"):
-                    batch_ = batch
-                    if self.is_stateful():
-                        # The recurrent encoders expect a `(state_in, h)`  key in the
-                        # input dict while the key returned is `(state_in, critic, h)`.
-                        batch_ = batch.copy()
-                        batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-                    embeddings = torch.func.functional_call(
-                        self._module[mid].encoder.critic_encoder, params, batch
-                    )[ENCODER_OUT]
-                # Shared encoder.
-                else:
-                    embeddings = torch.func.functional_call(
-                        self._module[mid].encoder, params, batch
-                    )[ENCODER_OUT][CRITIC]
 
-            # Value head.
+            # Value head. Note, the default PPO `RLModule` does not compute
+            # values in its `_forward` method, therefore we have to do it here.
             vf_params = {
                 k[len("vf.") :]: v
                 for k, v in params[mid].items()
                 if k.startswith("vf.")
             }
+            # Make a functional call solely with the value function head.
             vf_out = torch.func.functional_call(
                 self._module[mid].vf, vf_params, embeddings
             )
             # Squeeze out last dimension (single node value head).
             functional_policy_calls[mid][Columns.VF_PREDS] = vf_out.squeeze(-1)
+            # Make a functioonal call to the reward model.
             functional_policy_calls[mid].update(
                 torch.func.functional_call(
                     self._module[REWARD_MODULE], params[REWARD_MODULE], batch[mid]
@@ -211,34 +195,6 @@ class BCIRLPPOTorchDifferentiableLearner(
             )
 
         return functional_policy_calls
-
-    # def _compute_values_functional_call(self, params, batch, fwd_out, module_id):
-
-    #     embeddings = fwd_out.get(Columns.EMBEDDINGS)
-    #     if embeddings is None:
-    #         # Separate vf-encoder.
-    #         if hasattr(self.encoder, "critic_encoder"):
-    #             batch_ = batch
-    #             if self.is_stateful():
-    #                 # The recurrent encoders expect a `(state_in, h)`  key in the
-    #                 # input dict while the key returned is `(state_in, critic, h)`.
-    #                 batch_ = batch.copy()
-    #                 batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-    #             embeddings = torch.func.functional_call(
-    #                 self._module[module_id].encoder.critic_encoder, params, batch
-    #             )[ENCODER_OUT]
-    #         # Shared encoder.
-    #         else:
-    #             embeddings = torch.func.functional_call(
-    #                 self._module[module_id].encoder, params, batch
-    #             )[ENCODER_OUT][CRITIC]
-
-    #     # Value head.
-    #     vf_out = torch.func.functional_call(
-    #         self._module[module_id].vf, params, embeddings
-    #     )
-    #     # Squeeze out last dimension (single node value head).
-    #     return vf_out.squeeze(-1)
 
     @override(BCIRLPPODifferentiableLearner)
     def _update_module_kl_coeff(
@@ -277,16 +233,30 @@ class BCIRLPPOTorchDifferentiableLearner(
 
     def _compute_general_advantage(
         self,
-        batch,
         fwd_out,
-        module,
+        batch,
         config,
     ):
-        with torch.no_grad():
-            batch[Columns.VF_PREDS] = module.compute_values(batch)
+        """Computes the general advantages in a differentiable form.
+
+        Additionally to the return value, this methods also populates the batch
+        with the value targets under `Columns.VALUE_TARGETS`.
+
+        Args:
+            fwd_out: Output from a functional forward pass on the `MultiRLModule`.
+            batch: The train batch that was used to compute `fwd_out`.
+            config: The `AlgorithmConfig` for the sub-module used in the loss.
+
+        Returns: A torch tensor with the advantages.
+
+        """
+
         episode_lens = torch.unique(batch[Columns.EPS_LENS])
+        # Compute the value targets.
         batch[Columns.VALUE_TARGETS] = self._compute_value_targets(
-            values=self._unpad_data_if_necessary(episode_lens, batch[Columns.VF_PREDS]),
+            values=self._unpad_data_if_necessary(
+                episode_lens, fwd_out[Columns.VF_PREDS].detach()
+            ),
             rewards=self._unpad_data_if_necessary(
                 episode_lens, fwd_out[Columns.REWARDS]
             ),
@@ -299,10 +269,14 @@ class BCIRLPPOTorchDifferentiableLearner(
             gamma=config.ppo_gamma,
             lambda_=config.ppo_lambda_,
         )
+        # TODO (simon): Gives an error.
         # assert module_value_targets.shape[0] == episode_lens.sum()
 
-        module_advantages = batch[Columns.VALUE_TARGETS] - batch[Columns.VF_PREDS]
+        module_advantages = (
+            batch[Columns.VALUE_TARGETS] - fwd_out[Columns.VF_PREDS].detach()
+        )
 
+        # Normalize advantages.
         module_advantages = (module_advantages - module_advantages.mean()) / max(
             1e-4, module_advantages.std()
         )
@@ -321,18 +295,28 @@ class BCIRLPPOTorchDifferentiableLearner(
         """Computes value function (vf) targets given vf predictions and rewards.
 
         Note that advantages can then easily be computed via the formula:
-        advantages = targets - vf_predictions
+        advantages = targets - vf_predictions.
+
+        Args:
+            values: Output of the value head of the sub-module.
+            rewards: Output of the reward module.
+            terminateds: A tensor with the termination signals.
+            truncateds: A tensor with the truncation signals.
+            gamma: The discount factor for the returns.
+            lambda_: The exponential weight for the GAE computation.
+
+        Returns: A tensor with the value targets.
         """
         # Convert to torch tensors.
         lambda_ = torch.Tensor([lambda_])
         gamma = torch.Tensor([gamma])
 
         # Force-set all values at terminals (not at truncations!) to 0.0.
-        orig_values = flat_values = values * (1.0 - terminateds)
+        continues = 1.0 - terminateds
+        orig_values = flat_values = values * continues
 
         flat_values = torch.concatenate((flat_values, torch.zeros((1,))), dim=-1)
         intermediates = rewards + gamma * (1.0 - lambda_) * flat_values[1:]
-        continues = 1.0 - terminateds
 
         Rs = []
         last = flat_values[-1]
@@ -353,7 +337,7 @@ class BCIRLPPOTorchDifferentiableLearner(
         Removes right-side zero-padding from data based on `episode_lens`.
 
         Args:
-            episode_lens (list[int]): A list of actual episode lengths.
+            episode_lens (list[int]): A tensor of actual episode lengths.
             data (torch.Tensor): A 2D tensor with right-side zero-padded rows.
 
         Returns:

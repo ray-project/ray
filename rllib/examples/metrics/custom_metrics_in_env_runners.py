@@ -336,5 +336,6 @@ if __name__ == "__main__":
             }
         )
     )
-
+    args.wandb_key = "a8209b8580c42092fb20b5c0644cf59e93d98fd0"
+    args.wandb_project = "bc_irl_ppo_test"
     run_rllib_example_script_experiment(base_config, args)
