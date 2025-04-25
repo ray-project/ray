@@ -16,34 +16,14 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
-    AbstractMap,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
-from ray.data._internal.logical.rules import FuseOperators
 from ray.data._internal.planner.planner import Planner
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
-
-
-@pytest.mark.parametrize("upstream_min_rows", [None, 0, 2])
-@pytest.mark.parametrize("downstream_min_rows", [None, 0, 2])
-def test_derive_upstream_parallelism_reduction_factor(
-    upstream_min_rows, downstream_min_rows
-):
-    us = AbstractMap(name="A", min_rows_per_bundled_input=upstream_min_rows)
-    ds = AbstractMap(name="B", min_rows_per_bundled_input=downstream_min_rows)
-
-    if not downstream_min_rows:
-        expected_factor = 1.0
-    else:
-        expected_factor = (upstream_min_rows or 0) / downstream_min_rows
-
-    factor = FuseOperators._derive_upstream_parallelism_reduction_factor(us, ds)
-
-    assert expected_factor == factor
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
@@ -348,11 +328,9 @@ def test_read_with_map_batches_no_fusion(ray_start_regular_shared_2_cpus, temp_d
 @pytest.mark.parametrize(
     "upstream_batch_size,downstream_batch_size,fused",
     [
-        # No fusion (no batch-size in upstream)
-        (None, 2, False),
-        # No fusion (reduction factor exceeds threshold, default is 0.25)
-        (1, 5, False),
         # Fusion
+        (None, 2, True),
+        (1, 5, True),
         (1, 2, True),
         # Fusion (downstream batch-size has no impact)
         (1, None, True),

@@ -492,77 +492,7 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # Avoid fusing operators in cases when doing so would lead to a dramatic parallelism
-        # reduction for the upstream operator
-        factor_threshold = (
-            context.map_operator_fusion_parallelism_reduction_factor_threshold
-        )
-        upstream_parallelism_reduction_factor = (
-            cls._derive_upstream_parallelism_reduction_factor(
-                upstream_op, downstream_op
-            )
-        )
-
-        if upstream_parallelism_reduction_factor < factor_threshold:
-            logger.warning(
-                f"Fusion of '{upstream_op}' (upstream) with '{downstream_op}' "
-                f"(downstream) will likely lead to parallelism reduction of "
-                f"{round(upstream_parallelism_reduction_factor, 2)} that's below the "
-                f"threshold of {factor_threshold}. Aborting operator fusion."
-            )
-
-            return False
-
         return True
-
-    @classmethod
-    def _derive_upstream_parallelism_reduction_factor(
-        cls,
-        upstream_op: AbstractMap,
-        downstream_op: AbstractMap,
-    ) -> float:
-        """This method derives potential parallelism reduction factor
-        based on `min_rows_per_bundled_input` setting of upstream and downstream
-        operators.
-
-        It returns value in the range [0, 1] that should be interpreted
-        as multiplication factor for estimated parallelism of the upstream
-        operator by potentially fusing the 2 operators.
-        """
-
-        us_bundle_min_rows_req = upstream_op._min_rows_per_bundled_input
-        ds_bundle_min_rows_req = downstream_op._min_rows_per_bundled_input
-
-        # If downstream operator's min-rows requirement is None or 0,
-        # there's no reduction
-        if not ds_bundle_min_rows_req:
-            return 1.0
-
-        # In case downstream's requirement is > 0, while upstream's is not specified
-        # (or is 0),we conservatively assume that downstream's
-        #
-        #   `min_rows_per_bundled_input` >> than the input block size
-        #
-        # Hence potentially leading to substantial reduction in parallelism
-        elif not us_bundle_min_rows_req:
-            return 0.0
-
-        # If both are specified parallelism reduction ratio is determined as:
-        #
-        #   reduction_ratio = (
-        #       upstream min-rows requirement / downstream min-rows requirement
-        #   )
-        #
-        # Therefore entailing that parallelism of the upstream operator after fusion
-        # will be equal to:
-        #
-        #   parallelism (w/ fusion) = parallelism (w/o fusion) * reduction_ratio
-        else:
-            # NOTE: If ratio of downstream to upstream min num rows requirement is exceeding
-            #       `_DEFAULT_THRESHOLD_MIN_NUM_ROWS_DS_TO_US_RATIO` we log a warning
-            #       as this could potentially lead to substantial parallelism reduction due
-            #       to operator fusion
-            return us_bundle_min_rows_req / ds_bundle_min_rows_req
 
 
 def _are_remote_args_compatible(prev_args, next_args):
