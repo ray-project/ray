@@ -1142,7 +1142,7 @@ class UserMethodInfo:
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
 
-    handled_exceptions = (BackPressureError, DeploymentUnavailableError)
+    service_unavailable_exceptions = (BackPressureError, DeploymentUnavailableError)
 
     def __init__(
         self,
@@ -1396,7 +1396,7 @@ class UserCallableWrapper:
                 def handle_exception(_: Request, exc: Exception):
                     return self.handle_exception(exc)
 
-                for exc in self.handled_exceptions:
+                for exc in self.service_unavailable_exceptions:
                     app.add_exception_handler(exc, handle_exception)
 
                 await self._callable._run_asgi_lifespan_startup()
@@ -1686,7 +1686,7 @@ class UserCallableWrapper:
             raise
 
     def handle_exception(self, exc: Exception):
-        if isinstance(exc, self.handled_exceptions):
+        if isinstance(exc, self.service_unavailable_exceptions):
             return starlette.responses.Response(exc.message, status_code=503)
         else:
             return starlette.responses.Response(

@@ -196,6 +196,17 @@ def test_model_composition_backpressure(serve_instance):
 
 @pytest.mark.parametrize("request_type", ["async_non_gen", "sync_non_gen"])
 def test_model_composition_backpressure_with_fastapi(serve_instance, request_type):
+    """Tests backpressure behavior with FastAPI model composition.
+
+    Tests that when a Child deployment with max_ongoing_requests=1 and max_queued_requests=1
+    is called through a Parent FastAPI deployment:
+    1. First request blocks while executing
+    2. Second request gets queued
+    3. Third request gets rejected with 503 status code
+    4. After unblocking, first two requests complete successfully
+
+    Tests both async and sync non-generator endpoints.
+    """
     signal_actor = SignalActor.remote()
     app = FastAPI()
 
@@ -246,13 +257,13 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
         rejected_fut = exc.submit(send_request)
         assert rejected_fut.result().status_code == 503
 
-        ray.get(signal_actor.send.remote(clear=False))
+        # Send signal, let the two requests succeed.
+        ray.get(signal_actor.send.remote())
         assert executing_fut.result().status_code == 200
         assert executing_fut.result().text == "ok"
         assert queued_fut.result().status_code == 200
         assert queued_fut.result().text == "ok"
 
-    ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
