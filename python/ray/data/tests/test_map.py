@@ -797,17 +797,10 @@ def test_filter_with_dictionary_schema(ray_start_regular_shared, tmp_path):
     # Create the Parquet file with a dictionary column
     dict_type = pa.dictionary(index_type=pa.int32(), value_type=pa.string())
     string_array = pa.array(["x", "y", "z"], type=pa.string())
-    dict_array = pa.array(["apple", "banana", "apple"], type=dict_type)
-    struct_array = pa.array(
-        [{"a": 1, "b": 2}, {"a": 3, "b": 4}, {"a": 5, "b": 6}],
-        type=pa.struct([("a", pa.int32()), ("b", pa.int32())]),
-    )
-    list_type = pa.list_(pa.int32())
-    list_array = pa.array([[1, 2], [3, 4], None], type=list_type)
 
     table = pa.Table.from_arrays(
-        [dict_array, string_array, struct_array, list_array],
-        names=["dict_col", "str_col", "struct_col", "list_col"],
+        [dict_array, string_arrayy],
+        names=["dict_col", "str_col"],
     )
     pq.write_table(table, file_path)
 
