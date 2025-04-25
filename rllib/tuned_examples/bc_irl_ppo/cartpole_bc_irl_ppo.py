@@ -77,7 +77,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=5,
+        dataset_num_iters_per_learner=1,
     )
     .evaluation(
         evaluation_interval=3,
@@ -98,9 +98,10 @@ if not args.no_tune:
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
-    TRAINING_ITERATION: 350,
+    # TRAINING_ITERATION: 350,
 }
 
-
+args.wandb_project = "bc_irl_ppo_test"
+args.wandb_key = "a8209b8580c42092fb20b5c0644cf59e93d98fd0"
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args, stop=stop)

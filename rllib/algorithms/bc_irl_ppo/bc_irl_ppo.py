@@ -49,6 +49,8 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
         super().__init__(algo_class=algo_class or BCIRLPPO)
         # ----------------------------
 
+        # This is also an online algorithm.
+        self._is_online = True
 
         # Mateiralize all data. Set this to `False` if the data
         # is large.
@@ -442,11 +444,6 @@ class BCIRLPPOConfig(DifferentiableAlgorithmConfig):
                 )
 
         return multi_rl_module_spec
-
-    @property
-    def is_online(self) -> bool:
-        """Defines, if this config is for online RL."""
-        return True
 
 
 class BCIRLPPODifferentiableLearnerConfig(DifferentiableLearnerConfig):

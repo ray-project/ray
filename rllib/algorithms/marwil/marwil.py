@@ -170,6 +170,8 @@ class MARWILConfig(AlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # MARWIL specific settings:
+        self._is_online = False
+        
         self.beta = 1.0
         self.bc_logstd_coeff = 0.0
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
