@@ -1034,8 +1034,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
-  // TODO(swang): If we receive a notification for our own death, clean up and
-  // exit immediately.
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
   failed_nodes_cache_.insert(node_id);
 
