@@ -419,6 +419,7 @@ class AlgorithmConfig(_Config):
         self.callbacks_class = RLlibCallback
         self.callbacks_on_algorithm_init = None
         self.callbacks_on_env_runners_recreated = None
+        self.callbacks_on_offline_eval_runners_recreated = None
         self.callbacks_on_checkpoint_loaded = None
         self.callbacks_on_environment_created = None
         self.callbacks_on_episode_created = None
@@ -427,6 +428,8 @@ class AlgorithmConfig(_Config):
         self.callbacks_on_episode_end = None
         self.callbacks_on_evaluate_start = None
         self.callbacks_on_evaluate_end = None
+        self.callbacks_on_evaluate_offline_start = None
+        self.callbacks_on_evaluate_offline_end = None
         self.callbacks_on_sample_end = None
         self.callbacks_on_train_result = None
 
@@ -528,6 +531,31 @@ class AlgorithmConfig(_Config):
         #  way). Replace by logic within `training_step` to merge and broadcast the
         #  EnvRunner (connector) states.
         self.sync_filters_on_rollout_workers_timeout_s = 10.0
+        # Offline evaluation.
+        self.offline_evaluation_interval = None
+        self.num_offline_eval_runners = 0
+        # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
+        # decide, if we use `offline_evaluation_duration` or
+        # `dataset_num_iters_per_offline_eval_runner`. Should the user decide here?
+        # The latter will be much faster, but runs per runner call all evaluation.
+        self.offline_loss_for_module_fn = None
+        self.offline_evaluation_duration = 1
+        self.offline_evaluation_parallel_to_training = False
+        self.offline_evaluation_timeout_s = 120.0
+        self.num_cpus_per_offline_eval_runner = 1
+        self.num_gpus_per_offline_eval_runner = 0
+        self.custom_resources_per_offline_eval_runner = {}
+        self.restart_failed_offline_eval_runners = True
+        self.ignore_offline_eval_runner_failures = False
+        self.max_num_offline_eval_runner_restarts = 1000
+        self.offline_eval_runner_restore_timeout_s = 1800.0
+        self.max_requests_in_flight_per_offline_eval_runner = 1
+        self.validate_offline_eval_runners_after_construction = True
+        self.offline_eval_runner_health_probe_timeout_s = 30.0
+        self.offline_eval_rl_module_inference_only = False
+        self.broadcast_offline_eval_runner_states = False
+        self.offline_eval_batch_size_per_runner = 256
+        self.dataset_num_iters_per_eval_runner = 1
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
@@ -2479,7 +2507,16 @@ class AlgorithmConfig(_Config):
         on_train_result: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_start: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_evaluate_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
+        on_evaluate_offline_start: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_evaluate_offline_end: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
         on_env_runners_recreated: Optional[
+            Union[Callable, List[Callable]]
+        ] = NotProvided,
+        on_offline_eval_runners_recreated: Optional[
             Union[Callable, List[Callable]]
         ] = NotProvided,
         on_checkpoint_loaded: Optional[Union[Callable, List[Callable]]] = NotProvided,
@@ -2584,8 +2621,16 @@ class AlgorithmConfig(_Config):
             self.callbacks_on_evaluate_start = on_evaluate_start
         if on_evaluate_end is not NotProvided:
             self.callbacks_on_evaluate_end = on_evaluate_end
+        if on_evaluate_offline_start is not NotProvided:
+            self.callbacks_on_evaluate_offline_start = on_evaluate_offline_start
+        if on_evaluate_offline_end is not NotProvided:
+            self.callbacks_on_evaluate_offline_end = on_evaluate_offline_end
         if on_env_runners_recreated is not NotProvided:
             self.callbacks_on_env_runners_recreated = on_env_runners_recreated
+        if on_offline_eval_runners_recreated is not NotProvided:
+            self.callbacks_on_offline_eval_runners_recreated = (
+                on_offline_eval_runners_recreated
+            )
         if on_checkpoint_loaded is not NotProvided:
             self.callbacks_on_checkpoint_loaded = on_checkpoint_loaded
         if on_environment_created is not NotProvided:
@@ -2621,6 +2666,26 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
+        # Offline evaluation.
+        offline_evaluation_interval: Optional[int] = NotProvided,
+        num_offline_eval_runners: Optional[int] = NotProvided,
+        offline_loss_for_module_fn: Optional[Callable] = NotProvided,
+        offline_eval_batch_size_per_runner: Optional[int] = NotProvided,
+        dataset_num_iters_per_offline_eval_runner: Optional[int] = NotProvided,
+        offline_eval_rl_module_inference_only: Optional[bool] = NotProvided,
+        num_cpus_per_offline_eval_runner: Optional[int] = NotProvided,
+        custom_resources_per_offline_eval_runner: Optional[
+            Dict[str, Any]
+        ] = NotProvided,
+        offline_evaluation_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_offline_eval_runner: Optional[int] = NotProvided,
+        broadcast_offline_eval_runner_states: Optional[bool] = NotProvided,
+        validate_offline_eval_runners_after_construction: Optional[bool] = NotProvided,
+        restart_failed_offline_eval_runners: Optional[bool] = NotProvided,
+        ignore_offline_eval_runner_failures: Optional[bool] = NotProvided,
+        max_num_offline_eval_runner_restarts: Optional[int] = NotProvided,
+        offline_eval_runner_health_probe_timeout_s: Optional[float] = NotProvided,
+        offline_eval_runner_restore_timeout_s: Optional[float] = NotProvided,
         # Deprecated args.
         always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
@@ -2719,6 +2784,84 @@ class AlgorithmConfig(_Config):
                 iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
+            offline_evaluation_interval: Evaluate offline with every
+                `offline_evaluation_interval` training iterations. The offline evaluation
+                stats are reported under the "evaluation/offline_evaluation" metric key. Set
+                to None (or 0) for no offline evaluation.
+            num_offline_eval_runners: Number of OfflineEvaluationRunner actors to create
+                for parallel evaluation. Setting this to 0 forces sampling to be done in the
+                local OfflineEvaluationRunner (main process or the Algorithm's actor when
+                using Tune).
+            offline_loss_for_module_fn: A callable to compute the loss per `RLModule` in
+                offline evaluation. If not provided the training loss function (
+                `Learner.compute_loss_for_module`) is used. The signature must be (
+                runner: OfflineEvaluationRunner, module_id: ModuleID, config: AlgorithmConfig,
+                batch: Dict[str, Any], fwd_out: Dict[str, TensorType]).
+            offline_eval_batch_size_per_runner: Evaluation batch size per individual
+                OfflineEvaluationRunner worker. This setting only applies to the new API
+                stack. The number of OfflineEvaluationRunner workers can be set via
+                `config.evaluation(num_offline_eval_runners=...)`. The total effective batch
+                size is then `num_offline_eval_runners` x
+                `offline_eval_batch_size_per_runner`.
+            dataset_num_iters_per_offline_eval_runner: Number of batches to evaluate in each
+                OfflineEvaluationRunner during a single evaluation. If None, each learner runs a
+                complete epoch over its data block (the dataset is partitioned into
+                at least as many blocks as there are runners). The default is `1`.
+            offline_eval_rl_module_inference_only: If `True`, the module spec is used in an
+                inference-only setting (no-loss) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+                Also, if `True`, the module does NOT contain those (sub) RLModules that have
+                their `learner_only` flag set to True.
+            num_cpus_per_offline_eval_runner: Number of CPUs to allocate per
+                OfflineEvaluationRunner.
+            custom_resources_per_eval_runner: Any custom Ray resources to allocate per
+                OfflineEvaluationRunner.
+            offline_evaluation_timeout_s: The timeout in seconds for calling `run()` on remote
+                OfflineEvaluationRunner workers. Results (episode list) from workers that take
+                longer than this time are discarded.
+            max_requests_in_flight_per_offline_eval_runner: Max number of in-flight requests
+                to each OfflineEvaluationRunner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
+                Tuning these values is important when running experiments with
+                large evaluation batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slowly as well. You can inspect the object store during your experiment
+                through a call to `ray memory` on your head node, and by using the Ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight or enable compression
+                or increase the object store memory through, for example:
+                `ray.init(object_store_memory=10 * 1024 * 1024 * 1024)  # =10 GB`.
+            broadcast_offline_eval_runner_states: True, if merged OfflineEvaluationRunner
+                states (from the central connector pipelines) should be broadcast back to
+                all remote OfflineEvaluationRunner actors.
+            validate_offline_eval_runners_after_construction: Whether to validate that each
+                created remote OfflineEvaluationRunner is healthy after its construction process.
+            restart_failed_offline_eval_runners: Whether - upon an OfflineEvaluationRunner
+                failure - RLlib tries to restart the lost OfflineEvaluationRunner(s) as an
+                identical copy of the failed one(s). You should set this to True when training
+                on SPOT instances that may preempt any time and/or if you need to evaluate always a
+                complete dataset b/c OfflineEvaluationRunner(s) evaluate through streaming split
+                iterators on disjoint batches. The new, recreated OfflineEvaluationRunner(s) only
+                differ from the failed one in their `self.recreated_worker=True` property value
+                and have the same `worker_index` as the original(s). If this setting is True, the
+                value of the `ignore_offline_eval_runner_failures` setting is ignored.
+            ignore_offline_eval_runner_failures: Whether to ignore any OfflineEvalautionRunner
+                failures and continue running with the remaining OfflineEvaluationRunners. This
+                setting is ignored, if `restart_failed_offline_eval_runners=True`.
+            max_num_offline_eval_runner_restarts: The maximum number of times any
+                OfflineEvaluationRunner is allowed to be restarted (if
+                `restart_failed_offline_eval_runners` is True).
+            offline_eval_runner_health_probe_timeout_s: Max amount of time in seconds, we should
+                spend waiting for OfflineEvaluationRunner health probe calls
+                (`OfflineEvaluationRunner.ping.remote()`) to respond. Health pings are very cheap,
+                however, we perform the health check via a blocking `ray.get()`, so the
+                default value should not be too large.
+            offline_eval_runner_restore_timeout_s: Max amount of time we should wait to restore
+                states on recovered OfflineEvaluationRunner actors. Default is 30 mins.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2786,6 +2929,63 @@ class AlgorithmConfig(_Config):
             self.custom_evaluation_function = custom_evaluation_function
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
+        # Offline evaluation.
+        if offline_evaluation_interval is not NotProvided:
+            self.offline_evaluation_interval = offline_evaluation_interval
+        if num_offline_eval_runners is not NotProvided:
+            self.num_offline_eval_runners = num_offline_eval_runners
+        if offline_loss_for_module_fn is not NotProvided:
+            self.offline_loss_for_module_fn = offline_loss_for_module_fn
+        if offline_eval_batch_size_per_runner is not NotProvided:
+            self.offline_eval_batch_size_per_runner = offline_eval_batch_size_per_runner
+        if dataset_num_iters_per_offline_eval_runner is not NotProvided:
+            self.dataset_num_iters_per_eval_runner = (
+                dataset_num_iters_per_offline_eval_runner
+            )
+        if offline_eval_rl_module_inference_only is not NotProvided:
+            self.offline_eval_rl_module_inference_only = (
+                offline_eval_rl_module_inference_only
+            )
+        if num_cpus_per_offline_eval_runner is not NotProvided:
+            self.num_cpus_per_offline_eval_runner = num_cpus_per_offline_eval_runner
+        if custom_resources_per_offline_eval_runner is not NotProvided:
+            self.custom_resources_per_offline_eval_runner = (
+                custom_resources_per_offline_eval_runner
+            )
+        if offline_evaluation_timeout_s is not NotProvided:
+            self.offline_evaluation_timeout_s = offline_evaluation_timeout_s
+        if max_requests_in_flight_per_offline_eval_runner is not NotProvided:
+            self.max_requests_in_flight_per_offline_eval_runner = (
+                max_requests_in_flight_per_offline_eval_runner
+            )
+        if broadcast_offline_eval_runner_states is not NotProvided:
+            self.broadcast_offline_eval_runner_states = (
+                broadcast_offline_eval_runner_states
+            )
+        if validate_offline_eval_runners_after_construction is not NotProvided:
+            self.validate_offline_eval_runners_after_construction = (
+                validate_offline_eval_runners_after_construction
+            )
+        if restart_failed_offline_eval_runners is not NotProvided:
+            self.restart_failed_offline_eval_runners = (
+                restart_failed_offline_eval_runners
+            )
+        if ignore_offline_eval_runner_failures is not NotProvided:
+            self.ignore_offline_eval_runner_failures = (
+                ignore_offline_eval_runner_failures
+            )
+        if max_num_offline_eval_runner_restarts is not NotProvided:
+            self.max_num_offline_eval_runner_restarts = (
+                max_num_offline_eval_runner_restarts
+            )
+        if offline_eval_runner_health_probe_timeout_s is not NotProvided:
+            self.offline_eval_runner_health_probe_timeout_s = (
+                offline_eval_runner_health_probe_timeout_s
+            )
+        if offline_eval_runner_restore_timeout_s is not NotProvided:
+            self.offline_eval_runner_restore_timeout_s = (
+                offline_eval_runner_restore_timeout_s
+            )
 
         return self
 
@@ -4566,6 +4766,7 @@ class AlgorithmConfig(_Config):
                 or self.callbacks_on_episode_end is not None
                 or self.callbacks_on_checkpoint_loaded is not None
                 or self.callbacks_on_env_runners_recreated is not None
+                or self.callbacks_on_offline_eval_runners_recreated is not None
             ):
                 self._value_error(
                     "Config settings `config.callbacks(on_....=lambda ..)` aren't "
@@ -4669,6 +4870,7 @@ class AlgorithmConfig(_Config):
         # evaluation, and set `evaluation_parallel_to_training` to False.
         if (
             self.evaluation_num_env_runners == 0
+            and self.num_offline_eval_runners == 0
             and self.evaluation_parallel_to_training
         ):
             self._value_error(
