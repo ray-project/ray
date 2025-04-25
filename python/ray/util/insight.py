@@ -115,7 +115,7 @@ class _ray_internal_insight_monitor:
         self.flame_graph_aggregated = defaultdict(
             lambda: defaultdict(
                 lambda: {
-                    "actor_name": "",
+                    "service_name": "",
                     "total_time": 0,
                     "call_count": 0,
                     "durations": defaultdict(float),
@@ -197,28 +197,34 @@ class _ray_internal_insight_monitor:
         """Handle HTTP request for activating debug sessions."""
         data = await request.json()
         job_id = data.get("job_id", "default_job")
-        class_name = data.get("class_name", None)
+        service_info = (
+            tuple(data.get("service_info", None))
+            if data.get("service_info", None)
+            else None
+        )
         func_name = data.get("func_name", None)
         filter_active = data.get("filter_active", False)
-        if class_name is None and func_name is None:
+        if service_info is None and func_name is None:
             ret = []
-            for (class_name, func_name), task_ids in self.debugger_info[job_id].items():
+            for (service_info, func_name), task_ids in self.debugger_info[
+                job_id
+            ].items():
                 for task_id in task_ids:
                     if filter_active and task_id not in self.debug_sessions[job_id]:
                         continue
                     ret.append(
                         {
-                            "class_name": class_name,
+                            "service_info": service_info,
                             "func_name": func_name,
                             "task_id": task_id,
                         }
                     )
             return aiohttp.web.json_response(ret)
         ret = []
-        for task_id in self.debugger_info[job_id][(class_name, func_name)]:
+        for task_id in self.debugger_info[job_id][(service_info, func_name)]:
             ret.append(
                 {
-                    "class_name": class_name,
+                    "service_info": service_info,
                     "func_name": func_name,
                     "task_id": task_id,
                 }
@@ -245,10 +251,14 @@ class _ray_internal_insight_monitor:
         """Handle HTTP request for activating debug sessions."""
         data = await request.json()
         job_id = data.get("job_id", "default_job")
-        class_name = data.get("class_name", None)
+        service_info = (
+            tuple(data.get("service_info", None))
+            if data.get("service_info", None)
+            else None
+        )
         func_name = data.get("func_name", None)
         task_id = data.get("task_id", "")
-        host, port = self.debugger_info[job_id][(class_name, func_name)][task_id]
+        host, port = self.debugger_info[job_id][(service_info, func_name)][task_id]
         dap = DAPClient(host, port)
         await dap.connect()
         await dap.initialize()
@@ -338,9 +348,13 @@ class _ray_internal_insight_monitor:
 
     def emit_call_record(self, call_record):
         job_id = call_record["job_id"]
-        caller_class = call_record["caller_class"]
+        caller_class = (
+            tuple(call_record["caller_class"]) if call_record["caller_class"] else None
+        )
         caller_func = call_record["caller_func"]
-        callee_class = call_record["callee_class"]
+        callee_class = (
+            tuple(call_record["callee_class"]) if call_record["callee_class"] else None
+        )
         callee_func = call_record["callee_func"]
         call_times = call_record.get("call_times", 1)
         # Create caller and callee identifiers for parent-child relationship
@@ -359,13 +373,13 @@ class _ray_internal_insight_monitor:
         if caller_class:
             self.actors[job_id].add(caller_class)
             if caller_class not in self.actor_id_map[job_id]:
-                self.actor_id_map[job_id][caller_class] = caller_class.split(":")[1]
+                self.actor_id_map[job_id][caller_class] = caller_class[1]
 
             if caller_id not in self.methods[job_id]:
                 self.method_counter[job_id] += 1
                 self.methods[job_id][caller_id] = {
                     "id": f"method{self.method_counter[job_id]}",
-                    "actorId": self.actor_id_map[job_id][caller_class],
+                    "instanceId": self.actor_id_map[job_id][caller_class],
                     "name": caller_func,
                     "class": caller_class,
                 }
@@ -383,13 +397,13 @@ class _ray_internal_insight_monitor:
         if callee_class:
             self.actors[job_id].add(callee_class)
             if callee_class not in self.actor_id_map[job_id]:
-                self.actor_id_map[job_id][callee_class] = callee_class.split(":")[1]
+                self.actor_id_map[job_id][callee_class] = callee_class[1]
 
             if callee_id not in self.methods[job_id]:
                 self.method_counter[job_id] += 1
                 self.methods[job_id][callee_id] = {
                     "id": f"method{self.method_counter[job_id]}",
-                    "actorId": self.actor_id_map[job_id][callee_class],
+                    "instanceId": self.actor_id_map[job_id][callee_class],
                     "name": callee_func,
                     "class": callee_class,
                 }
@@ -407,7 +421,7 @@ class _ray_internal_insight_monitor:
     def get_call_graph_data(self, job_id, stack_mode="0"):
         """Return the call graph data for a specific job."""
         graph_data = {
-            "actors": [],
+            "services": [],
             "methods": [],
             "functions": [],
             "callFlows": [],
@@ -426,10 +440,10 @@ class _ray_internal_insight_monitor:
         for actor_class, actor_id in self.actor_id_map.get(job_id, {}).items():
             if stack_mode == "1" and actor_id not in reachable_actors:
                 continue
-            graph_data["actors"].append(
+            graph_data["services"].append(
                 {
                     "id": actor_id,
-                    "name": actor_class.split(":")[0],
+                    "name": actor_class[0],
                     "language": "python",
                 }
             )
@@ -438,14 +452,14 @@ class _ray_internal_insight_monitor:
         for method_info in self.methods.get(job_id, {}).values():
             if stack_mode == "1":
                 if (
-                    method_info["actorId"] not in reachable_actors
+                    method_info["instanceId"] not in reachable_actors
                     or method_info["name"] not in reachable_methods
                 ):
                     continue
             graph_data["methods"].append(
                 {
                     "id": method_info["id"],
-                    "actorId": method_info["actorId"],
+                    "instanceId": method_info["instanceId"],
                     "name": method_info["name"],
                     "language": "python",
                 }
@@ -494,7 +508,7 @@ class _ray_internal_insight_monitor:
                     if source[0] is not None:
                         if source[1] not in reachable_methods:
                             continue
-                        if source[0].split(":")[-1] not in reachable_actors:
+                        if source[0][1] not in reachable_actors:
                             continue
                     else:
                         if source[1] not in reachable_funcs:
@@ -502,7 +516,7 @@ class _ray_internal_insight_monitor:
                     if target[0] is not None:
                         if target[1] not in reachable_methods:
                             continue
-                        if target[0].split(":")[-1] not in reachable_actors:
+                        if target[0][1] not in reachable_actors:
                             continue
                     else:
                         if target[1] not in reachable_funcs:
@@ -565,12 +579,12 @@ class _ray_internal_insight_monitor:
                 src, dst = edge
                 if src[0] is not None:
                     reachable_methods.add(src[1])
-                    reachable_actors.add(src[0].split(":")[-1])
+                    reachable_actors.add(src[0][1])
                 else:
                     reachable_funcs.add(src[1])
                 if dst[0] is not None:
                     reachable_methods.add(dst[1])
-                    reachable_actors.add(dst[0].split(":")[-1])
+                    reachable_actors.add(dst[0][1])
                 else:
                     reachable_funcs.add(dst[1])
 
@@ -584,9 +598,17 @@ class _ray_internal_insight_monitor:
         object_event = self.object_events.get(job_id, {}).get(object_id, {})
         if len(object_event) == 0:
             return
-        caller_class = object_event.get("caller_class", "")
+        caller_class = (
+            tuple(object_event.get("caller_class", ""))
+            if object_event.get("caller_class", "")
+            else None
+        )
         caller_func = object_event.get("caller_func", "")
-        callee_class = recv_record.get("recv_class", "")
+        callee_class = (
+            tuple(recv_record.get("recv_class", ""))
+            if recv_record.get("recv_class", "")
+            else None
+        )
         callee_func = recv_record.get("recv_func", "")
         argpos = object_event.get("argpos", 0)
         size = object_event.get("size", 0)
@@ -614,8 +636,8 @@ class _ray_internal_insight_monitor:
     def emit_context(self, context_info):
         """Record context info."""
         job_id = context_info["job_id"]
-        actor_id = context_info["actor_id"]
-        self.context_info[job_id][actor_id].update(context_info["context"])
+        instance_id = context_info["instance_id"]
+        self.context_info[job_id][instance_id].update(context_info["context"])
 
     def get_context(self, job_id):
         """Get context info."""
@@ -624,8 +646,8 @@ class _ray_internal_insight_monitor:
     async def emit_resource_usage(self, resource_usage):
         """Record resource usage."""
         job_id = resource_usage["job_id"]
-        actor_id = resource_usage["actor_id"]
-        self.resource_usage[job_id][actor_id].update(resource_usage["usage"])
+        instance_id = resource_usage["instance_id"]
+        self.resource_usage[job_id][instance_id].update(resource_usage["usage"])
 
     def get_resource_usage(self, job_id):
         """Get resource usage."""
@@ -648,9 +670,12 @@ class _ray_internal_insight_monitor:
                 for caller_info in caller_infos:
                     caller_class = caller_info["class"]
                     caller_func = caller_info["func"]
-                    caller_node_id = (
-                        f"{caller_class}.{caller_func}" if caller_class else caller_func
-                    )
+                    if caller_class:
+                        caller_node_id = (
+                            f"{caller_class[0]}:{caller_class[1]}.{caller_func}"
+                        )
+                    else:
+                        caller_node_id = caller_func
                     total_in_parent[caller_node_id]["duration"] += duration
                     total_in_parent[caller_node_id]["count"] += 1
                     if "start_time" not in total_in_parent[caller_node_id]:
@@ -662,7 +687,7 @@ class _ray_internal_insight_monitor:
             flame_data["aggregated"].append(
                 {
                     "name": func_id,
-                    "actor_name": func_data["actor_name"],
+                    "service_name": func_data["service_name"],
                     "value": func_data["total_time"],
                     "count": func_data["call_count"],
                     "total_in_parent": [
@@ -681,12 +706,19 @@ class _ray_internal_insight_monitor:
         for callee_id, start_times in self.start_time_record.get(job_id, {}).items():
             if callee_id not in visited:
                 start_times = [
-                    {"caller_id": f"{k[0]}.{k[1]}" if k[0] else k[1], "start_time": v}
+                    {
+                        "caller_id": f"{k[0][0]}:{k[0][1]}.{k[1]}"
+                        if k[0]
+                        else f"{k[1]}",
+                        "start_time": v,
+                    }
                     for k, v in start_times.items()
                     if v > 0
                 ]
                 callee_id = (
-                    f"{callee_id[0]}.{callee_id[1]}" if callee_id[0] else callee_id[1]
+                    f"{callee_id[0][0]}:{callee_id[0][1]}.{callee_id[1]}"
+                    if callee_id[0]
+                    else callee_id[1]
                 )
                 parent_start_times.append(
                     {"callee_id": callee_id, "start_times": start_times}
@@ -699,7 +731,9 @@ class _ray_internal_insight_monitor:
     def emit_task_end(self, task_record):
         """Record the end of a task execution and calculate duration."""
         job_id = task_record["job_id"]
-        caller_class = task_record["caller_class"]
+        caller_class = (
+            tuple(task_record["caller_class"]) if task_record["caller_class"] else None
+        )
         caller_func = task_record["caller_func"]
         current_task_id = task_record["current_task_id"]
         # Create node_id from caller class and function for parent tracking
@@ -715,8 +749,7 @@ class _ray_internal_insight_monitor:
 
         duration = task_record["duration"]
 
-        node_id = f"{caller_class}.{caller_func}" if caller_class else caller_func
-
+        node_id = f"{caller_class[0]}:{caller_class[1]}.{caller_func}"
         # Update aggregated data using node_id
         self.flame_graph_aggregated[job_id][node_id]["total_time"] += duration
         self.flame_graph_aggregated[job_id][node_id]["call_count"] += 1
@@ -725,8 +758,8 @@ class _ray_internal_insight_monitor:
                 current_task_id: duration,
             }
         )
-        self.flame_graph_aggregated[job_id][node_id]["actor_name"] = task_record[
-            "actor_name"
+        self.flame_graph_aggregated[job_id][node_id]["service_name"] = task_record[
+            "service_name"
         ]
 
     async def emit_caller_info(self, caller_info):
@@ -736,14 +769,21 @@ class _ray_internal_insight_monitor:
         visual_rdb = caller_info["visual_rdb"]
         if visual_rdb:
             self.debugger_info[job_id][
-                (caller_info["callee_class"], caller_info["callee_func"])
+                (
+                    tuple(caller_info["callee_class"])
+                    if caller_info["callee_class"]
+                    else None,
+                    caller_info["callee_func"],
+                )
             ][current_task_id] = (
                 caller_info["debugger_host"],
                 caller_info["debugger_port"],
             )
         self.caller_info[job_id][current_task_id].append(
             {
-                "class": caller_info["caller_class"],
+                "class": tuple(caller_info["caller_class"])
+                if caller_info["caller_class"]
+                else None,
                 "func": caller_info["caller_func"],
                 "task_id": caller_info["caller_task_id"],
             }
@@ -876,9 +916,8 @@ def _get_caller_class():
             caller_class = (
                 caller_actor._ray_actor_creation_function_descriptor.class_name.split(
                     "."
-                )[-1]
-                + ":"
-                + caller_actor._ray_actor_id.hex()
+                )[-1],
+                caller_actor._ray_actor_id.hex(),
             )
     except Exception:
         pass
@@ -904,8 +943,8 @@ def need_record(caller_class):
     return not (
         caller_class is not None
         and (
-            caller_class.startswith(_inner_class_name)
-            or caller_class.startswith("JobSupervisor")
+            caller_class[0].startswith(_inner_class_name)
+            or caller_class[0].startswith("JobSupervisor")
         )
     )
 
@@ -1167,14 +1206,14 @@ def report_resource_usage(usage: dict):
         current_class = _get_caller_class()
         if current_class is None:
             return
-        actor_info = current_class.split(":")
+        actor_id = current_class[1]
         job_id = get_current_job_id()
 
         if not need_record(current_class):
             return
 
         resource_usage_data = {
-            "actor_id": actor_info[1],
+            "instance_id": actor_id,
             "job_id": job_id,
             "usage": usage,
         }
@@ -1195,7 +1234,7 @@ def register_current_context(context: dict):
         current_class = _get_caller_class()
         if current_class is None:
             return
-        actor_info = current_class.split(":")
+        actor_id = current_class[1]
 
         job_id = get_current_job_id()
 
@@ -1203,7 +1242,7 @@ def register_current_context(context: dict):
             return
 
         context_data = {
-            "actor_id": actor_info[1],
+            "instance_id": actor_id,
             "job_id": job_id,
             "context": context,
         }
@@ -1269,7 +1308,7 @@ def record_task_duration(duration):
         task_record = {
             "caller_class": caller_class,
             "caller_func": caller_func,
-            "actor_name": actor_name,
+            "service_name": actor_name,
             "duration": duration,
             "job_id": job_id,
             "current_task_id": current_task_id,

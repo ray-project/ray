@@ -222,9 +222,8 @@ class ActorMethod:
         callee_class = None
         if actor is not None:
             callee_class = (
-                actor._ray_actor_creation_function_descriptor.class_name.split(".")[-1]
-                + ":"
-                + actor._ray_actor_id.hex()
+                actor._ray_actor_creation_function_descriptor.class_name.split(".")[-1],
+                actor._ray_actor_id.hex(),
             )
         return callee_class, callee_func
 
@@ -1301,9 +1300,8 @@ class ActorClass:
             callee_class = (
                 actor_handle._ray_actor_creation_function_descriptor.class_name.split(
                     "."
-                )[-1]
-                + ":"
-                + actor_handle._ray_actor_id.hex()
+                )[-1],
+                actor_handle._ray_actor_id.hex(),
             )
         return callee_class, callee_func
 

@@ -115,7 +115,8 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
     ) -> aiohttp.web.Response:
         """Return a list of active debug sessions."""
         job_id = req.query.get("job_id", "default_job")
-        class_name = req.query.get("class_name", None)
+        service_name = req.query.get("service_name", None)
+        instance_id = req.query.get("instance_id", None)
         func_name = req.query.get("func_name", None)
         filter_active = req.query.get("filter_active", "false")
         filter_active = True if filter_active == "true" else False
@@ -135,7 +136,9 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                     f"http://{host}:{port}/get_debug_sessions",
                     json={
                         "job_id": job_id,
-                        "class_name": class_name,
+                        "service_info": None
+                        if service_name is None
+                        else [service_name, instance_id],
                         "func_name": func_name,
                         "filter_active": filter_active,
                     },
@@ -163,7 +166,8 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
     ) -> aiohttp.web.Response:
         """Activate a debug session."""
         job_id = req.query.get("job_id", "default_job")
-        class_name = req.query.get("class_name", None)
+        service_name = req.query.get("service_name", None)
+        instance_id = req.query.get("instance_id", None)
         func_name = req.query.get("func_name", None)
         task_id = req.query.get("task_id", "")
         address = await self.gcs_aio_client.internal_kv_get(
@@ -182,7 +186,9 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                     f"http://{host}:{port}/activate_debug_session",
                     json={
                         "job_id": job_id,
-                        "class_name": class_name,
+                        "service_info": None
+                        if service_name is None
+                        else [service_name, instance_id],
                         "func_name": func_name,
                         "task_id": task_id,
                     },
@@ -394,7 +400,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                 if node_id not in physical_view:
                     physical_view[node_id] = {
                         "resources": {},
-                        "actors": {},
+                        "services": {},
                         "gpus": [],
                     }
 
@@ -426,7 +432,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                     if node_id in physical_view:
                         actor_pid = actor_info.get("pid")
                         actor_view = {
-                            "actorId": actor_id,
+                            "instanceId": actor_id,
                             "name": actor_name,
                             "state": actor_info.get("state", "UNKNOWN"),
                             "pid": actor_pid,
@@ -507,7 +513,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                         actor_view["contextInfo"] = context_info.get(actor_id, {})
                         actor_view["resourceUsage"] = resource_usage.get(actor_id, {})
 
-                        physical_view[node_id]["actors"][actor_id] = actor_view
+                        physical_view[node_id]["services"][actor_id] = actor_view
 
             return dashboard_optional_utils.rest_response(
                 success=True,
@@ -557,7 +563,7 @@ class InsightHead(dashboard_utils.DashboardHeadModule):
                     graph_data = await response.json()
 
                     # Add GPU information and actor names to each node in the graph data
-                    for node in graph_data.get("actors", []):
+                    for node in graph_data.get("services", []):
                         actor_id = node.get("id")
                         # Check if we have this actor in DataSource.actors
                         if actor_id in DataSource.actors:
