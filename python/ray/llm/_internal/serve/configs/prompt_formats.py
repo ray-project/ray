@@ -186,6 +186,7 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
                 content = message.content
             conversation.append({"role": message.role, "content": content})
 
+        breakpoint()
         prompt = self._processor.apply_chat_template(
             conversation=conversation,
             tokenize=False,

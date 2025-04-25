@@ -451,35 +451,51 @@ class VLLMEngine(LLMEngine):
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
+        
+        parse_chat_messages_fn = vllm.entrypoints.chat_utils.parse_chat_messages
+         
+        # prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
+        # prompt_text = prompt_output.text
+        # image_input = prompt_output.image
+        # image = []
+        # if not self._llm_config.supports_vision and image_input:
+        #     raise RuntimeError(
+        #         "You provided image input while the engine is not set up to handle images."
+        #     )
 
-        prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
+        # if self._llm_config.supports_vision and image_input:
+        #     for _image in image_input:
+        #         image_url = _image.image_url
+        #         image.append(await self.image_retriever.get(image_url))
 
-        sampling_params = VLLMSamplingParams.from_prompt(prompt)
-        prompt_text = prompt_output.text
-        image_input = prompt_output.image
-        image = []
-        if not self._llm_config.supports_vision and image_input:
-            raise RuntimeError(
-                "You provided image input while the engine is not set up to handle images. "
-                "Did you forget to set `input_modality` to image in yaml file?"
+        model_config = self.model_config
+        tokenizer = await self.engine.get_tokenizer()
+        
+        if isinstance(prompt, list):
+            conversation, mm_futures = parse_chat_messages_fn(
+                messages=[m.model_dump() for m in prompt.prompt],
+                model_config=model_config,
+                tokenizer=tokenizer,
+                content_format="openai",
             )
-
-        if self._llm_config.supports_vision and image_input:
-            for _image in image_input:
-                image_url = _image.image_url
-                image.append(await self.image_retriever.get(image_url))
-
+            mm_data = await mm_futures
+        else:
+            conversation = prompt
+        
+        prompt_output = self._llm_config.prompt_format.generate_prompt(conversation)
+        prompt_text = prompt_output.text
+        
         request_params = {
             "prompt": prompt_text,
             "request_id": request_id,
-            "sampling_params": sampling_params,
+            "sampling_params": VLLMSamplingParams.from_prompt(prompt),
             "disk_multiplex_config": disk_lora_model,
             "serve_request_context": serve.context._serve_request_context.get(),
             "stream": stream,
         }
-        if image:
-            request_params["multi_modal_data"] = {"image": image}
-
+        if mm_data:
+            request_params["multi_modal_data"] = mm_data
+        
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
