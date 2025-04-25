@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
 
 # Third-party imports
-from pydantic import ValidationError as PydanticValidationError
 from ray import serve
 from ray._common.utils import import_attr
 
@@ -14,9 +13,6 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
-)
-from ray.llm._internal.serve.configs.error_handling import (
-    ValidationErrorWithPydantic,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
@@ -52,10 +48,6 @@ from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import 
     LoraModelLoader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMGenerationRequest,
-    VLLMSamplingParams,
-)
 from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
 )
@@ -527,7 +519,7 @@ class LLMServer(_LLMServerBase):
             stream=stream,
             disk_lora_model=disk_lora_model,
         )
-        
+
         async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 

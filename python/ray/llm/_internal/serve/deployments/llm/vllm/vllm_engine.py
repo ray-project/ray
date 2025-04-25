@@ -21,7 +21,6 @@ from ray.llm._internal.serve.configs.error_handling import (
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
-    VLLMEngineStats,
     VLLMEngineStatTracker,
     usage_counters,
 )
@@ -75,7 +74,7 @@ time_in_queue_histogram = metrics.Histogram(
     "Time a request spends in the queue first forward pass not included (ms).",
     boundaries=LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
 )
-    
+
 
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     engine_config = llm_config.get_engine_config()
@@ -132,7 +131,6 @@ def _clear_current_platform_cache():
         current_platform.get_device_capability.cache_clear()
 
 
-
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
         from vllm.engine.multiprocessing.engine import MQLLMEngine
@@ -182,7 +180,7 @@ class VLLMEngine(LLMEngine):
             llm_config: The llm configuration for this engine
         """
         super().__init__(llm_config)
-        
+
         if vllm is None:
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
@@ -447,13 +445,12 @@ class VLLMEngine(LLMEngine):
         )
 
     async def prepare_request(
-        self, 
-        request_id: str, 
-        prompt: Prompt, 
-        stream: bool, 
+        self,
+        request_id: str,
+        prompt: Prompt,
+        stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
-        
 
         prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
 
@@ -485,16 +482,14 @@ class VLLMEngine(LLMEngine):
 
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
-    
+
     async def generate(
         self,
         request: VLLMGenerationRequest,
     ) -> AsyncGenerator[LLMRawResponse, None]:
         batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if request.stream else None
         if request.serve_request_context:
-            ray.serve.context._serve_request_context.set(
-                request.serve_request_context
-            )
+            ray.serve.context._serve_request_context.set(request.serve_request_context)
         response_stream = LLMRawResponsesBatcher(
             self._generate(request),
             interval_ms=batch_interval_ms,
@@ -521,8 +516,7 @@ class VLLMEngine(LLMEngine):
         """
         if RAYLLM_ENABLE_REQUEST_PROMPT_LOGS:
             logger.info(
-                f"Request {request.request_id} started. "
-                f"Prompt: {request.prompt}"
+                f"Request {request.request_id} started. " f"Prompt: {request.prompt}"
             )
         # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
@@ -530,9 +524,7 @@ class VLLMEngine(LLMEngine):
                 prompt=request.prompt,
                 multi_modal_data=request.multi_modal_data,
             ),
-            sampling_params=self._parse_sampling_params(
-                request.sampling_params
-            ),
+            sampling_params=self._parse_sampling_params(request.sampling_params),
             request_id=request.request_id,
             lora_request=request.lora_request,  # type: ignore
         )
