@@ -966,7 +966,7 @@ lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==16.0.6
     # via tensorflow
-lightgbm==3.3.5
+lightgbm==4.6.0
     # via -r python/requirements/ml/core-requirements.txt
 lightning-utilities==0.11.2
     # via pytorch-lightning
@@ -1967,7 +1967,6 @@ scikit-learn==1.3.2
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
-    #   lightgbm
     #   mlflow
     #   mosaicml
     #   pymars
@@ -2502,7 +2501,6 @@ wheel==0.45.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   astunparse
-    #   lightgbm
 widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.14.1

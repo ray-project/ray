@@ -28,7 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_client/accessor.h"
-#include "ray/object_manager/ownership_based_object_directory.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"

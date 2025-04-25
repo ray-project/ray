@@ -41,6 +41,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"

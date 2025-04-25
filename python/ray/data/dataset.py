@@ -34,6 +34,11 @@ from ray.air.util.tensor_extensions.arrow import (
 )
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.clickhouse_datasink import (
+    ClickHouseDatasink,
+    ClickHouseTableSettings,
+    SinkMode,
+)
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
@@ -4150,6 +4155,139 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    def write_clickhouse(
+        self,
+        table: str,
+        dsn: str,
+        *,
+        mode: SinkMode = SinkMode.CREATE,
+        schema: Optional["pyarrow.Schema"] = None,
+        client_settings: Optional[Dict[str, Any]] = None,
+        client_kwargs: Optional[Dict[str, Any]] = None,
+        table_settings: Optional[ClickHouseTableSettings] = None,
+        max_insert_block_rows: Optional[int] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a ClickHouse dataset table.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pyarrow as pa
+                import pandas as pd
+
+                docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                user_schema = pa.schema(
+                    [
+                        ("id", pa.int64()),
+                        ("title", pa.string()),
+                    ]
+                )
+                ds.write_clickhouse(
+                    table="default.my_table",
+                    dsn="clickhouse+http://user:pass@localhost:8123/default",
+                    mode=ray.data.SinkMode.OVERWRITE,
+                    schema=user_schema,
+                    table_settings=ray.data.ClickHouseTableSettings(
+                        engine="ReplacingMergeTree()",
+                        order_by="id",
+                    ),
+                )
+
+        Args:
+            table: Fully qualified table identifier (e.g., "default.my_table").
+                The table is created if it doesn't already exist.
+            dsn: A string in DSN (Data Source Name) HTTP format
+                (e.g., "clickhouse+http://username:password@host:8123/default").
+                For more information, see `ClickHouse Connection String doc
+                <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+            mode: One of SinkMode.CREATE, SinkMode.APPEND, or
+                SinkMode.OVERWRITE:
+
+                * SinkMode.CREATE: Create a new table; fail if it already exists. If the table
+                    does not exist, you must provide a schema (either via the `schema`
+                    argument or as part of the dataset's first block).
+
+                * SinkMode.APPEND: If the table exists, append data to it; if not, create
+                    the table using the provided or inferred schema. If the table does
+                    not exist, you must supply a schema.
+
+                * SinkMode.OVERWRITE: Drop any existing table of this name, then create
+                    a new table and write data to it. You **must** provide a schema in
+                    this case, as the table is being re-created.
+
+            schema: Optional :class:`pyarrow.Schema` specifying column definitions.
+                This is mandatory if you are creating a new table (i.e., table doesn't
+                exist in CREATE or APPEND mode) or overwriting an existing table (OVERWRITE).
+                When appending to an existing table, a schema is optional, though you can
+                provide one to enforce column types or cast data as needed. If omitted
+                (and the table already exists), the existing table definition will be used.
+                If omitted and the table must be created, the schema is inferred from
+                the first block in the dataset.
+            client_settings: Optional ClickHouse server settings to be used with the
+                session/every request. For more information, see
+                `ClickHouse Client Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+            client_kwargs: Optional keyword arguments to pass to the
+                ClickHouse client. For more information, see
+                `ClickHouse Core Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+            table_settings: An optional :class:`ClickHouseTableSettings` dataclass
+                that specifies additional table creation instructions, including:
+
+                * engine (default: `"MergeTree()"`):
+                    Specifies the engine for the `CREATE TABLE` statement.
+
+                * order_by:
+                    Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
+                    When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
+                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
+                    then a non-string column, and lastly the first column).
+
+                * partition_by:
+                    If present, adds a `PARTITION BY <value>` clause to the `CREATE TABLE` statement.
+
+                * primary_key:
+                    If present, adds a `PRIMARY KEY (<value>)` clause.
+
+                * settings:
+                    Appends a `SETTINGS <value>` clause to the `CREATE TABLE` statement, allowing
+                    custom ClickHouse settings.
+
+            max_insert_block_rows: If you have extremely large blocks, specifying
+                a limit here will chunk the insert into multiple smaller insert calls.
+                Defaults to None (no chunking).
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """  # noqa: E501
+        datasink = ClickHouseDatasink(
+            table=table,
+            dsn=dsn,
+            mode=mode,
+            schema=schema,
+            client_settings=client_settings,
+            client_kwargs=client_kwargs,
+            table_settings=table_settings,
+            max_insert_block_rows=max_insert_block_rows,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
     def write_lance(
         self,
         path: str,
@@ -5304,10 +5442,10 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute()
 
-        bundle = copy._plan._snapshot_bundle
+        bundle = copy._plan.execute()
         blocks_with_metadata = bundle.blocks
+
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -5389,9 +5527,9 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-
         iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
         self._synchronize_progress_bar()
+
         return iter_ref_bundles
 
     @Deprecated
@@ -5766,8 +5904,18 @@ class Dataset:
         output (https://github.com/ray-project/ray/issues/32414).
         """
         if self._current_executor:
-            self._current_executor.shutdown()
+            # NOTE: This method expected to have executor fully shutdown upon returning
+            #       from this method
+            self._current_executor.shutdown(force=True)
             self._current_executor = None
+
+    def _execute_to_iterator(self) -> Tuple[Iterator[RefBundle], DatasetStats]:
+        bundle_iter, stats, executor = self._plan.execute_to_iterator()
+        # Capture current executor to be able to clean it up properly, once
+        # dataset is garbage-collected
+        self._current_executor = executor
+
+        return bundle_iter, stats
 
     def __getstate__(self):
         # Note: excludes _current_executor which is not serializable.
@@ -5792,7 +5940,10 @@ class Dataset:
         # `if ray is not None`. For more information, see #42382.
         try:
             if ray is not None and ray.is_initialized():
-                self._current_executor.shutdown()
+                # NOTE: Upon garbage-collection we're allowing running tasks
+                #       to be terminated asynchronously (ie avoid unnecessary
+                #       synchronization on their completion)
+                self._current_executor.shutdown(force=False)
         except TypeError:
             pass
 

@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, Optional
 
-import ray
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -107,22 +106,6 @@ class TaskPoolMapOperator(MapOperator):
             **self.get_map_task_kwargs(),
         )
         self._submit_data_task(gen, bundle)
-
-    def shutdown(self, force: bool = False):
-        # Cancel all active tasks.
-        for _, task in self._data_tasks.items():
-            ray.cancel(task.get_waitable())
-        # Wait until all tasks have failed or been cancelled.
-        for _, task in self._data_tasks.items():
-            try:
-                ray.get(task.get_waitable())
-            except ray.exceptions.RayError:
-                # Cancellation either succeeded, or the task had already failed with
-                # a different error, or cancellation failed. In all cases, we
-                # swallow the exception.
-                pass
-
-        super().shutdown(force)
 
     def progress_str(self) -> str:
         return ""
