@@ -65,7 +65,9 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         if torch.cuda.is_available():
             try:
                 mp.set_start_method("spawn", force=True)
-                logger.info("Set multiprocessing start method to 'spawn' for CUDA compatibility")
+                logger.info(
+                    "Set multiprocessing start method to 'spawn' for CUDA compatibility"
+                )
             except RuntimeError:
                 logger.info("Multiprocessing start method already set")
 
