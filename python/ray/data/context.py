@@ -1,3 +1,4 @@
+import copy
 import enum
 import logging
 import os
@@ -92,7 +93,10 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
+    "RAY_DATA_ENABLE_TENSOR_EXTENSION_CASTING",
+    True,
+)
 
 # NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
 #       total cumulative size (due to it internally utilizing int32 offsets)
@@ -165,8 +169,8 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
-# Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 1024
+# The default batch size for batch transformations before it was changed to `None`.
+LEGACY_DEFAULT_BATCH_SIZE = 1024
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
@@ -323,6 +327,8 @@ class DataContext:
             transient errors when reading from remote storage systems.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
+            map tasks won't record memory stats.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -395,6 +401,7 @@ class DataContext:
     )
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
+    memory_usage_poll_interval_s: Optional[float] = 1
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -541,6 +548,10 @@ class DataContext:
             key: The key of the config.
         """
         self._kv_configs.pop(key, None)
+
+    def copy(self) -> "DataContext":
+        """Create a copy of the current DataContext."""
+        return copy.deepcopy(self)
 
 
 # Backwards compatibility alias.

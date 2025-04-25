@@ -20,6 +20,10 @@
 #include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 #include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -119,7 +123,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+  std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
 
   /// Get all alive nodes.

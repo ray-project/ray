@@ -54,11 +54,11 @@ class PlasmaAllocator : public IAllocator {
   ///
   /// \param bytes Number of bytes.
   /// \return allocated memory. returns empty if not enough space.
-  absl::optional<Allocation> Allocate(size_t bytes) override;
+  std::optional<Allocation> Allocate(size_t bytes) override;
 
   /// Fallback allocate memory from disk mmaped file. This is useful
   /// when we running out of memory but still want to allocate memory
-  /// with sub-optimal peformance.
+  /// with sub-optimal performance.
   ///
   /// On linux with fallocate support, it returns null if running out of
   /// space; On linux without fallocate it raises SIGBUS interrupt.
@@ -67,7 +67,7 @@ class PlasmaAllocator : public IAllocator {
   ///
   /// \param bytes Number of bytes.
   /// \return allocated memory. returns empty if not enough space.
-  absl::optional<Allocation> FallbackAllocate(size_t bytes) override;
+  std::optional<Allocation> FallbackAllocate(size_t bytes) override;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Allocate/FallbackAllocate or it yields undefined behavior.
@@ -85,9 +85,9 @@ class PlasmaAllocator : public IAllocator {
   int64_t FallbackAllocated() const override;
 
  private:
-  absl::optional<Allocation> BuildAllocation(void *addr,
-                                             size_t size,
-                                             bool is_fallback_allocated);
+  std::optional<Allocation> BuildAllocation(void *addr,
+                                            size_t size,
+                                            bool is_fallback_allocated);
 
  private:
   const int64_t kFootprintLimit;

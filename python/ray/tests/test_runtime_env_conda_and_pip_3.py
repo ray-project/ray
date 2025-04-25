@@ -1,7 +1,6 @@
 import os
 import pytest
 import sys
-import time
 
 from ray._private.test_utils import (
     wait_for_condition,
@@ -10,7 +9,6 @@ from ray._private.test_utils import (
 )
 import ray
 
-from unittest import mock
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -143,48 +141,6 @@ class TestGC:
         else:
             # Local files should not be gced because of an enough soft limit.
             assert not check_local_files_gced(cluster)
-
-
-# Set scope to "class" to force this to run before start_cluster, whose scope
-# is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
-def skip_local_gc():
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
-        },
-    ):
-        print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
-        yield
-
-
-class TestSkipLocalGC:
-    @pytest.mark.skipif(
-        os.environ.get("CI") and sys.platform != "linux",
-        reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-    )
-    @pytest.mark.parametrize("field", ["conda", "pip"])
-    def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, field, tmp_path):
-        cluster, address = start_cluster
-        runtime_env = generate_runtime_env_dict(field, "python_object", tmp_path)
-        ray.init(address, namespace="test", runtime_env=runtime_env)
-
-        @ray.remote
-        def f():
-            import pip_install_test  # noqa: F401
-
-            return True
-
-        assert ray.get(f.remote())
-
-        ray.shutdown()
-
-        # Give enough time for potentially uninstalling a conda env
-        time.sleep(10)
-
-        # Check nothing was GC'ed
-        assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":

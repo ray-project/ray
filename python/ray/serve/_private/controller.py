@@ -7,8 +7,8 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray._common.utils import run_background_task
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
+    RequestProtocol,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -57,6 +58,7 @@ from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, Deploym
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
 from ray.serve.generated.serve_pb2 import EndpointSet
 from ray.serve.schema import (
+    TargetGroup,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -930,6 +932,7 @@ class ServeController:
         # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
@@ -942,7 +945,28 @@ class ServeController:
                 else None
             ),
             applications=applications,
+            target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    def get_target_groups(self) -> List[TargetGroup]:
+        """Target groups contains information about IP
+        addresses and ports of all proxies in the cluster.
+
+        This information is used to setup the load balancer.
+        """
+        if self.proxy_state_manager is None:
+            return []
+        return [
+            # setting prefix route to "/" because in ray serve, proxy
+            # accepts requests from the client and routes them to the
+            # correct application. This is true for both HTTP and gRPC proxies.
+            TargetGroup(
+                protocol=protocol,
+                route_prefix="/",
+                targets=self.proxy_state_manager.get_targets(protocol),
+            )
+            for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
+        ]
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status

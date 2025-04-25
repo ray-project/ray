@@ -5,7 +5,7 @@ Hello World
 -----------
 This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
-.. testcode::
+.. code-block:: bash
 
     pip install "ray[cgraph]"
     
@@ -27,9 +27,9 @@ Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ra
     :start-after: __ray_core_usage_start__
     :end-before: __ray_core_usage_end__
 
-.. testoutput::
+.. code-block::
 
-    Execution takes 969.0364822745323 us
+  Execution takes 969.0364822745323 us
 
 Now, create an equivalent program using Ray Compiled Graph. 
 First, define a graph to execute using classic Ray Core, without any compilation.
@@ -58,9 +58,9 @@ The graph uses the same APIs for execution:
     :start-after: __cgraph_usage_start__
     :end-before: __cgraph_usage_end__
 
-.. testoutput::
+.. code-block::
 
-    Execution takes 86.72196418046951 us
+  Execution takes 86.72196418046951 us
 
 The performance of the same task graph improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
 the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1 ms+ system overhead.
@@ -93,9 +93,9 @@ For example, the following uses the preceding example to create a DAG that passe
     :start-after: __cgraph_bind_start__
     :end-before: __cgraph_bind_end__
 
-.. testoutput::
+.. code-block::
 
-    hello
+  hello
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
@@ -106,9 +106,10 @@ Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` retu
     :start-after: __cgraph_multi_output_start__
     :end-before: __cgraph_multi_output_end__
 
-.. testoutput::
+.. code-block::
 
-    ["hello", "hello"]
+  Execution takes 86.72196418046951 us
+
 
 Be aware that:
 * On the same actor, a Compiled Graph executes in order. If an actor has multiple tasks in the same Compiled Graph, it executes all of them to completion before executing on the next DAG input.
@@ -118,9 +119,24 @@ Be aware that:
 ``asyncio`` support
 -------------------
 
-.. warning::
+If your Compiled Graph driver is running in an ``asyncio`` event loop, use the ``async`` APIs to ensure that executing
+the Compiled Graph and getting the results doesn't block the event loop.
+First, pass ``enable_async=True`` to the ``dag.experimental_compile()``:
 
-    Under construction.
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_compile_start__
+    :end-before: __cgraph_async_compile_end__
+
+Next, use `execute_async` to invoke the Compiled Graph. Calling ``await`` on ``execute_async`` will return once
+the input has been submitted, and it returns a future that can be used to get the result. Finally, 
+use `await` to get the result of the Compiled Graph.
+
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_execute_start__
+    :end-before: __cgraph_async_execute_end__
+
 
 Execution and failure semantics
 -------------------------------
@@ -167,11 +183,58 @@ to change the default timeout:
 
 :func:`ray.get() <ray.get>` also has a timeout parameter to set timeout on a per-call basis.
 
+CPU to GPU communication
+------------------------
+
+With classic Ray Core, passing ``torch.Tensors`` between actors can become expensive, especially
+when transferring between devices. This is because Ray Core doesn't know the final destination device.
+Therefore, you may see unnecessary copies across devices other than the source and destination devices.
+
+Ray Compiled Graph ships with native support for passing ``torch.Tensors`` between actors executing on different
+devices. Developers can now use type hint annotations in the Compiled Graph declaration to indicate the final
+destination device of a ``torch.Tensor``.
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_actor_start__
+    :end-before: __cgraph_cpu_to_gpu_actor_end__
+
+In Ray Core, if you try to pass a CPU tensor from the driver,
+the GPU actor receives a CPU tensor:
+
+.. testcode::
+    :skipif: True
+
+    # This will fail because the driver passes a CPU copy of the tensor, 
+    # and the GPU actor also receives a CPU copy.
+    ray.get(actor.process.remote(torch.zeros(10)))
+
+With Ray Compiled Graph, you can annotate DAG nodes with type hints to indicate that there may be a ``torch.Tensor``
+contained in the value:
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_start__
+    :end-before: __cgraph_cpu_to_gpu_end__
+
+Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to the GPU assigned to the ``GPUActor`` by Ray Core.
+
+Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
+
+- Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
+  multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
+  destination GPU.
+
+- In the future, this can be further optimized through techniques such as
+  `memory pinning <https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html>`_,
+  using zero-copy deserialization when the CPU is the destination, etc.
+
+
 GPU to GPU communication
 ------------------------
 Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor`` objects, avoiding any copies through Ray's CPU-based shared-memory object store.
 With user-provided type hints, Ray prepares NCCL communicators and
-operation scheduling ahead of time, avoiding deadlock and `overlapping compute and communication <compiled-graph-overlap>`.
+operation scheduling ahead of time, avoiding deadlock and :ref:`overlapping compute and communication <compiled-graph-overlap>`.
 
 Ray Compiled Graph uses `cupy <https://cupy.dev/>`_ under the hood to support NCCL operations.
 The cupy version affects the NCCL version. The Ray team is also planning to support custom communicators in the future, for example to support collectives across CPUs or to reuse existing collective groups.
@@ -191,6 +254,7 @@ To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains t
     :end-before: __cgraph_nccl_exec_end__
 
 Current limitations include:
+
 * ``torch.Tensor`` and NVIDIA NCCL only
 * Support for peer-to-peer transfers. Collective communication operations are coming soon.
 * Communication operations are currently done synchronously. :ref:`Overlapping compute and communication <compiled-graph-overlap>` is an experimental feature.

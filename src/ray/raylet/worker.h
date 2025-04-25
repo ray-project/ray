@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"

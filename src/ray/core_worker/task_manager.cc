@@ -14,6 +14,13 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
@@ -377,8 +384,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                 << spec.AttemptNumber() << ": " << spec.DebugString();
   // We should actually detect if the actor for this task is dead, but let's just assume
   // it's not for now.
-  retry_task_callback_(
-      spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
+  retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
 
   return true;
 }
@@ -765,7 +771,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
   auto &stream = stream_it->second;
   inserted_to_stream = stream.TemporarilyInsertToStreamIfNeeded(object_id);
 
-  // We shouldn't hold a lock when calling refernece counter API.
+  // We shouldn't hold a lock when calling reference counter API.
   if (inserted_to_stream) {
     RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
     reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
@@ -962,11 +968,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
-  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
-  // resubmitting a task.
-  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
-                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1019,7 +1020,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
+    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1357,11 +1358,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   }
 }
 
-absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
+std::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
-    return absl::optional<TaskSpecification>();
+    return std::optional<TaskSpecification>();
   }
   return it->second.spec;
 }
@@ -1469,7 +1470,7 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
 void TaskManager::SetTaskStatus(
     TaskEntry &task_entry,
     rpc::TaskStatus status,
-    const absl::optional<const rpc::RayErrorInfo> &error_info) {
+    const std::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       task_entry.spec.TaskId(),

@@ -15,8 +15,8 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
-    LoraMirrorConfig,
 )
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 
 logger = get_logger(__name__)
 

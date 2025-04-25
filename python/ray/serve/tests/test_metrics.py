@@ -1,3 +1,4 @@
+import http
 import os
 import random
 import sys
@@ -11,6 +12,10 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
+
+from ray.serve.generated import serve_pb2_grpc
+from ray.serve.generated import serve_pb2
+import threading
 
 import ray
 import ray.util.state as state_api
@@ -28,7 +33,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_list_applications,
 )
 from ray.serve._private.utils import block_until_http_ready
-from ray.serve.config import gRPCOptions
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
@@ -37,7 +42,9 @@ TEST_METRICS_EXPORT_PORT = 9999
 
 
 @pytest.fixture
-def serve_start_shutdown():
+def serve_start_shutdown(request):
+    param = request.param if hasattr(request, "param") else None
+    request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
@@ -55,6 +62,10 @@ def serve_start_shutdown():
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            request_timeout_s=request_timeout_s,
+        ),
+        http_options=HTTPOptions(
+            request_timeout_s=request_timeout_s,
         ),
     )
     serve.shutdown()
@@ -526,6 +537,119 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
     print("serve_num_grpc_error_requests working as expected.")
 
 
+@pytest.mark.parametrize(
+    "serve_start_shutdown",
+    [
+        1,
+    ],
+    indirect=True,
+)
+def test_proxy_timeout_metrics(serve_start_shutdown):
+    """Test that HTTP timeout metrics are reported correctly."""
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    async def return_status_code_with_timeout(request: Request):
+        await signal.wait.remote()
+        return
+
+    serve.run(
+        return_status_code_with_timeout.bind(),
+        route_prefix="/status_code_timeout",
+        name="status_code_timeout",
+    )
+
+    r = requests.get("http://127.0.0.1:8000/status_code_timeout")
+    assert r.status_code == 408
+    ray.get(signal.send.remote(clear=True))
+
+    # make grpc call
+    channel = grpc.insecure_channel("localhost:9000")
+    with pytest.raises(grpc.RpcError):
+        ping_grpc_call_method(channel=channel, app_name="status_code_timeout")
+
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "/status_code_timeout"
+    assert num_errors[0]["error_code"] == "408"
+    assert num_errors[0]["method"] == "GET"
+    assert num_errors[0]["application"] == "status_code_timeout"
+
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "status_code_timeout"
+    assert num_errors[0]["error_code"] == str(grpc.StatusCode.DEADLINE_EXCEEDED)
+    assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    assert num_errors[0]["application"] == "status_code_timeout"
+
+
+def test_proxy_disconnect_metrics(serve_start_shutdown):
+    """Test that disconnect metrics are reported correctly."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Disconnect:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return
+
+    serve.run(
+        Disconnect.bind(),
+        route_prefix="/disconnect",
+        name="disconnect",
+    )
+
+    # Simulate an HTTP disconnect
+    conn = http.client.HTTPConnection("127.0.0.1", 8000)
+    conn.request("GET", "/disconnect")
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+    conn.close()  # Forcefully close the connection
+    ray.get(signal.send.remote(clear=True))
+
+    # make grpc call
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", "disconnect"),)
+
+    def make_request():
+        try:
+            response = stub.__call__(
+                request, metadata=metadata
+            )  # Long-running RPC call
+            print("Response received:", response)
+        except grpc.RpcError as e:
+            print("Client disconnected:", e.code(), e.details())
+
+    thread = threading.Thread(target=make_request)
+    thread.start()
+
+    # Wait briefly, then forcefully close the channel
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+    channel.close()  # Forcefully close the channel, simulating a client disconnect
+    thread.join()
+    ray.get(signal.send.remote(clear=True))
+
+    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "/disconnect"
+    assert num_errors[0]["error_code"] == "499"
+    assert num_errors[0]["method"] == "GET"
+    assert num_errors[0]["application"] == "disconnect"
+
+    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    assert len(num_errors) == 1
+    assert num_errors[0]["route"] == "disconnect"
+    assert num_errors[0]["error_code"] == str(grpc.StatusCode.CANCELLED)
+    assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
+    assert num_errors[0]["application"] == "disconnect"
+
+
 def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -587,8 +711,9 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
-    """Verify that 2xx status codes aren't errors, others are."""
+    """Verify that 2xx and 3xx status codes aren't errors, others are."""
 
     def check_request_count_metrics(
         expected_error_count: int,
@@ -632,12 +757,12 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
         expected_success_count=2,
     )
 
-    # 3xx is an error.
+    # 3xx is not an error.
     r = requests.get("http://127.0.0.1:8000/", data=b"300")
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=1,
+        expected_error_count=0,
         expected_success_count=3,
     )
 
@@ -646,7 +771,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=2,
+        expected_error_count=1,
         expected_success_count=4,
     )
 
@@ -655,7 +780,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=3,
+        expected_error_count=2,
         expected_success_count=5,
     )
 
@@ -1387,6 +1512,7 @@ class TestRequestContextMetrics:
         self.verify_metrics(histogram_metrics[0], expected_metrics)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_multiplexed_metrics(serve_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
 

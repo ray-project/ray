@@ -317,9 +317,14 @@ for container environment variables.
 
 ### 4. Set the `rayStartParams` and the resource limits for the Ray container
 
+```{admonition} Resource limits are optional starting from Ray 2.41.0
+Starting from Ray 2.41.0, the Ray Autoscaler can read resource specifications from `rayStartParams`, resource limits, or resource requests of the Ray container. You must specify at least one of these fields.
+Earlier versions only support `rayStartParams` or resource limits, and don't recognize resource requests.
+```
+
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
 The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
-Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
+Therefore, without this information, the Ray Autoscaler reports an error and fails to start.
 Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.3.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 * If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
@@ -352,8 +357,10 @@ workerGroupSpecs:
       - name: ray-worker
         resources:
           limits:
-            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # The Ray Autoscaler versions older than 2.41.0 will fail to start if the CPU resource limit for the worker
             # container is commented out because `rayStartParams` is empty.
+            # The Ray Autoscaler starting from 2.41.0 will not fail but use the resource requests if the resource
+            # limits are commented out and `rayStartParams` is empty.
             cpu: "1"
             memory: "1G"
           requests:
@@ -361,6 +368,20 @@ workerGroupSpecs:
             memory: "1G"
 ```
 
+### 5. Autoscaler environment configuration
+
+You can configure the Ray autoscaler using environment variables specified in the `env` or `envFrom` fields under the `autoscalerOptions` section of your RayCluster custom resource. These variables provide fine-grained control over how the autoscaler behaves internally.
+
+For example, `AUTOSCALER_UPDATE_INTERVAL_S` determines how frequently the autoscaler checks the cluster status and decides whether to scale up or down.
+
+For complete examples, see [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/099bf616c012975031ea9e5bbf7843af03e5f05b/ray-operator/config/samples/ray-cluster.autoscaler.yaml#L28-L33) and [ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/099bf616c012975031ea9e5bbf7843af03e5f05b/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml#L16_L21).
+
+```yaml
+autoscalerOptions:
+  env:
+    - name: AUTOSCALER_UPDATE_INTERVAL_S
+      value: "5"
+```
 
 ## Next steps
 

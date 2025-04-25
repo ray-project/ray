@@ -34,6 +34,8 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
 
+    NOTE: This class is NOT thread-safe
+
     This class manages the state of a pool of actors used for task execution, as well
     as dispatch of tasks to those actors.
 
@@ -174,7 +176,7 @@ class ActorPoolMapOperator(MapOperator):
             src_fn_name=self.name,
             map_transformer=self._map_transformer,
         )
-        res_ref = actor.get_location.remote()
+        res_ref = actor.get_location.options(name=f"{self.name}.get_location").remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -225,7 +227,7 @@ class ActorPoolMapOperator(MapOperator):
             )
             gen = actor.submit.options(
                 num_returns="streaming",
-                name=self.name,
+                name=f"{self.name}.submit",
                 **self._ray_actor_task_remote_args,
             ).remote(
                 self.data_context,
@@ -273,10 +275,11 @@ class ActorPoolMapOperator(MapOperator):
         # once the bundle queue is exhausted.
         self._inputs_done = True
 
-    def shutdown(self):
-        # We kill all actors in the pool on shutdown, even if they are busy doing work.
-        self._actor_pool.kill_all_actors()
-        super().shutdown()
+    def _do_shutdown(self, force: bool = False):
+        self._actor_pool.shutdown(force=force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending.
+        super()._do_shutdown(force)
 
         # Warn if the user specified a batch or block size that prevents full
         # parallelization across the actor pool. We only know this information after
@@ -386,6 +389,10 @@ class ActorPoolMapOperator(MapOperator):
         """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
         return self._actor_pool.actor_info_progress_str()
 
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
+        return self._actor_pool.actor_info_counts()
+
 
 class _MapWorker:
     """An actor worker for MapOperator."""
@@ -458,6 +465,8 @@ class _ActorPool(AutoscalingActorPool):
     actors when the operator is done submitting work to the pool.
     """
 
+    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
+
     def __init__(
         self,
         compute_strategy: ActorPoolStrategy,
@@ -481,9 +490,6 @@ class _ActorPool(AutoscalingActorPool):
         self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
-        # Whether actors that become idle should be eagerly killed. This is False until
-        # the first call to kill_idle_actors().
-        self._should_kill_idle_actors = False
         # Track locality matching stats.
         self._locality_hits: int = 0
         self._locality_misses: int = 0
@@ -543,7 +549,7 @@ class _ActorPool(AutoscalingActorPool):
     def scale_down(self, num_actors: int) -> int:
         num_killed = 0
         for _ in range(num_actors):
-            if self.kill_inactive_actor():
+            if self._kill_inactive_actor():
                 num_killed += 1
         return num_killed
 
@@ -571,9 +577,6 @@ class _ActorPool(AutoscalingActorPool):
             actor: The not-yet-ready actor to add as pending to the pool.
             ready_ref: The ready future for the actor.
         """
-        # The caller shouldn't add new actors to the pool after invoking
-        # kill_inactive_actors().
-        assert not self._should_kill_idle_actors
         self._pending_actors[ready_ref] = actor
 
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:
@@ -660,11 +663,6 @@ class _ActorPool(AutoscalingActorPool):
         assert actor in self._running_actors
         assert self._running_actors[actor].num_tasks_in_flight > 0
         self._running_actors[actor].num_tasks_in_flight -= 1
-        if (
-            self._should_kill_idle_actors
-            and self._running_actors[actor].num_tasks_in_flight == 0
-        ):
-            self._remove_actor(actor)
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
@@ -688,7 +686,7 @@ class _ActorPool(AutoscalingActorPool):
             for running_actor in self._running_actors.values()
         )
 
-    def kill_inactive_actor(self) -> bool:
+    def _kill_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
 
         Returns whether an inactive actor was actually killed.
@@ -705,70 +703,79 @@ class _ActorPool(AutoscalingActorPool):
         if self._pending_actors:
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
-            self._remove_actor(self._pending_actors[ready_ref])
             del self._pending_actors[ready_ref]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
 
     def _maybe_kill_idle_actor(self) -> bool:
-        for actor, running_actor in self._running_actors.items():
-            if running_actor.num_tasks_in_flight == 0:
+        for actor, state in self._running_actors.items():
+            if state.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
-                self._remove_actor(actor)
+                # NOTE: This is a fire-and-forget op
+                self._release_running_actor(actor)
                 return True
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
 
-    def kill_all_inactive_actors(self):
-        """Kills all currently inactive actors and ensures that all actors that become
-        idle in the future will be eagerly killed.
-
-        This is called once the operator is done submitting work to the pool, and this
-        function is idempotent. Adding new pending actors after calling this function
-        will raise an error.
-        """
-        self._kill_all_pending_actors()
-        self._kill_all_idle_actors()
-
-    def kill_all_actors(self):
+    def shutdown(self, force: bool = False):
         """Kills all actors, including running/active actors.
 
         This is called once the operator is shutting down.
         """
-        self._kill_all_pending_actors()
-        self._kill_all_running_actors()
+        self._release_pending_actors(force=force)
+        self._release_running_actors(force=force)
 
-    def _kill_all_pending_actors(self):
-        for _, actor in self._pending_actors.items():
-            self._remove_actor(actor)
+    def _release_pending_actors(self, force: bool):
+        # Release pending actors from the set of pending ones
+        pending = dict(self._pending_actors)
         self._pending_actors.clear()
 
-    def _kill_all_idle_actors(self):
-        idle_actors = [
-            actor
-            for actor, running_actor in self._running_actors.items()
-            if running_actor.num_tasks_in_flight == 0
-        ]
-        for actor in idle_actors:
-            self._remove_actor(actor)
-        self._should_kill_idle_actors = True
+        if force:
+            for _, actor in pending.items():
+                # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+                #       hence we're only doing that if this is a forced release
+                ray.kill(actor)
 
-    def _kill_all_running_actors(self):
-        actors = list(self._running_actors.keys())
-        for actor in actors:
-            self._remove_actor(actor)
+    def _release_running_actors(self, force: bool):
+        running = list(self._running_actors.keys())
 
-    def _remove_actor(self, actor: ray.actor.ActorHandle):
-        """Remove the given actor from the pool."""
-        # NOTE: we remove references to the actor and let ref counting
+        on_exit_refs = []
+
+        # First release actors and collect their shutdown hook object-refs
+        for actor in running:
+            on_exit_refs.append(self._release_running_actor(actor))
+
+        # Wait for all actors to shutdown gracefully before killing them
+        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+
+        # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
+        #       hence we're only doing that if this is a forced release
+        if force:
+            for actor in running:
+                ray.kill(actor)
+
+    def _release_running_actor(
+        self, actor: ray.actor.ActorHandle
+    ) -> Optional[ObjectRef]:
+        """Remove the given actor from the pool and trigger its `on_exit` callback.
+
+        This method returns a ``ref`` to the result
+        """
+        # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
-        # Because otherwise the actor cannot be restarted upon lineage reconstruction.
-        if actor in self._running_actors:
-            # Call `on_exit` to trigger `UDF.__del__` which may perform
-            # cleanup operations.
-            actor.on_exit.remote()
-            del self._running_actors[actor]
+        #
+        # Otherwise, actor cannot be reconstructed for the purposes of produced
+        # object's lineage reconstruction.
+        if actor not in self._running_actors:
+            return None
+
+        # Call `on_exit` to trigger `UDF.__del__` which may perform
+        # cleanup operations.
+        ref = actor.on_exit.remote()
+        del self._running_actors[actor]
+
+        return ref
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
         """Ask Ray for the node id of the given bundle.
@@ -780,11 +787,16 @@ class _ActorPool(AutoscalingActorPool):
         """
         return bundle.get_cached_location()
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
         alive = self.num_alive_actors()
         pending = self.num_pending_actors()
         restarting = self.num_restarting_actors()
+        return alive, pending, restarting
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+        alive, pending, restarting = self.actor_info_counts()
         total = alive + pending + restarting
         if total == alive:
             return f"; Actors: {total}"

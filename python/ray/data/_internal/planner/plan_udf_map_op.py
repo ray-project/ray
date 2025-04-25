@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import inspect
+import logging
 import queue
 from threading import Thread
 from types import GeneratorType
@@ -11,7 +12,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -35,8 +36,9 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
     Project,
+    StreamingRepartition,
 )
-from ray.data._internal.numpy_support import is_valid_udf_return
+from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -49,6 +51,9 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+
+
+logger = logging.getLogger(__name__)
 
 
 class _MapActorContext:
@@ -108,7 +113,7 @@ def plan_project_op(
                 )
             return block
         except Exception as e:
-            _handle_debugger_exception(e)
+            _handle_debugger_exception(e, block)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
@@ -128,7 +133,7 @@ def plan_project_op(
 
 
 def plan_streaming_repartition_op(
-    op: Project,
+    op: StreamingRepartition,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> MapOperator:
@@ -165,7 +170,7 @@ def plan_filter_op(
             try:
                 return block.filter(expression)
             except Exception as e:
-                _handle_debugger_exception(e)
+                _handle_debugger_exception(e, block)
 
         transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
         map_transformer = _create_map_transformer_for_map_batches_op(
@@ -285,7 +290,7 @@ def _parse_op_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e)
+                    _handle_debugger_exception(e, item)
 
         else:
 
@@ -299,7 +304,7 @@ def _parse_op_fn(op: AbstractUDFMap):
                         **fn_kwargs,
                     )
                 except Exception as e:
-                    _handle_debugger_exception(e)
+                    _handle_debugger_exception(e, item)
 
     else:
 
@@ -307,7 +312,7 @@ def _parse_op_fn(op: AbstractUDFMap):
             try:
                 return op_fn(item, *fn_args, **fn_kwargs)
             except Exception as e:
-                _handle_debugger_exception(e)
+                _handle_debugger_exception(e, item)
 
         def init_fn():
             pass
@@ -315,15 +320,18 @@ def _parse_op_fn(op: AbstractUDFMap):
     return fn, init_fn
 
 
-def _handle_debugger_exception(e: Exception):
+def _handle_debugger_exception(e: Exception, item: Any = None):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
+    error_message = f"Failed to process the following data block: {item}"
+
     ctx = ray.data.DataContext.get_current()
     if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
+        logger.error(error_message)
         raise e
     else:
-        raise UserCodeException() from e
+        raise UserCodeException(error_message) from e
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
@@ -359,7 +367,7 @@ def _validate_batch_output(batch: Block) -> None:
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
-            if not is_valid_udf_return(value):
+            if not _is_valid_column_values(value):
                 raise ValueError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "The `fn` you passed to `map_batches` returned a "
@@ -376,7 +384,7 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_map_batches(fn)
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_batch_output)
 
     else:
 
@@ -423,64 +431,66 @@ def _generate_transform_fn_for_map_batches(
     return transform_fn
 
 
-def _generate_transform_fn_for_async_map_batches(
+def _generate_transform_fn_for_async_map(
     fn: UserDefinedFunction,
-) -> MapTransformCallable[DataBatch, DataBatch]:
-    def transform_fn(
-        input_iterable: Iterable[DataBatch], _: TaskContext
-    ) -> Iterable[DataBatch]:
+    validate_fn,
+) -> MapTransformCallable:
+    # Generates a transform function for asynchronous mapping of items (either batches or rows)
+    # using a user-defined function (UDF). This consolidated function handles both asynchronous
+    # batch processing and asynchronous flat mapping (e.g., rows) based on the provided UDF.
+    def transform_fn(input_iterable: Iterable, _: TaskContext) -> Iterable:
         # Use a queue to store outputs from async generator calls.
-        # We will put output batches into this queue from async
+        # We will put output items into this queue from async
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
-        output_batch_queue = queue.Queue()
+        output_item_queue = queue.Queue()
         # Sentinel object to signal the end of the async generator.
         sentinel = object()
 
-        async def process_batch(batch: DataBatch):
+        async def process_item(item):
             try:
-                output_batch_iterator = await fn(batch)
+                output_item_iterator = await fn(item)
                 # As soon as results become available from the async generator,
                 # put them into the result queue so they can be yielded.
-                async for output_batch in output_batch_iterator:
-                    output_batch_queue.put(output_batch)
+                async for output_item in output_item_iterator:
+                    output_item_queue.put(output_item)
             except Exception as e:
-                output_batch_queue.put(
+                output_item_queue.put(
                     e
                 )  # Put the exception into the queue to signal an error
 
-        async def process_all_batches():
+        async def process_all_items():
             try:
                 loop = ray.data._map_actor_context.udf_map_asyncio_loop
-                tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
+                tasks = [loop.create_task(process_item(x)) for x in input_iterable]
 
                 ctx = ray.data.DataContext.get_current()
                 if ctx.execution_options.preserve_order:
                     for task in tasks:
-                        await task()
+                        await task
                 else:
                     for task in asyncio.as_completed(tasks):
                         await task
             finally:
-                output_batch_queue.put(sentinel)
+                output_item_queue.put(sentinel)
 
-        # Use the existing event loop to create and run Tasks to process each batch
+        # Use the existing event loop to create and run Tasks to process each item
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
-        asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
+        asyncio.run_coroutine_threadsafe(process_all_items(), loop)
 
         # Yield results as they become available.
         while True:
-            # Here, `out_batch` is a one-row output batch
+            # Here, `out_item` is a one-row output item
             # from the async generator, corresponding to a
-            # single row from the input batch.
-            out_batch = output_batch_queue.get()
-            if out_batch is sentinel:
+            # single row from the input item.
+            out_item = output_item_queue.get()
+            if out_item is sentinel:
                 # Break out of the loop when the sentinel is received.
                 break
-            if isinstance(out_batch, Exception):
-                raise out_batch
-            _validate_batch_output(out_batch)
-            yield out_batch
+            if isinstance(out_item, Exception):
+                raise out_item
+            validate_fn(out_item)
+            yield out_item
 
     return transform_fn
 
@@ -511,11 +521,17 @@ def _generate_transform_fn_for_map_rows(
 def _generate_transform_fn_for_flat_map(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            for out_row in fn(row):
-                _validate_row_output(out_row)
-                yield out_row
+    if inspect.iscoroutinefunction(fn):
+        # UDF is a callable class with async generator `__call__` method.
+        transform_fn = _generate_transform_fn_for_async_map(fn, _validate_row_output)
+
+    else:
+
+        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+            for row in rows:
+                for out_row in fn(row):
+                    _validate_row_output(out_row)
+                    yield out_row
 
     return transform_fn
 

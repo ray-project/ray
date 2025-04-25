@@ -94,6 +94,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -441,7 +442,7 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
         self.original_visible_accelerator_ids = (
             ray._private.utils.get_visible_accelerator_ids()
@@ -1027,7 +1028,7 @@ class Worker:
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
-        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
         # should be returned.
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
@@ -1304,6 +1305,9 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
+    enable_resource_isolation: bool = False,
+    system_reserved_cpu: Optional[float] = None,
+    system_reserved_memory: Optional[int] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1375,11 +1379,8 @@ def init(
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-            By default, this is 30%
-            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
-            of available system memory capped by
-            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-            but can be set higher.
+            By default, this is 30% of available system memory capped by
+            the shm size and 200G but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -1412,10 +1413,29 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
-            This storage path must be accessible by all nodes of the cluster, otherwise
-            an error will be raised. This option can also be specified as the
-            RAY_STORAGE env var.
+        object_spilling_directory: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
+        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
+            be removed in a future version of Ray.
+        enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
+            memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
+            must be enabled with read and write permissions for the raylet. Cgroup memory and
+            cpu controllers must also be enabled.
+        system_reserved_cpu: The amount of cpu cores to reserve for ray system processes. Cores can be
+            fractional i.e. 0.5 means half a cpu core.
+            By default, the min of 20% and 1 core will be reserved.
+            Must be >= 0.5 cores and < total number of available cores.
+            Cannot be less than 0.5 cores.
+            This option only works if enable_resource_isolation is True.
+        system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
+            By default, the min of 10% and 25GB plus object_store_memory will be reserved.
+            Must be >= 100MB and system_reserved_memory + object_store_bytes < total available memory.
+            This option only works if enable_resource_isolation is True.
+        _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+            The raylet must have read/write permissions to this path.
+            Cgroup memory and cpu controllers be enabled for this cgroup.
+            This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1476,11 +1496,16 @@ def init(
         )
         logging_config._apply()
 
-    # Parse the hidden options:
+    # Parse the hidden options
+    _cgroup_path: str = kwargs.pop("_cgroup_path", None)
+
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _object_spilling_directory: Optional[str] = kwargs.pop(
+        "object_spilling_directory", None
+    )
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
@@ -1501,6 +1526,13 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
+
+    resource_isolation_config = ResourceIsolationConfig(
+        enable_resource_isolation=enable_resource_isolation,
+        cgroup_path=_cgroup_path,
+        system_reserved_cpu=system_reserved_cpu,
+        system_reserved_memory=system_reserved_memory,
+    )
 
     # terminate any signal before connecting driver
     def sigterm_handler(signum, frame):
@@ -1673,6 +1705,12 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    if storage is not None:
+        warnings.warn(
+            "Cluster-wide storage configuration is deprecated and will be removed in a "
+            "future version of Ray."
+        )
+
     global _global_node
 
     if global_worker.connected:
@@ -1718,6 +1756,7 @@ def init(
             redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
+            object_spilling_directory=_object_spilling_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
@@ -1732,6 +1771,7 @@ def init(
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
+            resource_isolation_config=resource_isolation_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -2235,7 +2275,7 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] not in [
+            if error_data["job_id"] is not None and error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
@@ -2265,6 +2305,7 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
+# TODO(hjiang): Add cgroup path along with [enable_resource_isolation].
 def connect(
     node,
     session_name: str,
@@ -2282,6 +2323,7 @@ def connect(
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
     debug_source: str = "",
+    enable_resource_isolation: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2310,6 +2352,7 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
         debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
+        enable_resource_isolation: If true, core worker enables resource isolation by adding itself into appropriate cgroup.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2491,6 +2534,7 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
         debug_source,
+        enable_resource_isolation,
     )
 
     if mode == SCRIPT_MODE:
@@ -3354,6 +3398,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
+    label_selector: Dict[str, str] = Undefined,
 ) -> RemoteDecorator:
     ...
 
@@ -3509,6 +3554,10 @@ def remote(
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
             By default it is empty.
+        label_selector (Dict[str, str]): [Experimental] If specified, the labels required for the node on
+                which this actor can be scheduled on. The label selector consist of key-value pairs,
+                where the keys are label names and the value are expressions consisting of an operator
+                with label values or just a value to indicate equality.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See :ref:`accelerator types <accelerator_types>`.

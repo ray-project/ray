@@ -92,9 +92,11 @@ cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
+        void SetCurrentActorShouldExit()
+        c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
-        const CActorID &GetRootDetachedActorID()
+        CActorID GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
@@ -203,15 +205,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
-        CPlacementGroupID GetCurrentPlacementGroupId()
+        CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
-        const CActorID &GetActorId()
+        CActorID GetActorId() const
         const c_string GetActorName()
         void SetActorTitle(const c_string &title)
         void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
-        CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         optional[int] GetLocalActorState(const CActorID &actor_id) const
@@ -440,6 +441,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int64_t worker_launch_time_ms
         int64_t worker_launched_time_ms
         c_string debug_source
+        c_bool enable_resource_isolation
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

@@ -10,14 +10,15 @@
 #
 #   ;  # Semicolon to separate rules
 
-
 python/ray/air/
 @ ml train tune data linux_wheels
 ;
 
 python/ray/llm/
+doc/source/llm/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
+python/requirements_compiled_*.txt
 @ llm
 ;
 
@@ -69,7 +70,7 @@ ci/docker/serve.build.Dockerfile
 ;
 
 python/ray/dashboard/
-@ dashboard linux_wheels
+@ dashboard linux_wheels python
 ;
 
 python/setup.py
@@ -116,6 +117,11 @@ docker/
 @ docker linux_wheels
 ;
 
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
+;
+
 .readthedocs.yaml
 @ doc
 ;
@@ -134,7 +140,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-# Release test unit tests are ALWAYS RUN, so pass
+@ tools
 ;
 
 release/*.md
@@ -156,6 +162,9 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+ci/fossa/
+ci/docker/fossa.Dockerfile
+ci/docker/fossa.wanda.yaml
 @ tools
 ;
 
@@ -175,6 +184,7 @@ ci/docker/forge.wanda.yaml
 ci/docker/forge.aarch64.wanda.yaml
 .buildkite/pipeline.build.yml
 .buildkite/hooks/post-command
+.buildkite/release-automation/
 @ tools
 ;
 
@@ -190,6 +200,7 @@ ci/docker/ray.cuda.base.wanda.yaml
 ci/docker/ray.cuda.base.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
+build-docker.sh
 @ docker linux_wheels tools
 ;
 
@@ -199,11 +210,23 @@ ci/ci.sh
 ;
 
 src/
-@ ml tune train core_cpp cpp
+@ core_cpp cpp
 @ java python linux_wheels macos_wheels
 @ dashboard release_tests accelerated_dag
 ;
 
 .github/
+README.rst
+SECURITY.md
+CONTRIBUTING.rst
+LICENSE
+pylintrc
+semgrep.yml
+setup_hooks.sh
+.pre-commit-config.yaml
+.isort.cfg
+.prettierrc.toml
+build.sh
+.fossa.yml
 # pass
 ;

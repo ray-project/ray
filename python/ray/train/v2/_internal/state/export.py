@@ -11,7 +11,8 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
 )
 
-TRAIN_SCHEMA_VERSION = 0
+TRAIN_SCHEMA_VERSION = 1
+RAY_TRAIN_VERSION = 2
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {
@@ -62,6 +63,7 @@ def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
         gpu_ids=worker.gpu_ids,
         status=status,
         resources=_to_proto_resources(worker.resources.resources),
+        log_file_path=worker.log_file_path,
     )
 
 
@@ -70,6 +72,7 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
     """Convert TrainRunAttempt to protobuf format."""
     proto_attempt = ProtoTrainRunAttempt(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         run_id=attempt.run_id,
         attempt_id=attempt.attempt_id,
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
@@ -87,6 +90,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
     proto_run = ProtoTrainRun(
         schema_version=TRAIN_SCHEMA_VERSION,
+        ray_train_version=RAY_TRAIN_VERSION,
         id=run.id,
         name=run.name,
         job_id=bytes.fromhex(run.job_id),
@@ -95,6 +99,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         status_detail=run.status_detail,
         start_time_ns=run.start_time_ns,
         end_time_ns=run.end_time_ns,
+        controller_log_file_path=run.controller_log_file_path,
     )
 
     return proto_run

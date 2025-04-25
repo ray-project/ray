@@ -14,13 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
-#include <boost/algorithm/string.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "ray/common/grpc_util.h"
-#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -259,7 +255,8 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_.ToInt();
   buffer << " Local resources: " << local_resource_manager_->DebugString();
-  buffer << " Cluster resources: " << cluster_resource_manager_->DebugString();
+  buffer << " Cluster resources (at most 20 nodes are shown): "
+         << cluster_resource_manager_->DebugString(/*max_num_nodes_to_include=*/20);
   return buffer.str();
 }
 

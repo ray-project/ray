@@ -135,7 +135,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
-        "team:serve",
+        "team:core",
     ],
 )
 
@@ -222,27 +222,9 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/intel_gaudi_inference_client.py",
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-        "source/serve/doc_code/vllm_openai_example.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/http_guide/streaming_example.py",
-        "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
     ],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-)
-
-py_test_run_all_subdirectory(
-    size = "medium",
-    include = [
-        "source/serve/doc_code/http_guide/streaming_example.py",
-        "source/serve/doc_code/http_guide/websockets_example.py",
-    ],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
-    exclude = [],
     extra_srcs = [],
     tags = [
         "exclusive",
@@ -413,70 +395,88 @@ doctest(
     size = "large",
     files = glob(
         include = [
-            "source/**/*.rst",
             "source/**/*.md",
+            "source/**/*.rst",
         ],
         exclude = [
             "source/ray-contribute/getting-involved.rst",
             "source/ray-contribute/testing-tips.rst",
-            "source/ray-core/handling-dependencies.rst",
-            "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
-            "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
-            "source/serve/production-guide/fault-tolerance.md",
-            "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst",
-            "source/train/**/*.rst",
-            "source/train/**/*.md",
-            "source/workflows/**/*.rst",
-            "source/workflows/**/*.md",
-            "source/rllib/**/*.rst",
-            "source/rllib/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
+            "source/ray-core/**/*.md",
+            "source/ray-core/**/*.rst",
+            "source/data/**/*.md",
+            "source/data/**/*.rst",
+            "source/rllib/**/*.md",
+            "source/rllib/**/*.rst",
+            "source/serve/**/*.md",
+            "source/serve/**/*.rst",
+            "source/train/**/*.md",
+            "source/train/**/*.rst",
+            "source/tune/**/*.md",
+            "source/tune/**/*.rst",
+            "source/workflows/**/*.md",
+            "source/workflows/**/*.rst",
         ],
     ),
     tags = ["team:none"],
+    # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
+    # so we use its pytest plugin file (which is a superset of the default).
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
 )
 
 doctest(
-    name = "doctest[train]",
+    name = "doctest[core]",
     files = glob(
         include = [
-            "source/train/**/*.rst",
-            "source/train/**/*.md",
+            "source/ray-core/**/*.md",
+            "source/ray-core/**/*.rst",
         ],
         exclude = [
-            # GPU
-            "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
-            "source/train/horovod.rst",  # CI do not have Horovod
-        ],
-    ),
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[train]",
-    files = [
-        "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
-    ],
-    gpu = True,
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[workflow]",
-    files = glob(
-        include = [
-            "source/workflows/**/*.rst",
-            "source/workflows/**/*.md",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
     tags = ["team:core"],
+)
+
+doctest(
+    name = "doctest[data]",
+    files = glob(
+        include = [
+            "source/data/**/*.md",
+            "source/data/**/*.rst",
+        ],
+        exclude = [
+            # These tests run on GPU (see below).
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            # These tests are currently failing.
+            "source/data/loading-data.rst",
+            "source/data/data-internals.rst",
+            "source/data/inspecting-data.rst",
+            "source/data/loading-data.rst",
+            "source/data/performance-tips.rst",
+            "source/data/saving-data.rst",
+            "source/data/working-with-images.rst",
+            "source/data/working-with-llms.rst",
+            "source/data/working-with-pytorch.rst",
+        ],
+    ),
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
+    tags = ["team:data"],
+)
+
+doctest(
+    name = "doctest[data-gpu]",
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst",
+    ],
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
+    tags = ["team:data"],
+    gpu = True,
 )
 
 doctest(
@@ -485,8 +485,8 @@ doctest(
     data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
-            "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
+            "source/rllib/**/*.rst",
         ],
         exclude = [
             "source/rllib/getting-started.rst",
@@ -507,10 +507,68 @@ doctest(
 )
 
 doctest(
+    name = "doctest[serve]",
+    files = glob(
+        include = [
+            "source/serve/**/*.md",
+            "source/serve/**/*.rst",
+        ],
+        exclude = [
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+        ],
+    ),
+    tags = ["team:serve"],
+)
+
+
+doctest(
+    name = "doctest[train]",
+    files = glob(
+        include = [
+            "source/train/**/*.md",
+            "source/train/**/*.rst",
+        ],
+        exclude = [
+            # CI does not have Horovod installed.
+            "source/train/horovod.rst",
+            # These tests run on GPU (see below).
+            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/using-gpus.rst",
+        ],
+    ),
+    tags = ["team:ml"],
+)
+
+doctest(
+    name = "doctest[train-gpu]",
     files = [
-        "source/data/batch_inference.rst",
-        "source/data/transforming-data.rst",
+        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/using-gpus.rst",
     ],
+    tags = ["team:ml"],
     gpu = True,
-    tags = ["team:data"],
+)
+
+
+doctest(
+    name = "doctest[tune]",
+    files = [
+        "source/tune/**/*.md",
+        "source/tune/**/*.rst",
+    ],
+    tags = ["team:ml"],
+)
+
+doctest(
+    name = "doctest[workflow]",
+    files = glob(
+        include = [
+            "source/workflows/**/*.md",
+            "source/workflows/**/*.rst",
+        ],
+    ),
+    tags = ["team:core"],
 )

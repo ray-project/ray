@@ -14,15 +14,21 @@
 
 #pragma once
 
-#include <memory>
-#include <mutex>
+#include <gtest/gtest_prod.h>
 
-#include "absl/base/optimization.h"
+#include <deque>
+#include <memory>
+#include <queue>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
-#include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
@@ -33,7 +39,6 @@
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
-#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
@@ -46,7 +51,6 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "ray/util/shared_lru.h"
@@ -140,9 +144,6 @@ struct TaskToRetry {
 
   /// The details of the task.
   TaskSpecification task_spec;
-
-  /// Updates the actor seqno if true.
-  bool update_seqno{};
 };
 
 /// Sorts TaskToRetry in descending order of the execution time.
@@ -178,7 +179,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Otherwise, it can have various destruction order related memory corruption.
   ///
   /// If the core worker is initiated at a driver, the driver is responsible for calling
-  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
   ~CoreWorker() override;
 
@@ -298,7 +299,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This function is called periodically on the io_service_.
   void TryDelPendingObjectRefStreams();
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+  PlacementGroupID GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
@@ -345,7 +346,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TOOD(ilr): better way of keeping an object from being deleted
+    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
     if (!options_.is_local_mode) {
@@ -798,14 +799,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task submission.
   ///
 
-  /// Get the caller ID used to submit tasks from this worker to an actor.
-  ///
-  /// \return The caller ID. For non-actor tasks, this is the current task ID.
-  /// For actors, this is the current actor ID. To make sure that all caller
-  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
-  /// of the bytes zeroed out.
-  TaskID GetCallerId() const ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Push an error to the relevant driver.
   ///
   /// \param[in] The ID of the job_id that the error is for.
@@ -840,14 +833,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
-  /// should capture parent's placement group implicilty.
+  /// should capture parent's placement group implicitly.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
   /// \param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
-  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// This is used when worker_context cannot reliably obtain the current task_id
   /// i.e., Python async actors.
   /// \param[in] call_site The stacktrace of the task invocation, or actor
   /// creation. This is only used for observability.
@@ -890,7 +883,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] placement_group_creation_options Options for this placement group
   /// creation task.
   /// \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node
+  /// This can be used to schedule actor in node
   /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
@@ -1010,7 +1003,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task execution. Should not be used by driver processes.
   ///
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  ActorID GetActorId() const {
+    absl::MutexLock lock(&mutex_);
+    return actor_id_;
+  }
 
   std::string GetActorName() const;
 
@@ -1685,6 +1681,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                     const int64_t timeout_ms,
                     std::vector<std::shared_ptr<RayObject>> &results);
 
+  /// Get the caller ID used to submit tasks from this worker to an actor.
+  ///
+  /// \return The caller ID. For non-actor tasks, this is the current task ID.
+  /// For actors, this is the current actor ID. To make sure that all caller
+  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
+  /// of the bytes zeroed out.
+  TaskID GetCallerId() const ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Helper for Get, used only to read experimental mutable objects.
   ///
   /// \param[in] ids IDs of the objects to get.
@@ -1725,7 +1729,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1863,7 +1867,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      task_execution_service_work_;
 
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
@@ -1884,6 +1889,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
 
+  /// TODO(kevin85421): the shutdown logic contained in `Disconnect`, `Exit`, and
+  /// `Shutdown` should be unified to avoid mistakes due to complex dependent semantics.
+  /// See https://github.com/ray-project/ray/issues/51642.
+
+  /// Used to ensure that the `CoreWorker::Exit` method is called at most once.
+  std::atomic<bool> is_exited_ = false;
+  /// Used to ensure that the `CoreWorker::Shutdown` method is called at most once.
   std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;

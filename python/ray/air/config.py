@@ -18,6 +18,7 @@ import warnings
 
 import pyarrow.fs
 
+import ray
 from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data.preprocessor import Preprocessor
@@ -25,7 +26,6 @@ from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
-    from ray.train import SyncConfig
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
@@ -649,7 +649,7 @@ class RunConfig:
     storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     failure_config: Optional[FailureConfig] = None
     checkpoint_config: Optional[CheckpointConfig] = None
-    sync_config: Optional["SyncConfig"] = None
+    sync_config: Optional["ray.train.SyncConfig"] = None
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
