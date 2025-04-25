@@ -246,14 +246,8 @@ class LLMRouter:
             if base_model_id in self._default_serve_handles:
                 if model_id == base_model_id:
                     default_handle = self._default_serve_handles[model_id]
-
-                    # Injected code
-                    llm_config = self._llm_configs[model_id]
-                    print(f"Type of llm_config.deployment_config: {type(llm_config.deployment_config)}") # Is type dict
-                    configured_handle = default_handle.options(stream=True, replica_scheduler=llm_config.deployment_config.get_replica_scheduler()) # Throws an error, dict doesn't have get_replica_scheduler()
-                    # End of injected code
-                    
-                    # configured_handle = default_handle.options(stream=True)
+                
+                    configured_handle = default_handle.options(stream=True)
                     self._configured_serve_handles[model_id] = configured_handle
                 else:
                     default_handle = self._default_serve_handles[base_model_id]
