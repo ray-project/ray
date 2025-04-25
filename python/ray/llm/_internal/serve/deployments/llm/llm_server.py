@@ -511,50 +511,24 @@ class LLMServer(_LLMServerBase):
         """
 
         logger.info(f"Received streaming request {request_id}")
-        try:
-            multiplexed_model_id = serve.get_multiplexed_model_id()
+        multiplexed_model_id = serve.get_multiplexed_model_id()
 
-            if multiplexed_model_id:
-                assert (
-                    self._llm_config.lora_config is not None
-                ), "Must setup lora config for multiplexed requests."
-                disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
-            else:
-                disk_lora_model = None
+        if multiplexed_model_id:
+            assert (
+                self._llm_config.lora_config is not None
+            ), "Must setup lora config for multiplexed requests."
+            disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
+        else:
+            disk_lora_model = None
 
-            prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
-
-            sampling_params = VLLMSamplingParams.from_prompt(prompt)
-            prompt_text = prompt_output.text
-            image_input = prompt_output.image
-            image = []
-            if not self._llm_config.supports_vision and image_input:
-                raise RuntimeError(
-                    "You provided image input while the engine is not set up to handle images. "
-                    "Did you forget to set `input_modality` to image in yaml file?"
-                )
-
-            if self._llm_config.supports_vision and image_input:
-                for _image in image_input:
-                    image_url = _image.image_url
-                    image.append(await self.image_retriever.get(image_url))
-
-            request_params = {
-                "prompt": prompt_text,
-                "request_id": request_id,
-                "sampling_params": sampling_params,
-                "disk_multiplex_config": disk_lora_model,
-                "serve_request_context": serve.context._serve_request_context.get(),
-            }
-            if image:
-                request_params["multi_modal_data"] = {"image": image}
-            vllm_request = VLLMGenerationRequest(**request_params)
-        except PydanticValidationError as e:
-            # Wrap the PydanticValidationError in a ValidationErrorWithPydantic
-            # so that it can be used in a RayActorError
-            # See https://github.com/ray-project/ray/issues/43401
-            raise ValidationErrorWithPydantic(e) from None
-        async for llm_response in self.engine.generate(vllm_request, stream):
+        llm_request = await self.engine.prepare_request(
+            request_id=request_id,
+            prompt=prompt,
+            stream=stream,
+            disk_lora_model=disk_lora_model,
+        )
+        
+        async for llm_response in self.engine.generate(llm_request):
             yield llm_response
 
     async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
