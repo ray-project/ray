@@ -8,10 +8,12 @@ llm_config = LLMConfig(
         model_id="deepseek",
         model_source="deepseek-ai/DeepSeek-R1",
     ),
-    deployment_config=dict(autoscaling_config=dict(
-        min_replicas=1,
-        max_replicas=1,
-    )),
+    deployment_config=dict(
+        autoscaling_config=dict(
+            min_replicas=1,
+            max_replicas=1,
+        )
+    ),
     # Change to the accelerator type of the node
     accelerator_type="H100",
     runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
@@ -34,4 +36,3 @@ llm_app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(llm_app)
 
 # __deepseek_setup_end__
-
