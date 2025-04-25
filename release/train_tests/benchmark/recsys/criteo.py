@@ -9,6 +9,8 @@ import pyarrow.csv
 
 import ray.data
 
+from constants import DatasetKey
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,9 +62,9 @@ CRITEO_NUM_EMBEDDINGS_PER_FEATURE: List[int] = [
 ]
 
 DATASET_PATHS = {
-    "train": f"{CRITEO_S3_URI}/train",
-    "valid": f"{CRITEO_S3_URI}/valid",
-    "test": f"{CRITEO_S3_URI}/test",
+    DatasetKey.TRAIN: f"{CRITEO_S3_URI}/train",
+    DatasetKey.VALID: f"{CRITEO_S3_URI}/valid",
+    DatasetKey.TEST: f"{CRITEO_S3_URI}/test",
 }
 
 
@@ -174,19 +176,21 @@ def read_json_from_s3(bucket_name, key):
     return data
 
 
-def _get_base_dataset(stage: str = "train"):
+def _get_base_dataset(stage: DatasetKey = DatasetKey.TRAIN):
     ds_path = DATASET_PATHS[stage]
 
     ds = ray.data.read_csv(
         ds_path,
         read_options=pyarrow.csv.ReadOptions(column_names=DEFAULT_COLUMN_NAMES),
         parse_options=pyarrow.csv.ParseOptions(delimiter="\t"),
-        shuffle=("files" if stage == "train" else None),  # coarse file-level shuffle
+        shuffle=(
+            "files" if stage == DatasetKey.TRAIN else None
+        ),  # coarse file-level shuffle
     )
     return ds
 
 
-def get_ray_dataset(stage: str = "train"):
+def get_ray_dataset(stage: DatasetKey = DatasetKey.TRAIN):
     ds = _get_base_dataset(stage)
 
     # Convert categorical features to integers.

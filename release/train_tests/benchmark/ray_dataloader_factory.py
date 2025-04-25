@@ -5,6 +5,7 @@ import torch
 import ray.train
 from ray.data import Dataset
 
+from constants import DatasetKey
 from config import BenchmarkConfig, RayDataConfig
 from dataloader_factory import BaseDataLoaderFactory
 
@@ -45,9 +46,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         pass
 
     def get_train_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
-            "train"
-        )
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
+        self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
@@ -64,9 +65,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         )
 
     def get_val_dataloader(self):
-        ds_iterator = self._ray_ds_iterators["valid"] = ray.train.get_dataset_shard(
-            "valid"
-        )
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.VALID)
+        self._ray_ds_iterators[DatasetKey.VALID] = ds_iterator
+
         dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(

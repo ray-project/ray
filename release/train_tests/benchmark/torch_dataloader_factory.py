@@ -8,6 +8,7 @@ from torch.utils.data import IterableDataset
 import ray.train
 import ray
 
+from constants import DatasetKey
 from config import BenchmarkConfig, TorchConfig
 from dataloader_factory import BaseDataLoaderFactory
 from logger_utils import ContextLoggerAdapter
@@ -108,7 +109,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         device = self._get_device()
 
         # Create dataset and dataloader
-        train_ds = self.get_iterable_datasets()["train"]
+        train_ds = self.get_iterable_datasets()[DatasetKey.TRAIN]
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
@@ -158,7 +159,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         device = self._get_device()
 
         # Create dataset and dataloader with row limits
-        val_ds = self.get_iterable_datasets()["val"]
+        val_ds = self.get_iterable_datasets()[DatasetKey.VALID]
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
