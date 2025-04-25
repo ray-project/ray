@@ -221,7 +221,10 @@ class DefaultArrowCollateFn(ArrowBatchCollateFn):
             arrow_batch_to_tensors,
         )
 
-        return arrow_batch_to_tensors(batch, dtypes=self.dtypes, device=None)
+        combine_chunks = self.device == "cpu"
+        return arrow_batch_to_tensors(
+            batch, dtypes=self.dtypes, device=None, combine_chunks=combine_chunks
+        )
 
 
 @DeveloperAPI

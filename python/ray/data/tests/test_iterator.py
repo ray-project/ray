@@ -225,7 +225,10 @@ def custom_collate_fns():
             )
 
             return arrow_batch_to_tensors(
-                modified_batch, dtypes=self.dtypes, device=self.device
+                modified_batch,
+                dtypes=self.dtypes,
+                device=self.device,
+                combine_chunks=self.device == "cpu",
             )["id"]
 
     class CustomNumpyBatchCollateFn(NumpyBatchCollateFn):
@@ -267,9 +270,9 @@ def custom_collate_fns():
             )["id"]
 
     return {
-        "arrow": CustomArrowBatchCollateFn(),
-        "numpy": CustomNumpyBatchCollateFn(),
-        "pandas": CustomPandasBatchCollateFn(),
+        "arrow": CustomArrowBatchCollateFn(device="cpu"),
+        "numpy": CustomNumpyBatchCollateFn(device="cpu"),
+        "pandas": CustomPandasBatchCollateFn(device="cpu"),
     }
 
 

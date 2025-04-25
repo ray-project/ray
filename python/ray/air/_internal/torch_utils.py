@@ -346,6 +346,7 @@ def arrow_batch_to_tensors(
     batch: pyarrow.Table,
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     device: Optional[str] = None,
+    combine_chunks: bool = False,
 ) -> Union[
     torch.Tensor,
     List[torch.Tensor],
@@ -359,6 +360,8 @@ def arrow_batch_to_tensors(
         dtypes: A (dict of) Torch dtype(s) for the created tensors; if None, the dtype
             will be inferred from the NumPy ndarray data.
         device: Optional device to place tensors on
+        combine_chunks: If True, combine chunks in Arrow batch before converting to
+            tensors.
 
     Returns:
         PyTorch tensors converted from the Arrow batch, can be:
@@ -369,7 +372,6 @@ def arrow_batch_to_tensors(
     """
     from ray.data._internal.arrow_ops import transform_pyarrow
 
-    combine_chunks: bool = device is None or device == "cpu"
     if combine_chunks:
         numpy_batch = transform_pyarrow.table_to_numpy_dict_combined(
             batch,

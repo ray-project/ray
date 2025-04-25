@@ -219,7 +219,9 @@ class CustomArrowCollateFn(ray.data.iterator.ArrowBatchCollateFn):
             move_tensors_to_device,
         )
 
-        tensors = arrow_batch_to_tensors(batch, dtypes=self.dtypes, device=None)
+        tensors = arrow_batch_to_tensors(
+            batch, dtypes=self.dtypes, device=None, combine_chunks=self.device == "cpu"
+        )
         tensors = move_tensors_to_device(tensors, self.device)
         return tensors["image"], tensors["label"]
 
