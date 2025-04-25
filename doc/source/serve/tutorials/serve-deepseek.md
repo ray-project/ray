@@ -13,7 +13,7 @@ This example shows how to deploy DeepSeek R1 or V3 with Ray Serve LLM.
 To run this example, install the following:
 
 ```bash
-pip install "ray[serve]"
+pip install "ray[llm]"
 ```
 
 ## Code Structure
