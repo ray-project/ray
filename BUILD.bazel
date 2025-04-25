@@ -685,7 +685,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        ":raylet_lib",
+        ":worker_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
