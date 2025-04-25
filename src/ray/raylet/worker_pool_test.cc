@@ -30,7 +30,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
-#include "ray/raylet/node_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
