@@ -2838,7 +2838,9 @@ def from_pandas_refs(
 
 
 @PublicAPI
-def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDataset:
+def from_numpy(
+    ndarrays: Union[np.ndarray, List[np.ndarray]], column_name="data"
+) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of NumPy ndarrays.
 
     Examples:
@@ -2855,19 +2857,22 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
-
+        column_name: The name of the column. Defaults to 'data'
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
     if isinstance(ndarrays, np.ndarray):
         ndarrays = [ndarrays]
 
-    return from_numpy_refs([ray.put(ndarray) for ndarray in ndarrays])
+    return from_numpy_refs(
+        [ray.put(ndarray) for ndarray in ndarrays], column_name=column_name
+    )
 
 
 @DeveloperAPI
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
+    column_name: str = "data",
 ) -> MaterializedDataset:
     """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
     NumPy ndarrays.
@@ -2887,7 +2892,7 @@ def from_numpy_refs(
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
             references to NumPy ndarrays.
-
+        column_name: The name of the column. Defaults to 'data'
     Returns:
         :class:`~ray.data.Dataset` holding data from the given ndarrays.
     """
@@ -2906,7 +2911,11 @@ def from_numpy_refs(
         )
 
     ctx = DataContext.get_current()
-    ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
+
+    def custom_ndarray_to_block(*args, **kwargs):
+        return ndarray_to_block(*args, **kwargs, column_name=column_name)
+
+    ndarray_to_block_remote = cached_remote_fn(custom_ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
     blocks, metadata = map(list, zip(*res))
@@ -3325,6 +3334,7 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
     local_read: bool = False,
+    column_name: str = "data",
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
@@ -3346,7 +3356,7 @@ def from_torch(
     Args:
         dataset: A `Torch Dataset`_.
         local_read: If ``True``, perform the read as a local read.
-
+        column_name: The name of the column. Defaults to 'data'
     Returns:
         A :class:`~ray.data.Dataset` containing the Torch dataset samples.
     """  # noqa: E501
@@ -3366,7 +3376,7 @@ def from_torch(
             "num_cpus": 0,
         }
     return read_datasource(
-        TorchDatasource(dataset=dataset),
+        TorchDatasource(dataset=dataset, column_name=column_name),
         ray_remote_args=ray_remote_args,
         # Only non-parallel, streaming read is currently supported
         override_num_blocks=1,
