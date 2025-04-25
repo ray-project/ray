@@ -34,7 +34,7 @@ disable
 g[Rr][Pp][Cc]
 GKE
 GPU[s]
-http
+HTTP
 Kaggle
 kubectl
 Kueue
