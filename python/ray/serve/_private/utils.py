@@ -627,7 +627,7 @@ def is_grpc_enabled(grpc_config: gRPCOptions) -> bool:
     return grpc_config.port > 0 and len(grpc_config.grpc_servicer_functions) > 0
 
 
-def run_coroutine_threadsafe(coro_or_future, loop):
+def run_coroutine_or_future_threadsafe(coro_or_future, loop):
     """Submit a coroutine object or future to a given event loop.
 
     Ref: https://github.com/python/cpython/blob/eef49c359505eaf109d519d39e53dfd3c78d066a/Lib/asyncio/tasks.py#L991

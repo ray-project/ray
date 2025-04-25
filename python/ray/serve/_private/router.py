@@ -37,7 +37,7 @@ from ray.serve._private.replica_scheduler import PendingRequest, ReplicaSchedule
 from ray.serve._private.utils import (
     generate_request_id,
     resolve_deployment_response,
-    run_coroutine_threadsafe,
+    run_coroutine_or_future_threadsafe,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
@@ -741,7 +741,7 @@ class SingletonThreadRouter(Router):
             )
         )
         # Schedule the actual request assignment coroutine on the asyncio loop thread.
-        concurrent_future = run_coroutine_threadsafe(
+        concurrent_future = run_coroutine_or_future_threadsafe(
             task,
             loop=self._asyncio_loop,
         )
