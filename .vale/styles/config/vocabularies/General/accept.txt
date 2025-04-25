@@ -69,7 +69,11 @@ SFT
 ShareGPT
 subprocess
 teardown
+<<<<<<< HEAD
 uncaptured
+=======
+underutilization
+>>>>>>> 96dd1af408 (fix vale errors in notebook 3, and shortened title in notebook 2)
 URI[s]
 UUID
 VM[s]
