@@ -232,9 +232,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         )
 
         # Get the max distance travelled for this episode.
-        dist_travelled = np.max(
-            episode.custom_data["pacman_dist_travelled"]
-        )
+        dist_travelled = np.max(episode.custom_data["pacman_dist_travelled"])
 
         # Log the max. dist travelled in this episode (window=100).
         metrics_logger.log_value(
