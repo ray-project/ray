@@ -35,7 +35,6 @@ For production deployments, save the following to a YAML file named `deepseek.ya
 and run `serve run deepseek.yaml`.
 
 ```yaml
-# config.yaml
 applications:
 - args:
     llm_configs:
