@@ -51,12 +51,14 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
+  /// Cancel all tasks owned by a specific worker.
   virtual bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
+  /// Cancel all tasks owned by a worker on the specific node.
   virtual bool CancelAllTasksOwnedBy(
       const NodeID &node_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =

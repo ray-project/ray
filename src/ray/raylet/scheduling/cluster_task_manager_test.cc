@@ -1618,10 +1618,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
-  /*
-    Test the race condition in which the owner of a task dies while the task is pending.
-    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
-   */
+  // Test the case when the task owner (worker or node) dies, the task is cancelled.
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
   bool callback_occurred = false;
@@ -1635,10 +1632,18 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   pool_.TriggerCallbacks();
 
   ASSERT_FALSE(callback_occurred);
-  ASSERT_EQ(leased_workers_.size(), 0);
-  ASSERT_EQ(pool_.workers.size(), 0);
 
   task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerWorkerId());
+
+  AssertNoLeaks();
+
+  callback_occurred = false;
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  ASSERT_FALSE(callback_occurred);
+
+  task_manager_.CancelAllTasksOwnedBy(task.GetTaskSpecification().CallerNodeId());
 
   AssertNoLeaks();
 }

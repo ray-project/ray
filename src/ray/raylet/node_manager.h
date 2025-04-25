@@ -264,8 +264,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param data The data of the worker that died.
   void HandleUnexpectedWorkerFailure(const WorkerID &worker_id);
 
-  void HandleNodeRemoved(const NodeID &node_id);
-
   /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.

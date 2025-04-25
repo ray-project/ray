@@ -88,7 +88,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
                   const std::string &scheduling_failure_message = "") override;
 
-  /// Cancel all tasks owned by a specific worker.
   bool CancelAllTasksOwnedBy(
       const WorkerID &worker_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
