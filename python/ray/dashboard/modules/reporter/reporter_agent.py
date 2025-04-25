@@ -517,6 +517,7 @@ class ReporterAgent(
 
     @staticmethod
     def _get_gpu_usage() -> List[GpuUtilizationInfo]:
+        global enable_gpu_usage_check
         import ray._private.thirdparty.pynvml as pynvml
 
         gpu_utilizations = []
@@ -650,7 +651,7 @@ class ReporterAgent(
                         index=int(index),
                         name=name,
                         uuid=uuid,
-                        utilization_gpu=util,
+                        utilization_gpu=int(util),
                         memory_used=int(mem_used),
                         memory_total=int(mem_total),
                         processes_pids=[],
