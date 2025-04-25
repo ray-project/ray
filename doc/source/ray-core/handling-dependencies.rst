@@ -639,8 +639,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
 - ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
   - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
-
   Note: ``image_uri`` is experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
+
+- ``container`` (dict): Used to specify the container configuration for runtime environments. 
+  For more details, refer to the section :ref:`runtime-environments-worker-in-container`.
 
 - ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig.
   Fields:
@@ -657,6 +659,250 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   - Example: ``{"eager_install": False}``
 
   - Example: ``RuntimeEnvConfig(eager_install=False)``
+
+
+.. _runtime-environments-worker-in-container:
+
+Worker in Container
+""""""""""""""""""""""
+When using the ``container`` field, the Ray worker process runs inside a container with the specified image. The container is created by the raylet process, and the worker process is started within the container. This feature allows for better isolation and control over dependencies, making it particularly useful for production environments.
+
+The ``container`` field is designed to be compatible with other runtime environment plugins, providing a unified interface for managing dependencies and configurations. For more details, refer to the :ref:`API Reference <runtime-environments-api-ref>`.
+
+
+**Advantages of Using Containers**
+
+- **Improved Efficiency**: By inheriting dependencies from the container's base image, Ray eliminates redundant installation steps, reducing setup time.
+- **Enhanced Security**: Dependencies are pinned and validated at the container level, minimizing conflicts and ensuring a consistent runtime environment.
+- **Isolation**: Containers provide an isolated environment, preventing interference between the host system and the Ray worker processes.
+
+Interface Definition
+~~~~~~~~~~~~~~~~~~~~
+
+The ``container`` field is a dictionary with the following structure:
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {                   # Primary configuration field
+          "image": str,                # Required field specifying the container image
+          "pip": List[str],            # List of pip packages to install in the image's default Python environment
+          "py_executable": str,        # Custom Python interpreter path within the container
+          "run_options": List[str],    # Additional runtime options for the container
+          "install_ray": bool,         # Whether to install Ray in the container
+          "native_libraries": str,     # Path to add to Ray's code_search_path
+          "isolate_pip_installation": bool  # Temporarily clears PYTHONPATH during pip installation
+      },
+      # Optional fields from other plugins
+      "pip": List[str],                # Host environment pip packages
+  }
+
+- ``image`` (str): Specifies the container image name (e.g., ``user/my_image:latest``). This is a required field.
+
+- ``pip`` (List[str]): A list of pip packages to install using the container's default Python environment.
+
+- ``py_executable`` (str): Path to the Python interpreter inside the container (e.g., ``/usr/bin/python3``).
+
+- ``run_options`` (List[str]): Custom runtime arguments for the container (e.g., ``["--net=host", "--memory=4G"]``).
+
+- ``install_ray`` (bool): Indicates whether to install Ray using the container's Python environment.
+
+- ``native_libraries`` (str): Path to add to Ray's ``code_search_path`` for code discovery.
+
+- ``isolate_pip_installation`` (bool): Temporarily clears ``PYTHONPATH`` during pip installation to ensure a clean environment.
+
+Field Specifications
+~~~~~~~~~~~~~~~~~~~~
+
+.. list-table:: Parameters in the ``container`` Section
+   :widths: 20 20 60
+   :header-rows: 1
+
+   * - **Parameter**
+     - **Type**
+     - **Description**
+   * - ``image``
+     - ``str``
+     - Required parameter specifying the container image name (e.g., ``user/my_image:latest``).
+   * - ``pip``
+     - ``List[str]``
+     - List of pip packages to install using the container's default Python environment.
+   * - ``py_executable``
+     - ``str``
+     - Path to the Python interpreter inside the container (e.g., ``/usr/bin/python3``).
+   * - ``run_options``
+     - ``List[str]``
+     - Custom runtime arguments for the container (e.g., ``["--net=host", "--memory=4G"]``).
+   * - ``install_ray``
+     - ``bool``
+     - ``True`` to install Ray using the container's Python environment.
+   * - ``native_libraries``
+     - ``str``
+     - Path to add to Ray's ``code_search_path`` for code discovery.
+   * - ``isolate_pip_installation``
+     - ``bool``
+     - ``True`` temporarily clears ``PYTHONPATH`` during pip installation.
+
+Example Configurations
+~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Basic Usage**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user/my_image:latest",
+          "run_options": ["--shm-size=1G"],
+      }
+  }
+
+The basic usage involves starting the user-specified container image before launching the Ray worker. If the user specifies `run_options`, these options are converted into individual strings and appended to the command line used to start the container. For example, the `run_options` field `["--shm-size=1G"]` will result in the container being started with the additional argument `--shm-size=1G`.
+
+2. **Installing Ray**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user/my_image:latest",
+          "install_ray": True,
+          "run_options": ["--privileged"]
+      }
+  }
+
+When `install_ray` is set to `True`, Ray will first install the corresponding Python version of Ray in the container's default Python environment after starting the image. 
+The environment variable `RAY_PODMAN_UES_WHL_PACKAGE` controls whether to use Ray's `.whl` package for installation. By default, this is set to `False`, meaning the corresponding version of the `ant-ray` `.whl` package will be downloaded and installed. 
+If `RAY_PODMAN_UES_WHL_PACKAGE` is set to `True`, the corresponding `ant-ray` `.whl` package must be pre-downloaded to the Ray `.whl` package path, which is controlled by the environment variable `RAY_WHL_DIR` (default value: `/home/admin/build/whl`).
+
+3. **Installing Ray with Pip Packages**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user/my_image:latest",
+          "install_ray": True,
+          "pip": ["pandas"],
+          "run_options": ["--privileged"]
+      },
+      "pip": ["numpy"],
+  }
+
+When `install_ray` is set to `True` and the `runtime_env` also contains a `pip` field, 
+the external `pip` installation will be skipped. 
+Instead, the `pip` packages specified in the `container` field and the external `pip` field will be merged, 
+with duplicate packages removed. All merged `pip` packages will be installed inside the container. 
+The installation of `pip` packages occurs after the `ant-ray` package is installed. 
+Additionally, the `pip` packages will be installed using the default Python interpreter provided by the container image.
+
+
+4. **Using a Custom Python Interpreter**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user/my_image:latest",
+          "py_executable": "/opt/conda/bin/python"
+      }
+  }
+
+
+If `py_executable` is specified, Ray will use the provided `py_executable` to start the worker processes. 
+
+.. note::  
+  If the prefix of the specified `py_executable` matches the virtual environment path of `pyenv` (retrieved via the `PYENV_ROOT` environment variable, defaulting to `/home/admin/.pyenv`), 
+  the `.pyenv` directory in the mounted `pyenv` virtual environment will be replaced with `ray/.pyenv`. 
+  This ensures that the external `pyenv` virtual environment does not overwrite the internal `pyenv` virtual environment within the container.
+
+Important Notes
+~~~~~~~~~~~~~~~~
+
+.. warning::
+   The ``container`` field will be deprecated by July 2025. Migrate to ``image_uri`` as soon as possible.
+
+.. note::
+   - ``isolate_pip_installation`` cannot be used with ``install_ray=True``.
+   - ``py_executable`` must point to an existing path inside the container.
+   - ``native_libraries`` paths must be accessible from inside the container.
+
+Common Usage Scenarios
+~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Container with External/Internal Pip**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user_image",
+          "pip": ["pandas"],
+          "isolate_pip_installation": True  # Clears PYTHONPATH during installation
+      },
+      "pip": ["numpy"]  # Installed in host virtualenv
+  }
+
+Behavior:
+  - Installs specified pip packages inside the container without PYTHONPATH inheritance.
+  - Host pip packages are installed in the virtual environment.
+
+Usage:
+  This configuration is useful when you need to install specific Python packages
+  both inside the container and in the host environment. For example:
+  - Use ``pandas`` inside the container for data processing tasks, installed using the container's default Python environment.
+  - Use ``numpy`` in the host environment for computations outside the container, installed in the host's virtual environment with Ray.
+  The `isolate_pip_installation` ensures that the container's Python environment
+  remains clean and unaffected by the host's PYTHONPATH.
+
+2. **Container with Ray Installation**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user_image",
+          "install_ray": True  # Installs Ray using the container's Python
+      },
+      "pip": ["numpy"]  # Skips external pip installations
+  }
+
+Behavior:
+  - Skips external pip installations.
+  - Disables virtualenv mounting.
+  - Installs Ray version matching tshe container's Python.
+
+Usage:
+  This setup is ideal when you want to use Ray within a containerized environment
+  without relying on external pip installations. For example:
+  - Use this configuration to ensure that the Ray version installed matches the Python version inside the container.
+  - Avoid conflicts between the container's Python environment and the host's virtual environment by skipping external pip installations.
+
+3. **Container with Custom Python Executable**
+
+.. code-block:: python
+
+  runtime_env = {
+      "container": {
+          "image": "user_image",
+          "py_executable": "/opt/conda/bin/python"  # Uses a specific Python environment in the container
+      }
+  }
+
+Behavior:
+  - Uses the specified Python interpreter path.
+  - If ``py_executable`` starts with ``/home/admin/.pyenv``, mounts virtualenv at ``-v /home/admin/.pyenv:/home/admin/ray/.pyenv``.
+
+Usage:
+  This configuration is useful when you need to use a specific Python interpreter
+  inside the container. For example:
+  - Use a pre-installed Python environment (e.g., Conda) for running your application.
+  - Ensure compatibility with specific Python versions or dependencies.
+  The `py_executable` option allows you to explicitly define the Python interpreter
+  to be used, avoiding potential conflicts with the default Python in the container.
+  - If ``py_executable`` starts with ``/home/admin/.pyenv``, mounts virtualenv at ``-v /home/admin/.pyenv:/home/admin/ray/.pyenv``.
+
+By leveraging the ``container`` field, you can create a robust and isolated runtime environment for your Ray applications, ensuring consistency and reliability across your cluster.
 
 .. _runtime-environments-caching:
 
