@@ -39,8 +39,8 @@ class BenchmarkConfig(BaseModel):
     max_failures: int = 0
 
     task: str = "image_classification"
-    locality_with_output: bool = False
-    actor_locality_enabled: bool = False
+    locality_with_output: bool = True
+    actor_locality_enabled: bool = True
     enable_shard_locality: bool = True
 
     # Data
