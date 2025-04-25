@@ -1,0 +1,65 @@
+import json
+import os
+import time
+from enum import Enum
+from typing import Any, Dict
+
+import boto3
+from botocore.config import Config
+from pydantic import BaseModel, field_validator
+
+STREAM_NAME = "rayllm-ci-results"
+DEFAULT_TABLE_NAME = "release_test_result"
+# Time to sleep in-between firehose writes to make sure the timestamp between
+# records are distinct
+SLEEP_BETWEEN_FIREHOSE_WRITES_MS = 50
+
+
+class RecordName(str, Enum):
+    STARTUP_TEST = "service-startup-test"
+    STARTUP_TEST_GCP = "service-startup-test-gcp"
+    STARTUP_TEST_AWS = "service-startup-test-aws"
+    RAYLLM_PERF_TEST = "rayllm-perf-test"
+    VLLM_PERF_TEST = "vllm-perf-test"
+
+
+class FirehoseRecord(BaseModel):
+    record_name: RecordName
+    record_metrics: Dict[str, Any]
+
+    @field_validator("record_name", mode="before")
+    def validate_record_name(cls, v):
+        if isinstance(v, str):
+            return RecordName(v)
+        return v
+
+    def write(self, verbose: bool = False):
+        final_result = {
+            "_table": DEFAULT_TABLE_NAME,
+            "name": str(self.record_name.value),
+            "branch": os.environ.get("BUILDKITE_BRANCH", ""),
+            "commit": os.environ.get("BUILDKITE_COMMIT", ""),
+            "report_timestamp_ms": int(time.time() * 1000),
+            "results": {**self.record_metrics},
+        }
+
+        if verbose:
+            print(
+                "Writing final result to AWS Firehose:",
+                json.dumps(final_result, indent=4, sort_keys=True),
+                sep="\n",
+            )
+
+        # Add newline character to separate records
+        data = json.dumps(final_result) + "\n"
+
+        firehose_client = boto3.client(
+            "firehose", config=Config(region_name="us-west-2")
+        )
+        firehose_client.put_record(
+            DeliveryStreamName=STREAM_NAME,
+            Record={"Data": data},
+        )
+
+        # Add some delay to make sure timestamps are unique ints.
+        time.sleep(SLEEP_BETWEEN_FIREHOSE_WRITES_MS / 1000)

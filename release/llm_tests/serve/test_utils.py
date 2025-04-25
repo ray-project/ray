@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
@@ -20,6 +22,12 @@ logging.basicConfig(level=logging.INFO)
 REGION_NAME = "us-west-2"
 SECRET_NAME = "llm_release_test_hf_token"
 
+# This bucket is on anyscale-dev-product account and the
+# anyscale-staging cloud is already configured to have write
+# access to this bucket
+# Buildkite is also configured to have read access to this bucket
+S3_BUCKET = "rayllm-ci-results"
+S3_PREFIX = "vllm_perf_results"
 
 def check_service_state(
     service_name: str, expected_state: ServiceState, cloud: Optional[str] = None
@@ -185,3 +193,58 @@ def get_hf_token_env_var() -> Dict[str, str]:
     client = session.client(service_name="secretsmanager", region_name=REGION_NAME)
     secret_string = client.get_secret_value(SecretId=SECRET_NAME)["SecretString"]
     return json.loads(secret_string)
+
+
+def get_python_version_from_image(image_name: str) -> str:
+    """Regex to capture the python version from the image name.
+
+    If the image name does not contain a python version, an empty string is returned.
+    """
+    image_python_version_regex_match = re.search(r"py[0-9]+", image_name)
+    if image_python_version_regex_match and image_python_version_regex_match.group(0):
+        return image_python_version_regex_match.group(0)
+
+    return ""
+
+
+def append_python_version_from_image(name: str, image_name: str) -> str:
+    """Regex to capture the python version from the image name and append it to the
+    given name.
+
+    If the image name does not contain a python version, the name is returned as is.
+    """
+    python_version = get_python_version_from_image(image_name)
+    if python_version:
+        return f"{name}_{python_version}"
+
+    return name
+
+def get_s3_storage_path(suffix: str) -> str:
+    build_number = os.environ.get(
+        "BUILDKITE_BUILD_NUMBER", uuid.uuid4().hex[:5].upper()
+    )
+    retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+    unique_id = f"build-{build_number}-{retry_count}-{suffix}"
+
+    storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
+
+    return storage_path
+
+
+def namespace_to_command_args(namespace: Namespace, s3_path: str) -> str:
+    """Convert namespace to command line argument string."""
+    parts = []
+    for key, value in vars(namespace).items():
+        key = key.replace("_", "-")  # Convert Python style to CLI style
+        if isinstance(value, bool):
+            if value:
+                parts.append(f"--{key}")
+        elif isinstance(value, (list, tuple)):
+            if value:  # Only if non-empty
+                parts.append(f"--{key} {','.join(str(x) for x in value)}")
+        elif value is not None:  # Skip None values
+            parts.append(f"--{key} '{value}'")
+
+    parts.extend(["--remote-result-path", s3_path])
+
+    return " ".join(parts)

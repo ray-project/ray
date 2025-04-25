@@ -3,17 +3,26 @@
 # ruff: noqa: I001
 from benchmark.bm import run_bm
 
+import os
+from pathlib import Path  # noqa: E402
 from typing import Optional
 
 import click
 import pytest
 import logging
+import anyscale
+from benchmark.common import parse_benchmark_args, read_from_s3
+from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
     start_service,
     get_current_compute_config_name,
     get_applications,
     get_hf_token_env_var,
     setup_client_env_vars,
+    get_python_version_from_image,
+    append_python_version_from_image,
+    get_s3_storage_path,
+    namespace_to_command_args,
 )
 
 
@@ -22,7 +31,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 CLOUD = "serve_release_tests_cloud"
-
+JOB_NAME = "rayllm_release_test_vllm_perf"
+JOB_TIMEOUT_S = 1800
 
 @click.command()
 @click.option("--image-uri", type=str, default=None)
@@ -42,6 +52,9 @@ def main(
     applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
+
+    if run_perf_profiler:
+        submit_benchmark_vllm_job(image_uri)
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -93,6 +106,58 @@ def main(
             )
 
             logger.info(f"Performance test results: {results}")
+
+
+def submit_benchmark_vllm_job(image_uri: str):
+    py_version = get_python_version_from_image(image_uri)
+    s3_storage_path = get_s3_storage_path(suffix=py_version)
+    cmd_args = namespace_to_command_args(pargs, s3_path=s3_storage_path)
+
+    working_dir = str(Path(__file__).parent)
+
+    job_name = append_python_version_from_image(
+        name=JOB_NAME,
+        image_name=image_uri,
+    )
+
+    job_config = anyscale.job.JobConfig(
+        name=job_name,
+        entrypoint=f"python benchmark_vllm.py {cmd_args}",
+        working_dir=working_dir,
+        cloud=CLOUD,
+        compute_config=anyscale.compute_config.ComputeConfig(
+            head_node=anyscale.anyscale.compute_config.HeadNodeConfig(
+                instance_type="g5.12xlarge",  # 4 GPUS,
+            ),
+            worker_nodes=[],  # To force running on head node only.
+        ),
+        image_uri=image_uri,
+        env_vars={
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
+            "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
+        },
+        timeout_s=JOB_TIMEOUT_S,
+        max_retries=0,
+    )
+
+    submitted_job_id = anyscale.job.submit(config=job_config)
+
+    anyscale.job.wait(
+        id=submitted_job_id,
+        state=anyscale.job.JobState.SUCCEEDED,
+        timeout_s=JOB_TIMEOUT_S,
+    )
+
+    # Read data from bucket and send to anyscale-dev-product's Firehose
+    # This Firehose is where databricks has access to.
+    data_for_firehose = read_from_s3(s3_storage_path)
+
+    for result in data_for_firehose:
+        record = FirehoseRecord(
+            record_name=RecordName.VLLM_PERF_TEST,
+            record_metrics=result,
+        )
+    record.write(verbose=True)
 
 
 if __name__ == "__main__":
