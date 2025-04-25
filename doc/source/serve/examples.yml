@@ -74,6 +74,14 @@ examples:
       - natural language processing
     link: tutorials/streaming
     related_technology: ml applications
+  - title: Serve DeepSeek
+    skill_level: beginner
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
+    link: tutorials/serve-deepseek
+    related_technology: ml applications
   - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate
     use_cases:
