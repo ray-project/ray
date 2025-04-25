@@ -15,6 +15,18 @@ from logger_utils import ContextLoggerAdapter
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
 
+if torch.cuda.is_available():
+    import torch.multiprocessing as mp
+
+    try:
+        mp.set_start_method("spawn", force=True)
+        logger.info(
+            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
+        )
+    except RuntimeError:
+        logger.info("Multiprocessing start method already set")
+
+
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
     """Factory for creating PyTorch DataLoaders."""
 
@@ -59,17 +71,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
             f"across {num_gpus} GPUs"
         )
-
-        import torch.multiprocessing as mp
-
-        if torch.cuda.is_available():
-            try:
-                mp.set_start_method("spawn", force=True)
-                logger.info(
-                    "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-                )
-            except RuntimeError:
-                logger.info("Multiprocessing start method already set")
 
     def _get_device(self) -> torch.device:
         """Get the device for the current worker using Ray Train's device management."""
