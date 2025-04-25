@@ -98,7 +98,7 @@ if not args.no_tune:
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
-    # TRAINING_ITERATION: 350,
+    TRAINING_ITERATION: 350,
 }
 
 args.wandb_project = "bc_irl_ppo_test"

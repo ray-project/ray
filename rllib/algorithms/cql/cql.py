@@ -75,7 +75,7 @@ class CQLConfig(SACConfig):
         # __sphinx_doc_begin__
         # CQL-specific config settings:
         self._is_online = False
-        
+
         self.bc_iters = 20000
         self.temperature = 1.0
         self.num_actions = 10

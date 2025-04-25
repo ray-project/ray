@@ -585,6 +585,31 @@ py_test(
     ],
 )
 
+# BC-IRL PPO
+# CartPole
+py_test(
+    name = "learning_tests_cartpole_bc_irl_ppo",
+    size = "medium",
+    srcs = ["tuned_examples/bc_irl_ppo/cartpole_bc_irl_ppo.py"],
+    args = [
+        "--as-test",
+        "--enable-new-api-stack",
+    ],
+    # Include the offline data files.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    main = "tuned_examples/bc_irl_ppo/cartpole_bc_irl_ppo.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "learning_tests_pytorch_use_all_core",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 # CQL
 # Pendulum
 py_test(
