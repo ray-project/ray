@@ -181,6 +181,8 @@ class VLLMEngine(LLMEngine):
         Args:
             llm_config: The llm configuration for this engine
         """
+        super().__init__(llm_config)
+        
         if vllm is None:
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."

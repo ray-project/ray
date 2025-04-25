@@ -10,7 +10,7 @@ class LLMEngine(abc.ABC):
     """Base class for all LLM engines"""
     
     def __init__(self, llm_config: LLMConfig):
-        pass
+        self._llm_config = llm_config
     
     @abc.abstractmethod
     async def start(self):
