@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RunningReplicaInfo,
 )
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
@@ -18,7 +19,7 @@ from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProt
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaWrapper(ABC):
