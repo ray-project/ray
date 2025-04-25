@@ -680,7 +680,7 @@ class ReporterAgent(
                             )
                         )
             return gpus
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.debug(
                 f"nvidia-smi failed to retrieve GPU information: {e}. Using pynvml."
             )
