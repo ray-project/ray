@@ -187,29 +187,15 @@ class FuseOperators(Rule):
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, RandomShuffle)
             )
+            # Do not fuse Repartition operator if shuffle is disabled
+            # (i.e. using split shuffle).
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
+                and not down_logical_op._shuffle
             )
         ):
             return False
-
-        # Do not fuse Repartition operator if shuffle is disabled
-        # (i.e. using split shuffle).
-        if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
-            return False
-
-        if isinstance(down_logical_op, AbstractMap) and isinstance(
-            up_logical_op, AbstractMap
-        ):
-            if (
-                self._fuse_compute_strategy(
-                    up_logical_op._compute,
-                    down_logical_op._compute,
-                )
-                is None
-            ):
-                return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
@@ -235,8 +221,9 @@ class FuseOperators(Rule):
         # Otherwise, ops are compatible for fusion.
         return True
 
+    @classmethod
     def _fuse_compute_strategy(
-        self, up_compute: ComputeStrategy, down_compute: ComputeStrategy
+        cls, up_compute: ComputeStrategy, down_compute: ComputeStrategy
     ) -> Optional[ComputeStrategy]:
         """Fuse the compute strategies of the upstream and downstream operators.
         Returns None if they are not compatible.
@@ -482,8 +469,16 @@ class FuseOperators(Rule):
         cls,
         upstream_op: AbstractMap,
         downstream_op: AbstractMap,
-        context: "DataContext",
     ) -> bool:
+        if (
+            cls._fuse_compute_strategy(
+                upstream_op._compute,
+                downstream_op._compute,
+            )
+            is None
+        ):
+            return False
+
         # Do not fuse read op with downstream map op in case when downstream has
         # `min_rows_per_input_bundle` specified (to avoid reducing reading parallelism)
         if (
