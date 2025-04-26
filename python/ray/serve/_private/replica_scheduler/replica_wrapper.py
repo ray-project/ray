@@ -109,9 +109,11 @@ class ActorReplicaWrapper(ReplicaWrapper):
             queue_len_info: ReplicaQueueLengthInfo = pickle.loads(await first_ref)
             return ActorReplicaResult(obj_ref_gen, pr.metadata), queue_len_info
         except asyncio.CancelledError as e:
+            task_id = obj_ref_gen._generator_ref.task_id()
             # HTTP client disconnected or request was explicitly canceled.
             logger.info(
-                "Cancelling request that has already been assigned to a replica."
+                f"Cancelling request that has already been assigned to a replica. "
+                f"Ray task ID: {task_id}"
             )
             ray.cancel(obj_ref_gen)
             raise e from None
