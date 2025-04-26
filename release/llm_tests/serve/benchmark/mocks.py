@@ -5,8 +5,8 @@ from typing import Dict, Any
 import logging
 from locust.log import setup_logging
 
-from load_test import LLMUser, events, collect_metrics
-from configs import LoadTestConfig
+from .load_test import LLMUser, events, collect_metrics
+from .configs import LoadTestConfig
 
 
 class LLMLoadTester:

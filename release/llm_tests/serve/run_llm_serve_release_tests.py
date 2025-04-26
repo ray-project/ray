@@ -11,7 +11,7 @@ import click
 import pytest
 import logging
 import anyscale
-from benchmark.common import parse_benchmark_args, read_from_s3
+from benchmark.common import read_from_s3
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
     start_service,
@@ -22,7 +22,7 @@ from test_utils import (
     get_python_version_from_image,
     append_python_version_from_image,
     get_s3_storage_path,
-    get_llm_configs
+    get_first_llm_config,
 )
 
 
@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO)
 CLOUD = "serve_release_tests_cloud"
 JOB_NAME = "rayllm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
+
 
 @click.command()
 @click.option("--image-uri", type=str, default=None)
@@ -54,10 +55,8 @@ def main(
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     if run_perf_profiler:
-        llm_configs = get_llm_configs(serve_config_file)
-        assert(len(llm_configs) == 0, "Expecting a single llm_config file")
-
-        submit_benchmark_vllm_job(image_uri, llm_configs[0], env_vars['HF_TOKEN'])
+        llm_config = get_first_llm_config(applications)
+        submit_benchmark_vllm_job(image_uri, llm_config, env_vars["HUGGING_FACE_HUB_TOKEN"])
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -138,7 +137,6 @@ def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
         },
-        timeout_s=JOB_TIMEOUT_S,
         max_retries=0,
     )
 
