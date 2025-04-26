@@ -21,6 +21,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
@@ -296,19 +297,46 @@ def test_read_with_map_batches_fused_successfully(
 
 
 @pytest.mark.parametrize(
-    "input_op",
+    "input_op,fused",
     [
-        Read(
-            datasource=MagicMock(name="Parquet"),
-            datasource_or_legacy_reader=MagicMock(get_read_tasks=lambda _: [MagicMock()]),
-            parallelism=1,
-            mem_size=1
+        (
+            # No fusion (could drastically expand dataset)
+            Read(
+                datasource=MagicMock(name="Parquet"),
+                datasource_or_legacy_reader=MagicMock(get_read_tasks=lambda _: [MagicMock()]),
+                parallelism=1,
+                mem_size=1
+            ),
+            False
         ),
-        Filter(InputData([]), lambda x: False),
-        FlatMap(InputData([]), lambda x: x),
+        (
+            # No fusion (could drastically reduce dataset)
+            Filter(InputData([]), lambda x: False),
+            False
+        ),
+        (
+            # No fusion (could drastically expand/reduce dataset)
+            FlatMap(InputData([]), lambda x: x),
+            False
+        ),
+        (
+            # Fusion
+            MapBatches(InputData([]), lambda x: x),
+            True
+        ),
+        (
+            # Fusion
+            MapRows(InputData([]), lambda x: x),
+            True
+        ),
+        (
+            # Fusion
+            Project(InputData([])),
+            True
+        )
     ]
 )
-def test_map_batches_batch_size_no_fusion(ray_start_regular_shared_2_cpus, input_op):
+def test_map_batches_batch_size_fusion(ray_start_regular_shared_2_cpus, input_op, fused):
     """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
 
     context = DataContext.get_current()
@@ -333,16 +361,21 @@ def test_map_batches_batch_size_no_fusion(ray_start_regular_shared_2_cpus, input
 
     actual_plan_str = physical_op.dag_str
 
-    # All Map ops are fused (however Read is not)
-    assert (
-        f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}] -> "
-        "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
-        == actual_plan_str
-    )
+    if fused:
+        assert (
+            f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}->"
+            f"MapBatches(<lambda>)->MapBatches(<lambda>)]"
+            == actual_plan_str
+        )
+    else:
+        assert (
+            f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}] -> "
+            "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
+            == actual_plan_str
+        )
 
     # Target min-rows requirement is set to max of upstream and downstream
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
-
     assert len(physical_op.input_dependencies) == 1
 
     assert (
