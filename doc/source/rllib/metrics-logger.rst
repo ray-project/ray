@@ -370,7 +370,7 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
 
     class LogAcrobotAngle(RLlibCallback):
 
-        def on_episode_created(self, *, episode, **kwargs)
+        def on_episode_created(self, *, episode, **kwargs):
             # Initialize an empty list in the `custom_data` property of `episode`.
             episode.custom_data["theta1"] = []
 

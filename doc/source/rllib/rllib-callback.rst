@@ -310,7 +310,7 @@ Also, see this more complex example that
     from ray.rllib.callbacks.callbacks import RLlibCallback
 
     class LogAcrobotAngle(RLlibCallback):
-        def on_episode_created(self, *, episode, **kwargs)
+        def on_episode_created(self, *, episode, **kwargs):
             # Initialize an empty list in the `custom_data` property of `episode`.
             episode.custom_data["theta1"] = []
 
