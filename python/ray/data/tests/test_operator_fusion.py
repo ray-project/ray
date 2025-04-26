@@ -4,8 +4,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data import Dataset, ReadTask
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data import Dataset
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -27,7 +26,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.planner import Planner
-from ray.data._internal.stats import DatasetStats, StatsDict
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
@@ -303,40 +302,44 @@ def test_read_with_map_batches_fused_successfully(
             # No fusion (could drastically expand dataset)
             Read(
                 datasource=MagicMock(name="Parquet"),
-                datasource_or_legacy_reader=MagicMock(get_read_tasks=lambda _: [MagicMock()]),
+                datasource_or_legacy_reader=MagicMock(
+                    get_read_tasks=lambda _: [MagicMock()]
+                ),
                 parallelism=1,
-                mem_size=1
+                mem_size=1,
             ),
-            False
+            False,
         ),
         (
             # No fusion (could drastically reduce dataset)
             Filter(InputData([]), lambda x: False),
-            False
+            False,
         ),
         (
             # No fusion (could drastically expand/reduce dataset)
             FlatMap(InputData([]), lambda x: x),
-            False
+            False,
         ),
         (
             # Fusion
             MapBatches(InputData([]), lambda x: x),
-            True
+            True,
         ),
         (
             # Fusion
             MapRows(InputData([]), lambda x: x),
-            True
+            True,
         ),
         (
             # Fusion
             Project(InputData([])),
-            True
-        )
-    ]
+            True,
+        ),
+    ],
 )
-def test_map_batches_batch_size_fusion(ray_start_regular_shared_2_cpus, input_op, fused):
+def test_map_batches_batch_size_fusion(
+    ray_start_regular_shared_2_cpus, input_op, fused
+):
     """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
 
     context = DataContext.get_current()
@@ -364,8 +367,7 @@ def test_map_batches_batch_size_fusion(ray_start_regular_shared_2_cpus, input_op
     if fused:
         assert (
             f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}->"
-            f"MapBatches(<lambda>)->MapBatches(<lambda>)]"
-            == actual_plan_str
+            f"MapBatches(<lambda>)->MapBatches(<lambda>)]" == actual_plan_str
         )
     else:
         assert (
@@ -378,11 +380,7 @@ def test_map_batches_batch_size_fusion(ray_start_regular_shared_2_cpus, input_op
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
-    assert (
-        physical_op.actual_target_max_block_size
-        == context.target_max_block_size
-    )
-
+    assert physical_op.actual_target_max_block_size == context.target_max_block_size
 
 
 @pytest.mark.parametrize("upstream_batch_size", [None, 1, 2])
@@ -419,7 +417,9 @@ def test_map_batches_with_batch_size_specified_fusion(
             "TaskPoolMapOperator[ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)]"
         )
     else:
-        expected_min_rows_per_bundle = max(upstream_batch_size or 0, downstream_batch_size or 0)
+        expected_min_rows_per_bundle = max(
+            upstream_batch_size or 0, downstream_batch_size or 0
+        )
         expected_plan_str = (
             "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
             "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
