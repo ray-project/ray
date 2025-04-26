@@ -190,7 +190,7 @@ class FuseOperators(Rule):
             or (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
-                and not down_logical_op._shuffle
+                and down_logical_op._shuffle
             )
         ):
             return False
