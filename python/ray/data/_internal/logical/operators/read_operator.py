@@ -102,4 +102,3 @@ class Read(AbstractMap):
         # NOTE: Returns true, since most of the readers expands its input
         #       and produce many rows for every single row of the input
         return True
-

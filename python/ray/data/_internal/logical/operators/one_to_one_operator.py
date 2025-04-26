@@ -1,4 +1,3 @@
-import abc
 from typing import Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
