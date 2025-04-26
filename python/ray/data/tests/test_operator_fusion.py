@@ -1,7 +1,11 @@
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
 import ray
+from ray.data import Dataset, ReadTask
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -11,14 +15,18 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
     MapRows,
 )
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
+from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op, _check_usage_record
@@ -287,12 +295,30 @@ def test_read_with_map_batches_fused_successfully(
     )
 
 
-def test_read_with_map_batches_no_fusion(ray_start_regular_shared_2_cpus, temp_dir):
+@pytest.mark.parametrize(
+    "input_op",
+    [
+        Read(
+            datasource=MagicMock(name="Parquet"),
+            datasource_or_legacy_reader=MagicMock(get_read_tasks=lambda _: [MagicMock()]),
+            parallelism=1,
+            mem_size=1
+        ),
+        Filter(InputData([]), lambda x: False),
+        FlatMap(InputData([]), lambda x: x),
+    ]
+)
+def test_map_batches_batch_size_no_fusion(ray_start_regular_shared_2_cpus, input_op):
     """Since MapBatches specifies `batch_size` there's no fusion with ReadParquet"""
+
+    context = DataContext.get_current()
 
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
-    ds = ray.data.read_parquet(temp_dir)
+    ds = Dataset(
+        ExecutionPlan(DatasetStats(metadata={}, parent=None), context),
+        LogicalPlan(input_op, context),
+    )
 
     mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
         lambda x: x,
@@ -309,7 +335,7 @@ def test_read_with_map_batches_no_fusion(ray_start_regular_shared_2_cpus, temp_d
 
     # All Map ops are fused (however Read is not)
     assert (
-        "InputDataBuffer[Input] -> TaskPoolMapOperator[ReadParquet] -> "
+        f"InputDataBuffer[Input] -> TaskPoolMapOperator[{input_op.name}] -> "
         "TaskPoolMapOperator[MapBatches(<lambda>)->MapBatches(<lambda>)]"
         == actual_plan_str
     )
@@ -321,7 +347,7 @@ def test_read_with_map_batches_no_fusion(ray_start_regular_shared_2_cpus, temp_d
 
     assert (
         physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
+        == context.target_max_block_size
     )
 
 
