@@ -4,7 +4,17 @@ import collections
 import pickle
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Union, List, Optional, Callable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Union,
+    List,
+    Optional,
+    Callable,
+    Literal,
+    Tuple,
+)
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -49,21 +59,22 @@ class Preprocessor(abc.ABC):
 
     def __init__(
         self,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        batch_size: Union[int, None, Literal["default"]] = None,
+        concurrency: Optional[int] = None,
     ):
         """
         Args:
-            ray_remote_args: Args to provide to :func:`ray.remote`.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict will
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            batch_size: The maximum number of rows to return.
+            concurrency: The maximum number of Ray workers to use concurrently.
         """
-        self._ray_remote_args = ray_remote_args
-        self._ray_remote_args_fn = ray_remote_args_fn
+        self._num_cpus = num_cpus
+        self._memory = memory
+        self._batch_size = batch_size
+        self._concurrency = concurrency
 
     class FitStatus(str, Enum):
         """The fit status of preprocessor."""
@@ -243,10 +254,10 @@ class Preprocessor(abc.ABC):
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
-        if self._ray_remote_args is not None:
-            kwargs = dict(kwargs, **self._ray_remote_args)
-        if self._ray_remote_args_fn is not None:
-            kwargs["ray_remote_args_fn"] = self._ray_remote_args_fn
+        kwargs["num_cpus"] = self._num_cpus
+        kwargs["memory"] = self._memory
+        kwargs["batch_size"] = self._batch_size
+        kwargs["concurrency"] = self._concurrency
 
         if transform_type == BatchFormat.PANDAS:
             return ds.map_batches(
