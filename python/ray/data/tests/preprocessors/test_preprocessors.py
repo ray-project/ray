@@ -165,8 +165,11 @@ def test_fit_twice(mocked_warn):
     mocked_warn.assert_called_once_with(msg)
 
 
-def test_initialization_parameters():
+def test_transform_all_configs():
     batch_size = 2
+    num_cpus = 2
+    concurrency = 2
+    memory = 1024
 
     class DummyPreprocessor(Preprocessor):
         _is_fittable = False
@@ -175,54 +178,25 @@ def test_initialization_parameters():
             return {"batch_size": batch_size}
 
         def _transform_numpy(self, data):
+            assert ray.get_runtime_context().get_assigned_resources()["CPU"] == num_cpus
             assert (
-                ray.get_runtime_context().get_assigned_resources()["CPU"]
-                == self._num_cpus
+                ray.get_runtime_context().get_assigned_resources()["memory"] == memory
             )
             assert len(data["value"]) == batch_size
             return data
-
-        def _determine_transform_to_use(self):
-            return "numpy"
-
-    prep = DummyPreprocessor(
-        num_cpus=2,
-        concurrency=2,
-        batch_size=batch_size,
-    )
-    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(10))}))
-    ds = prep.transform(ds)
-
-    assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
-
-
-def test_transform_config():
-    """Tests that the transform_config of
-    the Preprocessor is respected during transform."""
-
-    batch_size = 2
-
-    class DummyPreprocessor(Preprocessor):
-        _is_fittable = False
-
-        def _transform_numpy(self, data):
-            assert len(data["value"]) == batch_size
-            return data
-
-        def _transform_pandas(self, data):
-            raise RuntimeError(
-                "Pandas transform should not be called with numpy batch format."
-            )
-
-        def _get_transform_config(self):
-            return {"batch_size": 2}
 
         def _determine_transform_to_use(self):
             return "numpy"
 
     prep = DummyPreprocessor()
-    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(4))}))
-    prep.transform(ds)
+    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(10))}))
+    ds = prep.transform(
+        ds,
+        num_cpus=num_cpus,
+        memory=memory,
+        concurrency=concurrency,
+    )
+    assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
 
 
 @pytest.mark.parametrize("dataset_format", ["simple", "pandas", "arrow"])

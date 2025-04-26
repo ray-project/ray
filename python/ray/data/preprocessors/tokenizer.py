@@ -59,10 +59,6 @@ class Tokenizer(Preprocessor):
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
             will be raised.
-        num_cpus: The number of CPUs to reserve for each parallel map worker.
-        memory: The heap memory in bytes to reserve for each parallel map worker.
-        batch_size: The maximum number of rows to return.
-        concurrency: The maximum number of Ray workers to use concurrently.
     """
 
     _is_fittable = False
@@ -72,18 +68,7 @@ class Tokenizer(Preprocessor):
         columns: List[str],
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
         output_columns: Optional[List[str]] = None,
-        *,
-        num_cpus: Optional[float] = None,
-        memory: Optional[float] = None,
-        batch_size: Union[int, None, Literal["default"]] = None,
-        concurrency: Optional[int] = None,
     ):
-        super().__init__(
-            num_cpus=num_cpus,
-            memory=memory,
-            batch_size=batch_size,
-            concurrency=concurrency,
-        )
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer

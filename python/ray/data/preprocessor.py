@@ -11,9 +11,7 @@ from typing import (
     Union,
     List,
     Optional,
-    Callable,
     Literal,
-    Tuple,
 )
 
 from ray.air.util.data_batch_conversion import BatchFormat
@@ -56,25 +54,6 @@ class Preprocessor(abc.ABC):
       implement both. Otherwise, the data will be converted to the match the
       implemented method.
     """
-
-    def __init__(
-        self,
-        num_cpus: Optional[float] = None,
-        memory: Optional[float] = None,
-        batch_size: Union[int, None, Literal["default"]] = None,
-        concurrency: Optional[int] = None,
-    ):
-        """
-        Args:
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
-            memory: The heap memory in bytes to reserve for each parallel map worker.
-            batch_size: The maximum number of rows to return.
-            concurrency: The maximum number of Ray workers to use concurrently.
-        """
-        self._num_cpus = num_cpus
-        self._memory = memory
-        self._batch_size = batch_size
-        self._concurrency = concurrency
 
     class FitStatus(str, Enum):
         """The fit status of preprocessor."""
@@ -147,7 +126,15 @@ class Preprocessor(abc.ABC):
         self._fitted = True
         return fitted_ds
 
-    def fit_transform(self, ds: "Dataset") -> "Dataset":
+    def fit_transform(
+        self,
+        ds: "Dataset",
+        *,
+        transform_num_cpus: Optional[float] = None,
+        transform_memory: Optional[float] = None,
+        transform_batch_size: Union[int, None, Literal["default"]] = None,
+        transform_concurrency: Optional[int] = None,
+    ) -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
         Calling it more than once will overwrite all previously fitted state:
@@ -156,18 +143,40 @@ class Preprocessor(abc.ABC):
 
         Args:
             ds: Input Dataset.
+            transform_num_cpus: The number of CPUs to reserve for each parallel map worker.
+            transform_memory: The heap memory in bytes to reserve for each parallel map worker.
+            transform_batch_size: The maximum number of rows to return.
+            transform_concurrency: The maximum number of Ray workers to use concurrently.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
         """
         self.fit(ds)
-        return self.transform(ds)
+        return self.transform(
+            ds,
+            num_cpus=transform_num_cpus,
+            memory=transform_memory,
+            batch_size=transform_batch_size,
+            concurrency=transform_concurrency,
+        )
 
-    def transform(self, ds: "Dataset") -> "Dataset":
+    def transform(
+        self,
+        ds: "Dataset",
+        *,
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        batch_size: Union[int, None, Literal["default"]] = None,
+        concurrency: Optional[int] = None,
+    ) -> "Dataset":
         """Transform the given dataset.
 
         Args:
             ds: Input Dataset.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            batch_size: The maximum number of rows to return.
+            concurrency: The maximum number of Ray workers to use concurrently.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
@@ -184,7 +193,7 @@ class Preprocessor(abc.ABC):
                 "`fit` must be called before `transform`, "
                 "or simply use fit_transform() to run both steps"
             )
-        transformed_ds = self._transform(ds)
+        transformed_ds = self._transform(ds, num_cpus, memory, batch_size, concurrency)
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
@@ -246,18 +255,27 @@ class Preprocessor(abc.ABC):
                 "for Preprocessor transforms."
             )
 
-    def _transform(self, ds: "Dataset") -> "Dataset":
-        # TODO(matt): Expose `batch_size` or similar configurability.
-        # The default may be too small for some datasets and too large for others.
+    def _transform(
+        self,
+        ds: "Dataset",
+        num_cpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        batch_size: Union[int, None, Literal["default"]] = None,
+        concurrency: Optional[int] = None,
+    ) -> "Dataset":
         transform_type = self._determine_transform_to_use()
 
         # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
-        kwargs["num_cpus"] = self._num_cpus
-        kwargs["memory"] = self._memory
-        kwargs["batch_size"] = self._batch_size
-        kwargs["concurrency"] = self._concurrency
+        if num_cpus is not None:
+            kwargs["num_cpus"] = num_cpus
+        if memory is not None:
+            kwargs["memory"] = memory
+        if batch_size is not None:
+            kwargs["batch_size"] = batch_size
+        if concurrency is not None:
+            kwargs["concurrency"] = concurrency
 
         if transform_type == BatchFormat.PANDAS:
             return ds.map_batches(
