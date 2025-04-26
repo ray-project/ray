@@ -479,10 +479,22 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # Do not fuse read op with downstream map op in case when downstream has
-        # `min_rows_per_input_bundle` specified (to avoid reducing reading parallelism)
+        # Do not fuse Map operators in case:
+        #
+        #   - Upstream could (potentially) drastically modify number of rows, while
+        #   - Downstream has `min_rows_per_input_bundle` specified
+        #
+        # Fusing such transformations is not desirable as it could
+        #
+        #   - Drastically reduce parallelism for the upstream up (for ex, if
+        #   fusing ``Read->MapBatches(batch_size=...)`` with large enough batch-size
+        #   could drastically reduce parallelism level of the Read op)
+        #
+        #   - Potentially violate batching semantic by fusing
+        #   ``Filter->MapBatches(batch_size=...)``
+        #
         if (
-            upstream_op.is_read_op()
+            upstream_op.can_modify_num_rows()
             and downstream_op._min_rows_per_bundled_input is not None
         ):
             return False
