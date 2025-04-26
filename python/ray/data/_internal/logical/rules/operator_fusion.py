@@ -497,6 +497,13 @@ class FuseOperators(Rule):
             upstream_op.can_modify_num_rows()
             and downstream_op._min_rows_per_bundled_input is not None
         ):
+            logger.debug(
+                f"Upstream operator '{upstream_op}' could be modifying # of input "
+                f"rows, while downstream operator '{downstream_op}' expects at least "
+                f"{downstream_op._min_rows_per_bundled_input} rows in a batch. "
+                f"Skipping fusion"
+            )
+
             return False
 
         return True
