@@ -179,9 +179,7 @@ class FuseOperators(Rule):
             (
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, AbstractMap)
-                and self._can_fuse_map_ops(
-                    up_logical_op, down_logical_op, up_op.data_context
-                )
+                and self._can_fuse_map_ops(up_logical_op, down_logical_op)
             )
             or (
                 isinstance(up_logical_op, AbstractMap)
