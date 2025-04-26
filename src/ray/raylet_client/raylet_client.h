@@ -219,6 +219,7 @@ class MutableObjectReaderInterface {
       uint64_t data_size,
       uint64_t metadata_size,
       void *data,
+      void *metadata,
       const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
 };
 
@@ -448,6 +449,7 @@ class RayletClient : public RayletClientInterface {
                          uint64_t data_size,
                          uint64_t metadata_size,
                          void *data,
+                         void *metadata,
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 
