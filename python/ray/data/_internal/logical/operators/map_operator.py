@@ -177,7 +177,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -210,7 +209,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -249,7 +247,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -285,7 +282,6 @@ class Project(AbstractMap):
     def cols_rename(self) -> Optional[Dict[str, str]]:
         return self._cols_rename
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False
 
@@ -318,7 +314,6 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return True
 
@@ -342,6 +337,5 @@ class StreamingRepartition(AbstractMap):
     def target_num_rows_per_block(self) -> int:
         return self._target_num_rows_per_block
 
-    @property
     def can_modify_num_rows(self) -> bool:
         return False

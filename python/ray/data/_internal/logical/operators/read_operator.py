@@ -97,3 +97,9 @@ class Read(AbstractMap):
     @classmethod
     def is_read_op(cls):
         return True
+
+    def can_modify_num_rows(self) -> bool:
+        # NOTE: Returns true, since most of the readers expands its input
+        #       and produce many rows for every single row of the input
+        return True
+
