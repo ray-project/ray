@@ -301,7 +301,7 @@ class vLLMEngineWrapper:
             else:
                 guided_decoding = None
             params = vllm.SamplingParams(
-                **sampling_params,
+                **self._maybe_convert_ndarray_to_list(sampling_params),
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
