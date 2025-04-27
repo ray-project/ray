@@ -1,4 +1,5 @@
 """The stage that runs vLLM engine."""
+
 import asyncio
 import dataclasses
 import logging
@@ -8,7 +9,7 @@ import uuid
 from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type, Union
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
 import numpy as np
 
@@ -17,6 +18,7 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     download_lora_adapter,
@@ -189,29 +191,6 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _maybe_convert_ndarray_to_list(
-        self, params: Union[np.ndarray, List[Any], Dict[str, Any]]
-    ) -> Union[List[Any], Dict[str, Any]]:
-        """Convert all ndarray to list in the params. This is because Ray Data
-        by default converts all lists to ndarrays when passing data around, but
-        vLLM expects lists.
-
-        Args:
-            params: The parameters to convert.
-
-        Returns:
-            The converted parameters.
-        """
-        if isinstance(params, dict):
-            return {
-                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
-            }
-        elif isinstance(params, list):
-            return [self._maybe_convert_ndarray_to_list(v) for v in params]
-        elif isinstance(params, np.ndarray):
-            return params.tolist()
-        return params
-
     async def _maybe_get_lora_request(
         self,
         row: Dict[str, Any],
@@ -273,7 +252,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = self._maybe_convert_ndarray_to_list(
+            tokenized_prompt = maybe_convert_ndarray_to_list(
                 row.pop("tokenized_prompt")
             )
         else:
@@ -294,14 +273,14 @@ class vLLMEngineWrapper:
                     raise ValueError("Guided decoding is only supported with vLLM v0")
 
                 guided_decoding = vllm.sampling_params.GuidedDecodingParams(
-                    **self._maybe_convert_ndarray_to_list(
+                    **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
                     )
                 )
             else:
                 guided_decoding = None
             params = vllm.SamplingParams(
-                **self._maybe_convert_ndarray_to_list(sampling_params),
+                **maybe_convert_ndarray_to_list(sampling_params),
                 guided_decoding=guided_decoding,
             )
         elif self.task_type == vLLMTaskType.EMBED:
@@ -381,8 +360,7 @@ class vLLMEngineWrapper:
                 return request_output
 
         raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
+            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
     async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
@@ -421,8 +399,7 @@ class vLLMEngineWrapper:
                 return request_output
 
         raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. "
-            "Please report this issue to the Ray team."
+            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
         )
 
     def shutdown(self):
@@ -596,7 +573,6 @@ def _ray_scheduling_strategy_fn(
     """
 
     def _get_bundle() -> Dict[str, float]:
-
         bundle = {}
         # Custom resources
         if resources_per_bundle:
@@ -700,10 +676,8 @@ class vLLMEngineStage(StatefulStage):
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
         return {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be "
-            "tokenized by the vLLM engine.",
-            "images": "The images to generate text from. If provided, the prompt will be "
-            "a multimodal prompt.",
+            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
+            "images": "The images to generate text from. If provided, the prompt will be a multimodal prompt.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
         }
