@@ -1,11 +1,13 @@
 """The vLLM engine processor."""
 from typing import Any, Dict, Optional
-
+import logging
 from pydantic import Field, root_validator
 
-from ray.data.block import UserDefinedFunction
-
 import ray
+from ray.data.block import UserDefinedFunction
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    DEFAULT_MAX_TASKS_IN_FLIGHT,
+)
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorConfig,
@@ -35,6 +37,9 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
 import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
+DEFAULT_VLLM_BATCH_SIZE = 256
+
+logger = logging.getLogger(__name__)
 
 
 class vLLMEngineProcessorConfig(ProcessorConfig):
@@ -65,12 +70,12 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         "will use the default value from the vLLM engine.",
     )
     max_concurrent_batches: int = Field(
-        default=4,
+        default=8,
         description="The maximum number of concurrent batches in the engine. "
         "This is to overlap the batch processing to avoid the tail latency of "
         "each batch. The default value may not be optimal when the batch size "
         "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 64.",
+        "enough for batch size >= 32.",
     )
 
     # Processor stage configurations.
@@ -186,6 +191,16 @@ def build_vllm_engine_processor(
 
     # Core stage -- the vLLM engine.
 
+    if config.batch_size * config.max_concurrent_batches < DEFAULT_VLLM_BATCH_SIZE:
+        from math import ceil
+
+        logger.warning(
+            f"The product of batch_size ({config.batch_size}) and "
+            f"max_concurrent_batches ({config.max_concurrent_batches}) is too small "
+            "to saturate vLLM engine. This may lead to suboptimal "
+            "throughput. Please increase max_concurrent_batches to at least "
+            f"{ceil(DEFAULT_VLLM_BATCH_SIZE / config.batch_size)}."
+        )
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
@@ -197,8 +212,17 @@ def build_vllm_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas.
-                concurrency=config.concurrency,
+                # The number of running replicas. This is a deprecated field, but
+                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+                # which initiates enough many overlapping UDF calls per actor, to
+                # saturate `max_concurrency`.
+                compute=ray.data.ActorPoolStrategy(
+                    min_size=config.concurrency,
+                    max_size=config.concurrency,
+                    max_tasks_in_flight_per_actor=max(
+                        DEFAULT_MAX_TASKS_IN_FLIGHT, config.max_concurrent_batches
+                    ),
+                ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
                 # latency of each batch.
