@@ -79,7 +79,7 @@ class MultiAgentEpisode:
         "_last_step_time",
         "_len_lookback_buffers",
         "_start_time",
-        "custom_data",
+        "_custom_data",
     )
 
     SKIP_ENV_TS_TAG = "S"
@@ -287,7 +287,7 @@ class MultiAgentEpisode:
 
         # Cache for custom data. May be used to store custom metrics from within a
         # callback for the ongoing episode (e.g. render images).
-        self.custom_data = {}
+        self._custom_data = {}
 
         # Keep timer stats on deltas between steps.
         self._start_time = None
@@ -659,6 +659,10 @@ class MultiAgentEpisode:
         #  action/reward caches, etc..
 
     @property
+    def custom_data(self):
+        return self._custom_data
+
+    @property
     def is_reset(self) -> bool:
         """Returns True if `self.add_env_reset()` has already been called."""
         return any(
@@ -1006,7 +1010,7 @@ class MultiAgentEpisode:
         successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
 
         # Deepcopy all custom data in `self` to be continued in the cut episode.
-        successor.custom_data = copy.deepcopy(self.custom_data)
+        successor._custom_data = copy.deepcopy(self.custom_data)
 
         return successor
 
@@ -1737,6 +1741,7 @@ class MultiAgentEpisode:
             ),
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
+            "custom_data": self.custom_data,
         }
 
     @staticmethod
@@ -1780,6 +1785,7 @@ class MultiAgentEpisode:
         }
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
+        episode._custom_data = state.get("custom_data", {})
 
         # Validate the episode.
         episode.validate()

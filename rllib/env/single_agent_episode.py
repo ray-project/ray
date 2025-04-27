@@ -170,7 +170,7 @@ class SingleAgentEpisode:
         "_last_step_time",
         "_observation_space",
         "_start_time",
-        "custom_data",
+        "_custom_data",
     )
 
     def __init__(
@@ -339,7 +339,7 @@ class SingleAgentEpisode:
 
         # Cache for custom data. May be used to store custom metrics from within a
         # callback for the ongoing episode (e.g. render images).
-        self.custom_data = {}
+        self._custom_data = {}
 
         # Keep timer stats on deltas between steps.
         self._start_time = None
@@ -494,6 +494,10 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
+
+    @property
+    def custom_data(self):
+        return self._custom_data
 
     @property
     def is_reset(self) -> bool:
@@ -694,9 +698,6 @@ class SingleAgentEpisode:
             else slice(None, 0)
         )
 
-        # Deepcopy all custom data in `self` to be continued in the cut episode.
-        custom_data = copy.deepcopy(self.custom_data)
-
         sa_episode = SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
@@ -715,7 +716,9 @@ class SingleAgentEpisode:
             # Use the length of the provided data as lookback buffer.
             len_lookback_buffer="auto",
         )
-        sa_episode.custom_data = custom_data
+        # Deepcopy all custom data in `self` to be continued in the cut episode.
+        sa_episode._custom_data = copy.deepcopy(self.custom_data)
+
         return sa_episode
 
     # TODO (sven): Distinguish between:
@@ -1702,7 +1705,7 @@ class SingleAgentEpisode:
             else None,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "custom_data": self.custom_data if self.custom_data else None,
+            "custom_data": self.custom_data,
         }
 
     @staticmethod
@@ -1760,7 +1763,7 @@ class SingleAgentEpisode:
         )
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
-        episode.custom_data = state["custom_data"] or {}
+        episode._custom_data = state.get("custom_data", {})
         # Validate the episode.
         episode.validate()
 
