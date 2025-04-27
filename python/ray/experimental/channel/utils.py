@@ -1,10 +1,6 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ray
-import os
-
-if TYPE_CHECKING:
-    import torch
 
 
 def get_self_actor() -> Optional["ray.actor.ActorHandle"]:
