@@ -1,9 +1,12 @@
-import torch
 import threading
-import ray
-from ray.experimental.channel.communicator import Communicator
-from contextlib import nullcontext
 import importlib
+import ray
+from typing import TYPE_CHECKING
+from contextlib import nullcontext
+from ray.experimental.channel.communicator import Communicator
+
+if TYPE_CHECKING:
+    import torch
 
 
 class AcceleratorContext:
@@ -50,12 +53,14 @@ class AcceleratorContext:
         cls._communicator_cls = communicator
         cls._torch_mod = importlib.import_module(f"torch.{cls._torch_module_name}")
 
-    def get_default_device(self) -> torch.device:
+    def get_default_device(self) -> "torch.device":
         """Gets the correct torch device list configured for this process.
 
         Returns a list of torch devices allocated for the current worker.
         If no devices are assigned, then it returns a list with a single CPU device.
         """
+        import torch
+
         if self._torch_module_name == "cpu":
             return torch.device("cpu")
 
