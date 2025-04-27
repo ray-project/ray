@@ -214,6 +214,8 @@ jobs:
     needs: [build-base-images, check-permissions, start-ecs-runner, lint-check]
     if: needs.check-permissions.outputs.allowed == 'true' && needs.lint-check.outputs.lint_success == 'true'
     runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    outputs:
+      UUID_NAMESPACE: ${{ steps.generate_uuid.outputs.uuid }}
     strategy:
       matrix:
         python: ['3.11']
@@ -249,17 +251,27 @@ jobs:
 
     - name: Build core CI Base
       if: steps.check_core_image.outputs.exists != 'true'
-      uses: docker/build-push-action@v3
-      with:
-        context: .
-        file: ci/docker/core.build.Dockerfile
-        tags: |
-          localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild
-        build-args: |
-          RAYCI_IS_GPU_BUILD=false
-          BUILDKITE=true
-          DOCKER_IMAGE_BASE_BUILD=ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }}
-        push: true
+      run: |
+        docker build -t localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild \
+          -f ci/docker/core.build.Dockerfile \
+          --build-arg RAYCI_IS_GPU_BUILD=false \
+          --build-arg BUILDKITE=true \
+          --build-arg DOCKER_IMAGE_BASE_BUILD=ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }} \
+          .
+
+    - name: Generate UUID namespace for Docker image
+      id: generate_uuid
+      if: '!cancelled()'
+      run: |
+        UUID=$(cat /proc/sys/kernel/random/uuid)
+        echo "UUID_NAMESPACE=${UUID}" >> $GITHUB_ENV
+        echo "uuid=${UUID}" >> $GITHUB_OUTPUT
+        echo "Generated UUID namespace: ${UUID}"
+        # Create new image with UUID namespace
+        docker tag localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild localhost:5000/${UUID}/raytest:${{ env.RAYCI_BUILD_ID }}-corebuild
+        docker push localhost:5000/${UUID}/raytest:${{ env.RAYCI_BUILD_ID }}-corebuild
+        # Update RAYCI_WORK_REPO for subsequent steps
+        echo "RAYCI_WORK_REPO=localhost:5000/${UUID}/raytest" >> $GITHUB_ENV
 
     - name: Install bazel
       if: '!cancelled()'
@@ -271,7 +283,7 @@ jobs:
       run: |
         max_attempts=3
         for i in $(seq 1 $max_attempts); do
-          if docker push localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild; then
+          if docker push ${{ env.RAYCI_WORK_REPO }}:${{ env.RAYCI_BUILD_ID }}-corebuild; then
             echo "Docker push succeeded on attempt $i"
             break
           else
@@ -286,8 +298,6 @@ jobs:
 
     - name: Run Core Python Tests (1)
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
       run: |
         echo "Running core: python tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
@@ -309,9 +319,6 @@ jobs:
 
     - name: Run Core Python Tests (2)
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running core: python tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... python/ray/autoscaler/v2/... core \
@@ -334,9 +341,6 @@ jobs:
 
     - name: Run Core Python Tests (3)
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         #echo "Running core: python tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core \
@@ -359,14 +363,11 @@ jobs:
     - name: Update Test Image
       if: '!cancelled()'
       run: |
-        docker build -t localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -f ci/docker/core.build.ant.Dockerfile \
-          --build-arg DOCKER_IMAGE_BASE=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild \
+        docker build -t ${{ env.RAYCI_WORK_REPO }}:${{ env.RAYCI_BUILD_ID }}-corebuild -f ci/docker/core.build.ant.Dockerfile \
+          --build-arg DOCKER_IMAGE_BASE=${{ env.RAYCI_WORK_REPO }}:${{ env.RAYCI_BUILD_ID }}-corebuild \
           .
     - name: Run Core Cpp Tests
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running core: cpp tests..."
         bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang \
@@ -386,9 +387,6 @@ jobs:
         python ci/ray_ci/report_gen.py
     - name: Run Dashboard Tests
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running dashboard tests..."
         bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core \
@@ -409,9 +407,6 @@ jobs:
 
     - name: Run Workflow Tests
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running workflow tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core \
@@ -440,9 +435,6 @@ jobs:
 
     - name: Run Debug Tests
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running debug tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
@@ -467,9 +459,6 @@ jobs:
 
     - name: Run ASAN Tests
       if: '!cancelled()'
-      env:
-        RAYCI_WORK_REPO: localhost:5000/raytest/citemp
-
       run: |
         echo "Running ASAN tests..."
         bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
@@ -514,7 +503,7 @@ jobs:
       if: always()
       continue-on-error: true
       run: |
-        docker ps -a --filter ancestor=localhost:5000/raytest/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
+        docker ps -a --filter ancestor=${{ env.RAYCI_WORK_REPO }}:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
         # Clean up any dangling containers
         docker ps -a --filter status=exited -q | xargs -r docker rm || true
         # Clean up all volumes
@@ -545,6 +534,12 @@ jobs:
       - name: Cleanup Unused Images
         run: |
           docker rmi $(docker images --filter "dangling=true" -q --no-trunc) || true
+      
+      - name: Cleanup UUID Namespace Images
+        if: needs.core-tests.outputs.UUID_NAMESPACE != ''
+        run: |
+          echo "Cleaning up images with namespace: ${{ needs.core-tests.outputs.UUID_NAMESPACE }}"
+          docker images "localhost:5000/${{ needs.core-tests.outputs.UUID_NAMESPACE }}/*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi || true
 
   stop-ecs-runner:
     name: Stop ECS Instance

@@ -249,7 +249,7 @@ format_all_scripts() {
       shell_files=($(git ls-files -- '*.sh'))
       bin_like_files=($(git ls-files -- ':!:*.*' ':!:*/BUILD' ':!:*/Dockerfile' ':!:*README' ':!:*LICENSE' ':!:*WORKSPACE'))
       if [[ 0 -lt "${#bin_like_files[@]}" ]]; then
-        shell_files+=($(git --no-pager grep -l -I -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${bin_like_files[@]}" || true))
+        shell_files+=($(git --no-pager grep -l -I -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' -- "${bin_like_files[@]}" || true))
       fi
       if [[ 0 -lt "${#shell_files[@]}" ]]; then
         echo "$(date)" "shellcheck scripts...."
@@ -285,7 +285,7 @@ format_changed() {
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
-    MERGEBASE="$(git merge-base upstream/master HEAD)"
+    MERGEBASE="$(git merge-base origin/main HEAD)"
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
         git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
@@ -310,7 +310,7 @@ format_changed() {
         bin_like_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':!:*.*' ':!:*/BUILD' ':!:*/Dockerfile' ':!:*README' ':!:*LICENSE' ':!:*WORKSPACE'))
         shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))
         if [ 0 -lt "${#bin_like_files[@]}" ]; then
-            shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${bin_like_files[@]}" || true))
+            shell_files+=($(git --no-pager grep -l -I -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' -- "${bin_like_files[@]}" || true))
         fi
         if [ 0 -lt "${#shell_files[@]}" ]; then
             shellcheck_scripts "${shell_files[@]}"
@@ -338,13 +338,13 @@ elif [ "${1-}" == '--all' ]; then
 elif [ "${1-}" == '--frontend' ]; then
     format_frontend
 else
-    # Add the upstream remote if it doesn't exist
-    if ! git remote -v | grep -q upstream; then
-        git remote add 'upstream' 'https://github.com/ray-project/ray.git'
+    # Add the origin remote if it doesn't exist
+    if ! git remote -v | grep -q origin; then
+        git remote add 'origin' 'https://github.com/antgroup/ant-ray.git'
     fi
 
-    # Only fetch master since that's the branch we're diffing against.
-    git fetch upstream master || true
+    # Only fetch main since that's the branch we're diffing against.
+    git fetch origin main || true
 
     # Format only the files that changed in last commit.
     format_changed
