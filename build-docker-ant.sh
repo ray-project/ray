@@ -66,7 +66,7 @@ fi
 
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
     -t "antgroup/base-deps:dev$GPU" -f "docker/base-deps/Dockerfile" .
 )
