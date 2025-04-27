@@ -68,6 +68,12 @@ if TYPE_CHECKING:
 vllm = try_import("vllm")
 logger = get_logger(__name__)
 
+from vllm.entrypoints.chat_utils import (
+    parse_chat_messages_futures,
+    resolve_chat_template_content_format,
+    apply_hf_chat_template
+)
+
 
 time_in_queue_histogram = metrics.Histogram(
     "vllm_engine_stats_time_in_queue_ms",
@@ -197,6 +203,11 @@ class VLLMEngine(LLMEngine):
         self.model_config: "ModelConfig" = None
         self.engine = None
         self.vllm_config: "VllmConfig" = None
+        
+        # Chat template content format (openai or string)
+        self._resolved_content_format = None
+        # Also need local instance of the tokenizer to manage prompt formatting.
+        self._tokenizer = None
 
     @staticmethod
     async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
@@ -218,10 +229,24 @@ class VLLMEngine(LLMEngine):
             logger.info("Skipping engine restart because the engine is already running")
             return
 
-        # Get the scaling options
         self.engine = await self._start_engine()
         self.running = True
         self.model_config = await self.engine.get_model_config()
+
+        self._tokenizer = await self.engine.get_tokenizer()
+        self._resolved_content_format = resolve_chat_template_content_format(
+            # Use HF to get the chat template so set it to None here.
+            chat_template=None,
+            # Default to None, change when it's needed. 
+            # vllm Does not have a high level API to support all of this.
+            tools=None,
+            # Let vllm decide the content format.
+            given_format="auto",
+            tokenizer=self._tokenizer,
+            trust_remote_code=self.model_config.trust_remote_code,
+        )
+        print(f"[DEBUG] resolved_content_format: {self._resolved_content_format}")
+        print(f"[DEBUG] tokenizer: {self._tokenizer}")
 
         logger.info("Started vLLM engine.")
 
@@ -451,9 +476,9 @@ class VLLMEngine(LLMEngine):
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
-        
-        parse_chat_messages_fn = vllm.entrypoints.chat_utils.parse_chat_messages
-         
+
+        # parse_chat_messages_fn = vllm.entrypoints.chat_utils.parse_chat_messages_futures
+
         # prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
         # prompt_text = prompt_output.text
         # image_input = prompt_output.image
@@ -469,22 +494,32 @@ class VLLMEngine(LLMEngine):
         #         image.append(await self.image_retriever.get(image_url))
 
         model_config = self.model_config
-        tokenizer = await self.engine.get_tokenizer()
-        
-        if isinstance(prompt, list):
-            conversation, mm_futures = parse_chat_messages_fn(
-                messages=[m.model_dump() for m in prompt.prompt],
+
+        if isinstance(prompt.prompt, list):
+            messages = [m.model_dump() for m in prompt.prompt]
+            print(f"[DEBUG] messages: {messages}")
+            conversation, mm_futures = parse_chat_messages_futures(
+                messages=messages,
                 model_config=model_config,
-                tokenizer=tokenizer,
-                content_format="openai",
+                tokenizer=self._tokenizer,
+                content_format=self._resolved_content_format,
             )
+            print(f"[DEBUG] conversation: {conversation}")
             mm_data = await mm_futures
         else:
             conversation = prompt
-        
-        prompt_output = self._llm_config.prompt_format.generate_prompt(conversation)
-        prompt_text = prompt_output.text
-        
+
+        prompt_text = apply_hf_chat_template(
+            tokenizer=self._tokenizer,
+            conversation=conversation,
+            chat_template=None,
+            tools=None,
+            trust_remote_code=model_config.trust_remote_code,
+            tokenize=False,
+        )
+        # prompt_output = self._llm_config.prompt_format.generate_prompt(conversation)
+        # prompt_text = prompt_output.text
+
         request_params = {
             "prompt": prompt_text,
             "request_id": request_id,
@@ -495,7 +530,7 @@ class VLLMEngine(LLMEngine):
         }
         if mm_data:
             request_params["multi_modal_data"] = mm_data
-        
+
         vllm_request = VLLMGenerationRequest(**request_params)
         return vllm_request
 
@@ -664,6 +699,7 @@ class VLLMEngine(LLMEngine):
         if (
             finish_reason
             and finish_reason == FinishReason.LENGTH
+            and hasattr(request_output.metrics, "first_token_time")
             and request_output.metrics.first_token_time is None
         ):
             # This means that the prompt was too long and we did not generate anything.

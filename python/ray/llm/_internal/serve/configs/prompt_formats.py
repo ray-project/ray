@@ -24,7 +24,7 @@ transformers = try_import("transformers")
 
 
 class Text(BaseModel):
-    field: str = "text"
+    # field: str = "text"
     type: str = "text"
     text: str
 
@@ -35,18 +35,24 @@ class Text(BaseModel):
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
 class Content(BaseModel):
-    field: str = "text"
+    # field: str = "text"
     type: str = "text"
     content: str
 
 
 class Image(BaseModel):
-    field: str = "image_url"
-    image_url: Dict
+    # field: str = "image_url"
+    type: str = "image_url"
+    image_url: Union[Dict, str]
 
     @field_validator("image_url")
     @classmethod
     def check_image_url(cls, value):
+        # image_url can be a string as well: 
+        # https://platform.openai.com/docs/guides/images-vision?api-mode=responses&format=url
+        if isinstance(value, str):
+            return value
+        
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
             raise ValueError(
                 # TODO(xwjiang): Link to doc.
@@ -186,7 +192,6 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
                 content = message.content
             conversation.append({"role": message.role, "content": content})
 
-        breakpoint()
         prompt = self._processor.apply_chat_template(
             conversation=conversation,
             tokenize=False,
