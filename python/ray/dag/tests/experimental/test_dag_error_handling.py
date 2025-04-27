@@ -876,8 +876,7 @@ ray.get(ref)
         driver_script, env={"RAY_CGRAPH_teardown_timeout": "0"}
     )
     # wait for graph execution to start
-    while driver_proc.stdout.readline() != b"executing\n":
-        pass
+    assert driver_proc.stdout.readline() == b"executing\n"
     driver_proc.send_signal(signal.SIGINT)  # ctrl+c
     # teardown will kill actors after timeout
     wait_for_pid_to_exit(driver_proc.pid, 10)
