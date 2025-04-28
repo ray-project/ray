@@ -142,7 +142,6 @@ message DeploymentConfig {
   // concatenation of the replica scheduler module and the replica scheduler name
   // if user passed a callable.
   string _replica_scheduler = 16;
-  string replica_scheduler = 17;
 }
 
 // Deployment language.

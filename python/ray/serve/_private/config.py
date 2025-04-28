@@ -189,11 +189,8 @@ class DeploymentConfig(BaseModel):
     _serialized_replica_scheduler_def: bytes = PrivateAttr(default=b"")
 
     # # Custom replica scheduler config. Defaults to the power of two replica scheduler.
-    # _replica_scheduler: Union[str, Callable] = PrivateAttr(
-    #     default=DEFAULT_REPLICA_SCHEDULER
-    # )
-    replica_scheduler: Optional[Union[str, Callable]] = Field(
-      default=None, update_type=DeploymentOptionUpdateType.LightWeight
+    _replica_scheduler: Union[str, Callable] = PrivateAttr(
+        default=DEFAULT_REPLICA_SCHEDULER
     )
 
 
@@ -201,13 +198,6 @@ class DeploymentConfig(BaseModel):
         validate_assignment = True
         arbitrary_types_allowed = True
 
-    # @validator("replica_scheduler_class", always=True)
-    # def pick_up_custom_scheduler(cls, v):
-    #     # if user passed replica_scheduler_class, stash it into the private attr
-    #     if v:
-    #         cls._replica_scheduler = v
-    #     return v
-    
     @validator("user_config", always=True)
     def user_config_json_serializable(cls, v):
         if isinstance(v, bytes):
@@ -262,7 +252,7 @@ class DeploymentConfig(BaseModel):
         if not already set.
         """
         values = self.dict()
-        replica_scheduler = values.get("replica_scheduler")
+        replica_scheduler = values.get("_replica_scheduler")
         if isinstance(replica_scheduler, Callable):
             replica_scheduler = (
                 f"{replica_scheduler.__module__}.{replica_scheduler.__name__}"
@@ -280,7 +270,7 @@ class DeploymentConfig(BaseModel):
             self._serialized_replica_scheduler_def = cloudpickle.dumps(
                 replica_scheduler
             )
-        self.replica_scheduler = replica_scheduler_path
+        self._replica_scheduler = replica_scheduler_path
 
     def get_replica_scheduler(self) -> Callable:
         """Deserialize replica scheduler from cloudpickled bytes."""

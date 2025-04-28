@@ -172,6 +172,7 @@ def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
+    replica_scheduler: Optional[ReplicaScheduler] = None
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -182,15 +183,15 @@ def create_router(
     is_inside_ray_client_context = inside_ray_client_context()
 
     # Beginning of injected code
-    print(f"create_router: controller_handle: {controller_handle}")
-    cfg_bytes_ref = controller_handle.get_deployment_config.remote(deployment_id)
-    print(f"create_router: cfg_bytes_ref: {cfg_bytes_ref}")
-    cfg_bytes = ray.get(cfg_bytes_ref)
-    print(f"create_router: cfg_bytes: {cfg_bytes}")
-    from ray.serve._private.config import DeploymentConfig
-    cfg = DeploymentConfig.from_proto_bytes(cfg_bytes)
-    print(f"create_router: cfg: {cfg}")
-    replica_scheduler = cfg.get_replica_scheduler()
+    # print(f"create_router: controller_handle: {controller_handle}")
+    # cfg_bytes_ref = controller_handle.get_deployment_config.remote(deployment_id)
+    # print(f"create_router: cfg_bytes_ref: {cfg_bytes_ref}")
+    # cfg_bytes = ray.get(cfg_bytes_ref)
+    # print(f"create_router: cfg_bytes: {cfg_bytes}")
+    # from ray.serve._private.config import DeploymentConfig
+    # cfg = DeploymentConfig.from_proto_bytes(cfg_bytes)
+    # print(f"create_router: cfg: {cfg}")
+    # replica_scheduler = cfg.get_replica_scheduler()
     print(f"create_router: replica_scheduler: {replica_scheduler}")
     # End of injected code
 

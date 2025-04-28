@@ -246,8 +246,22 @@ class LLMRouter:
             if base_model_id in self._default_serve_handles:
                 if model_id == base_model_id:
                     default_handle = self._default_serve_handles[model_id]
-                
-                    configured_handle = default_handle.options(stream=True)
+
+                    # Beginning of injected code
+                    # Get the replica scheduler class from the llm_config if it exists
+                    from ray.serve._private.replica_scheduler import PowerOfTwoChoicesReplicaScheduler
+                    llm_config = self._llm_configs[model_id]
+                    from ray._common.utils import import_attr
+                    replica_scheduler_cls = PowerOfTwoChoicesReplicaScheduler  # Default fallback
+                    if llm_config.replica_scheduler_cls_path:
+                        try:
+                            replica_scheduler_cls = import_attr(llm_config.replica_scheduler_cls_path)
+                        except Exception as e:
+                            print(f"[llm router.py] Error importing replica scheduler class: {e}. Using default.")
+                    
+                    configured_handle = default_handle.options(stream=True, replica_scheduler=replica_scheduler_cls)
+                    # End of injected code
+
                     self._configured_serve_handles[model_id] = configured_handle
                 else:
                     default_handle = self._default_serve_handles[base_model_id]
