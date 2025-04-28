@@ -23,9 +23,8 @@ class PPOConfigWithEpinet(PPOConfig):
     A custom PPOConfig that specifies a custom Epinet critic network RLModule, a Learner class,
     and adds on to the builder pipeline.
 
-    The `get_default_rl_module_spec` allows flexibility with specifying RLModule parameters that
-    are associated with the model (`model_config`) as well as custom parameters made by the users,
-    in this case, is the parameters for the epinet wrapper in the RL Module.
+    The `get_rl_module_spec` allows for flexibility with specifying the custom RL module that is used.
+    In this case, it is EpinetTorchRLModule.
 
     The `get_default_learner_class` simply imports the new `PPOTorchLearnerWithEpinetLoss` class which
     inherits from `PPOTorchLearner` and uses the custom loss associated the epinet.
@@ -33,6 +32,11 @@ class PPOConfigWithEpinet(PPOConfig):
     To have the 'NEXT_OBS' 'batch' we need to add the `AddNextObservationsFromEpisodesToTrainBatch`
     class to the pipeline and insert after adding the `AddObservationsFromEpisodesToBatch` to the
     batch.
+
+    The `_model_config_auto_includes` method includes custom parameters that we wish to pass through
+    the `_model_config`. In this case, the params "z_dim", "num_layers", and "enn_layer_size" are passed
+    from args to the RL module for the epinet specifically. While "fcnet_hiddens" and "fcnet_activation"
+    can also be passed to the RL module for building the actor-critic networks.
     """
 
     def __init__(self):
@@ -57,15 +61,13 @@ class PPOConfigWithEpinet(PPOConfig):
 
     @override(PPOConfig)
     def training(
-        self, *, num_layers, enn_layer_size, z_dim, **kwargs
+        self, *, enn_network, z_dim, **kwargs
     ) -> "PPOConfigWithEpinet":
         # Call `super`'s `training` method for PPO's parameters and unpack them.
         super().training(**kwargs)
         # Add custom parameters to have access during the training loop
-        if num_layers is NotProvided:
-            self.num_layers = num_layers
-        if enn_layer_size is NotProvided:
-            self.enn_layer_size = enn_layer_size
+        if enn_network is NotProvided:
+            self.enn_network = enn_network
         if z_dim is NotProvided:
             self.z_dim = z_dim
 
@@ -102,8 +104,7 @@ class PPOConfigWithEpinet(PPOConfig):
         # Alters the self.model_config dict to contain the components for the epinet.
         return super()._model_config_auto_includes | {
             "z_dim": self.z_dim,
-            "num_layers": self.num_layers,
-            "enn_layer_size": self.enn_layer_size,
+            "enn_network": self.enn_network,
             "fcnet_hiddens": [128, 128],
             "fcnet_activation": "LeakyReLU",
         }

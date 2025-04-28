@@ -97,22 +97,16 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
-    "--enn_num_layers",
-    type=int,
-    default=2,
-    help="Number of layers for the epinet",
-)
-parser.add_argument(
-    "--enn_layer_size",
-    type=int,
-    default=25,
-    help="Layer size of the epinet",
+    "--enn_network",
+    type=list,
+    default=[25, 25],
+    help="The epinet neural network architecture.",
 )
 parser.add_argument(
     "--z_dim",
     type=int,
     default=3,
-    help="Number of z-dimensions for the epinet",
+    help="Number of z-dimensions for the epinet.",
 )
 parser.add_argument(
     "--lr",
@@ -138,9 +132,7 @@ if __name__ == "__main__":
         .training(
             lr=args.lr,
             gamma=0.99,
-            # lambda_=0.995,
-            num_layers=args.enn_num_layers,
-            enn_layer_size=args.enn_layer_size,
+            enn_network=args.enn_network,
             z_dim=args.z_dim,
             num_epochs=20,
             vf_loss_coeff=0.1,

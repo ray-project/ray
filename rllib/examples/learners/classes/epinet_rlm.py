@@ -22,6 +22,13 @@ torch, nn = try_import_torch()
 
 
 class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
+    """
+    Custom `RLModule` that demonstrates setting up, defining the necessary _forward methods,
+    and overriding the `ValueFunctionAPI` to compute values using an epinet for exploration.
+
+    This also uses a custom_config from the module_to_load_spec to get the fcnet_hiddens
+    as well as custom args CRITIC_OUTPUTS and NEXT_CRITIC_OUTPUTS to use in the learner.
+    """
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -39,27 +46,28 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
             model_config=model_config,
         )
 
-        activation_str = self.model_config["fcnet_activation"]
         initializer = model_config["initializer"]
-
+        self.enn_network = model_config["enn_network"]
+        self.fcnet_hiddens=model_config["fcnet_hiddens"]
+        activation_str = self.model_config["fcnet_activation"]
+        # Epinet variables.
         self.std = 1.0
         self.mean = 0.0
-        self.z_dim = model_config["z_dim"]
         self.step_number = 0
         self.z_indices = None
         self.step_cut_off = 100
+        self.z_dim = model_config["z_dim"]
         self.activation_fn = getattr(nn, activation_str)
         self.initializer = getattr(nn.init, initializer)
-        self.enn_layer_size = model_config["enn_layer_size"]
+        
         self.distribution = Normal(
             torch.full((self.z_dim,), self.mean), torch.full((self.z_dim,), self.std)
         )
-
         self.enn_output = 0.0
         self.base_output = 0.0
 
     def setup(self):
-        input_dim = self.observation_space.shape[0]
+        obs_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["fcnet_hiddens"][0]
 
         # Set failsafe for action space dim.
@@ -72,66 +80,83 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
                 f"Unsupported action space type: {type(self.action_space)}"
             )
 
-        self.policy = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            self.activation_fn(),
-            nn.Linear(hidden_dim, hidden_dim),
-            self.activation_fn(),
-            nn.Linear(hidden_dim, output_dim),
-            nn.Tanh(),
+        # Build policy with Tanh() at the end for continous action selection.
+        self.policy=nn.Sequential(
+            *self.build_network_layers(
+                input_dim=obs_dim,
+                fcnet_hiddens=self.fcnet_hiddens,
+                output_dim=output_dim,
+                final_activation=False,
+            ),
+            # Note: change this if the enviroment's actions are not normalized between [1, 1].
+            nn.Tanh()
         )
 
-        # To pass to the epinet, the features from the wrapped network are sent as torch.no_grad().
-        self.base_critic = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            self.activation_fn(),
-            nn.Linear(hidden_dim, hidden_dim),
-            self.activation_fn(),
+        # Build the base critic network.
+        self.base_critic=nn.Sequential(
+                *self.build_network_layers(
+                input_dim=obs_dim,
+                fcnet_hiddens=self.fcnet_hiddens,
+                output_dim=self.fcnet_hiddens[-1],
+                final_activation=True,
+            )
         )
-        self.last_layer_critic = nn.Sequential(nn.Linear(hidden_dim, 1))
+        # The last layer must be separate to get the logits from the base network.
+        self.last_layer_critic = nn.Linear(hidden_dim, 1)
+        # Make sure initializer is the same for the last layer.
+        self.initializer(self.last_layer_critic.weight)
+        self.initializer(self.last_layer_critic.bias)
 
         # Build small lightweight epinet.
-        # Note: layers should not be bigger than ~50-75 size.
         self.learnable_layers = nn.Sequential(
-            SlimFC(
-                hidden_dim + 1,
-                self.enn_layer_size,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
-            SlimFC(
-                self.enn_layer_size,
-                self.enn_layer_size,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
-            SlimFC(
-                self.enn_layer_size,
-                1,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
+            *self.build_network_layers(
+                input_dim=hidden_dim + 1,
+                fcnet_hiddens=self.enn_network,
+                final_activation=True,
+                output_dim=1
+            )
         )
+        # Build prior layers of the epinet.
         self.prior_layers = nn.Sequential(
-            SlimFC(
-                hidden_dim + 1,
-                self.enn_layer_size,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
-            SlimFC(
-                self.enn_layer_size,
-                self.enn_layer_size,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
-            SlimFC(
-                self.enn_layer_size,
-                1,
-                initializer=self.initializer,
-                activation_fn=self.activation_fn,
-            ),
+            *self.build_network_layers(
+                input_dim=hidden_dim + 1,
+                fcnet_hiddens=self.enn_network,
+                final_activation=True,
+                output_dim=1
+            )
         )
+
+    def build_network_layers(self, input_dim, fcnet_hiddens, output_dim, final_activation=True):
+        """
+        A simple method to build the ENN learnable / prior, critic and policy network.
+        Args:
+            -input_dim: the input dimension of the network.
+            -num_layers: the number of layers for the network.
+            -layer_size: the size of the layers.
+            -output_dim: the output dimension.
+        Returns:
+            -A list of layers that can be unpacked into nn.Sequential()
+        """
+        layers = []
+        current_dim = input_dim
+        
+        for hidden_size in fcnet_hiddens:
+                layers.append(SlimFC(
+                    current_dim,
+                    hidden_size,
+                    initializer=self.initializer,
+                    activation_fn=self.activation_fn,
+                ))
+                current_dim = hidden_size
+        # Append the final layer.
+        layers.append(SlimFC(
+                current_dim,
+                output_dim,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn if final_activation else None
+            ))
+
+        return layers
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
@@ -152,8 +177,30 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
             critic_output["critic_output_base"] + critic_output["critic_output_enn"]
         )
         return total_output
+    
+    @property
+    def inc_step_number(self) -> int:
+        self.step_number += 1
 
     def _pass_through_epinet(self, obs: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """
+        The epinet will now take in the `enn_input` which is z_dim number of Gaussian samples
+        multiplied by the logits from the critic network. This is effectively having z_dim 
+        number of priors and testing the network against each prior to see how certain it is
+        of the state. 
+
+        Parameters:
+            -step_cut_off: Is how many timesteps in which the prior network will no longer be learning.
+              This captures the initial epistemic uncertainty in the environment and it will be injected
+              while the agent learns.
+            -step_number: The number of forward passes that have been made. 
+
+        Important:
+            -The `base_output` is detached before sending into the epinet because gradients should not flow
+              from the epinet to the base network as it is learning the epistemic uncertainty.
+            -The `base_output` is still passed to the learner so that the loss can be calculated for the base critic.
+              This is why it is not detached completely form the computation graph. 
+        """
         # Forward pass through the epinet.
         intermediate = self.base_critic(obs)
         base_output = self.last_layer_critic(intermediate)
@@ -196,6 +243,7 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         action_logits = self.policy(obs)
         value_function_out = self.compute_values(batch)
 
+        self.step_number+=1
         return {
             Columns.ACTION_DIST_INPUTS: action_logits,
             Columns.VF_PREDS: value_function_out,
