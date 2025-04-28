@@ -1,6 +1,5 @@
 from typing import Dict, Iterator, Tuple
 import logging
-import multiprocessing
 from abc import ABC, abstractmethod
 
 import torch
@@ -14,16 +13,6 @@ from dataloader_factory import BaseDataLoaderFactory
 from logger_utils import ContextLoggerAdapter
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-if torch.cuda.is_available():
-    try:
-        multiprocessing.set_start_method("spawn", force=True)
-        logger.info(
-            "Set multiprocessing start method to 'spawn' for CUDA compatibility"
-        )
-    except RuntimeError:
-        logger.info("Multiprocessing start method already set")
 
 
 class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
@@ -126,24 +115,26 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         persistent_workers = num_workers > 0
         pin_memory = dataloader_config.torch_pin_memory
 
-        # Only set prefetch_factor and timeout when using workers
-        prefetch_factor = (
-            dataloader_config.prefetch_batches if num_workers > 0 else None
-        )
+        if dataloader_config.torch_prefetch_factor >= 0:
+            prefetch_factor = dataloader_config.torch_prefetch_factor
+        else:
+            prefetch_factor = None
+
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
+        batch_size = dataloader_config.train_batch_size
 
         logger.info(
             f"Worker {worker_rank}: Creating train DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
-            f"timeout={timeout}"
+            f"timeout={timeout}, batch_size={batch_size}"
         )
 
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
-            batch_size=dataloader_config.train_batch_size,
+            batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
@@ -177,24 +168,26 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             dataloader_config.torch_pin_memory and torch.cuda.is_available()
         )  # Use config setting
 
-        # Only set prefetch_factor and timeout when using workers
-        prefetch_factor = (
-            dataloader_config.prefetch_batches if num_workers > 0 else None
-        )
+        if dataloader_config.torch_prefetch_factor >= 0:
+            prefetch_factor = dataloader_config.torch_prefetch_factor
+        else:
+            prefetch_factor = None
+
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
+        batch_size = dataloader_config.validation_batch_size
 
         logger.info(
             f"Worker {worker_rank}: Creating validation DataLoader with "
             f"num_workers={num_workers}, pin_memory={pin_memory}, "
             f"persistent_workers={persistent_workers}, prefetch_factor={prefetch_factor}, "
-            f"timeout={timeout}"
+            f"timeout={timeout}, batch_size={batch_size}"
         )
 
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
-            batch_size=dataloader_config.validation_batch_size,
+            batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,

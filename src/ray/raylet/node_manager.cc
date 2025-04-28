@@ -41,6 +41,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/object_manager/ownership_object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
@@ -2655,11 +2656,6 @@ std::string NodeManager::DebugString() const {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
-  }
-
-  result << "\nRemote node managers: ";
-  for (const auto &entry : remote_node_manager_addresses_) {
-    result << "\n" << entry.first;
   }
 
   // Event stats.

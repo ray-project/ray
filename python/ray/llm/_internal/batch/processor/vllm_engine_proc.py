@@ -133,13 +133,22 @@ def build_vllm_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+    if isinstance(config.concurrency, int):
+        processor_concurrency = (1, config.concurrency)  # copied from previous logic
+    elif isinstance(config.concurrency, tuple):
+        processor_concurrency = config.concurrency
+    else:
+        raise ValueError(
+            "``concurrency`` is expected to be set as an integer or a "
+            f"tuple of integers, but got: {config.concurrency}."
+        )
 
     if config.has_image:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                 ),
             )
@@ -153,7 +162,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -168,7 +177,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),
@@ -188,9 +197,7 @@ def build_vllm_engine_processor(
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
-                # The number of running replicas. Note that we use a single
-                # integer to let Ray Data prepare all replicas before kicking
-                # off the processing for now.
+                # The number of running replicas.
                 concurrency=config.concurrency,
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
@@ -211,7 +218,7 @@ def build_vllm_engine_processor(
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
-                    concurrency=(1, config.concurrency),
+                    concurrency=processor_concurrency,
                     batch_size=config.batch_size,
                     runtime_env=config.runtime_env,
                 ),

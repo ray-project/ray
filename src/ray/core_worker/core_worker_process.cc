@@ -20,7 +20,6 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
-#include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"

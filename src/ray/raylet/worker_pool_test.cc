@@ -30,7 +30,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
-#include "ray/raylet/node_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
@@ -43,7 +42,7 @@ int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 3;
-int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
+int WORKER_REGISTER_TIMEOUT_SECONDS = 1;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
 constexpr std::string_view kBadRuntimeEnv = "bad runtime env";

@@ -22,6 +22,9 @@ from image_classification.image_classification_parquet.factory import (
 from image_classification.image_classification_jpeg.factory import (
     ImageClassificationJpegFactory,
 )
+from image_classification.localfs_image_classification_jpeg.factory import (
+    LocalFSImageClassificationFactory,
+)
 from logger_utils import ContextLoggerAdapter
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -285,7 +288,8 @@ class TrainLoopRunner:
         num_workers = ray.train.get_context().get_world_size()
         train_time = (
             self._metrics["train/step"].get()
-            + self._metrics["train/iter_first_batch"].get()
+            # Exclude the time it takes to get the first batch.
+            # + self._metrics["train/iter_first_batch"].get()
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
@@ -298,7 +302,8 @@ class TrainLoopRunner:
 
         validation_time = (
             self._metrics["validation/step"].get()
-            + self._metrics["validation/iter_first_batch"].get()
+            # Exclude the time it takes to get the first batch.
+            # + self._metrics["validation/iter_first_batch"].get()
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:
@@ -348,8 +353,18 @@ def main():
         factory = ImageClassificationParquetFactory(benchmark_config)
     elif benchmark_config.task == "image_classification_jpeg":
         factory = ImageClassificationJpegFactory(benchmark_config)
+    elif benchmark_config.task == "localfs_image_classification_jpeg":
+        factory = LocalFSImageClassificationFactory(benchmark_config)
     else:
-        raise ValueError
+        raise ValueError(f"Unknown task: {benchmark_config.task}")
+
+    ray_data_execution_options = ray.train.DataConfig.default_ingest_options()
+    ray_data_execution_options.locality_with_output = (
+        benchmark_config.locality_with_output
+    )
+    ray_data_execution_options.actor_locality_enabled = (
+        benchmark_config.actor_locality_enabled
+    )
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
@@ -358,6 +373,11 @@ def main():
             num_workers=benchmark_config.num_workers,
             use_gpu=not benchmark_config.mock_gpu,
             resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
+        ),
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split="all",
+            execution_options=ray_data_execution_options,
+            enable_shard_locality=benchmark_config.enable_shard_locality,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",

@@ -194,13 +194,16 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
 
 void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    if (!current_job_id_.IsNil() && job_config_.has_value()) {
+      RAY_CHECK(current_job_id_ == job_id);
+      return;
+    }
+  }
   absl::WriterMutexLock lock(&mutex_);
-  if (current_job_id_.IsNil()) {
-    current_job_id_ = job_id;
-  }
-  if (!job_config_.has_value()) {
-    job_config_ = job_config;
-  }
+  current_job_id_ = job_id;
+  job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
 }
 
@@ -450,7 +453,7 @@ ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
     // return values.
     auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
     if (put_index > max_generator_returns) {
-      RAY_LOG(FATAL)
+      RAY_LOG(FATAL).WithField(current_task_id)
           << "The generator returns " << current_put_index
           << " items, which exceed the maximum number of return values allowed, "
           << max_generator_returns;
