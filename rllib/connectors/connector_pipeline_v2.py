@@ -7,8 +7,9 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.metrics import TIMERS, CONNECTOR_TIMERS
+from ray.rllib.utils.metrics import TIMERS, CONNECTOR_PIPELINE_TIMER, CONNECTOR_TIMERS
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.metrics.utils import to_snake_case
 from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
 
@@ -95,6 +96,13 @@ class ConnectorPipelineV2(ConnectorV2):
         piece in the pipeline.
         """
         shared_data = shared_data if shared_data is not None else {}
+        full_stats = None
+        if metrics:
+            full_stats = metrics.log_time(
+                kwargs.get("metrics_prefix_key", ()) + (CONNECTOR_PIPELINE_TIMER,)
+            )
+            full_stats.__enter__()
+
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
@@ -104,7 +112,11 @@ class ConnectorPipelineV2(ConnectorV2):
             if metrics:
                 stats = metrics.log_time(
                     kwargs.get("metrics_prefix_key", ())
-                    + (TIMERS, CONNECTOR_TIMERS, connector.__class__.__name__)
+                    + (
+                        TIMERS,
+                        CONNECTOR_TIMERS,
+                        to_snake_case(connector.__class__.__name__),
+                    )
                 )
                 stats.__enter__()
 
@@ -131,17 +143,23 @@ class ConnectorPipelineV2(ConnectorV2):
                     f"the `data` arg passed in (either altered or unchanged)."
                 )
 
+        if metrics:
+            full_stats.__exit__(None, None, None)
+
         return batch
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
 
         Args:
-            name: The name of the connector piece to be removed from the pipeline.
+            name_or_class: The name of the connector piece to be removed from the
+                pipeline.
         """
         idx = -1
         for i, c in enumerate(self.connectors):
-            if c.__class__.__name__ == name_or_class:
+            if (isinstance(name_or_class, type) and c.__class__ is name_or_class) or (
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
+            ):
                 idx = i
                 break
         if idx >= 0:
@@ -268,11 +286,14 @@ class ConnectorPipelineV2(ConnectorV2):
         for conn in self.connectors:
             conn_name = type(conn).__name__
             if self._check_component(conn_name, components, not_components):
-                state[conn_name] = conn.get_state(
+                sts = conn.get_state(
                     components=self._get_subcomponents(conn_name, components),
                     not_components=self._get_subcomponents(conn_name, not_components),
                     **kwargs,
                 )
+                # Ignore empty dicts.
+                if sts:
+                    state[conn_name] = sts
         return state
 
     @override(ConnectorV2)

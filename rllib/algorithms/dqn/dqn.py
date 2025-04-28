@@ -95,7 +95,6 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -107,7 +106,7 @@ class DQNConfig(AlgorithmConfig):
         )
         tune.Tuner(
             "DQN",
-            run_config=air.RunConfig(stop={"training_iteration":1}),
+            run_config=tune.RunConfig(stop={"training_iteration":1}),
             param_space=config,
         ).fit()
 
@@ -608,6 +607,20 @@ class DQN(Algorithm):
             return DQNTFPolicy
 
     @override(Algorithm)
+    def setup(self, config: AlgorithmConfig) -> None:
+        super().setup(config)
+
+        if self.config.enable_env_runner_and_connector_v2 and self.env_runner_group:
+            if self.env_runner is None:
+                self._module_is_stateful = self.env_runner_group.foreach_env_runner(
+                    lambda er: er.module.is_stateful(),
+                    remote_worker_ids=[1],
+                    local_env_runner=False,
+                )[0]
+            else:
+                self._module_is_stateful = self.env_runner.module.is_stateful()
+
+    @override(Algorithm)
     def training_step(self) -> None:
         """DQN training iteration function.
 
@@ -677,9 +690,11 @@ class DQN(Algorithm):
                         n_step=self.config.n_step,
                         # In case an `EpisodeReplayBuffer` is used we need to provide
                         # the sequence length.
-                        batch_length_T=self.env_runner.module.is_stateful()
-                        * self.config.model_config.get("max_seq_len", 0),
-                        lookback=int(self.env_runner.module.is_stateful()),
+                        batch_length_T=(
+                            self._module_is_stateful
+                            * self.config.model_config.get("max_seq_len", 0)
+                        ),
+                        lookback=int(self._module_is_stateful),
                         # TODO (simon): Implement `burn_in_len` in SAC and remove this
                         # if-else clause.
                         min_batch_length_T=self.config.burn_in_len
@@ -698,7 +713,7 @@ class DQN(Algorithm):
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_episodes(
+                    learner_results = self.learner_group.update(
                         episodes=episodes,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: (

@@ -25,25 +25,31 @@ from ray.rllib.utils.test_utils import check
 register_env("basic_multiagent", lambda _: BasicMultiAgent(2))
 
 
+def _get_mapper():
+    # Note(Artur): This was originally part of the unittest.TestCase.setUpClass
+    # method but caused trouble when serializing the config because we ended up
+    # serializing `self`, which is an instance of unittest.TestCase.
+
+    # When dealing with two policies in these tests, simply alternate between the 2
+    # policies to make sure we have data for inference for both policies for each
+    # step.
+    class AlternatePolicyMapper:
+        def __init__(self):
+            self.policies = ["one", "two"]
+            self.next = 0
+
+        def map(self):
+            p = self.policies[self.next]
+            self.next = 1 - self.next
+            return p
+
+    return AlternatePolicyMapper()
+
+
 class TestEnvRunnerV2(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-
-        # When dealing with two policies in these tests, simply alternate between the 2
-        # policies to make sure we have data for inference for both policies for each
-        # step.
-        class AlternatePolicyMapper:
-            def __init__(self):
-                self.policies = ["one", "two"]
-                self.next = 0
-
-            def map(self):
-                p = self.policies[self.next]
-                self.next = 1 - self.next
-                return p
-
-        cls.mapper = AlternatePolicyMapper()
 
     @classmethod
     def tearDownClass(cls):
@@ -215,6 +221,8 @@ class TestEnvRunnerV2(unittest.TestCase):
                 self.view_requirements["rewards"].used_for_compute_actions = False
                 self.view_requirements["terminateds"].used_for_compute_actions = False
 
+        mapper = _get_mapper()
+
         config = (
             PPOConfig()
             .api_stack(
@@ -240,7 +248,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicyTwo,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
@@ -316,6 +324,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         _ = rollout_worker.sample()
 
     def test_start_episode(self):
+        mapper = _get_mapper()
         config = (
             PPOConfig()
             .api_stack(
@@ -341,7 +350,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
@@ -373,6 +382,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertEqual(env_runner._active_episodes[0].total_agent_steps, 2)
 
     def test_env_runner_output(self):
+        mapper = _get_mapper()
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
@@ -399,7 +409,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )
@@ -434,6 +444,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # We should see an error episode.
                 assert isinstance(episode, Exception)
 
+        mapper = _get_mapper()
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
@@ -460,7 +471,7 @@ class TestEnvRunnerV2(unittest.TestCase):
                         policy_class=RandomPolicy,
                     ),
                 },
-                policy_mapping_fn=lambda *args, **kwargs: self.mapper.map(),
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
                 policies_to_train=["one"],
                 count_steps_by="agent_steps",
             )

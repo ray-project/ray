@@ -14,7 +14,6 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -165,32 +164,25 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     serve._run(V2.bind(), _blocking=False, name="app")
 
     # One replica of the old version should be stuck in stopping because
-    # of the blocked request.
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # Two replicas of the new version should be brought up without
-        # waiting for the old replica to stop.
-        wait_for_condition(
-            check_replica_counts,
-            controller=serve_instance._controller,
-            deployment_id=DeploymentID(name="test", app_name="app"),
-            total=3,
-            by_state=[
-                (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
-                (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
-            ],
-        )
+    # of the blocked request. Two replicas of the new version should be
+    # brought up without waiting for the old replica to stop.
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name="test", app_name="app"),
+        total=3,
+        by_state=[
+            (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
+            (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
+        ],
+    )
 
-        # All new requests should be sent to the new running replicas
-        refs = [h.remote() for _ in range(10)]
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("2") == 10
-        pids2 = set(pids)
-        assert len(pids2 & initial_pids) == 0
-    else:
-        with pytest.raises(TimeoutError):
-            serve_instance._wait_for_application_running("app", timeout_s=0.1)
-
-        refs = [h.remote() for _ in range(10)]
+    # All new requests should be sent to the new running replicas
+    refs = [h.remote() for _ in range(10)]
+    versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+    assert versions.count("2") == 10
+    pids2 = set(pids)
+    assert len(pids2 & initial_pids) == 0
 
     # Kill the controller
     ray.kill(serve.context._global_client._controller, no_restart=False)
@@ -200,11 +192,6 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     val, pid = blocked_ref.result()
     assert val == "1"
     assert pid in initial_pids
-
-    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("1") == 10
-        assert len(set(pids) & initial_pids)
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.

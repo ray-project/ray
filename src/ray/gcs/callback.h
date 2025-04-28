@@ -37,13 +37,13 @@ using StatusCallback = std::function<void(Status status)>;
 /// TODO(ryw): make an Either union type to avoid the optional.
 template <typename Data>
 using OptionalItemCallback =
-    std::function<void(Status status, std::optional<Data> &&result)>;
+    std::function<void(Status status, std::optional<Data> result)>;
 
 /// This callback is used to receive multiple items from GCS when a read completes.
 /// \param status Status indicates whether the read was successful.
 /// \param result The items returned by GCS.
 template <typename Data>
-using MultiItemCallback = std::function<void(Status status, std::vector<Data> &&result)>;
+using MultiItemCallback = std::function<void(Status status, std::vector<Data> result)>;
 
 /// This callback is used to receive notifications of the subscribed items in the GCS.
 /// \param id The id of the item.

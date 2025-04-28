@@ -38,7 +38,7 @@ from ray.data.context import DataContext
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 
 
-class OperatorFusionRule(Rule):
+class FuseOperators(Rule):
     """Fuses linear chains of compatible physical operators."""
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
@@ -54,21 +54,21 @@ class OperatorFusionRule(Rule):
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
         # we need a better abstraction for manipulating the DAG.
-        self._remove_output_depes(fused_dag)
-        self._update_output_depes(fused_dag)
+        self._remove_output_deps(fused_dag)
+        self._update_output_deps(fused_dag)
 
         new_plan = PhysicalPlan(fused_dag, self._op_map, plan.context)
         return new_plan
 
-    def _remove_output_depes(self, op: PhysicalOperator) -> None:
+    def _remove_output_deps(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
             input._output_dependencies = []
-            self._remove_output_depes(input)
+            self._remove_output_deps(input)
 
-    def _update_output_depes(self, op: PhysicalOperator) -> None:
+    def _update_output_deps(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
             input._output_dependencies.append(op)
-            self._update_output_depes(input)
+            self._update_output_deps(input)
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
         """Starting at the given operator, traverses up the DAG of operators
@@ -305,6 +305,7 @@ class OperatorFusionRule(Rule):
         # Merge minimum block sizes.
         down_min_rows_per_bundled_input = down_logical_op._min_rows_per_bundled_input
         up_min_rows_per_bundled_input = up_logical_op._min_rows_per_bundled_input
+
         if (
             down_min_rows_per_bundled_input is not None
             and up_min_rows_per_bundled_input is not None
@@ -366,14 +367,14 @@ class OperatorFusionRule(Rule):
                 name,
                 input_op,
                 down_logical_op._fn,
-                down_logical_op._fn_args,
-                down_logical_op._fn_kwargs,
-                down_logical_op._fn_constructor_args,
-                down_logical_op._fn_constructor_kwargs,
-                min_rows_per_bundled_input,
-                compute,
-                ray_remote_args_fn,
-                ray_remote_args,
+                fn_args=down_logical_op._fn_args,
+                fn_kwargs=down_logical_op._fn_kwargs,
+                fn_constructor_args=down_logical_op._fn_constructor_args,
+                fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
+                min_rows_per_bundled_input=min_rows_per_bundled_input,
+                compute=compute,
+                ray_remote_args_fn=ray_remote_args_fn,
+                ray_remote_args=ray_remote_args,
             )
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.

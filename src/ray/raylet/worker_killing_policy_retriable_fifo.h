@@ -16,6 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"

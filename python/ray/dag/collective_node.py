@@ -11,9 +11,13 @@ from ray.dag import (
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_nccl_channel import _init_communicator
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import _CollectiveOp, ReduceOp
+from ray.experimental.util.types import (
+    _CollectiveOp,
+    AllGatherOp,
+    AllReduceOp,
+    ReduceScatterOp,
+)
 from ray.util.annotations import DeveloperAPI
 
 
@@ -64,8 +68,6 @@ class _CollectiveOperation(_NcclOperation):
             )
 
         self._op = op
-        if not isinstance(self._op, ReduceOp):
-            raise NotImplementedError("Only ReduceOp is implemented")
         if transport is None:
             transport = TorchTensorType.NCCL
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
@@ -95,37 +97,6 @@ class _CollectiveOperation(_NcclOperation):
     def nccl_op_type(self) -> _CollectiveOp:
         return self._op
 
-    def init_communicator(
-        self,
-        communicator_id: Optional[str] = None,
-        use_communication_streams: bool = False,
-    ) -> str:
-        """
-        Initialize the communicator if it has not been initialized yet. If
-        `communicator_id` is provided, it means the communicator has already
-        been initialized.
-
-        Args:
-            communicator_id: The communicator ID, if already initialized.
-            use_communication_streams: Whether to use a dedicated stream for
-                collective communication. If True, communication and computation
-                can be overlapped to improve performance.
-
-        Returns:
-            The NCCL group ID.
-        """
-        type_hint = self._type_hint
-        if type_hint.communicator_id is not None:
-            return type_hint.communicator_id
-        if communicator_id is None:
-            communicator_id = _init_communicator(
-                self._actor_handles,
-                type_hint.get_custom_communicator(),
-                use_communication_streams,
-            )
-        type_hint.set_communicator_id(communicator_id)
-        return communicator_id
-
     def get_communicator(self) -> Communicator:
         if self._type_hint.communicator_id is not None:
             ctx = ChannelContext.get_current()
@@ -146,8 +117,33 @@ class _CollectiveOperation(_NcclOperation):
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        recv_buf = torch.empty_like(send_buf)
-        communicator.allreduce(send_buf, recv_buf, self._op)
+
+        if isinstance(self._op, AllGatherOp):
+            world_size = len(self._actor_handles)
+            recv_buf = torch.empty(
+                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device,
+            )
+            communicator.allgather(send_buf, recv_buf)
+        elif isinstance(self._op, AllReduceOp):
+            recv_buf = torch.empty_like(send_buf)
+            communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
+        elif isinstance(self._op, ReduceScatterOp):
+            world_size = len(self._actor_handles)
+            if send_buf.shape[0] % world_size != 0:
+                raise ValueError(
+                    "Expected the first dimension of the input tensor to be divisible "
+                    f"by the world size {world_size}"
+                )
+            recv_buf = torch.empty(
+                (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device,
+            )
+            communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
+        else:
+            raise ValueError("Expected a collective operation")
         return recv_buf
 
 

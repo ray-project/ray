@@ -50,8 +50,7 @@ class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(DefaultPPORLModule)
     def get_non_inference_attributes(self) -> List[str]:
-        # Get the NON inference-only attributes from the parent class
-        # `PPOTorchRLModule`.
+        # Get the NON inference-only attributes from the parent class.
         ret = super().get_non_inference_attributes()
         # Add the two (APPO) target networks to it (NOT needed in
         # inference-only mode).

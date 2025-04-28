@@ -192,9 +192,10 @@ def _node_type_from_group_spec(
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
     else:
-        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
-        min_workers = group_spec["minReplicas"]
-        max_workers = group_spec["maxReplicas"]
+        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
+        # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
+        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
+        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
@@ -224,7 +225,7 @@ def _get_ray_resources_from_group_spec(
     TODO: Expose a better interface in the RayCluster CRD for Ray resource annotations.
     For now, we take the rayStartParams as the primary source of truth.
     """
-    ray_start_params = group_spec["rayStartParams"]
+    ray_start_params = group_spec.get("rayStartParams", {})
     # In KubeRay, Ray container is always the first application container of a Ray Pod.
     k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -353,14 +354,14 @@ def _get_num_gpus(
 
 
 def _get_num_tpus(
-    custom_resource_dict: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
     k8s_resources: Dict[str, Dict[str, str]],
 ) -> Optional[int]:
     """Get TPU custom resource annotation from custom_resource_dict in ray_start_params,
     or k8s_resources, with priority for custom_resource_dict.
     """
     if "TPU" in custom_resource_dict:
-        return int(custom_resource_dict["TPU"])
+        return custom_resource_dict["TPU"]
     else:
         for typ in ["limits", "requests"]:
             tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")

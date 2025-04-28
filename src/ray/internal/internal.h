@@ -13,6 +13,11 @@
 // limitations under the License.
 
 #pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
@@ -29,9 +34,9 @@ using ray::core::RayFunction;
 /// \param[in] buffer buffer to be sent.
 /// \param[in] function the function descriptor of peer's function.
 /// \param[in] return_num return value number of the call.
-/// \param[in] max_retirs task retries time.
-/// \param[in] retry_execptions whether retry if execptions found.
-/// \param[in] serialized_retry_exception_allowlist specificed allowed exceptions.
+/// \param[in] max_retries task retries time.
+/// \param[in] retry_exceptions whether retry if exceptions found.
+/// \param[in] serialized_retry_exception_allowlist specified allowed exceptions.
 /// \param[out] return_ids return ids from SubmitActorTask.
 std::vector<rpc::ObjectReference> SendInternal(
     const ActorID &peer_actor_id,

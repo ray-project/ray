@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -28,19 +30,7 @@
 #include "ray/util/util.h"
 #include "spdlog/logger.h"
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
-
 namespace ray {
-
-// Environmenr variable, which indicates the pipe size of read.
-//
-// TODO(hjiang): Should document the env variable after end-to-end integration has
-// finished.
-inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
 
 // File handle requires active destruction via owner calling [Close].
 class RedirectionFileHandle {
@@ -50,14 +40,11 @@ class RedirectionFileHandle {
   // @param termination_synchronizer is used to block wait until destruction operation
   // finishes.
   RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
-                        std::function<void()> flush_fn,
+                        std::shared_ptr<spdlog::logger> logger,
                         std::function<void()> close_fn)
       : write_handle_(write_handle),
-        flush_fn_(std::move(flush_fn)),
-        close_fn_(std::move(close_fn)) {
-    RAY_CHECK(flush_fn_);
-    RAY_CHECK(close_fn_);
-  }
+        logger_(std::move(logger)),
+        close_fn_(std::move(close_fn)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
   ~RedirectionFileHandle() = default;
@@ -65,7 +52,7 @@ class RedirectionFileHandle {
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = INVALID_FD;
-    flush_fn_ = std::move(rhs.flush_fn_);
+    logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
   }
   RedirectionFileHandle &operator=(RedirectionFileHandle &&rhs) {
@@ -74,14 +61,18 @@ class RedirectionFileHandle {
     }
     write_handle_ = rhs.write_handle_;
     rhs.write_handle_ = INVALID_FD;
-    flush_fn_ = std::move(rhs.flush_fn_);
+    logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
     return *this;
   }
   void Close() {
     if (write_handle_ != INVALID_FD) {
       close_fn_();
+
+      // Destruct all resources.
       write_handle_ = INVALID_FD;
+      logger_ = nullptr;
+      close_fn_ = nullptr;
     }
   }
 
@@ -90,36 +81,20 @@ class RedirectionFileHandle {
   // TODO(hjiang): Current method only flushes whatever we send to logger, but not those
   // in the pipe; a better approach is flush pipe, send FLUSH indicator and block wait
   // until logger sync over.
-  void Flush() {
-    RAY_CHECK(flush_fn_);
-    flush_fn_();
-  }
+  void Flush() { logger_->flush(); }
 
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
-  // Used to write to.
-  //
-  // TODO(hjiang): I will followup with another PR to make a `FD` class, which is not
-  // copiable to avoid manual `dup`.
-#if defined(__APPLE__) || defined(__linux__)
+  // Write the given data into redirection handle; currently only for testing usage.
   void CompleteWrite(const char *data, size_t len) {
-    ssize_t bytes_written = write(write_handle_, data, len);
-    RAY_CHECK_EQ(bytes_written, static_cast<ssize_t>(len));
+    RAY_CHECK_OK(::ray::CompleteWrite(write_handle_, data, len));
   }
-#elif defined(_WIN32)
-  void CompleteWrite(const char *data, size_t len) {
-    DWORD bytes_written = 0;
-    WriteFile(write_handle_, data, len, &bytes_written, nullptr);
-  }
-#endif
 
  private:
   MEMFD_TYPE_NON_UNIQUE write_handle_;
 
-  // Used to flush log message.
-  std::function<void()> flush_fn_;
+  std::shared_ptr<spdlog::logger> logger_;
 
-  // Used to close write handle, and block until destruction completes
   std::function<void()> close_fn_;
 };
 

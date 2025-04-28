@@ -64,7 +64,7 @@ Proximal Policy Optimization (PPO)
     **PPO architecture:** In a training iteration, PPO performs three major steps:
     1. Sampling a set of episodes or episode fragments
     1. Converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch
-    1. Synching the weights from the Learners back to the EnvRunners
+    1. Syncing the weights from the Learners back to the EnvRunners
     PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
@@ -151,7 +151,7 @@ Soft Actor Critic (SAC)
 
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
-`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
+`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah_sac.py>`__,
 
 **SAC-specific configs** (see also :ref:`generic algorithm settings <rllib-algo-configuration-generic-settings>`):
 
@@ -398,7 +398,7 @@ Algorithm Extensions- and Plugins
 Curiosity-driven Exploration by Self-supervised Prediction
 ----------------------------------------------------------
 `[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 .. figure:: images/algos/curiosity-architecture.svg
     :width: 850
@@ -420,7 +420,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
 
 **Tuned examples:**
-`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 
 

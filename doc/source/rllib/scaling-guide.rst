@@ -158,7 +158,7 @@ Make sure to set the number of GPUs per :py:class:`~ray.rllib.core.learner.learn
 The number of GPUs may be fractional quantities, for example 0.5, to allocate only a fraction of a GPU per
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`. For example, you can pack five :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 instances onto one GPU by setting ``num_learners=1, num_gpus_per_learner=0.2``.
-See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus.py>`__
+See this `fractional GPU example <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__
 for details.
 
 .. note::

@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint, CheckpointConfig
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
@@ -941,8 +941,8 @@ class BOHBSuite(unittest.TestCase):
 
         def train_fn(cfg):
             start = 0
-            if train.get_checkpoint():
-                with train.get_checkpoint().as_directory() as checkpoint_dir:
+            if tune.get_checkpoint():
+                with tune.get_checkpoint().as_directory() as checkpoint_dir:
                     with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
                         start = int(f.read())
 
@@ -953,7 +953,7 @@ class BOHBSuite(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as checkpoint_dir:
                     with open(os.path.join(checkpoint_dir, "checkpoint"), "w") as f:
                         f.write(str(i))
-                    train.report(
+                    tune.report(
                         dict(episode_reward_mean=i),
                         checkpoint=Checkpoint.from_directory(checkpoint_dir),
                     )

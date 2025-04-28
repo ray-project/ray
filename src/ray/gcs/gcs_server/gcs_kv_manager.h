@@ -13,12 +13,15 @@
 // limitations under the License.
 
 #pragma once
-#include <memory>
 
-#include "absl/container/btree_map.h"
-#include "absl/synchronization/mutex.h"
-#include "ray/gcs/redis_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/postable.h"
+#include "ray/common/status.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {

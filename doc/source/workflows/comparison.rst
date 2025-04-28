@@ -1,6 +1,11 @@
 API Comparisons
 ===============
 
+.. warning::
+
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
+
 Comparison between Ray Core APIs and Workflows
 ----------------------------------------------
 Ray Workflows is built on top of Ray, and offers a mostly consistent subset of its API while providing durability. This section highlights some of the differences:
@@ -16,12 +21,12 @@ Specifying the workflow id allows for resuming of the workflow by its id in case
 Other Workflow Engines
 ----------------------
 
-Note: these comparisons are inspired by the `Serverless workflows comparisons repo <https://github.com/serverlessworkflow/specification/tree/main/comparisons>`__.
+Note: these comparisons are inspired by the `Serverless workflows comparisons repo <https://github.com/serverlessworkflow/specification/tree/0.9.x/comparisons>`__.
 
 Argo API Comparison
 ~~~~~~~~~~~~~~~~~~~
 
-The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-argo.md>`__.
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/0.9.x/comparisons/comparison-argo.md>`__.
 
 Conditionals
 ^^^^^^^^^^^^
@@ -157,7 +162,7 @@ Trip Booking
 Google Cloud Workflows API Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-google-cloud-workflows.md>`__.
+The original source of these comparisons can be `found here <https://github.com/serverlessworkflow/specification/blob/0.9.x/comparisons/comparison-google-cloud-workflows.md>`__.
 
 Data Conditional
 ^^^^^^^^^^^^^^^^

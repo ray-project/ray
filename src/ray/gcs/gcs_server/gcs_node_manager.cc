@@ -14,8 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <limits>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
@@ -292,7 +296,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
+std::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {

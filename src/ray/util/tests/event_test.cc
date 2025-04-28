@@ -21,11 +21,13 @@
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <memory>
 #include <set>
+#include <string>
 #include <thread>
+#include <vector>
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/event_label.h"
 #include "ray/util/random.h"
@@ -38,14 +40,14 @@ namespace ray {
 
 class TestEventReporter : public BaseEventReporter {
  public:
-  virtual void Init() override {}
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override {
+  void Init() override {}
+  void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
-  virtual void Close() override {}
-  virtual ~TestEventReporter() {}
-  virtual std::string GetReporterKey() override { return "test.event.reporter"; }
+  void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
+  void Close() override {}
+  ~TestEventReporter() override {}
+  std::string GetReporterKey() override { return "test.event.reporter"; }
 
  public:
   static std::vector<rpc::Event> event_list;

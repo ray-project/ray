@@ -18,6 +18,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -191,7 +194,7 @@ class ServerCallImpl : public ServerCall {
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
-    // TODO call_name_ sometimes get corrunpted due to memory issues.
+    // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_new.Record(1.0, call_name_);
@@ -238,7 +241,7 @@ class ServerCallImpl : public ServerCall {
                        call_name_ + ".HandleRequestImpl",
                        // Implement the delay of the rpc server call as the
                        // delay of HandleRequestImpl().
-                       ray::asio::testing::get_delay_us(call_name_));
+                       ray::asio::testing::GetDelayUs(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq

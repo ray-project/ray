@@ -16,14 +16,13 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
-#include "ray/util/logging.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 

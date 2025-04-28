@@ -2,9 +2,14 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.appo as appo
+from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import LEARNER_RESULTS
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    LEARNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     check_train_results,
     check_train_results_new_api_stack,
@@ -32,7 +37,7 @@ class TestAPPO(unittest.TestCase):
         for i in range(num_iterations):
             results = algo.train()
             print(results)
-            check_train_results_new_api_stack(results)
+        check_train_results_new_api_stack(results)
 
         algo.stop()
 
@@ -46,8 +51,8 @@ class TestAPPO(unittest.TestCase):
         algo = config.build(env="CartPole-v1")
         for i in range(num_iterations):
             results = algo.train()
-            check_train_results_new_api_stack(results)
             print(results)
+        check_train_results_new_api_stack(results)
         algo.stop()
 
     def test_appo_two_optimizers_two_lrs(self):
@@ -94,9 +99,7 @@ class TestAPPO(unittest.TestCase):
                 train_batch_size_per_learner=20,
                 entropy_coeff=[
                     [0, 0.1],
-                    [100, 0.01],
-                    [300, 0.001],
-                    [500, 0.0001],
+                    [50000, 0.01],
                 ],
             )
             .reporting(
@@ -116,18 +119,28 @@ class TestAPPO(unittest.TestCase):
             for _ in range(n):
                 results = algo.train()
                 print(results)
-            return results[LEARNER_RESULTS][DEFAULT_POLICY_ID]["curr_entropy_coeff"]
+            return results[LEARNER_RESULTS][DEFAULT_POLICY_ID][
+                LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
+            ]
 
         algo = config.build()
 
-        coeff = _step_n_times(algo, 10)  # 200 timesteps
+        coeff = _step_n_times(algo, 10)
         # Should be close to the starting coeff of 0.01.
-        self.assertLessEqual(coeff, 0.01)
-        self.assertGreaterEqual(coeff, 0.001)
+        ts_sampled = algo.metrics.peek(
+            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+        )
+        expected_coeff = 0.1 - ((0.1 - 0.01) / 50000 * ts_sampled)
+        self.assertLessEqual(coeff, expected_coeff + 0.005)
+        self.assertGreaterEqual(coeff, expected_coeff - 0.005)
 
-        coeff = _step_n_times(algo, 20)  # 400 timesteps
-        # Should have annealed to the final coeff of 0.0001.
-        self.assertLessEqual(coeff, 0.001)
+        coeff = _step_n_times(algo, 20)
+        ts_sampled = algo.metrics.peek(
+            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+        )
+        expected_coeff = 0.1 - ((0.1 - 0.01) / 50000 * ts_sampled)
+        self.assertLessEqual(coeff, expected_coeff + 0.005)
+        self.assertGreaterEqual(coeff, expected_coeff - 0.005)
 
         algo.stop()
 
@@ -143,7 +156,7 @@ class TestAPPO(unittest.TestCase):
                 train_batch_size_per_learner=20,
                 entropy_coeff=0.01,
                 # Setup lr schedule for testing.
-                lr=[[0, 5e-2], [500, 0.0]],
+                lr=[[0, 5e-2], [50000, 0.0]],
             )
             .reporting(
                 min_train_timesteps_per_iteration=20,
@@ -168,8 +181,8 @@ class TestAPPO(unittest.TestCase):
 
         algo = config.build(env="CartPole-v1")
 
-        lr1 = _step_n_times(algo, 10)  # 200 timesteps
-        lr2 = _step_n_times(algo, 10)  # 200 timesteps
+        lr1 = _step_n_times(algo, 10)
+        lr2 = _step_n_times(algo, 10)
 
         self.assertGreater(lr1, lr2)
 

@@ -122,6 +122,13 @@ class CPUCommunicator(Communicator):
         # `create_channel` of `TorchTensorType`.
         pass
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        raise NotImplementedError
+
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -143,6 +150,14 @@ class CPUCommunicator(Communicator):
         assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
         recv_buf[:] = result[:]
         self.num_ops[barrier_key] += 1
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ):
+        raise NotImplementedError
 
     def destroy(self) -> None:
         for barrier in self.barriers:

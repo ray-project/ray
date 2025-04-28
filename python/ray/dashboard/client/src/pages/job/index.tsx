@@ -96,6 +96,10 @@ const JobList = () => {
               label="Job ID"
               onChange={(value) => changeFilter("job_id", value)}
             />
+            <SearchInput
+              label="Submission ID"
+              onChange={(value) => changeFilter("submission_id", value)}
+            />
             <TextField
               sx={{ width: 120 }}
               label="Page Size"
@@ -112,7 +116,7 @@ const JobList = () => {
             />
             <Autocomplete
               sx={{ height: 35, width: 150 }}
-              options={["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
+              options={["PENDING", "RUNNING", "SUCCEEDED", "STOPPED", "FAILED"]}
               onInputChange={(event, value) =>
                 changeFilter("status", value.trim())
               }

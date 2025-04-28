@@ -6,7 +6,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
 )
 from ray.tune.schedulers.pb2 import PB2
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -119,7 +119,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "SAC",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_sac_mujoco_pb2_" + env,
         ),
@@ -142,7 +142,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "SAC",
         param_space=best_result.config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_sac_mujoco_pb2_" + env + "_best",
         ),

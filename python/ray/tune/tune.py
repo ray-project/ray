@@ -24,7 +24,7 @@ import ray
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train import CheckpointConfig, SyncConfig
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -429,7 +429,7 @@ def run(
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
-        sync_config: Configuration object for syncing. See train.SyncConfig.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.

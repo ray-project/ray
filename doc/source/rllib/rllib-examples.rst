@@ -238,7 +238,7 @@ Inference of models or policies
 Learners
 ++++++++
 
-- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__:
+- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__:
    Implements a custom loss function for training, demonstrating how users can define tailored loss objectives for specific environments or
    behaviors.
 

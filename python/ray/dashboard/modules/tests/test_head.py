@@ -8,7 +8,6 @@ import ray.dashboard.modules.tests.test_utils as test_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_bool
-from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -20,16 +19,6 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 class TestHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
-        self._notified_agents = {}
-        DataSource.agents.signal.append(self._update_notified_agents)
-
-    async def _update_notified_agents(self, change):
-        if change.old:
-            node_id, _ = change.old
-            self._notified_agents.pop(node_id)
-        if change.new:
-            node_id, (node_ip, http_port, grpc_port) = change.new
-            self._notified_agents[node_id] = (node_ip, http_port, grpc_port)
 
     @staticmethod
     def is_minimal_module():
@@ -51,36 +40,6 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def route_view(self, req) -> aiohttp.web.Response:
         pass
 
-    @routes.get("/test/dump")
-    async def dump(self, req) -> aiohttp.web.Response:
-        key = req.query.get("key")
-        if key is None:
-            all_data = {
-                k: dict(v)
-                for k, v in DataSource.__dict__.items()
-                if not k.startswith("_")
-            }
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message="Fetch all data from datacenter success.",
-                **all_data,
-            )
-        else:
-            data = dict(DataSource.__dict__.get(key))
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message=f"Fetch {key} from datacenter success.",
-                **{key: data},
-            )
-
-    @routes.get("/test/notified_agents")
-    async def get_notified_agents(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
-            success=True,
-            message="Fetch notified agents success.",
-            **self._notified_agents,
-        )
-
     @routes.get("/test/http_get")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")
@@ -92,7 +51,10 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def test_aiohttp_cache(self, req) -> aiohttp.web.Response:
         value = req.query["value"]
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time()
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="OK",
+            value=value,
+            timestamp=time.time(),
         )
 
     @routes.get("/test/aiohttp_cache_lru/{sub_path}")
@@ -100,7 +62,10 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def test_aiohttp_cache_lru(self, req) -> aiohttp.web.Response:
         value = req.query.get("value")
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time()
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="OK",
+            value=value,
+            timestamp=time.time(),
         )
 
     @routes.get("/test/file")
@@ -119,12 +84,12 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         time.sleep(seconds)
 
         return dashboard_optional_utils.rest_response(
-            success=True,
+            status_code=dashboard_utils.HTTPStatusCode.OK,
             message=f"Blocked event loop for {seconds} seconds",
             timestamp=time.time(),
         )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
 

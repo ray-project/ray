@@ -21,7 +21,7 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint, CheckpointConfig
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path

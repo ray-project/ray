@@ -17,6 +17,7 @@
 #include <Python.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/util/logging.h"
@@ -120,10 +121,10 @@ class PyCallback {
 };
 
 template <typename T>
-using MultiItemPyCallback = PyCallback<Status, std::vector<T> &&>;
+using MultiItemPyCallback = PyCallback<Status, std::vector<T>>;
 
 template <typename Data>
-using OptionalItemPyCallback = PyCallback<Status, std::optional<Data> &&>;
+using OptionalItemPyCallback = PyCallback<Status, std::optional<Data>>;
 
 using StatusPyCallback = PyCallback<Status>;
 

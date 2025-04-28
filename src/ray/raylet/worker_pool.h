@@ -19,10 +19,14 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <deque>
+#include <list>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -159,6 +163,14 @@ class WorkerPoolInterface {
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
+  /// Get registered worker process by id or nullptr if not found.
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const = 0;
+
+  /// Get registered driver process by id or nullptr if not found.
+  virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const = 0;
+
   virtual ~WorkerPoolInterface() = default;
 };
 
@@ -243,6 +255,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
+  /// \param enable_resource_isolation If true, core worker enables resource isolation by
+  /// adding itself into appropriate cgroup.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID &node_id,
              std::string node_address,
@@ -257,10 +271,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             std::function<absl::Time()> get_time);
+             std::function<absl::Time()> get_time,
+             bool enable_resource_isolation);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool() override;
+  ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();
@@ -343,7 +358,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::shared_ptr<ClientConnection> &connection) const;
 
   /// Get the registered worker by worker id or nullptr if not found.
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(
+      const WorkerID &worker_id) const override;
 
   /// Get the client connection's registered driver.
   ///
@@ -352,6 +368,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// if the client has not registered a driver.
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const std::shared_ptr<ClientConnection> &connection) const;
+
+  /// Get the registered driver by worker id or nullptr if not found.
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(
+      const WorkerID &worker_id) const override;
 
   /// Disconnect a registered worker.
   ///
@@ -542,7 +562,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  /// Gloabl startup token variable. Incremented once assigned
+  /// Global startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
   StartupToken worker_startup_token_counter_;
@@ -840,6 +860,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   int64_t process_failed_rate_limited_ = 0;
   int64_t process_failed_pending_registration_ = 0;
   int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  // If true, core worker enables resource isolation by adding itself into appropriate
+  // cgroup after it is created.
+  bool enable_resource_isolation_ = false;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

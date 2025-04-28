@@ -74,25 +74,40 @@ class ZipOperator(PhysicalOperator):
         assert input_index == 0 or input_index == 1, input_index
         if input_index == 0:
             self._left_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
         else:
             self._right_buffer.append(refs)
+            self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
-        self._left_buffer.clear()
-        self._right_buffer.clear()
+
+        while self._left_buffer:
+            refs = self._left_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        while self._right_buffer:
+            refs = self._right_buffer.pop()
+            self._metrics.on_input_dequeued(refs)
+        for ref in self._output_buffer:
+            self._metrics.on_output_queued(ref)
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._output_buffer.pop(0)
+        refs = self._output_buffer.pop(0)
+        self._metrics.on_output_dequeued(refs)
+        return refs
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def implements_accurate_memory_accounting(self):
+        return True
 
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]

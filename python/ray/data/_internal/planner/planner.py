@@ -46,6 +46,7 @@ def _register_default_plan_logical_op_fns():
         AbstractUDFMap,
         Filter,
         Project,
+        StreamingRepartition,
     )
     from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
     from ray.data._internal.logical.operators.one_to_one_operator import Limit
@@ -56,6 +57,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.planner.plan_udf_map_op import (
         plan_filter_op,
         plan_project_op,
+        plan_streaming_repartition_op,
         plan_udf_map_op,
     )
     from ray.data._internal.planner.plan_write_op import plan_write_op
@@ -70,11 +72,7 @@ def _register_default_plan_logical_op_fns():
         """Get the corresponding DAG of physical operators for InputData."""
         assert len(physical_children) == 0
 
-        return InputDataBuffer(
-            data_context,
-            input_data=logical_op.input_data,
-            input_data_factory=logical_op.input_data_factory,
-        )
+        return InputDataBuffer(data_context, input_data=logical_op.input_data)
 
     register_plan_logical_op_fn(InputData, plan_input_data_op)
     register_plan_logical_op_fn(Write, plan_write_op)
@@ -122,6 +120,8 @@ def _register_default_plan_logical_op_fns():
     register_plan_logical_op_fn(Count, plan_count_op)
 
     register_plan_logical_op_fn(Project, plan_project_op)
+
+    register_plan_logical_op_fn(StreamingRepartition, plan_streaming_repartition_op)
 
 
 _register_default_plan_logical_op_fns()

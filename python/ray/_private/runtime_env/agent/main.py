@@ -1,20 +1,17 @@
-import sys
-import os
 import argparse
 import logging
-import pathlib
+import os
+import sys
+
 import ray._private.ray_constants as ray_constants
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
-from ray._private.utils import open_log
-from ray._private.ray_logging import (
-    configure_log_file,
-)
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private.process_watcher import create_check_raylet_task
+from ray._private import logging_utils
 
 
 def import_libs():
@@ -28,14 +25,6 @@ import_libs()
 import runtime_env_consts  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 from aiohttp import web  # noqa: E402
-
-
-def open_capture_files(log_dir):
-    filename = "runtime_env_agent"
-    return (
-        open_log(pathlib.Path(log_dir) / f"{filename}.out"),
-        open_log(pathlib.Path(log_dir) / f"{filename}.err"),
-    )
 
 
 if __name__ == "__main__":
@@ -95,20 +84,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        help="Specify the max bytes for rotating log file",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
-        ),
+        help="Specify the backup count of rotated log file",
     )
     parser.add_argument(
         "--log-dir",
@@ -124,21 +108,45 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
 
     logging_params = dict(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.log_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
     )
 
-    # Setup stdout/stderr redirect files
-    out_file, err_file = open_capture_files(args.log_dir)
-    configure_log_file(out_file, err_file)
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
+        logging_rotation_bytes,
+        logging_rotation_backup_count,
+    )
 
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,

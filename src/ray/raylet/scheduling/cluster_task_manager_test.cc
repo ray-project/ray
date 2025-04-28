@@ -18,6 +18,11 @@
 
 #include <memory>
 #include <string>
+#include <list>
+#include <utility>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -31,12 +36,6 @@
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
-
-#ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
-#include <chrono>
-
-#include "absl/container/flat_hash_map.h"
-#endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 // clang-format on
 
 namespace ray {
@@ -63,6 +62,16 @@ class MockWorkerPool : public WorkerPoolInterface {
       bool filter_dead_workers, bool filter_io_workers) const {
     RAY_CHECK(false) << "Not used.";
     return {};
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  };
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
   }
 
   void TriggerCallbacksWithNotOKStatus(
@@ -191,7 +200,7 @@ RayTask CreateTask(
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
+  explicit MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
       : missing_objects_(missing_objects) {}
 
   bool RequestTaskDependencies(const TaskID &task_id,
@@ -1272,7 +1281,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
-  // Althoug the feasible node is added, task shouldn't be executed because it is
+  // Although the feasible node is added, task shouldn't be executed because it is
   // cancelled.
   auto remote_node_id = NodeID::FromRandom();
   AddNode(remote_node_id, 12);
@@ -1282,6 +1291,64 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, TaskCancelWithResourceShape) {
+  // task1 doesn't match the resource shape so shouldn't be cancelled
+  // task2 matches the resource shape and should be cancelled
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 10}});
+  absl::flat_hash_map<std::string, double> resource_shape_1 = {
+      {ray::kCPU_ResourceLabel, 10}};
+  absl::flat_hash_map<std::string, double> resource_shape_2 = {
+      {ray::kCPU_ResourceLabel, 11}};
+  std::vector<ResourceSet> target_resource_shapes = {ResourceSet(resource_shape_1),
+                                                     ResourceSet(resource_shape_2)};
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+
+  bool callback_called_1 = false;
+  bool callback_called_2 = false;
+  bool *callback_called_ptr_1 = &callback_called_1;
+  bool *callback_called_ptr_2 = &callback_called_2;
+  auto callback1 = [callback_called_ptr_1](
+                       Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr_1 = true;
+  };
+  auto callback2 = [callback_called_ptr_2](
+                       Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr_2 = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task1, false, false, &reply1, callback1);
+  pool_.TriggerCallbacks();
+  task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback2);
+  pool_.TriggerCallbacks();
+
+  callback_called_1 = false;
+  callback_called_2 = false;
+  reply1.Clear();
+  reply2.Clear();
+  ASSERT_TRUE(task_manager_.CancelTasksWithResourceShapes(target_resource_shapes));
+  ASSERT_FALSE(reply1.canceled());
+  ASSERT_FALSE(callback_called_1);
+  ASSERT_TRUE(reply2.canceled());
+  ASSERT_TRUE(callback_called_2);
+
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  RayTask finished_task;
+  local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task1.GetTaskSpecification().TaskId());
+
   AssertNoLeaks();
 }
 
@@ -1819,7 +1886,51 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
             task1.GetTaskSpecification().TaskId());
 }
 
-TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
+TEST_F(ClusterTaskManagerTest, NegativePlacementGroupCpuResources) {
+  // Add PG CPU resources.
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_aaa"), std::vector<FixedPoint>{FixedPoint(2)});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_0_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_1_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
+
+  const NodeResources &node_resources =
+      scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(id_.Binary()));
+
+  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
+  worker1->SetAllocatedInstances(allocated_instances);
+  // worker1 calls ray.get() and release the CPU resource
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
+
+  // the released CPU resource is acquired by worker2
+  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678);
+  allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
+  worker2->SetAllocatedInstances(allocated_instances);
+
+  // ray.get() returns and worker1 acquires the CPU resource again
+  ASSERT_TRUE(local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 1);
+
+  auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678);
+  allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_1_aaa", 1.}}, allocated_instances));
+  worker3->SetAllocatedInstances(allocated_instances);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 0);
+}
+
+TEST_F(ClusterTaskManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources) {
   // Add PG CPU and GPU resources.
   scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("CPU_group_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
@@ -1863,7 +1974,7 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
       task_spec, allocated_instances));
   worker2->SetAllocatedInstances(allocated_instances);
 
-  // Check that the resoruces are allocated successfully.
+  // Check that the resources are allocated successfully.
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
   ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
   ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
@@ -2106,8 +2217,8 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   RayTask finished_task;
-  for (auto &worker : leased_workers_) {
-    local_task_manager_->TaskFinished(worker.second, &finished_task);
+  for (auto &cur_worker : leased_workers_) {
+    local_task_manager_->TaskFinished(cur_worker.second, &finished_task);
   }
   AssertNoLeaks();
 }
@@ -2532,7 +2643,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   ASSERT_EQ(num_callbacks, 4);
 
   {
-    // Ensure a class of a differenct scheduling class can still be scheduled.
+    // Ensure a class of a different scheduling class can still be scheduled.
     RayTask task5 = CreateTask({},
                                /*num_args=*/0,
                                /*args=*/{});

@@ -7,4 +7,5 @@ if [[ "${RAYCI_RUN_ALL_TESTS:-}" == "1" || "${BUILDKITE_BRANCH:-}" == "master" |
     exit 0
 fi
 
-exec python ci/pipeline/determine_tests_to_run.py --output rayci_tags
+exec python ci/pipeline/determine_tests_to_run.py \
+    ci/pipeline/test_rules.txt
