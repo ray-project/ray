@@ -158,13 +158,13 @@ steps:
     instance_type: medium
     commands:
       # doc tests
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
         --build-name datalbuild
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
-      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... data
         --build-name datalbuild
         --except-tags gpu,post_wheel_build,doctest
         --parallelism-per-worker 2
@@ -179,12 +179,12 @@ steps:
     instance_type: gpu-large
     commands:
       # doc tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //doc/... data
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //doc/... data
         --build-name docgpubuild
         --only-tags doctest
         --except-tags cpu
       # doc examples
-      - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... data
         --build-name docgpubuild
         --except-tags doctest
         --only-tags gpu
