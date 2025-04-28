@@ -116,7 +116,23 @@ From the script, the outputs are `text_encoder.onnx`, `unet.onnx` `vae_decoder.o
 After the ONNX model exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
 
 ```bash
-trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
+# Convert text encoder
+trtexec --onnx=model_repository/stable_diffusion/1/text_encoder.onnx \
+        --saveEngine=model_repository/stable_diffusion/1/text_encoder.engine \
+        --fp16 \
+        --workspace=4096
+
+# Convert UNet
+trtexec --onnx=model_repository/stable_diffusion/1/unet.onnx \
+        --saveEngine=model_repository/stable_diffusion/1/unet.engine \
+        --fp16 \
+        --workspace=4096
+
+# Convert VAE decoder
+trtexec --onnx=model_repository/stable_diffusion/1/vae_decoder.onnx \
+        --saveEngine=model_repository/stable_diffusion/1/vae_decoder.engine \
+        --fp16 \
+        --workspace=4096
 ```
 
 ## Part 2: Serving
