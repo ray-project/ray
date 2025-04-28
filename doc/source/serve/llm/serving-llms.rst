@@ -59,8 +59,6 @@ The :class:`LLMConfig <ray.serve.llm.LLMConfig>` class specifies model details s
 Quickstart Examples
 -------------------
 
-
-
 Deployment through :class:`LLMRouter <ray.serve.llm.LLMRouter>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -248,6 +246,7 @@ For deploying multiple models, you can pass a list of :class:`LLMConfig <ray.ser
             llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app, blocking=True)
 
+See also :ref:`serve-deepseek-tutorial` for an example of deploying DeepSeek models.
 
 Production Deployment
 ---------------------
