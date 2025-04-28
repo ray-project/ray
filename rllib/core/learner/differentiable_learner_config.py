@@ -9,6 +9,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.utils.typing import ModuleID
 
 
+@dataclass
 class DifferentiableLearnerConfig:
     """Configures a `DifferentiableLearner`."""
 
