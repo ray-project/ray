@@ -5,73 +5,126 @@ orphan: true
 This guide shows how to build an application with stable diffusion model using [NVIDIA Triton Server](https://github.com/triton-inference-server/server) in Ray Serve.
 
 ## Preparation
+Serving a model with Triton Inference Server isn't as straightforward. Compared to vanilla Ray Serve, it requires jumping through quite a few hoops:
+1. Set up a local or remote model repository (it's not optional, details buried deeper in the tutorial).
+2. Manually convert your model into the ONNX format, regardless of what framework you originally used.
+3. After exporting to ONNX, convert it into a TensorRT engine serialized file.
+4. Finally, once everything is properly formatted and in place, you can load the model for serving.
 
-### Installation
-It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already has the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
+TL;DR, there's a lot of extra setup and preprocessing before you get to the actual serving part.
 
-### Build and export a model
-For this application, the encoder is exported to ONNX format and the stable diffusion model is exported to be TensorRT engine format which is being compatible with Triton Server.
-Here is the example to export models to be in ONNX format.
-
+## Part I: Convert and serialize the model
+The encoder, unet and decoder are all converted using onnx format and serialized using TensorRT in this part.
 ```python
 import torch
-from diffusers import AutoencoderKL
-from transformers import CLIPTextModel, CLIPTokenizer
+from diffusers import StableDiffusionPipeline
+import os
+import logging
+from pathlib import Path
+import sys
 
-prompt = "Draw a dog"
-vae = AutoencoderKL.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", subfolder="vae", use_auth_token=True
-)
+# Add Triton server's Python packages to the path
+sys.path.append('/opt/tritonserver/python')
 
-tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-vae.forward = vae.decode
-torch.onnx.export(
-    vae,
-    (torch.randn(1, 4, 64, 64), False),
-    "vae.onnx",
-    input_names=["latent_sample", "return_dict"],
-    output_names=["sample"],
-    dynamic_axes={
-        "latent_sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-    },
-    do_constant_folding=True,
-    opset_version=14,
-)
+# Create output directory
+os.makedirs("model_repository/stable_diffusion/1", exist_ok=True)
 
-text_input = tokenizer(
-    prompt,
-    padding="max_length",
-    max_length=tokenizer.model_max_length,
-    truncation=True,
-    return_tensors="pt",
-)
+# Load a specific model version that's known to work well with ONNX conversion
+model_id = "runwayml/stable-diffusion-v1-5"  # This is often the most compatible
+model_path = Path("model_repository/stable_diffusion/1")
 
+pipe = StableDiffusionPipeline.from_pretrained(model_id)
+
+# Move model to GPU if available
+device = "cuda" if torch.cuda.is_available() else "cpu"
+pipe = pipe.to(device)
+
+# Get model dimensions before attempting export
+# This is crucial to ensure matrix dimensions match
+unet = pipe.unet
+text_encoder = pipe.text_encoder
+hidden_size = text_encoder.config.hidden_size
+
+# Log dimensions for debugging
+logger.info(f"Text encoder output dimension: {hidden_size}")
+logger.info(f"UNet cross attention dimension: {unet.config.cross_attention_dim}")
+
+# Only proceed if dimensions match
+if hidden_size != unet.config.cross_attention_dim:
+    logger.error("ERROR: Model component dimensions don't match! Cannot convert.")
+    exit(1)
+
+# Create correctly sized inputs based on actual model dimensions
+batch_size = 1
+
+# Create dummy inputs with correct dimensions
+dummy_text_input = torch.ones((batch_size, 77), dtype=torch.int64, device=device)
+dummy_sample = torch.randn(batch_size, 4, 64, 64, device=device)
+timestep = torch.tensor([999], device=device)
+encoder_hidden_states = torch.randn(batch_size, 77, hidden_size, device=device)
+
+# Export text encoder
 torch.onnx.export(
     text_encoder,
-    (text_input.input_ids.to(torch.int32)),
-    "encoder.onnx",
-    input_names=["input_ids"],
-    output_names=["last_hidden_state", "pooler_output"],
-    dynamic_axes={
-        "input_ids": {0: "batch", 1: "sequence"},
-    },
+    dummy_text_input,
+    str(model_path / 'text_encoder.onnx'),
     opset_version=14,
+    input_names=["input_ids"],
+    output_names=["last_hidden_state"],
     do_constant_folding=True,
+    export_params=True,
 )
-```
 
-From the script, the outputs are `vae.onnx` and `encoder.onnx`.
+logger.info("Text encoder exported successfully")
+
+# Export UNet
+torch.onnx.export(
+    unet,
+    (dummy_sample, timestep, encoder_hidden_states),
+    str(model_path / 'unet.onnx'),
+    opset_version=14,
+    input_names=["sample", "timestep", "encoder_hidden_states"],
+    output_names=["out_sample"],
+    do_constant_folding=True,
+    export_params=True,
+)
+
+logger.info("UNet exported successfully")
+
+# Export VAE decoder
+dummy_latent = torch.randn(batch_size, 4, 64, 64, device=device)
+
+torch.onnx.export(
+    pipe.vae.decoder,
+    dummy_latent,
+    str(model_path / 'vae_decoder.onnx'),
+    opset_version=14,
+    input_names=["latent"],
+    output_names=["image"],
+    do_constant_folding=True,
+    export_params=True,
+)
+
+logger.info("VAE decoder exported successfully")
+logger.info("Export complete. Models saved to model_repository/stable_diffusion/1/")
+```
+From the script, the outputs are `text_encoder.onnx`, `unet.onnx` `vae_decoder.onnx`.
 
 After the ONNX model exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+
 ```bash
 trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
 ```
 
+## Part 2: Serving
+It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already has the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
+
 ### Prepare the model repository
 Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or remote blob store (e.g. AWS S3) containing the model configuration and the model files.
-In our example, we will use a local directory as the model repository to save all the model files.
+For this example, use the model repository used in Part 1. 
 
 ```bash
 model_repo/
