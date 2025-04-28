@@ -437,7 +437,7 @@ class vLLMEngineWrapper:
             logger.info("Shutting down vLLM engine")
             self.engine.shutdown()
 
-    def get_scheduler_config(self) -> vllm.config.SchedulerConfig:
+    def get_scheduler_config(self):
         return self._vllm_config.scheduler_config
 
 
