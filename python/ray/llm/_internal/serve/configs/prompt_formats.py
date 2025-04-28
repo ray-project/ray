@@ -48,11 +48,11 @@ class Image(BaseModel):
     @field_validator("image_url")
     @classmethod
     def check_image_url(cls, value):
-        # image_url can be a string as well: 
+        # image_url can be a string as well:
         # https://platform.openai.com/docs/guides/images-vision?api-mode=responses&format=url
         if isinstance(value, str):
             return value
-        
+
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
             raise ValueError(
                 # TODO(xwjiang): Link to doc.

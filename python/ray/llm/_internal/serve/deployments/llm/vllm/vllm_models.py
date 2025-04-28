@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 from pydantic import ConfigDict, Field
 from ray import serve
@@ -222,7 +222,9 @@ class VLLMSamplingParams(SamplingParams):
 class VLLMGenerationRequest(GenerationRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    sampling_params: VLLMSamplingParams
+    sampling_params: Optional[
+        Union[VLLMSamplingParams, List[VLLMSamplingParams]]
+    ] = None
     multi_modal_data: Optional[Dict[str, Any]] = None
     serve_request_context: Optional[serve.context._RequestContext] = None
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None

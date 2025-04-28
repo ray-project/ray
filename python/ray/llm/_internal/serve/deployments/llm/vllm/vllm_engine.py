@@ -71,7 +71,7 @@ logger = get_logger(__name__)
 from vllm.entrypoints.chat_utils import (
     parse_chat_messages_futures,
     resolve_chat_template_content_format,
-    apply_hf_chat_template
+    apply_hf_chat_template,
 )
 
 
@@ -203,7 +203,7 @@ class VLLMEngine(LLMEngine):
         self.model_config: "ModelConfig" = None
         self.engine = None
         self.vllm_config: "VllmConfig" = None
-        
+
         # Chat template content format (openai or string)
         self._resolved_content_format = None
         # Also need local instance of the tokenizer to manage prompt formatting.
@@ -237,7 +237,7 @@ class VLLMEngine(LLMEngine):
         self._resolved_content_format = resolve_chat_template_content_format(
             # Use HF to get the chat template so set it to None here.
             chat_template=None,
-            # Default to None, change when it's needed. 
+            # Default to None, change when it's needed.
             # vllm Does not have a high level API to support all of this.
             tools=None,
             # Let vllm decide the content format.

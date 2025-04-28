@@ -147,6 +147,7 @@ async def test_multiplex_deployment(
     expected_lora_out_with_serve_request_context[
         "serve_request_context"
     ] = arg.model_dump().get("serve_request_context")
+    expected_lora_out_with_serve_request_context["stream"] = stream_tokens
     print("***arg***", arg.model_dump())
     print("***exp***", expected_lora_out_with_serve_request_context)
     assert arg == arg.__class__(**expected_lora_out_with_serve_request_context)
@@ -190,6 +191,7 @@ async def test_multiplex_deployment(
         "multi_modal_data": None,
         "serve_request_context": arg.model_dump().get("serve_request_context"),
         "disk_multiplex_config": None,
+        "stream": stream_tokens,
     }
     assert arg.model_dump() == expected_model_dump, (
         "Arg model dump didn't match expected value."
