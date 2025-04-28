@@ -1061,10 +1061,14 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       // to exit and not be marked as failure.
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     } else {
-      auto state_update = worker::TaskStatusEvent::TaskStateUpdate(gcs::GetRayErrorInfo(
-          error_type, (status != nullptr ? status->ToString() : "")));
-
-      SetTaskStatus(it->second, rpc::TaskStatus::FAILED, state_update);
+      auto error_info =
+          (ray_error_info == nullptr
+               ? gcs::GetRayErrorInfo(error_type,
+                                      (status != nullptr ? status->ToString() : ""))
+               : *ray_error_info);
+      SetTaskStatus(it->second,
+                    rpc::TaskStatus::FAILED,
+                    worker::TaskStatusEvent::TaskStateUpdate(error_info));
     }
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
