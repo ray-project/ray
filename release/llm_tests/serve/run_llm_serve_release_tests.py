@@ -57,6 +57,11 @@ def main(
 
     if run_perf_profiler:
         llm_config = get_first_llm_config(applications)
+        if image_uri is None:
+            cluster_env = os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
+            if cluster_env is not None:
+                image_uri = f"anyscale/image/{cluster_env}:1"
+
         submit_benchmark_vllm_job(
             image_uri, llm_config, env_vars["HUGGING_FACE_HUB_TOKEN"]
         )

@@ -207,6 +207,9 @@ def get_python_version_from_image(image_name: str) -> str:
 
     If the image name does not contain a python version, an empty string is returned.
     """
+    if image_name is None:
+        return ""
+
     image_python_version_regex_match = re.search(r"py[0-9]+", image_name)
     if image_python_version_regex_match and image_python_version_regex_match.group(0):
         return image_python_version_regex_match.group(0)
