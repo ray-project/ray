@@ -522,6 +522,7 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
 }
 
 void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO).WithField(actor_id) << "SendPendingTasks";
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
@@ -569,6 +570,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
 }
 
 void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO).WithField(actor_id) << "ResendOutOfOrderCompletedTasks";
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {

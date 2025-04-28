@@ -1061,7 +1061,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
       // to exit and not be marked as failure.
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     } else {
-      auto error_info =
+      const auto error_info =
           (ray_error_info == nullptr
                ? gcs::GetRayErrorInfo(error_type,
                                       (status != nullptr ? status->ToString() : ""))
@@ -1471,9 +1471,9 @@ void TaskManager::SetTaskStatus(
       << "Setting task status from " << task_entry.GetStatus() << " to " << status;
   task_entry.SetStatus(status);
 
-  int32_t attempt_number_to_record =
+  const int32_t attempt_number_to_record =
       attempt_number.value_or(task_entry.spec.AttemptNumber());
-  auto state_update_to_record =
+  const auto state_update_to_record =
       state_update.value_or(worker::TaskStatusEvent::TaskStateUpdate());
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
                                                               task_entry.spec.JobId(),
