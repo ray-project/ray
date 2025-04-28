@@ -529,7 +529,7 @@ class VLLMEngine:
         vllm_engine_request: VLLMGenerationRequest,
         stream: bool,
     ) -> AsyncGenerator[LLMRawResponse, None]:
-        batch_interval_ms = MODEL_RESPONSE_BATCH_TIMEOUT_MS if stream else None
+        batch_interval_ms = self.llm_config.batch_timeout_ms if stream else None
         if vllm_engine_request.serve_request_context:
             ray.serve.context._serve_request_context.set(
                 vllm_engine_request.serve_request_context

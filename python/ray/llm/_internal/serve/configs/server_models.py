@@ -44,6 +44,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MAX_NUM_STOPPING_SEQUENCES,
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -221,6 +222,12 @@ class LLMConfig(BaseModelExtended):
             `logging_config`.
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
+    )
+
+    batch_timeout_ms: Optional[int] = Field(
+        default=MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+        description="Ray Serve LLM batches streaming requests together. This config decides how long to wait for the "
+        f"batch before processing the requests. Defaults to {MODEL_RESPONSE_BATCH_TIMEOUT_MS}",
     )
 
     _supports_vision: bool = PrivateAttr(False)
