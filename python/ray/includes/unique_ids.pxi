@@ -300,6 +300,12 @@ cdef class ActorID(BaseID):
                                parent_task_counter).Binary())
 
     @classmethod
+    def from_binary(cls, id_bytes):
+        if not isinstance(id_bytes, bytes):
+            raise TypeError("Expect bytes, got " + str(type(id_bytes)))
+        return cls(id_bytes)
+
+    @classmethod
     def from_hex(cls, hex_id):
         binary_id = CActorID.FromHex(<c_string>hex_id).Binary()
         return cls(binary_id)
