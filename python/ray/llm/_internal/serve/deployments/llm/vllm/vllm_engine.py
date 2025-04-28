@@ -475,6 +475,7 @@ class VLLMEngine(LLMEngine):
         )
 
         model_config = self.model_config
+        mm_data = None
 
         if isinstance(prompt.prompt, list):
             messages = [m.model_dump() for m in prompt.prompt]
@@ -485,17 +486,17 @@ class VLLMEngine(LLMEngine):
                 content_format=self._resolved_content_format,
             )
             mm_data = await mm_futures
-        else:
-            conversation = prompt
 
-        prompt_text = apply_hf_chat_template(
-            tokenizer=self._tokenizer,
-            conversation=conversation,
-            chat_template=None,
-            tools=None,
-            trust_remote_code=model_config.trust_remote_code,
-            tokenize=False,
-        )
+            prompt_text = apply_hf_chat_template(
+                tokenizer=self._tokenizer,
+                conversation=conversation,
+                chat_template=None,
+                tools=None,
+                trust_remote_code=model_config.trust_remote_code,
+                tokenize=False,
+            )
+        else:
+            prompt_text = prompt.prompt
 
         request_params = {
             "prompt": prompt_text,
