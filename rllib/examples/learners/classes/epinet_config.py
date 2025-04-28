@@ -18,7 +18,6 @@ from ray.rllib.examples.learners.classes.epinet_rlm import EpinetTorchRLModule
 from ray.rllib.utils.annotations import override
 
 
-
 class PPOConfigWithEpinet(PPOConfig):
     """
     A custom PPOConfig that specifies a custom Epinet critic network RLModule, a Learner class,
@@ -36,14 +35,11 @@ class PPOConfigWithEpinet(PPOConfig):
     batch.
     """
 
-    def __init__(self, num_layers, layer_size, z_dim):
+    def __init__(self):
         # Args can be passed from epinet.py to the PPOConfigWithEpinet to set model configuration
         # or to have access in the model_config of epinet_rlm.py class (EpinetTorchRLModule)
         # We are setting the base parameters of the epinet here for instantiation.
         super().__init__()
-        self.z_dim = z_dim
-        self.num_layers = num_layers
-        self.layer_size = layer_size
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Learner:
@@ -53,16 +49,18 @@ class PPOConfigWithEpinet(PPOConfig):
         #     PPOTorchLearnerWithEpinetLoss,
         # )
         return PPOTorchLearnerWithEpinetLoss
-    
+
     @override(AlgorithmConfig)
     def get_rl_module_spec(self) -> RLModuleSpec:
         # Return the custom RLModule spec.
         return RLModuleSpec(module_class=EpinetTorchRLModule)
-    
-    @override(AlgorithmConfig)
-    def training(self, *, num_layers, enn_layer_size, z_dim, **kwargs) -> "PPOConfigWithEpinet":
+
+    @override(PPOConfig)
+    def training(
+        self, *, num_layers, enn_layer_size, z_dim, **kwargs
+    ) -> "PPOConfigWithEpinet":
         # Call `super`'s `training` method for PPO's parameters and unpack them.
-        super.training(**kwargs)
+        super().training(**kwargs)
         # Add custom parameters to have access during the training loop
         if num_layers is NotProvided:
             self.num_layers = num_layers
@@ -72,7 +70,7 @@ class PPOConfigWithEpinet(PPOConfig):
             self.z_dim = z_dim
 
         return self
-    
+
     @override(AlgorithmConfig)
     def build_learner_connector(
         self,
@@ -97,7 +95,7 @@ class PPOConfigWithEpinet(PPOConfig):
         )
 
         return pipeline
-    
+
     @property
     @override(AlgorithmConfig)
     def _model_config_auto_includes(self) -> Dict[str, Any]:

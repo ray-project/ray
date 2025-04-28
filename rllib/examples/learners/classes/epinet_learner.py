@@ -29,8 +29,8 @@ NEXT_CRITIC_OUTPUTS = "next_critic_outputs"
 CRITIC_OUTPUT_BASE = "critic_output_base"
 CRITIC_OUTPUT_ENN = "critic_output_enn"
 
-class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
 
+class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
     @override(PPOTorchLearner)
     def compute_loss_for_module(
         self,
@@ -40,7 +40,7 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        
+
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK]
             num_valid = torch.sum(mask)
@@ -98,13 +98,19 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
             next_critic_out = next_critic_output["critic_output_base"]
             next_enn_out = next_critic_output["critic_output_enn"]
             next_value = next_critic_out + next_enn_out
-            ENN_target = rewards + gamma * (next_value.clone().detach()) * (1- dones.float())
+            ENN_target = rewards + gamma * (next_value.clone().detach()) * (
+                1 - dones.float()
+            )
             # Calculate base MSE loss.
             enn_loss = nn.functional.mse_loss(ENN_total_output, ENN_target)
             # Base critic loss since we detached the gradient map between ENN/base critic.
             # TODO: check this to make sure this shouldn't be just the critic network as the target.
-            base_critic_target = rewards + gamma * (next_value.clone().detach()) * (1 - dones.float())
-            base_critic_loss = nn.functional.mse_loss(base_critic_out, base_critic_target)
+            base_critic_target = rewards + gamma * (
+                next_critic_out.clone().detach()
+            ) * (1 - dones.float())
+            base_critic_loss = nn.functional.mse_loss(
+                base_critic_out, base_critic_target
+            )
             # Add both losses together to get final value function loss.
             vf_loss = enn_loss + base_critic_loss
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
@@ -144,7 +150,3 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
             window=1,  # <- Single items (should not be mean/ema-reduced over time).
         )
         return total_loss
-
-
-
-

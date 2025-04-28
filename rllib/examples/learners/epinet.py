@@ -36,6 +36,8 @@ Paper: https://arxiv.org/pdf/2302.09205
 Key difference: While the paper uses DQN for discrete action spaces, this implementation took it a step further
 and integrated it with PPO/continuous action spaces. This was rigorously tested in adversarial flight environments 
 and showed a 3100%+ reward increase and a reduction of convergence time by 45%. 
+Note: in terms of open-source, a basic scenario can be from PyFlyt's dogfighting environment seen here:
+https://taijunjet.com/PyFlyt/documentation/pz_envs/ma_fixedwing_dogfight_env.html
 
 The parameter --enn_num_layers is the number of layers for the epinet. Note: These are meant to be small networks
 so this number, generally, should be 2.
@@ -67,39 +69,9 @@ Results to expect
 -----------------
 In general, this epinet is recommended to use with complex environments with high epistemic uncertainty. I.e.
 an environment that has a lot of unknowns with multi-agents. When using this on simple environments this will
-generally converge slower than a basic network, but it still will converge. 
-
-With --enn_num_layers=2 --enn_layer_size=25 --z_dim=3 --lr=0.003`
-(trying to reach 250.0 return on CartPole in 100k env steps):
-+-----------------------------+------------+-----------------+--------+
-| Trial name                  | status     | loc             |   iter |
-|                             |            |                 |        |
-|-----------------------------+------------+-----------------+--------+
-| PPO_CartPole-v1_9cda9_00000 | TERMINATED | 127.0.0.1:54584 |     10 |
-+-----------------------------+------------+-----------------+--------+
-+------------------+------------------------+---------------------+
-|   total time (s) | num_env_steps_sampled_ | episode_return_mean |
-|                  |              _lifetime |                     |
-|------------------+------------------------+---------------------+
-|          100.105 |                 44_000 |              252.31 |
-+------------------+------------------------+---------------------+
-
-
-
-With --enn_num_layers=2 --enn_layer_size=25 --z_dim=3 --lr=0.003`
-(trying to reach 500.0 return on HalfCheetah in 2M env steps):
-+-----------------------------+------------+-----------------+--------+
-| Trial name                  | status     | loc             |   iter |
-|                             |            |                 |        |
-|-----------------------------+------------+-----------------+--------+
-| HalfCheetah-v5              | TERMINATED | 127.0.0.1:8888  |    317 |
-+-----------------------------+------------+-----------------+--------+
-+------------------+------------------------+---------------------+
-|   total time (s) | num_env_steps_sampled_ | episode_return_mean |
-|                  |              _lifetime |                     |
-|------------------+------------------------+---------------------+
-|          ------- |                1272000 |              500.2  |
-+------------------+------------------------+---------------------+
+generally converge slower than a basic network, but it still will converge. For instance, the MuJoCo environments
+are not good testing environments since their physics are deterministic and the uncertainty is mainly from
+the model's weights (aleatoric uncertainty).
 """
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.examples.learners.classes.epinet_config import (
@@ -133,13 +105,13 @@ parser.add_argument(
 parser.add_argument(
     "--enn_layer_size",
     type=int,
-    default=50,
+    default=25,
     help="Layer size of the epinet",
 )
 parser.add_argument(
     "--z_dim",
     type=int,
-    default=5,
+    default=3,
     help="Number of z-dimensions for the epinet",
 )
 parser.add_argument(
@@ -162,13 +134,18 @@ if __name__ == "__main__":
         .environment(
             env="HalfCheetah-v5",
         )
+        .env_runners(num_env_runners=5)
         .training(
             lr=args.lr,
-            gamma=0.995,
-            lambda_=0.995,
+            gamma=0.99,
+            # lambda_=0.995,
             num_layers=args.enn_num_layers,
-            layer_size=args.enn_layer_size,
+            enn_layer_size=args.enn_layer_size,
             z_dim=args.z_dim,
+            num_epochs=20,
+            vf_loss_coeff=0.1,
+            clip_param=0.2,
+            minibatch_size=500,
         )
     )
 

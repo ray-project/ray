@@ -22,7 +22,6 @@ torch, nn = try_import_torch()
 
 
 class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
-
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -44,7 +43,7 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         initializer = model_config["initializer"]
 
         self.std = 1.0
-        self.mean= 0.0
+        self.mean = 0.0
         self.z_dim = model_config["z_dim"]
         self.step_number = 0
         self.z_indices = None
@@ -52,11 +51,13 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         self.activation_fn = getattr(nn, activation_str)
         self.initializer = getattr(nn.init, initializer)
         self.enn_layer_size = model_config["enn_layer_size"]
-        self.distribution = Normal(torch.full((self.z_dim,), self.mean), torch.full((self.z_dim,), self.std))
-        
+        self.distribution = Normal(
+            torch.full((self.z_dim,), self.mean), torch.full((self.z_dim,), self.std)
+        )
+
         self.enn_output = 0.0
         self.base_output = 0.0
-        
+
     def setup(self):
         input_dim = self.observation_space.shape[0]
         hidden_dim = self.model_config["fcnet_hiddens"][0]
@@ -87,25 +88,50 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
             nn.Linear(hidden_dim, hidden_dim),
             self.activation_fn(),
         )
-        self.last_layer_critic = nn.Sequential(
-            nn.Linear(hidden_dim, 1)
-        )
+        self.last_layer_critic = nn.Sequential(nn.Linear(hidden_dim, 1))
 
         # Build small lightweight epinet.
         # Note: layers should not be bigger than ~50-75 size.
         self.learnable_layers = nn.Sequential(
-            SlimFC(hidden_dim + 1, self.enn_layer_size, initializer=self.initializer,
-                   activation_fn=self.activation_fn),
-            SlimFC(self.enn_layer_size, self.enn_layer_size, initializer=self.initializer, activation_fn=self.activation_fn),
-            SlimFC(self.enn_layer_size, 1, initializer=self.initializer, activation_fn=self.activation_fn)
+            SlimFC(
+                hidden_dim + 1,
+                self.enn_layer_size,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
+            SlimFC(
+                self.enn_layer_size,
+                self.enn_layer_size,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
+            SlimFC(
+                self.enn_layer_size,
+                1,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
         )
         self.prior_layers = nn.Sequential(
-            SlimFC(hidden_dim + 1, self.enn_layer_size, initializer=self.initializer,
-                   activation_fn=self.activation_fn),
-            SlimFC(self.enn_layer_size, self.enn_layer_size, initializer=self.initializer, activation_fn=self.activation_fn),
-            SlimFC(self.enn_layer_size, 1, initializer=self.initializer, activation_fn=self.activation_fn)
+            SlimFC(
+                hidden_dim + 1,
+                self.enn_layer_size,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
+            SlimFC(
+                self.enn_layer_size,
+                self.enn_layer_size,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
+            SlimFC(
+                self.enn_layer_size,
+                1,
+                initializer=self.initializer,
+                activation_fn=self.activation_fn,
+            ),
         )
-
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
@@ -116,13 +142,15 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
-        
+
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None):
         obs = batch[Columns.OBS]
         # Get base critic network output and epinet output.
         critic_output = self._pass_through_epinet(obs)
-        total_output = critic_output["critic_output_base"] + critic_output["critic_output_enn"]
+        total_output = (
+            critic_output["critic_output_base"] + critic_output["critic_output_enn"]
+        )
         return total_output
 
     def _pass_through_epinet(self, obs: torch.Tensor) -> Dict[str, torch.Tensor]:
@@ -131,12 +159,14 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
         base_output = self.last_layer_critic(intermediate)
         intermediate_unsqueeze = torch.unsqueeze(intermediate, 1)
         # Draw sample from distribution and cat to logits.
-        self.z_samples = self.distribution.sample((obs.shape[0],)).unsqueeze(-1).to(obs.device)
+        self.z_samples = (
+            self.distribution.sample((obs.shape[0],)).unsqueeze(-1).to(obs.device)
+        )
         # Disconnect the base network from the epinet computational graph.
         with torch.no_grad():
             enn_input = torch.cat(
                 (self.z_samples, intermediate_unsqueeze.expand(-1, self.z_dim, -1)),
-                dim=2
+                dim=2,
             )
         # Enn, prior and base network pass.
         if self.step_number < self.step_cut_off:
@@ -157,7 +187,7 @@ class EpinetTorchRLModule(TorchRLModule, ValueFunctionAPI):
             CRITIC_OUTPUT_BASE: base_output,
             CRITIC_OUTPUT_ENN: enn_output,
         }
-    
+
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         obs = batch[Columns.OBS]
