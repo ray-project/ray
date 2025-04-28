@@ -81,13 +81,6 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
-assert HTTP_REQUEST_MAX_RETRIES >= 0, (
-    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
-    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
-    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
-)
-
 TIMEOUT_ERROR_CODE = "408"
 DISCONNECT_ERROR_CODE = "499"
 SOCKET_REUSE_PORT_ENABLED = (

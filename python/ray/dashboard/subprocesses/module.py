@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
+import multiprocessing.connection
 
 import ray
 from ray import ray_constants
@@ -211,7 +212,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
 
     module_name = cls.__name__
@@ -229,7 +230,8 @@ async def run_module_inner(
             lambda _: sys.exit()
         )
         await module.run()
-        ready_event.set()
+        child_conn.send(None)
+        child_conn.close()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
@@ -240,7 +242,7 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    ready_event: multiprocessing.Event,
+    child_conn: multiprocessing.connection.Connection,
 ):
     """
     Entrypoint for a subprocess module.
@@ -280,7 +282,7 @@ def run_module(
             cls,
             config,
             incarnation,
-            ready_event,
+            child_conn,
         )
     )
     # TODO: do graceful shutdown.

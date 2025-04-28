@@ -10,7 +10,6 @@
 #
 #   ;  # Semicolon to separate rules
 
-
 python/ray/air/
 @ ml train tune data linux_wheels
 ;
@@ -118,6 +117,11 @@ docker/
 @ docker linux_wheels
 ;
 
+doc/source/cluster/kubernetes/
+ci/k8s/
+@ k8s_doc
+;
+
 .readthedocs.yaml
 @ doc
 ;
@@ -158,6 +162,10 @@ site/
 
 ci/lint/
 .buildkite/lint.rayci.yml
+ci/fossa/
+ci/docker/fossa.Dockerfile
+ci/docker/fossa.wanda.yaml
+bazel/tests/
 @ tools
 ;
 
@@ -220,5 +228,6 @@ setup_hooks.sh
 .isort.cfg
 .prettierrc.toml
 build.sh
+.fossa.yml
 # pass
 ;
