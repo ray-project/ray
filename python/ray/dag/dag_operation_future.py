@@ -70,7 +70,6 @@ class GPUFuture:
                 on when the future is resolved. If None, the current stream is used.
         """
         import cupy as cp
-        from ray.experimental.channel.common import ChannelContext
 
         if stream is None:
             stream = cp.cuda.get_current_stream()
@@ -98,7 +97,6 @@ class GPUFuture:
             The result buffer. It is only ready to read if blocking.
         """
         import cupy as cp
-        from ray.experimental.channel.common import ChannelContext
 
         current_stream = cp.cuda.get_current_stream()
         if not self._waited:

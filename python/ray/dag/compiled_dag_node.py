@@ -252,7 +252,7 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                done = tasks[operation.exec_task_idx].exec_operation_with_contexts(
+                done = tasks[operation.exec_task_idx].exec_operation(
                     self, overlap_gpu_communication
                 )
                 if done:
@@ -298,9 +298,7 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = task.exec_operation_with_contexts(
-                    self, overlap_gpu_communication
-                )
+                done = task.exec_operation(self, overlap_gpu_communication)
                 end_t = time.perf_counter()
 
                 self.__ray_cgraph_events.append(
@@ -549,29 +547,31 @@ class ExecutableTask:
         for val in self.resolved_kwargs.values():
             assert not isinstance(val, ChannelInterface)
 
-        # Input reader to read input data from upstream DAG nodes.
-        self.input_reader: Optional[ReaderInterface] = None
-        # NCCL P2P recv uses the NCCL channel instead of the input reader.
-        if not self.requires_nccl_read:
-            self.input_reader = SynchronousReader(self.input_channels)
-        # Output writer to write output data to downstream DAG nodes.
-        self.output_writer: Optional[WriterInterface] = None
-        # NCCL P2P send uses the NCCL channel instead of the output writer.
-        if not self.requires_nccl_write:
-            self.output_writer = SynchronousWriter(
-                self.output_channels, self.output_idxs
-            )
-
         # NCCL channel for P2P send/recv.
         self.nccl_ch: Optional[ChannelInterface] = None
         if self.requires_nccl_read:
             assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.input_channels) == 1
             self.nccl_ch = self.input_channels[0]
+            # NCCL P2P recv will not have an input reader.
+            self.input_channels = []
         elif self.requires_nccl_write:
             assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.output_channels) == 1
             self.nccl_ch = self.output_channels[0]
+            # NCCL P2P send will not have an output writer.
+            self.output_channels = []
+
+        # Input reader to read input data from upstream DAG nodes.
+        self.input_reader: Optional[ReaderInterface] = None
+        if self.input_channels:
+            self.input_reader = SynchronousReader(self.input_channels)
+        # Output writer to write output data to downstream DAG nodes.
+        self.output_writer: Optional[WriterInterface] = None
+        if self.output_channels:
+            self.output_writer = SynchronousWriter(
+                self.output_channels, self.output_idxs
+            )
 
     @property
     def requires_nccl_read(self) -> bool:
@@ -666,7 +666,7 @@ class ExecutableTask:
             assert isinstance(self.nccl_op, _CollectiveOperation)
             self.stream = self.nccl_op.get_communicator().coll_stream
 
-    def exec_operation_with_contexts(
+    def exec_operation(
         self,
         class_handle: "ray.actor.ActorHandle",
         overlap_gpu_communication: bool = False,
@@ -684,9 +684,11 @@ class ExecutableTask:
         """
         with _device_context_manager():
             with self.stream:
-                return self.exec_operation(class_handle, overlap_gpu_communication)
+                return self.exec_operation_without_contexts(
+                    class_handle, overlap_gpu_communication
+                )
 
-    def exec_operation(
+    def exec_operation_without_contexts(
         self,
         class_handle: "ray.actor.ActorHandle",
         overlap_gpu_communication: bool,
@@ -932,13 +934,13 @@ class CompiledDAG:
         ] = {}
 
         # Set of actors involved in P2P communication using an unresolved communicator.
-        self._p2p_actors_with_unresolved_communicators: Set["ray.actor.ActorHandle"] = (
-            set()
-        )
+        self._p2p_actors_with_unresolved_communicators: Set[
+            "ray.actor.ActorHandle"
+        ] = set()
         # Set of DAG nodes involved in P2P communication using an unresolved communicator.
-        self._p2p_dag_nodes_with_unresolved_communicators: Set["ray.dag.DAGNode"] = (
-            set()
-        )
+        self._p2p_dag_nodes_with_unresolved_communicators: Set[
+            "ray.dag.DAGNode"
+        ] = set()
         # Set of collective operations using an unresolved communicator.
         self._collective_ops_with_unresolved_communicators: Set[
             "ray.dag.collective_node._CollectiveOperation"
@@ -992,9 +994,9 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         # Mapping from actor handle to its GPU IDs.
         # This is used for type hint resolution for with_tensor_transport("auto").
         self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
