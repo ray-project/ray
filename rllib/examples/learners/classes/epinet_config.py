@@ -60,9 +60,7 @@ class PPOConfigWithEpinet(PPOConfig):
         return RLModuleSpec(module_class=EpinetTorchRLModule)
 
     @override(PPOConfig)
-    def training(
-        self, *, enn_network, z_dim, **kwargs
-    ) -> "PPOConfigWithEpinet":
+    def training(self, *, enn_network, z_dim, **kwargs) -> "PPOConfigWithEpinet":
         # Call `super`'s `training` method for PPO's parameters and unpack them.
         super().training(**kwargs)
         # Add custom parameters to have access during the training loop

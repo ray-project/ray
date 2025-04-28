@@ -32,8 +32,8 @@ CRITIC_OUTPUT_ENN = "critic_output_enn"
 
 class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
     """
-    A custom `PPOTorchLearner` with added epinet to learn epistemic uncertainty. This also 
-    demonstrates how to put custom components into `batch` and retrieve them. 
+    A custom `PPOTorchLearner` with added epinet to learn epistemic uncertainty. This also
+    demonstrates how to put custom components into `batch` and retrieve them.
 
     The addition of the epinet is very powerful and aids in joint dependencies between states.
     This is done by looking over a z_dim number of priors and testing the base network on each one.
@@ -42,6 +42,7 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
 
     The papers and further information on the epinet can be seen in the epinet.py file.
     """
+
     @override(PPOTorchLearner)
     def compute_loss_for_module(
         self,
@@ -51,12 +52,12 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        
+
         """
         Computes a custom loss for the critic network. This is done by having a basic loss function
         for the base critic and adding to it the `enn_loss` component in which the epinet learns
-        the uncertainty of the environment. These losses are separate computation graphs. This is 
-        done by using the TD loss for both the base critic network and the epinet network. 
+        the uncertainty of the environment. These losses are separate computation graphs. This is
+        done by using the TD loss for both the base critic network and the epinet network.
         """
 
         if Columns.LOSS_MASK in batch:
@@ -101,7 +102,7 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
             * torch.clamp(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
-        # Compute critic and epinet loss. 
+        # Compute critic and epinet loss.
         if config.use_critic:
             rewards = batch[Columns.REWARDS]
             dones = batch[Columns.TERMINATEDS]
