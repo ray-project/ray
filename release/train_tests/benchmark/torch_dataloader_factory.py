@@ -116,10 +116,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
         persistent_workers = num_workers > 0
         pin_memory = dataloader_config.torch_pin_memory
 
-        # Only set prefetch_factor and timeout when using workers
-        prefetch_factor = (
-            dataloader_config.prefetch_batches if num_workers > 0 else None
-        )
+        if dataloader_config.torch_prefetch_factor >= 0:
+            prefetch_factor = dataloader_config.torch_prefetch_factor
+        else:
+            prefetch_factor = None
+
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )
@@ -168,10 +169,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, ABC):
             dataloader_config.torch_pin_memory and torch.cuda.is_available()
         )  # Use config setting
 
-        # Only set prefetch_factor and timeout when using workers
-        prefetch_factor = (
-            dataloader_config.prefetch_batches if num_workers > 0 else None
-        )
+        if dataloader_config.torch_prefetch_factor >= 0:
+            prefetch_factor = dataloader_config.torch_prefetch_factor
+        else:
+            prefetch_factor = None
+
         timeout = (
             dataloader_config.torch_dataloader_timeout_seconds if num_workers > 0 else 0
         )

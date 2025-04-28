@@ -95,7 +95,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             ray.data.read_images(
                 train_pattern,
                 mode="RGB",
-                include_paths=True,
+                include_paths=False,
                 partitioning=train_partitioning,
                 filesystem=s3fs,
             )
@@ -112,7 +112,7 @@ class ImageClassificationJpegRayDataLoaderFactory(
             ray.data.read_images(
                 val_pattern,
                 mode="RGB",
-                include_paths=True,
+                include_paths=False,
                 partitioning=val_partitioning,
                 filesystem=s3fs,
             )

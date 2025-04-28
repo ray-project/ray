@@ -43,7 +43,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         train_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.TRAIN],
@@ -55,7 +55,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         val_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS[DatasetKey.VALID],
