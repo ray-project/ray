@@ -294,7 +294,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             builder = stats.child_builder(op.name, override_start_time=self._start_time)
             stats = builder.build_multioperator(op.get_stats())
-            stats.extra_metrics = op.metrics.as_dict()
+            stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
@@ -366,7 +366,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if op.completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
-                    f"Operator Metrics:\n{op._metrics.as_dict()}"
+                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
                 )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
@@ -536,7 +536,7 @@ def _log_op_metrics(topology: Topology) -> None:
     """
     log_str = "Operator Metrics:\n"
     for op in topology:
-        log_str += f"{op.name}: {op.metrics.as_dict()}\n"
+        log_str += f"{op.name}: {op.metrics.as_dict(skip_internal_metrics=True)}\n"
     logger.debug(log_str)
 
 
