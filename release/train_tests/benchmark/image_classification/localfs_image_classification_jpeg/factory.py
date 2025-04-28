@@ -48,6 +48,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
                 field_names=["class"],
             ),
+            parallelism=20,
         ).map(get_preprocess_map_fn(random_transforms=True))
 
         # Create validation dataset
@@ -60,6 +61,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
                 field_names=["class"],
             ),
+            parallelism=20,
         ).map(get_preprocess_map_fn(random_transforms=False))
 
         return {"train": train_ds, "val": val_ds}
