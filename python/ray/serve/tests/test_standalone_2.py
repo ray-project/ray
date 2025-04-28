@@ -349,14 +349,18 @@ serve.run(B.bind())"""
         f1.write(file1.encode("utf-8"))
         f1.seek(0)
         # Driver 1 (starts Serve controller)
-        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            [sys.executable, f1.name], stderr=subprocess.STDOUT
+        )
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         assert "Adding 1 replica to Deployment(name='A'" in output.decode("utf-8")
 
         f2.write(file2.encode("utf-8"))
         f2.seek(0)
         # Driver 2 (reconnects to the same Serve controller)
-        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            [sys.executable, f2.name], stderr=subprocess.STDOUT
+        )
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         assert "Adding 1 replica to Deployment(name='B'" in output.decode("utf-8")
 
@@ -381,14 +385,18 @@ serve.run(B.bind())"""
     with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
         f1.write(file1.encode("utf-8"))
         f1.seek(0)
-        output = subprocess.check_output(["python", f1.name], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            [sys.executable, f1.name], stderr=subprocess.STDOUT
+        )
         print(output.decode("utf-8"))
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         subprocess.check_output(["serve", "shutdown", "-y"])
 
         f2.write(file2.encode("utf-8"))
         f2.seek(0)
-        output = subprocess.check_output(["python", f2.name], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            [sys.executable, f2.name], stderr=subprocess.STDOUT
+        )
         print(output.decode("utf-8"))
         assert "Connecting to existing Ray cluster" in output.decode("utf-8")
         assert "Recovering target state for application" not in output.decode("utf-8")
