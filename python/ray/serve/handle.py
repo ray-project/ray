@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import time
 import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
@@ -29,7 +28,6 @@ from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
-    calculate_remaining_timeout,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -188,7 +186,7 @@ class _DeploymentHandleBase:
         self,
         args: Tuple[Any],
         kwargs: Dict[str, Any],
-    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
+    ) -> Tuple[asyncio.Future, RequestMetadata]:
         if not self.is_initialized:
             self._init()
 
@@ -238,12 +236,12 @@ class _DeploymentHandleBase:
 class _DeploymentResponseBase:
     def __init__(
         self,
-        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        replica_result_future: asyncio.Future,
         request_metadata: RequestMetadata,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
-        self._replica_result: Optional[ReplicaResult] = None
+        self._replica_result: Optional[Any] = None
         self._request_metadata: RequestMetadata = request_metadata
 
     @property
@@ -260,9 +258,7 @@ class _DeploymentResponseBase:
 
         if self._replica_result is None:
             try:
-                self._replica_result = self._replica_result_future.result(
-                    timeout=_timeout_s
-                )
+                self._replica_result = self._replica_result_future.result()
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:
@@ -280,9 +276,7 @@ class _DeploymentResponseBase:
             # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
             # safely from any asyncio loop.
             try:
-                self._replica_result = await asyncio.wrap_future(
-                    self._replica_result_future
-                )
+                self._replica_result = await self._replica_result_future
             except asyncio.CancelledError:
                 if self._cancelled:
                     raise RequestCancelledError(self.request_id) from None
@@ -315,11 +309,19 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._replica_result_future.done():
-            self._replica_result_future.cancel()
-        elif self._replica_result_future.exception() is None:
+        self._replica_result_future.cancel()
+        try:
+            # try to fetch the results synchronously. if it succeeds,
+            # we will explicitly cancel the replica result. if it fails,
+            # the request is already cancelled and we can return early.
             self._fetch_future_result_sync()
-            self._replica_result.cancel()
+        except RequestCancelledError:
+            # request is already cancelled nothing to do here
+            return
+        logger.info(
+            "Cancelling replica result ray task due to request cancellation.",
+        )
+        ray.cancel(self._replica_result)
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -403,8 +405,8 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        replica_result = yield from self._fetch_future_result_async().__await__()
-        result = yield from replica_result.get_async().__await__()
+        obj_ref = yield from self._to_object_ref().__await__()
+        result = yield from obj_ref.__await__()
         return result
 
     def __reduce__(self):
@@ -435,14 +437,11 @@ class DeploymentResponse(_DeploymentResponseBase):
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` instead."
             )
-
-        start_time_s = time.time()
-        replica_result = self._fetch_future_result_sync(timeout_s)
-
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
+        obj_ref = self._to_object_ref_sync(
+            _timeout_s=timeout_s,
+            _allow_running_in_asyncio_loop=_skip_asyncio_check,
         )
-        return replica_result.get(remaining_timeout_s)
+        return ray.get(obj_ref, timeout=timeout_s)
 
     @DeveloperAPI
     async def _to_object_ref(self) -> ray.ObjectRef:
@@ -458,8 +457,7 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        replica_result = await self._fetch_future_result_async()
-        return await replica_result.to_object_ref_async()
+        return await self._fetch_future_result_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -488,17 +486,7 @@ class DeploymentResponse(_DeploymentResponseBase):
                 "loop. Use `await response._to_object_ref()` instead."
             )
 
-        # First, fetch the result of the future
-        start_time_s = time.time()
-        replica_result = self._fetch_future_result_sync(_timeout_s)
-
-        # Then, if necessary, resolve generator to ref
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=_timeout_s,
-            start_time_s=start_time_s,
-            curr_time_s=time.time(),
-        )
-        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
+        return self._fetch_future_result_sync(_timeout_s)
 
 
 @PublicAPI(stability="stable")
@@ -566,8 +554,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self
 
     async def __anext__(self) -> Any:
-        replica_result = await self._fetch_future_result_async()
-        return await replica_result.__anext__()
+        obj_ref_gen = await self._to_object_ref_gen()
+        return await (await obj_ref_gen.__anext__())
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -579,8 +567,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
                 "loop. Use `async for` or `await response.__anext__()` instead."
             )
 
-        replica_result = self._fetch_future_result_sync()
-        return replica_result.__next__()
+        obj_ref_gen = self._to_object_ref_gen_sync()
+        return next(obj_ref_gen)
 
     @DeveloperAPI
     async def _to_object_ref_gen(self) -> ObjectRefGenerator:
@@ -593,8 +581,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        replica_result = await self._fetch_future_result_async()
-        return replica_result.to_object_ref_gen()
+        return await self._fetch_future_result_async()
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -620,8 +607,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
                 "loop. Use `await response._to_object_ref()` instead."
             )
 
-        replica_result = self._fetch_future_result_sync(_timeout_s)
-        return replica_result.to_object_ref_gen()
+        return self._fetch_future_result_sync(_timeout_s)
 
 
 @PublicAPI(stability="stable")
