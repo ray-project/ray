@@ -175,6 +175,7 @@ class DefaultPandasCollateFn(PandasBatchCollateFn):
         )
 
 
+@DeveloperAPI
 def default_finalize_fn(
     batch: Union[Dict[str, List["torch.Tensor"]], Any], device: Optional[str] = None
 ) -> Union[Dict[str, "torch.Tensor"], Any]:
