@@ -42,7 +42,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         train_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS["train"],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["train"],
@@ -54,7 +54,7 @@ class LocalFSImageClassificationRayDataLoaderFactory(
         val_ds = ray.data.read_images(
             LOCALFS_JPEG_SPLIT_DIRS["val"],
             mode="RGB",
-            include_paths=True,
+            include_paths=False,
             partitioning=Partitioning(
                 "dir",
                 base_dir=LOCALFS_JPEG_SPLIT_DIRS["val"],
@@ -85,11 +85,12 @@ class LocalFSImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
     ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a safe iterator that handles device transfer and error handling."""
+        non_blocking = self.get_dataloader_config().torch_non_blocking
         for batch in dataloader:
             try:
                 images, labels = batch
-                images = images.to(device, non_blocking=True)
-                labels = labels.to(device, non_blocking=True)
+                images = images.to(device, non_blocking=non_blocking)
+                labels = labels.to(device, non_blocking=non_blocking)
                 yield images, labels
             except Exception as e:
                 logger.error(f"Error processing batch: {e}")

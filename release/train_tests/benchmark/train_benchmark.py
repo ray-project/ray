@@ -288,7 +288,8 @@ class TrainLoopRunner:
         num_workers = ray.train.get_context().get_world_size()
         train_time = (
             self._metrics["train/step"].get()
-            + self._metrics["train/iter_first_batch"].get()
+            # Exclude the time it takes to get the first batch.
+            # + self._metrics["train/iter_first_batch"].get()
             + self._metrics["train/iter_batch"].get()
         )
         if train_time > 0:
@@ -301,7 +302,8 @@ class TrainLoopRunner:
 
         validation_time = (
             self._metrics["validation/step"].get()
-            + self._metrics["validation/iter_first_batch"].get()
+            # Exclude the time it takes to get the first batch.
+            # + self._metrics["validation/iter_first_batch"].get()
             + self._metrics["validation/iter_batch"].get()
         )
         if validation_time > 0:
