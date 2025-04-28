@@ -232,25 +232,9 @@ def upload_results_to_s3(s3_path, results, service_metadata):
     write_to_s3(data_to_write, s3_path)
 
 
-def setup_hf_token(llm_config):
-    runtime_env = llm_config.get("runtime_env", {})
-    env_vars = runtime_env.get("env_vars", {})
-    # Try both HF_TOKEN and HUGGING_FACE_HUB_TOKEN
-    HF_TOKEN = env_vars.get("HF_TOKEN")
-    if not HF_TOKEN:
-        HF_TOKEN = env_vars.get("HUGGING_FACE_HUB_TOKEN")
-
-    if not HF_TOKEN:
-        raise ValueError("HF_TOKEN is not set.")
-
-    os.environ["HF_TOKEN"] = HF_TOKEN
-
-
 def main(pargs):
     llm_config = read_yaml(pargs.llm_config)
     vllm_cli_args = get_vllm_cli_args(llm_config)
-
-    os.environ["HF_TOKEN"] = pargs.hf_token
 
     results = run_vllm_benchmark(vllm_cli_args)
 
@@ -292,13 +276,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--py-version",
         type=str,
-        required=True,
+        required=False,
         help="Python version associated with Ray image URI",
-    )
-    parser.add_argument(
-        "--hf-token",
-        type=str,
-        required=True,
-        help="Huggingface token",
     )
     main(parser.parse_args())

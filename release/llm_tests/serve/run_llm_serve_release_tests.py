@@ -6,6 +6,7 @@ from benchmark.bm import run_bm
 import os
 from pathlib import Path  # noqa: E402
 from typing import Optional
+import yaml
 
 import click
 import pytest
@@ -116,6 +117,10 @@ def main(
             )
 
             logger.info(f"Performance test results: {results}")
+            with open(serve_config_file, "r") as f:
+                loaded_llm_config = yaml.safe_load(f)
+
+            tag = f"{loaded_llm_config['accelerator_type']}-TP{llm_config['engine_kwargs']['tensor_parallel_size']}"
             for result in results:
                 record = FirehoseRecord(
                     record_name=RecordName.RAYLLM_PERF_TEST,
@@ -125,6 +130,7 @@ def main(
                         "cloud_name": CLOUD,
                         "service_name": SERVICE_NAME,
                         "py_version": get_python_version_from_image(image_uri),
+                        "tag": tag,
                         **result,
                     },
                 )
@@ -144,7 +150,7 @@ def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
 
     job_config = anyscale.job.JobConfig(
         name=job_name,
-        entrypoint=f"python benchmark_vllm.py --llm-config {llm_config} --py-version {py_version} --remote-result-path {s3_storage_path} --hf-token {hf_token}",
+        entrypoint=f"python benchmark/benchmark_vllm.py --llm-config {llm_config} --remote-result-path {s3_storage_path} {f'--py-version {py_version}' if py_version else ''}",
         working_dir=working_dir,
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(
@@ -157,6 +163,7 @@ def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
         env_vars={
             "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
             "BUILDKITE_COMMIT": os.environ.get("BUILDKITE_COMMIT", ""),
+            "HF_TOKEN": hf_token,
         },
         max_retries=0,
     )

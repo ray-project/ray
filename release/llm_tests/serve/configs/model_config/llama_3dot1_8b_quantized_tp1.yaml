@@ -10,3 +10,4 @@ runtime_env:
 
 engine_kwargs:
   max_model_len: 8192
+  tensor_parallel_size: 1
