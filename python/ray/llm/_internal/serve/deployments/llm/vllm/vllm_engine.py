@@ -494,6 +494,9 @@ class VLLMEngine(LLMEngine):
                 tools=None,
                 trust_remote_code=model_config.trust_remote_code,
                 tokenize=False,
+                # **kwargs for tokenizer.apply_chat_template
+                add_generation_prompt=True,
+                continue_final_message=False,
             )
         else:
             prompt_text = prompt.prompt
