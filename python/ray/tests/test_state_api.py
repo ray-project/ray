@@ -3733,6 +3733,33 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
+def test_actor_id_from_binary():
+    # Test with valid binary data
+    binary_data = b"1234567890abcdef"
+    actor_id = ActorID.from_binary(binary_data)
+    assert isinstance(actor_id, ActorID)
+    assert actor_id.binary() == binary_data
+
+    # Test with hex conversion
+    actor_id_hex = actor_id.hex()
+    assert actor_id_hex == binary_data.hex()
+
+    # Test with invalid data type
+    with pytest.raises(TypeError) as exc_info:
+        ActorID.from_binary("not_bytes")
+    assert "Expect bytes, got" in str(exc_info.value)
+    assert "<class 'str'>" in str(exc_info.value)
+
+    # Test with empty bytes
+    empty_actor_id = ActorID.from_binary(b"")
+    assert empty_actor_id.binary() == b""
+    assert empty_actor_id.hex() == ""
+
+    # Test with None
+    with pytest.raises(TypeError) as exc_info:
+        ActorID.from_binary(None)
+    assert "Expect bytes, got" in str(exc_info.value)
+    assert "<class 'NoneType'>" in str(exc_info.value)
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
