@@ -33,6 +33,7 @@ logging.basicConfig(level=logging.INFO)
 CLOUD = "serve_release_tests_cloud"
 JOB_NAME = "rayllm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
+SERVICE_NAME = "llm_serving_release_test"
 
 
 @click.command()
@@ -56,10 +57,12 @@ def main(
 
     if run_perf_profiler:
         llm_config = get_first_llm_config(applications)
-        submit_benchmark_vllm_job(image_uri, llm_config, env_vars["HUGGING_FACE_HUB_TOKEN"])
+        submit_benchmark_vllm_job(
+            image_uri, llm_config, env_vars["HUGGING_FACE_HUB_TOKEN"]
+        )
 
     with start_service(
-        service_name="llm_serving_release_test",
+        service_name=SERVICE_NAME,
         image_uri=image_uri,
         compute_config=compute_config,
         applications=applications,
@@ -108,6 +111,19 @@ def main(
             )
 
             logger.info(f"Performance test results: {results}")
+            for result in results:
+                record = FirehoseRecord(
+                    record_name=RecordName.RAYLLM_PERF_TEST,
+                    record_metrics={
+                        "api_url": api_url,
+                        "api_token": api_token,
+                        "cloud_name": CLOUD,
+                        "service_name": SERVICE_NAME,
+                        "py_version": get_python_version_from_image(image_uri),
+                        **result,
+                    },
+                )
+            record.write(verbose=True)
 
 
 def submit_benchmark_vllm_job(image_uri: str, llm_config: str, hf_token: str):
