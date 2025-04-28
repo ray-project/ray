@@ -68,13 +68,6 @@ if TYPE_CHECKING:
 vllm = try_import("vllm")
 logger = get_logger(__name__)
 
-from vllm.entrypoints.chat_utils import (
-    parse_chat_messages_futures,
-    resolve_chat_template_content_format,
-    apply_hf_chat_template,
-)
-
-
 time_in_queue_histogram = metrics.Histogram(
     "vllm_engine_stats_time_in_queue_ms",
     "Time a request spends in the queue first forward pass not included (ms).",
@@ -224,6 +217,8 @@ class VLLMEngine(LLMEngine):
 
         If the engine is already running, do nothing.
         """
+        from vllm.entrypoints.chat_utils import resolve_chat_template_content_format
+
         if self.running:
             # The engine is already running!
             logger.info("Skipping engine restart because the engine is already running")
@@ -245,8 +240,6 @@ class VLLMEngine(LLMEngine):
             tokenizer=self._tokenizer,
             trust_remote_code=self.model_config.trust_remote_code,
         )
-        print(f"[DEBUG] resolved_content_format: {self._resolved_content_format}")
-        print(f"[DEBUG] tokenizer: {self._tokenizer}")
 
         logger.info("Started vLLM engine.")
 
@@ -476,35 +469,21 @@ class VLLMEngine(LLMEngine):
         stream: bool,
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
     ) -> VLLMGenerationRequest:
-
-        # parse_chat_messages_fn = vllm.entrypoints.chat_utils.parse_chat_messages_futures
-
-        # prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
-        # prompt_text = prompt_output.text
-        # image_input = prompt_output.image
-        # image = []
-        # if not self._llm_config.supports_vision and image_input:
-        #     raise RuntimeError(
-        #         "You provided image input while the engine is not set up to handle images."
-        #     )
-
-        # if self._llm_config.supports_vision and image_input:
-        #     for _image in image_input:
-        #         image_url = _image.image_url
-        #         image.append(await self.image_retriever.get(image_url))
+        from vllm.entrypoints.chat_utils import (
+            parse_chat_messages_futures,
+            apply_hf_chat_template,
+        )
 
         model_config = self.model_config
 
         if isinstance(prompt.prompt, list):
             messages = [m.model_dump() for m in prompt.prompt]
-            print(f"[DEBUG] messages: {messages}")
             conversation, mm_futures = parse_chat_messages_futures(
                 messages=messages,
                 model_config=model_config,
                 tokenizer=self._tokenizer,
                 content_format=self._resolved_content_format,
             )
-            print(f"[DEBUG] conversation: {conversation}")
             mm_data = await mm_futures
         else:
             conversation = prompt
@@ -517,8 +496,6 @@ class VLLMEngine(LLMEngine):
             trust_remote_code=model_config.trust_remote_code,
             tokenize=False,
         )
-        # prompt_output = self._llm_config.prompt_format.generate_prompt(conversation)
-        # prompt_text = prompt_output.text
 
         request_params = {
             "prompt": prompt_text,

@@ -32,14 +32,14 @@ class LLMEngine(abc.ABC):
         disk_lora_model: Optional[DiskMultiplexConfig] = None,
         **kwargs,
     ) -> GenerationRequest:
-        """Prepare an EngineRequest for the engine"""
+        """Prepare a GenerationRequest for the engine"""
         pass
 
     @abc.abstractmethod
     async def generate(
         self, request: GenerationRequest
     ) -> AsyncGenerator[LLMRawResponse, None]:
-        """Generate an LLMRawResponse stream"""
+        """Generate an LLMRawResponse stream based on the GenerationRequest"""
         pass
 
     async def check_health(self):
