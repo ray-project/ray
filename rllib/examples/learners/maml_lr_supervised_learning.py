@@ -32,13 +32,13 @@ to adapt quickly to new tasks.
 
 How to run this script
 ----------------------
-`python [script file name].py --iters=70000 --train-batch-size=5 --fine-tune-batch-size=5`
+`python [script file name].py --iters=70000 --meta-train-batch-size=5 --fine-tune-batch-size=5`
 
-Use the `--train-batch-size` to set the training/testing batch size in meta-learning and
+Use the `--meta-train-batch-size` to set the training/testing batch size in meta-learning and
 the `--fine-tune-batch-size` to adjust the number of samples used in all updates during
 few-shot learning.
 
-To suppress plotting (plotting is the default) use `--no-plot` and tfor taking a longer
+To suppress plotting (plotting is the default) use `--no-plot` and for taking a longer
 look at the plot increase the seconds for which plotting is paused at the end of the
 script by `--pause-plot-secs`.
 
@@ -49,8 +49,8 @@ You should expect to see sometimes alternating test losses ("Total Loss") due to
 (few shot) loss should decrease almost monotonically. In the plot you can expect to see
 a decent adaption to the new task after fine-tuning updates of the `RLModule` weights.
 
-With `--iters=70_000`, `--train-batch-size=5`, `--fine-tune-batch-size=5`,
-`--fine-tune-lr=0.01`, `--fine-tune-iters=10`, `--lr=0.001`, `--noise-std=0.0`,
+With `--iters=70_000`, `--meta-train-batch-size=5`, `--fine-tune-batch-size=5`,
+`--fine-tune-lr=0.01`, `--fine-tune-iters=10`, `--meta-lr=0.001`, `--noise-std=0.0`,
 and no seed defined.
 -------------------------
 
@@ -111,13 +111,13 @@ parser = add_rllib_example_script_args(
 )
 
 parser.add_argument(
-    "--train-batch-size",
+    "--meta-train-batch-size",
     type=int,
     default=5,
     help="The number of samples per train and test update (meta-learning).",
 )
 parser.add_argument(
-    "--lr",
+    "--meta-lr",
     type=float,
     default=0.001,
     help="The learning rate to be used for meta learning (in the `MetaLearner`).",
@@ -298,7 +298,7 @@ module = multi_module_spec.build()
 # Configure the `DifferentiableLearner`.
 diff_learner_config = DifferentiableLearnerConfig(
     learner_class=MAMLTorchDifferentiableLearner,
-    minibatch_size=args.train_batch_size,
+    minibatch_size=args.meta_train_batch_size,
     lr=0.01,
 )
 
@@ -310,10 +310,10 @@ config = (
         differentiable_learner_configs=[diff_learner_config],
     )
     .training(
-        lr=args.lr,
-        train_batch_size=args.train_batch_size,
+        lr=args.meta_lr,
+        train_batch_size=args.meta_train_batch_size,
         # Use the full batch in a single update.
-        minibatch_size=args.train_batch_size,
+        minibatch_size=args.meta_train_batch_size,
     )
 )
 
@@ -325,7 +325,7 @@ meta_learner.build()
 for i in range(args.stop_iters):
     # Sample the training data.
     meta_training_data, task_training_data = sample_task(
-        args.train_batch_size, noise_std=args.noise_std, training_data=True
+        args.meta_train_batch_size, noise_std=args.noise_std, training_data=True
     )
 
     # Update the module.
