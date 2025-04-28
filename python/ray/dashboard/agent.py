@@ -81,10 +81,8 @@ class DashboardAgent:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
-        from ray._private.gcs_pubsub import GcsAioPublisher
         from ray.dashboard.http_server_agent import HttpServerAgent
 
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
         from grpc import aio as aiogrpc
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -159,13 +157,6 @@ class DashboardAgent:
             self.http_server
         ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
-
-    @property
-    def publisher(self):
-        assert (
-            self.aio_publisher
-        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
-        return self.aio_publisher
 
     def get_node_id(self) -> str:
         return self.node_id

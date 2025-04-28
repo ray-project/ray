@@ -2376,7 +2376,6 @@ def connect(
             fetch_cluster_id_if_nil=False,
         )
     )
-    worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
@@ -2415,7 +2414,7 @@ def connect(
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                gcs_publisher=worker.gcs_publisher,
+                gcs_client=worker.gcs_client,
                 num_retries=1,
             )
 

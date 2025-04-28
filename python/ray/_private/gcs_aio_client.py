@@ -7,14 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class GcsAioClient:
-    """
-    Async GCS client.
-
-    Historical note: there was a `ray::gcs::PythonGcsClient` C++ binding which has only
-    sync API and in Python we wrap it with ThreadPoolExecutor. It's been removed in
-    favor of `ray::gcs::GcsClient` which contains async API.
-    """
-
     def __init__(
         self,
         address: str = None,
@@ -45,3 +37,4 @@ class GcsAioClient:
         self.get_all_node_info = self.inner.async_get_all_node_info
         self.kill_actor = self.inner.async_kill_actor
         self.get_cluster_status = self.inner.async_get_cluster_status
+        self.publish_node_resource_usage = self.inner.async_publish_node_resource_usage

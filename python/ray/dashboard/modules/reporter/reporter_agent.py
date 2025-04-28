@@ -1235,7 +1235,7 @@ class ReporterAgent(
 
         return records_reported
 
-    async def _run_loop(self, publisher):
+    async def _run_loop(self):
         """Get any changes to the log files and push updates to kv."""
         loop = get_or_create_event_loop()
 
@@ -1260,7 +1260,9 @@ class ReporterAgent(
                     autoscaler_status_json_bytes,
                 )
 
-                await publisher.publish_resource_usage(self._key, json_payload)
+                await self._gcs_aio_client.publish_resource_usage(
+                    self._key, json_payload
+                )
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -1298,7 +1300,7 @@ class ReporterAgent(
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        await self._run_loop(self._dashboard_agent.publisher)
+        await self._run_loop()
 
     @staticmethod
     def is_minimal_module():

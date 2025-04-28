@@ -55,7 +55,7 @@ def create_check_raylet_task(log_dir, gcs_address, parent_dead_callback, loop):
 
     - Write logs about whether the raylet exit is graceful, by looking into the raylet
     log and search for term "SIGTERM",
-    - Flush the logs via GcsPublisher,
+    - Flush the logs via GcsClient,
     - Exit.
     """
     if sys.platform in ["win32", "cygwin"]:
@@ -118,7 +118,7 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
         ray._private.utils.publish_error_to_driver(
             ray_constants.RAYLET_DIED_ERROR,
             msg,
-            gcs_publisher=ray._raylet.GcsPublisher(address=gcs_address),
+            gcs_client=ray._raylet.GcsClient(address=gcs_address),
         )
     else:
         logger.info(msg)

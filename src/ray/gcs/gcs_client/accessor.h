@@ -1009,6 +1009,33 @@ class AutoscalerStateAccessor {
   GcsClient *client_impl_;
 };
 
+/// \class PublisherAccessor
+/// `PublisherAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to
+/// publishing information to GCS.
+class PublisherAccessor {
+ public:
+  PublisherAccessor() = default;
+  explicit PublisherAccessor(GcsClient *client_impl);
+  virtual ~PublisherAccessor() = default;
+
+  virtual Status PublishError(const std::string &key_id,
+                              const rpc::ErrorTableData &data,
+                              int64_t timeout_ms);
+
+  virtual Status PublishLogs(const std::string &key_id,
+                             const rpc::LogBatch &data,
+                             int64_t timeout_ms);
+
+  virtual Status AsyncPublishNodeResourceUsage(
+      const std::string &key_id,
+      const std::string &node_resource_usage_json,
+      const StatusCallback &done);
+
+ private:
+  GcsClient *client_impl_;
+};
+
 }  // namespace gcs
 
 }  // namespace ray

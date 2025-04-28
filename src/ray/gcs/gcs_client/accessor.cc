@@ -1552,5 +1552,47 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   return Status::OK();
 }
 
+PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status PublisherAccessor::PublishError(const std::string &key_id,
+                                       const rpc::ErrorTableData &data,
+                                       int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
+  pub_message->set_key_id(key_id);
+  pub_message->mutable_error_info_message()->MergeFrom(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::PublishLogs(const std::string &key_id,
+                                      const rpc::LogBatch &data,
+                                      int64_t timeout_ms) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_LOG_CHANNEL);
+  pub_message->set_key_id(key_id);
+  pub_message->mutable_log_batch_message()->MergeFrom(data);
+  rpc::GcsPublishReply reply;
+  return client_impl_->GetGcsRpcClient().SyncGcsPublish(request, &reply, timeout_ms);
+}
+
+Status PublisherAccessor::AsyncPublishNodeResourceUsage(
+    const std::string &key_id,
+    const std::string &node_resource_usage_json,
+    const StatusCallback &done) {
+  rpc::GcsPublishRequest request;
+  auto *pub_message = request.add_pub_messages();
+  pub_message->set_channel_type(rpc::RAY_NODE_RESOURCE_USAGE_CHANNEL);
+  pub_message->set_key_id(key_id);
+  pub_message->mutable_node_resource_usage_message()->set_json(node_resource_usage_json);
+  client_impl_->GetGcsRpcClient().GcsPublish(
+      request,
+      [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

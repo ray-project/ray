@@ -195,9 +195,8 @@ def push_error_to_driver(
 def publish_error_to_driver(
     error_type: str,
     message: str,
-    gcs_publisher,
+    gcs_client,
     job_id=None,
-    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -210,7 +209,7 @@ def publish_error_to_driver(
         error_type: The type of the error.
         message: The message that will be printed in the background
             on the driver.
-        gcs_publisher: The GCS publisher to use.
+        gcs_client: The GCS client to use.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
@@ -218,9 +217,7 @@ def publish_error_to_driver(
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     try:
-        gcs_publisher.publish_error(
-            job_id.hex().encode(), error_type, message, job_id, num_retries
-        )
+        gcs_client.publish_error(job_id.hex().encode(), error_type, message, job_id, 60)
     except Exception:
         logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
