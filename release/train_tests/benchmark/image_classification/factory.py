@@ -251,7 +251,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
                     else None
                 ),
                 collate_fn=CustomArrowCollateFn(device=ray.train.torch.get_device()),
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
             )
         )
 
@@ -267,7 +267,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=CustomArrowCollateFn(device=ray.train.torch.get_device()),
-                prefetch_batches=dataloader_config.prefetch_batches,
+                prefetch_batches=dataloader_config.ray_data_prefetch_batches,
             )
         )
 
