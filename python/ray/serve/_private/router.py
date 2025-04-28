@@ -10,7 +10,18 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
 from functools import lru_cache, partial
-from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Coroutine,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    AsyncIterator,
+)
+from asyncio.futures import _chain_future
 
 import ray
 from ray.actor import ActorHandle
@@ -580,8 +591,11 @@ class AsyncioRouter:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> ReplicaResult:
-        """Assign a request to a replica and return the resulting object_ref."""
+    ) -> Union[Any, AsyncIterator[Any]]:
+        """Assign a request to a replica and return the resulting value or async iterator.
+
+        If the request is streaming, returns an AsyncIterator. Otherwise returns the value directly.
+        """
 
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
@@ -605,7 +619,6 @@ class AsyncioRouter:
             ):
                 self._metrics_manager.push_autoscaling_metrics_to_controller()
 
-            replica_result = None
             try:
                 request_args, request_kwargs = await self._resolve_request_arguments(
                     request_meta, request_args, request_kwargs
@@ -633,14 +646,22 @@ class AsyncioRouter:
                     )
                     replica_result.add_done_callback(callback)
 
-                return replica_result
-            except asyncio.CancelledError:
-                # NOTE(edoakes): this is not strictly necessary because
-                # there are currently no `await` statements between
-                # getting the ref and returning, but I'm adding it defensively.
-                if replica_result is not None:
-                    replica_result.cancel()
+                if request_meta.is_streaming:
+                    # For streaming requests, return the async iterator directly
+                    logger.info("Returning streaming replica result.")
+                    return replica_result.to_object_ref_gen()
+                else:
+                    # For non-streaming requests, await and return the value
+                    logger.info("Returning non-streaming replica result.")
+                    return await replica_result.to_object_ref_async()
 
+            except asyncio.CancelledError:
+                # If cancelled before getting replica result, propagate cancellation
+                if replica_result is not None:
+                    logger.warning(
+                        "Cancelling replica result due to request cancellation."
+                    )
+                    replica_result.cancel()
                 raise
 
     async def shutdown(self):
@@ -694,13 +715,15 @@ class SingletonThreadRouter(Router):
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> concurrent.futures.Future[ReplicaResult]:
-        return asyncio.run_coroutine_threadsafe(
+    ) -> asyncio.Future:
+        destination_task = self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
-            ),
-            loop=self._asyncio_loop,
+            )
         )
+        source_future = asyncio.Future()
+        _chain_future(source_future, destination_task)
+        return source_future
 
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
