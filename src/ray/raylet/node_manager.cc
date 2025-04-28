@@ -422,11 +422,6 @@ std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
   return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
 };
 
-bool NodeManager::IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const {
-  return failed_workers_cache_.count(worker_id) > 0 ||
-         failed_nodes_cache_.count(node_id) > 0;
-}
-
 ray::Status NodeManager::RegisterGcs() {
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
@@ -1035,7 +1030,6 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
-  failed_nodes_cache_.insert(node_id);
 
   if (node_id == self_node_id_) {
     if (!is_shutdown_request_received_) {
@@ -1058,12 +1052,13 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     }
   }
 
+  failed_nodes_cache_.insert(node_id);
+
   cluster_task_manager_->CancelAllTasksOwnedBy(node_id);
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
-  for (const auto &pair : leased_workers_) {
-    auto &worker = pair.second;
+  for (const auto &[_, worker] : leased_workers_) {
     const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_CHECK(!owner_node_id.IsNil());
     if (worker->IsDetachedActor() || owner_node_id != node_id) {
@@ -1104,8 +1099,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
 
   cluster_task_manager_->CancelAllTasksOwnedBy(worker_id);
 
-  for (const auto &pair : leased_workers_) {
-    auto &worker = pair.second;
+  for (const auto &[_, worker] : leased_workers_) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     RAY_CHECK(!owner_worker_id.IsNil());
@@ -1991,7 +1985,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   const auto caller_node =
       NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
   if (!task.GetTaskSpecification().IsDetachedActor() &&
-      IsWorkerDead(caller_worker, caller_node)) {
+      (failed_workers_cache_.contains(caller_worker) ||
+       failed_nodes_cache_.contains(caller_node))) {
     RAY_LOG(INFO).WithField(caller_worker).WithField(caller_node)
         << "Caller of RequestWorkerLease is dead. Skip leasing.";
     reply->set_canceled(true);
