@@ -25,6 +25,7 @@ SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)
 
 bool SequentialActorSubmitQueue::Emplace(uint64_t sequence_no,
                                          const TaskSpecification &spec) {
+  RAY_LOG(INFO) << "[debug] Emplace sequence_no: " << sequence_no;
   return requests
       .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
       .second;
@@ -75,6 +76,7 @@ SequentialActorSubmitQueue::PopNextTaskToSend() {
       (/*dependencies_resolved*/ head->second.second)) {
     // If the task has been sent before, skip the other tasks in the send
     // queue.
+    RAY_LOG(INFO) << "[debug] PopNextTaskToSend sequence_no: " << head->first;
     bool skip_queue = head->first < next_send_position;
     auto task_spec = std::move(head->second.first);
     head = requests.erase(head);
@@ -91,6 +93,15 @@ SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   return result;
 }
 
+void SequentialActorSubmitQueue::OnClientConnected() {
+  auto head = requests.begin();
+  if (head != requests.end()) {
+    RAY_CHECK(head->first >= next_task_reply_position);
+    RAY_LOG(INFO) << "[debug] OnClientConnected next_task_reply_position old: " << next_task_reply_position << " new: " << head->first;
+    next_task_reply_position = head->first;
+  }
+}
+
 uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
   return task_spec.ActorCounter();
@@ -102,12 +113,14 @@ void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
   // cannot. In the case of tasks not received in order, the following block
   // ensure queue.next_task_reply_position are incremented to the max possible
   // value.
+  RAY_LOG(INFO) << "[debug] MarkSeqnoCompleted sequence_no: " << sequence_no;
   out_of_order_completed_tasks.insert({sequence_no, task_spec});
   auto min_completed_task = out_of_order_completed_tasks.begin();
   while (min_completed_task != out_of_order_completed_tasks.end()) {
     if (min_completed_task->first == next_task_reply_position) {
       next_task_reply_position++;
       // increment the iterator and erase the old value
+      RAY_LOG(INFO) << "[debug] MarkSeqnoCompleted Erase sequence_no: " << min_completed_task->first;
       out_of_order_completed_tasks.erase(min_completed_task++);
     } else {
       break;

@@ -189,6 +189,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
       send_pos = task_spec.ActorCounter();
+      RAY_LOG(INFO) << "[debug] SubmitTask Emplace sequence_no: " << send_pos;
       RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
       queue->second.cur_pending_calls++;
       task_queued = true;
@@ -330,6 +331,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
+    queue->second.actor_submit_queue->OnClientConnected();
 
     ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
@@ -522,6 +524,7 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
 }
 
 void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO) << "SendPendingTasks";
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
@@ -569,6 +572,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
 }
 
 void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO) << "ResendOutOfOrderCompletedTasks";
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
