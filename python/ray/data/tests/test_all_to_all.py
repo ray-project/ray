@@ -635,6 +635,14 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
+    ctx = DataContext.get_current()
+
+    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+        pytest.skip(
+            "Pandas derives integer columns with null as doubles, "
+            "therefore deviating schemas for blocks containing nulls"
+        )
+
     # Test built-in sum aggregation
     random.seed(1741752320)
 
@@ -768,6 +776,7 @@ def test_groupby_tabular_min(
     seed = int(1739959110)
 
     random.seed(seed)
+
     xs = list(range(100))
     random.shuffle(xs)
 
@@ -857,6 +866,19 @@ def test_groupby_tabular_max(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
+    current = DataContext.get_current()
+    if (
+        num_parts == 30
+        and current.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
+        # NOTE: When partitioning by large number of partitions some of these
+        #       will be empty, hence resulting in the type deduced as a double
+        pytest.skip(
+            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
+            "promoting from int64 to double)"
+        )
+
     # Test built-in max aggregation
     random.seed(1738727165)
     xs = list(range(100))
@@ -1262,7 +1284,15 @@ def test_groupby_arrow_multi_agg(
     ds_format,
     disable_fallback_to_object_extension,
 ):
-    using_pyarrow = ds_format == "pyarrow"
+    using_pyarrow = (
+        ds_format == "pyarrow"
+        or
+        # NOTE: Hash-shuffle internally converts to pyarrow
+        (
+            ds_format == "pandas"
+            and configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE
+        )
+    )
 
     if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
         pytest.skip(
@@ -1436,10 +1466,10 @@ def test_groupby_multi_agg_with_nans(
                 ("mean_b", lambda s: s.mean(skipna=ignore_nulls)),
                 ("std_b", lambda s: s.std(skipna=ignore_nulls)),
                 (
-                    "quantile",
+                    "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique", "unique"),
+                ("unique_b", "unique"),
             ]
         },
     )
@@ -1551,10 +1581,12 @@ def test_groupby_aggregations_are_associative(
                     "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique_b", "unique"),
+                ("unique", "unique"),
             ]
         },
     )
+
+    print(grouped_df)
 
     grouped_df.columns = [
         "A",

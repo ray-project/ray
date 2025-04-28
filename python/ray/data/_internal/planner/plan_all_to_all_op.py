@@ -46,6 +46,32 @@ def _plan_hash_shuffle_repartition(
     )
 
 
+def _plan_hash_shuffle_aggregate(
+    data_context: DataContext,
+    logical_op: Aggregate,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data._internal.execution.operators.hash_aggregate import (
+        HashAggregateOperator,
+    )
+
+    normalized_key_columns = SortKey(logical_op._key).get_columns()
+
+    return HashAggregateOperator(
+        data_context,
+        input_physical_op,
+        key_columns=tuple(normalized_key_columns),  # noqa: type
+        aggregation_fns=tuple(logical_op._aggs),  # noqa: type
+        # NOTE: In case number of partitions is not specified, we fall back to
+        #       default min parallelism configured
+        num_partitions=(
+            logical_op._num_partitions or data_context.default_hash_shuffle_parallelism
+        ),
+        # TODO wire in aggregator args overrides
+    )
+
+
 def plan_all_to_all_op(
     op: AbstractAllToAll,
     physical_children: List[PhysicalOperator],
@@ -120,6 +146,9 @@ def plan_all_to_all_op(
         target_max_block_size = data_context.target_shuffle_max_block_size
 
     elif isinstance(op, Aggregate):
+        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
+
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
