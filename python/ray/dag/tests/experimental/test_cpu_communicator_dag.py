@@ -225,11 +225,9 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     with pytest.raises(RayTaskError):
         ray.get(ref)
 
-    # Since we have buffered channels, the execution should not error, but the
-    # get should error, as the dag should no longer work after the application-
-    # level exception.
-    ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+    # The dag can not be used again after the error.
     with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
         ray.get(ref)
 
 
