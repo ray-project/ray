@@ -15,6 +15,7 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
 
 
     """
+
     def __init__(self, config=None):
         super().__init__()
 
@@ -56,7 +57,8 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
     def step(self, action_dict):
         rewards = {
             agent_id: -0.1
-            for agent_id in self.agent_pos if not self.terminateds[agent_id]
+            for agent_id in self.agent_pos
+            if not self.terminateds[agent_id]
         }
 
         for agent_id, action in action_dict.items():
@@ -120,9 +122,7 @@ class DoubleRowCorridorEnv(MultiAgentEnv):
         for agent_id in self.agent_pos:
             if self.terminateds[agent_id]:
                 continue
-            obs[agent_id] = np.array(
-                pos["agent_0"] + pos["agent_1"], dtype=np.int32
-            )
+            obs[agent_id] = np.array(pos["agent_0"] + pos["agent_1"], dtype=np.int32)
         return obs
 
 
