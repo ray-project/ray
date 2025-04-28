@@ -3750,10 +3750,10 @@ def test_actor_id_from_binary():
     assert "Expect bytes, got" in str(exc_info.value)
     assert "<class 'str'>" in str(exc_info.value)
 
-    # Test with empty bytes
-    empty_actor_id = ActorID.from_binary(b"")
-    assert empty_actor_id.binary() == b""
-    assert empty_actor_id.hex() == ""
+    # Test with empty bytes - should raise ValueError due to length validation
+    with pytest.raises(ValueError) as exc_info:
+        ActorID.from_binary(b"")
+    assert "ID string needs to have length" in str(exc_info.value)
 
     # Test with None
     with pytest.raises(TypeError) as exc_info:
