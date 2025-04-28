@@ -42,13 +42,17 @@ class AcceleratorContext:
 
                     cls._set_context("cuda", _NcclGroup)
                 else:
-                    cls._set_context("cpu")
+                    from ray.experimental.channel.cpu_communicator import (
+                        CPUCommunicator,
+                    )
+
+                    cls._set_context("cpu", CPUCommunicator)
             cls._instance = cls()
 
         return cls._instance
 
     @classmethod
-    def _set_context(cls, name, communicator=None):
+    def _set_context(cls, name, communicator):
         cls._torch_module_name = name
         cls._communicator_cls = communicator
         cls._torch_mod = importlib.import_module(f"torch.{cls._torch_module_name}")

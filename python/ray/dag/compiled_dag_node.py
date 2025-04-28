@@ -589,6 +589,7 @@ class ExecutableTask:
         self.output_writer.start()
 
         # Stream context type are different between different accelerators.
+        # Type hint is not applicable here.
         self._send_stream = nullcontext()
         self._recv_stream = nullcontext()
         if not overlap_gpu_communication:
