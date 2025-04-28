@@ -211,10 +211,10 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     return handle.options(stream=not info.app_is_cross_language)
 
 
-def get_controller(http_options, grpc_options, global_logging_config):
+def get_controller_handle():
     from ray.serve._private.controller import ServeController
 
-    actor = ray.remote(
+    controller_handle = ray.remote(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -225,9 +225,5 @@ def get_controller(http_options, grpc_options, global_logging_config):
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
     )(ServeController)
-    controller = actor.remote(
-        http_options=http_options,
-        grpc_options=grpc_options,
-        global_logging_config=global_logging_config,
-    )
-    return controller
+
+    return controller_handle

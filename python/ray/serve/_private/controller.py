@@ -427,9 +427,9 @@ class ServeController:
             )
             self.done_recovering_event.set()
 
-        # setting this to true because its possible that update call to deployment_state_manager
-        # will throw an exception and we don't want unintentionally drop handle metrics
-        any_recovering = None
+        # Setting this to True because it's possible that update call to deployment_state_manager
+        # will throw an exception and we don't want to unintentionally drop handle metrics
+        any_recovering: bool = True
         try:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
@@ -483,7 +483,7 @@ class ServeController:
 
         # When the controller is done recovering, drop invalid handle metrics
         # that may be stale for autoscaling
-        if any_recovering is not None and any_recovering is False:
+        if not any_recovering:
             self.autoscaling_state_manager.drop_stale_handle_metrics(
                 self.deployment_state_manager.get_alive_replica_actor_ids()
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
