@@ -1,6 +1,6 @@
 """The vLLM engine processor."""
+
 from typing import Any, Dict, Optional
-import logging
 from pydantic import Field, root_validator
 
 import ray
@@ -37,9 +37,6 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
 import transformers
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
-DEFAULT_VLLM_BATCH_SIZE = 256
-
-logger = logging.getLogger(__name__)
 
 
 class vLLMEngineProcessorConfig(ProcessorConfig):
@@ -191,19 +188,11 @@ def build_vllm_engine_processor(
 
     # Core stage -- the vLLM engine.
 
-    if config.batch_size * config.max_concurrent_batches < DEFAULT_VLLM_BATCH_SIZE:
-        from math import ceil
-
-        logger.warning(
-            f"The product of batch_size ({config.batch_size}) and "
-            f"max_concurrent_batches ({config.max_concurrent_batches}) is too small "
-            "to saturate vLLM engine. This may lead to suboptimal "
-            "throughput. Please increase max_concurrent_batches to at least "
-            f"{ceil(DEFAULT_VLLM_BATCH_SIZE / config.batch_size)}."
-        )
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
+                batch_size=config.batch_size,
+                max_concurrent_batches=config.max_concurrent_batches,
                 model=config.model_source,
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,

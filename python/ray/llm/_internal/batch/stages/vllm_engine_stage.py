@@ -1,4 +1,5 @@
 """The stage that runs vLLM engine."""
+
 import asyncio
 import dataclasses
 import logging
@@ -434,12 +435,20 @@ class vLLMEngineWrapper:
             logger.info("Shutting down vLLM engine")
             self.engine.shutdown()
 
+    def get_scheduler_config(self) -> vllm.config.SchedulerConfig:
+        if self.vllm_use_v1:
+            return self.engine.vllm_config.scheduler_config
+        else:
+            return self.engine.engine.get_scheduler_config()
+
 
 class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
         expected_input_keys: List[str],
+        batch_size: int,
+        max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -494,6 +503,16 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
         )
+
+        max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
+        if batch_size * max_concurrent_batches < max_num_seqs:
+            logger.warning(
+                f"The product of batch_size ({batch_size}) and "
+                f"max_concurrent_batches ({max_concurrent_batches}) is too small "
+                "to saturate vLLM engine. This may lead to suboptimal "
+                "throughput. Please increase max_concurrent_batches to at least "
+                f"{math.ceil(max_num_seqs / batch_size)}."
+            )
 
     def normalize_engine_kwargs(
         self,
