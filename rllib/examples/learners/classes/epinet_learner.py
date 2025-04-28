@@ -104,7 +104,6 @@ class PPOTorchLearnerWithEpinetLoss(PPOTorchLearner):
             # Calculate base MSE loss.
             enn_loss = nn.functional.mse_loss(ENN_total_output, ENN_target)
             # Base critic loss since we detached the gradient map between ENN/base critic.
-            # TODO: check this to make sure this shouldn't be just the critic network as the target.
             base_critic_target = rewards + gamma * (
                 next_critic_out.clone().detach()
             ) * (1 - dones.float())
