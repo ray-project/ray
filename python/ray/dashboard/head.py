@@ -370,15 +370,19 @@ class DashboardHead:
             "Component": "dashboard" if not module_name else "dashboard_" + module_name,
             "SessionName": self.session_name,
         }
+        proc_attrs = proc.as_dict(attrs=["cpu_percent", "memory_full_info"])
         self.metrics.metrics_dashboard_cpu.labels(**labels).set(
-            float(proc.cpu_percent())
+            float(proc_attrs.get("cpu_percent", 0.0))
         )
-        self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
-            float(proc.memory_full_info().uss) / 1.0e6
-        )
-        self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
-            float(proc.memory_full_info().rss) / 1.0e6
-        )
+        # memory_full_info is None on Mac due to the permission issue
+        # (https://github.com/giampaolo/psutil/issues/883)
+        if proc_attrs.get("memory_full_info") is not None:
+            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").uss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+            )
 
     async def run(self):
         gcs_address = self.gcs_address

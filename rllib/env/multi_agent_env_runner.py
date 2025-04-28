@@ -922,21 +922,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
-        self, which: str, idx: int, episodes: List[MultiAgentEpisode] = None
+        self, which: str, idx: int, episodes: List[MultiAgentEpisode]
     ):
-        # episode = episode if episode is not None else self._episode
+        kwargs = dict(
+            episode=episodes[idx],
+            env_runner=self,
+            metrics_logger=self.metrics,
+            env=self.env.unwrapped,
+            rl_module=self.module,
+            env_index=idx,
+        )
+        if which == "on_episode_end":
+            kwargs["prev_episode_chunks"] = self._ongoing_episodes_for_metrics[
+                episodes[idx].id_
+            ]
+
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
-            kwargs=dict(
-                episode=episodes[idx],
-                env_runner=self,
-                metrics_logger=self.metrics,
-                env=self.env.unwrapped,
-                rl_module=self.module,
-                env_index=idx,
-            ),
+            kwargs=kwargs,
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):

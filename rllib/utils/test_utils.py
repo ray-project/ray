@@ -1249,7 +1249,10 @@ def run_rllib_example_script_experiment(
                     EPISODE_RETURN_MEAN, np.nan
                 )
                 print(f"iter={i} R={mean_return}", end="")
-            if EVALUATION_RESULTS in results:
+            if (
+                EVALUATION_RESULTS in results
+                and ENV_RUNNER_RESULTS in results[EVALUATION_RESULTS]
+            ):
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
                 ]

@@ -27,6 +27,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 resource = None
 if sys.platform != "win32":
@@ -1556,6 +1557,7 @@ def start_raylet(
     object_store_memory: int,
     session_name: str,
     is_head_node: bool,
+    resource_isolation_config: ResourceIsolationConfig,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1584,7 +1586,6 @@ def start_raylet(
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
-    enable_physical_mode: bool = False,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1614,6 +1615,8 @@ def start_raylet(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         session_name: The session name (cluster id) of this cluster.
+        resource_isolation_config: Resource isolation configuration for reserving
+            memory and cpu resources for ray system processes through cgroupv2
         is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
@@ -1661,9 +1664,6 @@ def start_raylet(
         node_name: The name of the node.
         webui: The url of the UI.
         labels: The key-value labels of the node.
-        enable_physical_mode: Whether physical mode is enabled, which applies
-            constraint to tasks' resource consumption. As of now only memory
-            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1757,6 +1757,18 @@ def start_raylet(
             f"--cluster-id={cluster_id}",
         ]
     )
+
+    if resource_isolation_config.is_enabled():
+        # TODO(irabbani): enable passing args to raylet once the raylet has been modified
+        logging.info(
+            f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
+            f"system_reserved_cpu={resource_isolation_config.system_reserved_cpu_weight} "
+            f"system_reserved_memory={resource_isolation_config.system_reserved_memory}"
+        )
+        # start_worker_command.append("--enable-resource-isolation")
+        # start_worker_command.append(f"--cgroup-path={resource_isolation_config.cgroup_path}")
+        # start_worker_command.append(f"--system-reserved-cpu={resource_isolation_config.system_reserved_cpu_weight}")
+        # start_worker_command.append(f"--system-reserved-memory={resource_isolation_config.system_reserved_memory}")
 
     if storage is not None:
         start_worker_command.append(f"--storage={storage}")
