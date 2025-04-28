@@ -162,7 +162,7 @@ class _NcclGroup(Communicator):
         not have completed. Therefore, the caller should ensure that there are
         no concurrent writes to the sent `buf` until the send has finished.
         That is, either all writes should be submitted on the current stream
-        (self._cuda_stream) or, if on a different stream, that stream should
+        (self._send_stream) or, if on a different stream, that stream should
         synchronize with the current stream.
 
         Args:
@@ -300,7 +300,7 @@ class _NcclGroup(Communicator):
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -321,7 +321,7 @@ class _NcclGroup(Communicator):
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,
@@ -342,7 +342,7 @@ class _NcclGroup(Communicator):
             recv_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.ptr,
+            self._coll_stream.ptr,
         ]
         self._exec_collective(
             send_buf,

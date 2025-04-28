@@ -1242,6 +1242,12 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
 
             return cp.cuda.get_current_stream()
 
+        @property
+        def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
         def destroy(self) -> None:
             pass
 
