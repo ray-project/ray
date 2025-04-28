@@ -172,6 +172,8 @@ class vLLMEngineWrapper:
         engine_args = vllm.AsyncEngineArgs(
             **kwargs,
         )
+        # create_engine_config will set default values including `max_num_seqs`.
+        self._vllm_config = engine_args.create_engine_config()
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
@@ -436,10 +438,7 @@ class vLLMEngineWrapper:
             self.engine.shutdown()
 
     def get_scheduler_config(self) -> vllm.config.SchedulerConfig:
-        if self.vllm_use_v1:
-            return self.engine.vllm_config.scheduler_config
-        else:
-            return self.engine.engine.get_scheduler_config()
+        return self._vllm_config.scheduler_config
 
 
 class vLLMEngineStageUDF(StatefulStageUDF):
