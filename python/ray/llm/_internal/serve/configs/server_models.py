@@ -230,6 +230,12 @@ class LLMConfig(BaseModelExtended):
         f"batch before processing the requests. Defaults to {MODEL_RESPONSE_BATCH_TIMEOUT_MS}",
     )
 
+    router_replicas: int = Field(
+        default=0,
+        description="The number of replicas for the router. Ray Serve will take the max amount all the replicas."
+        "Default would be 2 router replicas per model replica.",
+    )
+
     _supports_vision: bool = PrivateAttr(False)
     _model_architecture: str = PrivateAttr("")
     _prompt_format: HuggingFacePromptFormat = PrivateAttr(
