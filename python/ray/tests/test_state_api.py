@@ -3747,19 +3747,17 @@ def test_actor_id_from_binary():
     # Test with invalid data type
     with pytest.raises(TypeError) as exc_info:
         ActorID.from_binary("not_bytes")
-    assert "Expect bytes, got" in str(exc_info.value)
-    assert "<class 'str'>" in str(exc_info.value)
+    assert "Unsupported type: <class 'str'>" in str(exc_info.value)
 
-    # Test with empty bytes - should raise ValueError due to length validation
+    # Test with incorrect length
     with pytest.raises(ValueError) as exc_info:
-        ActorID.from_binary(b"")
+        ActorID.from_binary(b"tooshort")
     assert "ID string needs to have length" in str(exc_info.value)
 
     # Test with None
     with pytest.raises(TypeError) as exc_info:
         ActorID.from_binary(None)
-    assert "Expect bytes, got" in str(exc_info.value)
-    assert "<class 'NoneType'>" in str(exc_info.value)
+    assert "Unsupported type: <class 'NoneType'>" in str(exc_info.value)
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

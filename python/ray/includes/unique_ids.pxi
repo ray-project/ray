@@ -301,8 +301,6 @@ cdef class ActorID(BaseID):
 
     @classmethod
     def from_binary(cls, id_bytes):
-        if not isinstance(id_bytes, bytes):
-            raise TypeError("Expect bytes, got " + str(type(id_bytes)))
         return cls(id_bytes)
 
     @classmethod
