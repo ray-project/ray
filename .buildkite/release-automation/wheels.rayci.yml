@@ -27,6 +27,7 @@ steps:
   - label: "Linux x86_64 Python {{matrix}}"
     key: validate-linux-x86_64-wheels
     job_env: forge
+    tags: disabled
     depends_on:
       - block-validate-linux-x86_64-wheels
     commands:
@@ -50,6 +51,7 @@ steps:
     key: validate-linux-arm64-wheels
     instance_type: medium-arm64
     job_env: forge-arm64
+    tags: disabled
     depends_on:
       - block-validate-linux-arm64-wheels
     commands:
@@ -74,6 +76,7 @@ steps:
       - block-validate-macos-wheels
     job_env: MACOS
     instance_type: macos
+    tags: disabled
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
 
@@ -83,9 +86,20 @@ steps:
       - block-validate-macos-wheels
     job_env: MACOS
     instance_type: macos-arm64
+    tags: disabled
     commands:
       - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
 
+  - label: "Windows"
+    key: validate-windows-wheels
+    depends_on: []
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - bash /c/workdir/.buildkite/release-automation/verify-windows-wheels-in-docker.sh
+  
   - block: "Upload wheels to PyPI"
     key: block-upload-wheels-pypi
     depends_on: []
